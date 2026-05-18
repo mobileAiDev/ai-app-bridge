@@ -1,6 +1,6 @@
 {
   "name": "@lidongping/ai-app-bridge",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "description": "Desktop CLI and MCP server for AI App Bridge.",
   "repository": {
     "type": "git",

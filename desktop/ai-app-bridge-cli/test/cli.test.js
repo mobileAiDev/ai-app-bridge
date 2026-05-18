@@ -20,6 +20,7 @@ const {
   flutterPhysicalViewport,
   helpText,
   installerButtonTextsForSurface,
+  isAdbInputTextSafe,
   isLikelyInstallerSurface,
   normalizeBridgeError,
   parseWebViewDevToolsSockets,
@@ -60,7 +61,7 @@ test('--help prints usage without probing adb', () => {
   assert.equal(output, `${helpText}\n`);
   assert.match(output, /Usage: ai-app-bridge <command>/);
   assert.match(output, /--package-name <name>/);
-  assert.match(output, /--text <text>\s+Text used by input-text\./);
+  assert.match(output, /--text <text>\s+Text used by Unicode-safe bridge input commands\./);
 });
 
 test('help command prints usage without probing adb', () => {
@@ -85,6 +86,13 @@ test('help documents every implemented CLI command', () => {
     assert.match(helpText, new RegExp(`^\\s{2}${escapeRegExp(command)}\\s`, 'm'));
   }
   assert.match(helpText, /^\s{2}help\s/m);
+});
+
+test('ADB input fallback is limited to ASCII text', () => {
+  assert.equal(isAdbInputTextSafe('hello world 123'), true);
+  assert.equal(isAdbInputTextSafe('name_with-symbols.@'), true);
+  assert.equal(isAdbInputTextSafe('斗破苍穹'), false);
+  assert.equal(isAdbInputTextSafe('hello🙂'), false);
 });
 
 test('generated default artifact paths are unique and run-scoped', () => {

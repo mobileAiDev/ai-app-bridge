@@ -4,6 +4,24 @@ This file records issues found while using ai-app-bridge as a development loop
 for real Android apps. Keep each item evidence-based and include the current
 workaround when one exists.
 
+## Android 16 ADB text input cannot enter Chinese
+
+- Status: fixed in Android runtime `0.1.9` and desktop CLI `0.1.25`
+- Found while operating an Android 16 device from an agent loop.
+- Evidence: `adb shell input text` cannot reliably inject Chinese/Unicode text
+  on this device, so agents that tried generic ADB text input failed and then
+  retried the same path.
+- Impact: search boxes and form fields requiring Chinese text could not be
+  filled reliably unless the agent used a WebView or Flutter-specific bridge
+  action.
+- Fix: native Android input now has `/v1/action/input-text`, and CLI/MCP
+  `input-text`/`input_text` use the bridge endpoint first. Non-ASCII text no
+  longer falls back to ADB when the bridge endpoint is missing or fails.
+- Workaround for older app builds: upgrade the target app to
+  `ai-app-bridge-android:0.1.9+`, pass `--package-name`, or use
+  `input_flutter_text` / `h5-input` / `flutter-h5-input` for Flutter and H5
+  fields.
+
 ## Default screenshot artifacts could dirty consuming repositories
 
 - Status: fixed in desktop CLI `0.1.23`

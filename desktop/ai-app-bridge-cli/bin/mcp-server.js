@@ -110,6 +110,16 @@ function toolDefinitions() {
     }),
     bridgeTool('tree', 'Read the Android View tree from the in-app bridge.'),
     bridgeTool('flutter_tree', 'Read the latest Flutter widget/layout snapshot.'),
+    bridgeTool('flutter_nodes', 'Read Flutter operable nodes from the Flutter action bridge.'),
+    bridgeTool('tap_flutter_text', 'Tap a Flutter node by visible text through the Flutter-aware bridge path.', {
+      targetText: { type: 'string', description: 'Flutter node text to tap.' },
+    }, ['targetText']),
+    bridgeTool('input_flutter_text', 'Set Flutter TextField text through the Flutter action bridge. Use this for Flutter Chinese/Unicode input; do not use raw adb shell input text.', {
+      text: { type: 'string', description: 'Text to set.' },
+      tapX: { type: 'number', description: 'Optional physical X coordinate for the Flutter input target.' },
+      tapY: { type: 'number', description: 'Optional physical Y coordinate for the Flutter input target.' },
+      hideKeyboard: { type: 'boolean', description: 'Hide the soft keyboard after setting text.' },
+    }, ['text']),
     bridgeTool('h5_dom', 'Read native Android WebView DOM from the current Activity.'),
     bridgeTool('h5_eval', 'Execute debug JavaScript in the current native Android WebView.', {
       script: { type: 'string' },
@@ -223,9 +233,11 @@ function toolDefinitions() {
       targetText: { type: 'string' },
       timeoutSec: { type: 'number' },
     }, ['targetText']),
-    bridgeTool('input_text', 'Type text through ADB input.', {
-      text: { type: 'string' },
-      hideKeyboard: { type: 'boolean', description: 'Hide the soft keyboard after typing.' },
+    bridgeTool('input_text', 'Set native Android text through the in-app bridge. Use this for Chinese/Unicode; do not use raw adb shell input text for non-ASCII text.', {
+      text: { type: 'string', description: 'Text to set in the focused or coordinate-matched native EditText.' },
+      tapX: { type: 'number', description: 'Optional X coordinate used to choose a native EditText target.' },
+      tapY: { type: 'number', description: 'Optional Y coordinate used to choose a native EditText target.' },
+      hideKeyboard: { type: 'boolean', description: 'Hide the soft keyboard after setting text.' },
     }, ['text']),
     bridgeTool('keyboard_state', 'Read Android soft-keyboard visibility from dumpsys input_method.'),
     bridgeTool('hide_keyboard', 'Hide the Android soft keyboard when it is visible.', {
@@ -330,6 +342,9 @@ async function callTool(name, args) {
     flutter_h5_input: 'flutter-h5-input',
     flutter_h5_wait: 'flutter-h5-wait',
     flutter_h5_scroll: 'flutter-h5-scroll',
+    flutter_nodes: 'flutter-nodes',
+    tap_flutter_text: 'tap-flutter-text',
+    input_flutter_text: 'input-flutter-text',
     uia_tree: 'uia-tree',
     install_apk: 'install-apk',
     launch_native_test: 'launch-native-test',

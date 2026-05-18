@@ -48,7 +48,7 @@ Flutter commands:
   flutter-nodes          Read Flutter operable nodes.
   flutter-action         Dispatch a raw Flutter action payload.
   tap-flutter-text       Tap a Flutter node by text.
-  input-flutter-text     Input text through the Flutter action bridge.
+  input-flutter-text     Set Flutter text through the Flutter action bridge.
   scroll-flutter         Scroll Flutter content.
   flutter-h5-dom         Read DOM through a Flutter H5 adapter.
   flutter-h5-eval        Execute JavaScript through a Flutter H5 adapter.
@@ -62,7 +62,7 @@ Device/action commands:
   tap-text               Tap a visible node by exact text or content description.
   tap-uia-text           Tap a UIAutomator node by text.
   wait-text              Wait until text appears in bridge or UIAutomator output.
-  input-text             Type text through ADB input.
+  input-text             Set native Android text through the in-app bridge; ASCII can fall back to ADB.
   swipe                  Swipe device coordinates through ADB.
   keyevent               Send an Android keyevent through ADB.
   keyboard-state         Read Android soft keyboard visibility from dumpsys.
@@ -93,7 +93,7 @@ Options:
   --out-file <path>      Screenshot output path.
   --artifact-dir <path>  Directory for generated screenshot/artifact defaults.
   --apk-path <path>      APK path used by install-apk.
-  --text <text>          Text used by input-text.
+  --text <text>          Text used by Unicode-safe bridge input commands.
   --value <text>         Text value used by h5-input or flutter-h5-input.
   --selector <css>       CSS selector used by H5 commands.
   --target-text <text>   Text used by tap-text or wait-text.
@@ -223,12 +223,17 @@ async function runCommand(command, options, ctx) {
       return flutterNodes(ctx);
     case 'tap-flutter-text':
       return flutterAction(ctx, { action: 'tapText', text: requiredString(options.targetText, 'targetText') });
-    case 'input-flutter-text':
-      return flutterAction(ctx, {
+    case 'input-flutter-text': {
+      const result = await flutterAction(ctx, {
         action: 'inputText',
         text: requiredString(options.text, 'text'),
-        ...(options.tapX && options.tapY ? { x: Number(options.tapX), y: Number(options.tapY) } : {}),
+        ...(options.tapX !== undefined && options.tapY !== undefined ? { x: Number(options.tapX), y: Number(options.tapY) } : {}),
       });
+      if (booleanOption(options.hideKeyboard)) {
+        result.keyboard = await hideKeyboard(ctx, options);
+      }
+      return result;
+    }
     case 'scroll-flutter':
       return options.targetText
         ? flutterAction(ctx, { action: 'scrollUntilText', text: options.targetText, maxSwipes: Number(options.maxSwipes || 12) })
@@ -2784,12 +2789,9 @@ async function inputFlutterText(ctx, targetText, text) {
     throw new Error(`flutter input node not found: ${targetText}`);
   }
   const point = flutterNodePoint(node.input?.bounds || node.bounds, operable.viewport);
-  await tap(ctx, point.x, point.y);
-  await sleep(300);
-  await inputText(ctx, text);
+  const result = await flutterAction(ctx, { action: 'inputText', text, x: point.x, y: point.y });
   return {
-    ok: true,
-    transport: 'adb',
+    ...result,
     source: 'flutter-operable-tree',
     targetText,
     text,
@@ -3467,12 +3469,72 @@ function shouldDismissKeyboardForPoint({ point, viewport, keyboardVisible }) {
 }
 
 async function inputText(ctx, text, options = {}) {
+  const bridgePayload = inputTextBridgePayload(text, options);
+  let bridgeAttempt = null;
+  try {
+    const bridgeResult = await bridgePost(ctx, '/v1/action/input-text', bridgePayload);
+    if (bridgeResult?.ok) {
+      const result = {
+        ...bridgeResult,
+        transport: 'bridge',
+        source: bridgeResult.source || 'native-view',
+        request: bridgePayload,
+      };
+      if (booleanOption(options.hideKeyboard)) {
+        result.keyboard = await hideKeyboard(ctx, options);
+      }
+      return result;
+    }
+    bridgeAttempt = {
+      ok: false,
+      command: 'input-text',
+      requestPath: '/v1/action/input-text',
+      result: bridgeResult,
+      error: bridgeResult?.error || 'bridge_input_failed',
+      message: bridgeResult?.message || 'The app bridge did not accept native text input.',
+    };
+  } catch (error) {
+    bridgeAttempt = buildBridgeFailureResult(ctx, 'input-text', '/v1/action/input-text', error);
+  }
+
+  if (!isAdbInputTextSafe(text)) {
+    return {
+      ok: false,
+      error: 'unicode_text_requires_bridge_input',
+      message: 'This text contains non-ASCII characters. Android adb shell input text cannot reliably enter Unicode; use an app build with AI App Bridge Android runtime 0.1.9+ and retry input-text/input_text.',
+      textLength: text.length,
+      bridge: bridgeAttempt,
+      suggestion: 'Update the target app bridge dependency to ai-app-bridge-android 0.1.9+ and pass --package-name so the CLI can discover the app bridge port.',
+    };
+  }
+
   await adb(ctx, ['shell', 'input', 'text', text.replace(/ /g, '%s')]);
-  const result = { ok: true, transport: 'adb', text };
+  const result = {
+    ok: true,
+    transport: 'adb',
+    source: 'adb-input-text-fallback',
+    text,
+    bridge: bridgeAttempt,
+  };
   if (booleanOption(options.hideKeyboard)) {
     result.keyboard = await hideKeyboard(ctx, options);
   }
   return result;
+}
+
+function inputTextBridgePayload(text, options = {}) {
+  const payload = { text };
+  const x = Number(options.tapX);
+  const y = Number(options.tapY);
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    payload.x = x;
+    payload.y = y;
+  }
+  return payload;
+}
+
+function isAdbInputTextSafe(text) {
+  return /^[\x20-\x7e]*$/.test(String(text));
 }
 
 async function swipe(ctx, startX, startY, endX, endY, durationMs) {
@@ -4076,6 +4138,7 @@ module.exports = {
   flutterPhysicalViewport,
   helpText,
   installerButtonTextsForSurface,
+  isAdbInputTextSafe,
   isLikelyInstallerSurface,
   nodeTapState,
   normalizeBridgeError,

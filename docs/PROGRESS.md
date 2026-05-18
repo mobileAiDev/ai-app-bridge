@@ -1,5 +1,18 @@
 # Progress
 
+## 2026-05-18
+
+- Android runtime `0.1.9` adds `/v1/action/input-text`, which sets text on the
+  focused or coordinate-matched native `EditText` from inside the app process.
+  This avoids Android 16 `adb shell input text` Unicode failures.
+- Desktop CLI `0.1.25` makes `input-text` prefer that native bridge endpoint.
+  For non-ASCII text it now returns a structured
+  `unicode_text_requires_bridge_input` result instead of falling back to ADB.
+- MCP tool descriptions now tell agents to use bridge input for
+  Chinese/Unicode and expose `input_flutter_text` for Flutter text fields.
+- Flutter package `0.1.10` now depends on Android runtime `0.1.9` in debug
+  builds so Flutter consumers pick up the same native input endpoint.
+
 ## 2026-05-12
 
 - `flutter_inappwebview_android/example` was revalidated against the published

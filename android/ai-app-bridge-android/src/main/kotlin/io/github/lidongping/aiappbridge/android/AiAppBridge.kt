@@ -24,6 +24,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.webkit.WebView
+import android.widget.EditText
 import android.widget.TextView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -61,7 +62,7 @@ object AiAppBridge {
     private const val maxEventEntries = 300
     private const val maxStateEntries = 200
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.1.8"
+    private const val bridgeVersion = "0.1.9"
     private const val redactedValue = "[redacted]"
     private val sensitiveKeyPattern = Regex(
         "(?i)(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
@@ -907,6 +908,9 @@ object AiAppBridge {
                         request.method == "POST" && request.path == "/v1/action/tap" -> {
                             writeJson(socket, 200, dispatchTap(request.body))
                         }
+                        request.method == "POST" && request.path == "/v1/action/input-text" -> {
+                            writeJson(socket, 200, dispatchInputText(request.body))
+                        }
                         request.method == "POST" && request.path == "/v1/flutter/action" -> {
                             writeJson(socket, 200, dispatchFlutterAction(request.body))
                         }
@@ -1474,6 +1478,46 @@ object AiAppBridge {
             }
         }
 
+        private fun dispatchInputText(body: String): JSONObject {
+            val request = requestJson(body)
+            val rawText = request.opt("text")
+            if (!request.has("text") || rawText == null || rawText == JSONObject.NULL) {
+                return JSONObject()
+                    .put("ok", false)
+                    .put("error", "text_required")
+            }
+            val text = rawText.toString()
+            val x = request.optDouble("x", Double.NaN).toFloat()
+            val y = request.optDouble("y", Double.NaN).toFloat()
+            return runOnMainThread {
+                val activity = activity()
+                    ?: return@runOnMainThread JSONObject()
+                        .put("ok", false)
+                        .put("error", "no_current_activity")
+                val roots = windowRoots(activity)
+                val target = findInputTextTarget(roots, x, y)
+                    ?: return@runOnMainThread JSONObject()
+                        .put("ok", false)
+                        .put("error", "input_target_not_found")
+                        .put("message", "No enabled visible EditText was focused or matched by the requested coordinates.")
+
+                val requestedFocus = target.view.requestFocus()
+                target.view.setText(text)
+                target.view.setSelection(target.view.text?.length ?: 0)
+                JSONObject()
+                    .put("ok", true)
+                    .put("transport", "bridge")
+                    .put("source", "native-view")
+                    .put("text", text)
+                    .put("textLength", text.length)
+                    .put("requestedFocus", requestedFocus)
+                    .put("focused", target.view.isFocused)
+                    .put("windowType", target.root.type)
+                    .put("target", editTextToJson(activity, target.view))
+                    .put("updatedAtMs", System.currentTimeMillis())
+            }
+        }
+
         private fun dispatchFlutterAction(body: String): JSONObject {
             val handler = flutterActionHandler
                 ?: return JSONObject()
@@ -1543,6 +1587,84 @@ object AiAppBridge {
                 json.put("children", children)
             }
             return json
+        }
+
+        private fun findInputTextTarget(roots: List<WindowRoot>, x: Float, y: Float): TextInputTarget? {
+            if (!x.isNaN() && !y.isNaN()) {
+                val screenX = x.toInt()
+                val screenY = y.toInt()
+                roots.asReversed().forEach { root ->
+                    if (root.bounds.contains(screenX, screenY) && root.root.isShown) {
+                        findEditTextAtPoint(root.root, screenX, screenY)?.let {
+                            return TextInputTarget(root, it)
+                        }
+                    }
+                }
+            }
+            roots.asReversed().forEach { root ->
+                findFocusedEditText(root.root)?.let {
+                    return TextInputTarget(root, it)
+                }
+            }
+            roots.asReversed().forEach { root ->
+                findFirstUsableEditText(root.root)?.let {
+                    return TextInputTarget(root, it)
+                }
+            }
+            return null
+        }
+
+        private fun findEditTextAtPoint(view: View, x: Int, y: Int): EditText? {
+            if (view is ViewGroup) {
+                for (index in view.childCount - 1 downTo 0) {
+                    findEditTextAtPoint(view.getChildAt(index), x, y)?.let { return it }
+                }
+            }
+            if (view is EditText && isUsableEditText(view) && boundsForView(view).contains(x, y)) {
+                return view
+            }
+            return null
+        }
+
+        private fun findFocusedEditText(view: View): EditText? {
+            if (view is EditText && view.isFocused && isUsableEditText(view)) {
+                return view
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    findFocusedEditText(view.getChildAt(index))?.let { return it }
+                }
+            }
+            return null
+        }
+
+        private fun findFirstUsableEditText(view: View): EditText? {
+            if (view is EditText && isUsableEditText(view)) {
+                return view
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    findFirstUsableEditText(view.getChildAt(index))?.let { return it }
+                }
+            }
+            return null
+        }
+
+        private fun isUsableEditText(view: EditText): Boolean {
+            return view.isShown && view.isEnabled && view.width > 0 && view.height > 0
+        }
+
+        private fun editTextToJson(activity: Activity, view: EditText): JSONObject {
+            return JSONObject()
+                .put("className", view.javaClass.name)
+                .put("simpleClassName", view.javaClass.simpleName)
+                .put("id", if (view.id == View.NO_ID) JSONObject.NULL else view.id)
+                .put("resourceName", resourceName(activity, view.id))
+                .put("contentDescription", view.contentDescription?.toString() ?: JSONObject.NULL)
+                .put("bounds", rectToJson(boundsForView(view)))
+                .put("enabled", view.isEnabled)
+                .put("focused", view.isFocused)
+                .put("visible", view.isShown)
         }
 
         private fun windowRoots(activity: Activity): List<WindowRoot> {
@@ -1754,6 +1876,11 @@ object AiAppBridge {
         val bounds: Rect,
         val type: String,
         val activityDecor: Boolean,
+    )
+
+    private data class TextInputTarget(
+        val root: WindowRoot,
+        val view: EditText,
     )
 
     private class NodeCounter {

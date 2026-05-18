@@ -10,7 +10,7 @@ If the Android project does not already include JitPack, add `https://jitpack.io
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.1.9
+  ai_app_bridge_flutter: ^0.1.10
 ```
 
 ## Initialize

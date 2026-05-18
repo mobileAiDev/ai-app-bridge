@@ -1,5 +1,5 @@
 group = 'io.github.lidongping.aiappbridge.flutter'
-version = '0.1.9'
+version = '0.1.10'
 
 buildscript {
     ext.kotlin_version = '2.1.0'
@@ -48,6 +48,6 @@ android {
 }
 
 dependencies {
-    debugImplementation 'com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.8'
+    debugImplementation 'com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.9'
 }
 

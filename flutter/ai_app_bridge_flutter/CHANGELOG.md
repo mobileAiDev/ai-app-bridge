@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.10
+
+- Uses Android runtime 0.1.9 for debug builds, including the native
+  Unicode-safe `/v1/action/input-text` bridge endpoint.
+
 ## 0.1.9
 
 - Preserves string values with spaces when Flutter capture APIs forward
