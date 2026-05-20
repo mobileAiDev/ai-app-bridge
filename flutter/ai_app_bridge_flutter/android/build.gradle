@@ -1,5 +1,5 @@
-group = 'io.github.lidongping.aiappbridge.flutter'
-version = '0.1.10'
+group = 'io.github.mobileaidev.aiappbridge.flutter'
+version = '0.2.0'
 
 buildscript {
     ext.kotlin_version = '2.1.0'
@@ -26,7 +26,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace 'io.github.lidongping.aiappbridge.flutter'
+    namespace 'io.github.mobileaidev.aiappbridge.flutter'
     compileSdk 35
 
     defaultConfig {
@@ -48,6 +48,6 @@ android {
 }
 
 dependencies {
-    debugImplementation 'com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.9'
+    debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.0'
 }
 

@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.gradle;
+package io.github.mobileaidev.aiappbridge.gradle;
 
 public class AiAppBridgeExtension {
     private boolean enabled = true;

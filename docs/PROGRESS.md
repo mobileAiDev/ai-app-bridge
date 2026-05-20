@@ -1,5 +1,10 @@
 # Progress
 
+Note: historical dependency examples in this file have been identity-scrubbed
+to match the current public repository naming. They are retained as development
+evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
+for current dependency coordinates.
+
 ## 2026-05-18
 
 - Android runtime `0.1.9` adds `/v1/action/input-text`, which sets text on the
@@ -131,7 +136,7 @@
     query, permission state, scroll, and back navigation.
 
 - Desktop CLI `0.1.8` was published to npm after local package validation.
-  `npm view @lidongping/ai-app-bridge version` returned `0.1.8` after publish.
+  `npm view @mobileaidev/ai-app-bridge version` returned `0.1.8` after publish.
   The temporary npm token was removed from the working tree after use; because
   it appeared in chat, it should still be rotated.
 - Re-ran broad device validation across installed apps under `D:\TestProject`
@@ -185,7 +190,7 @@
   `AI Bridge Probe Banner`, and capture counts `logs=1`, `state=2`, `events=2`.
 - `DuckDuckGo-Android` was used as a 100+ module production-scale validation
   target. A debug-only runtime dependency was added with
-  `debugImplementation "com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:_"`,
+  `debugImplementation "com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:_"`,
   and `versions.properties` maps it to `0.1.5`. The first build exposed an
   environment blocker: automatic `ndk;21.4.7075529` install left a partial ZIP
   and failed with `ZipException: Archive is not a ZIP archive`. The NDK was
@@ -204,14 +209,14 @@
 - DuckDuckGo validation was resumed with narrower evidence first:
   `:app:dependencyInsight --configuration internalDebugRuntimeClasspath
   --dependency ai-app-bridge-android` resolved
-  `com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.5` for
+  `com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.1.5` for
   `internalDebugRuntimeClasspath`, and
   `:app:assembleInternalDebug --dry-run` completed successfully.
 - The resumed full build exposed two production-repo environment/toolchain
   issues before APK output:
   - `:app:kspInternalDebugKotlin` failed in Glide KSP with
     `this and base files have different roots` between
-    `C:\Users\ldp\.gradle\...okhttp3-integration-4.16.0-api.jar` and
+    `C:\Users\dev\.gradle\...okhttp3-integration-4.16.0-api.jar` and
     `D:\TestProject\DuckDuckGo-Android\app`. Quoting
     `"-Pksp.incremental=false"` in PowerShell and disabling build cache let the
     narrow KSP task pass in 4m12s.
@@ -250,7 +255,7 @@
   through to default `status` and probed the sample app. Unit tests now execute
   both help forms with an invalid `ADB` value to prove no device command is run.
   The MCP server now reports its version from `package.json` instead of a stale
-  hard-coded value. `npm view @lidongping/ai-app-bridge version` returned
+  hard-coded value. `npm view @mobileaidev/ai-app-bridge version` returned
   `0.1.10` after publish.
 
 ## 2026-05-10
@@ -335,7 +340,7 @@
     `:ai-app-bridge-android:build :ai-app-bridge-gradle-plugin:build`.
   - Flutter plugin passed `flutter pub get` and `flutter analyze --no-pub`.
   - Android artifacts were published to Maven Local under JitPack coordinates
-    `com.github.ldpGitHub.ai-app-bridge:*:0.1.5` for local proof.
+    `com.github.mobileAiDev.ai-app-bridge:*:0.1.5` for local proof.
   - `android-architecture-samples` rebuilt with `0.1.5`, installed on device
     `b46093e6`, `/v1/status` reported bridge `0.1.5`, and `/v1/view/tree`
     returned the Compose root.

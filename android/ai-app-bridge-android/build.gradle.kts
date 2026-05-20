@@ -4,8 +4,8 @@ plugins {
     id("maven-publish")
 }
 
-group = "io.github.lidongping.aiappbridge"
-version = "0.1.9"
+group = "io.github.mobileaidev.aiappbridge"
+version = "0.2.0"
 
 val jitpackGroup = providers.environmentVariable("GROUP").orNull
 val jitpackArtifact = providers.environmentVariable("ARTIFACT").orNull
@@ -22,7 +22,7 @@ val publishGroupId = if (
 val publishVersion = jitpackVersion ?: project.version.toString()
 
 android {
-    namespace = "io.github.lidongping.aiappbridge.android"
+    namespace = "io.github.mobileaidev.aiappbridge.android"
     compileSdk = 35
 
     defaultConfig {

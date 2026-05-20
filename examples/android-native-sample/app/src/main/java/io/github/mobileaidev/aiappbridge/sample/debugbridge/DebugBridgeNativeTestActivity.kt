@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.sample.debugbridge
+package io.github.mobileaidev.aiappbridge.sample.debugbridge
 
 import android.Manifest
 import android.app.Activity
@@ -16,8 +16,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import io.github.lidongping.aiappbridge.android.AiAppBridge
-import io.github.lidongping.aiappbridge.sample.R
+import io.github.mobileaidev.aiappbridge.android.AiAppBridge
+import io.github.mobileaidev.aiappbridge.sample.R
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody

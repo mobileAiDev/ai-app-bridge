@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.gradle;
+package io.github.mobileaidev.aiappbridge.gradle;
 
 import com.android.build.api.instrumentation.AsmClassVisitorFactory;
 import com.android.build.api.instrumentation.ClassContext;
@@ -12,7 +12,7 @@ public abstract class OkHttpAutoCaptureClassVisitorFactory
         implements AsmClassVisitorFactory<InstrumentationParameters.None> {
     private static final String OKHTTP_BUILDER = "okhttp3/OkHttpClient$Builder";
     private static final String OKHTTP_BUILD_DESC = "()Lokhttp3/OkHttpClient;";
-    private static final String HOOK_OWNER = "io/github/lidongping/aiappbridge/android/AiAppOkHttpAutoCapture";
+    private static final String HOOK_OWNER = "io/github/mobileaidev/aiappbridge/android/AiAppOkHttpAutoCapture";
     private static final String HOOK_NAME = "installBuilder";
     private static final String HOOK_DESC = "(Ljava/lang/Object;)Ljava/lang/Object;";
 
@@ -60,8 +60,8 @@ public abstract class OkHttpAutoCaptureClassVisitorFactory
     @Override
     public boolean isInstrumentable(ClassData classData) {
         String className = classData.getClassName();
-        return !className.startsWith("io.github.lidongping.aiappbridge.android.")
-                && !className.startsWith("io.github.lidongping.aiappbridge.gradle.")
+        return !className.startsWith("io.github.mobileaidev.aiappbridge.android.")
+                && !className.startsWith("io.github.mobileaidev.aiappbridge.gradle.")
                 && !className.startsWith("okhttp3.")
                 && !className.startsWith("okio.")
                 && !className.startsWith("kotlin.")

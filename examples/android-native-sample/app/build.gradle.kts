@@ -1,15 +1,15 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("io.github.lidongping.aiappbridge.android")
+    id("io.github.mobileaidev.aiappbridge.android")
 }
 
 android {
-    namespace = "io.github.lidongping.aiappbridge.sample"
+    namespace = "io.github.mobileaidev.aiappbridge.sample"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "io.github.lidongping.aiappbridge.sample"
+        applicationId = "io.github.mobileaidev.aiappbridge.sample"
         minSdk = 23
         targetSdk = 35
         versionCode = 1

@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.android
+package io.github.mobileaidev.aiappbridge.android
 
 import org.json.JSONObject
 import java.lang.reflect.InvocationHandler

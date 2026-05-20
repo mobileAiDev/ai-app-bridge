@@ -1,15 +1,15 @@
 # AI App Bridge CLI
 
 ```bash
-npm install -g @lidongping/ai-app-bridge
+npm install -g @mobileaidev/ai-app-bridge
 
-ai-app-bridge status --package-name io.github.lidongping.aiappbridge.sample
-ai-app-bridge tree --package-name io.github.lidongping.aiappbridge.sample
-ai-app-bridge install-apk --package-name io.github.lidongping.aiappbridge.sample --apk-path app-debug.apk
-ai-app-bridge screenshot --package-name io.github.lidongping.aiappbridge.sample
-ai-app-bridge input-text --package-name io.github.lidongping.aiappbridge.sample --text "中文输入" --hide-keyboard
-ai-app-bridge network --package-name io.github.lidongping.aiappbridge.sample --compact --url-filter /api/
-ai-app-bridge webview-network --package-name io.github.lidongping.aiappbridge.sample --duration-ms 3000
+ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge install-apk --package-name io.github.mobileaidev.aiappbridge.sample --apk-path app-debug.apk
+ai-app-bridge screenshot --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge input-text --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
+ai-app-bridge network --package-name io.github.mobileaidev.aiappbridge.sample --compact --url-filter /api/
+ai-app-bridge webview-network --package-name io.github.mobileaidev.aiappbridge.sample --duration-ms 3000
 ai-app-bridge-mcp
 ```
 

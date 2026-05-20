@@ -20,7 +20,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.9")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.0")
 }
 ```
 
@@ -46,8 +46,8 @@ pluginManagement {
     }
     resolutionStrategy {
         eachPlugin {
-            if (requested.id.id == "io.github.lidongping.aiappbridge.android") {
-                useModule("com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
+            if (requested.id.id == "io.github.mobileaidev.aiappbridge.android") {
+                useModule("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
             }
         }
     }
@@ -58,7 +58,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.lidongping.aiappbridge.android") version "0.1.9"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.2.0"
 }
 
 aiAppBridge {
@@ -74,7 +74,7 @@ If the Android project does not already include JitPack, add `https://jitpack.io
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.1.10
+  ai_app_bridge_flutter: ^0.2.0
 ```
 
 Initialize once:
@@ -107,7 +107,7 @@ AiAppBridge.instance.registerH5Adapter(
 ## Desktop / MCP
 
 ```bash
-npm install -g @lidongping/ai-app-bridge
+npm install -g @mobileaidev/ai-app-bridge
 
 ai-app-bridge status --package-name <android.package>
 ai-app-bridge webview-pages --package-name <android.package>

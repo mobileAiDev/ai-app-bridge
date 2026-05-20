@@ -14,9 +14,9 @@ group = if (
 ) {
     "$jitpackGroup.$jitpackArtifact"
 } else {
-    "io.github.lidongping.aiappbridge"
+    "io.github.mobileaidev.aiappbridge"
 }
-version = jitpackVersion ?: "0.1.9"
+version = jitpackVersion ?: "0.2.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -31,8 +31,8 @@ dependencies {
 gradlePlugin {
     plugins {
         create("aiAppBridgeAndroid") {
-            id = "io.github.lidongping.aiappbridge.android"
-            implementationClass = "io.github.lidongping.aiappbridge.gradle.AiAppBridgeGradlePlugin"
+            id = "io.github.mobileaidev.aiappbridge.android"
+            implementationClass = "io.github.mobileaidev.aiappbridge.gradle.AiAppBridgeGradlePlugin"
             displayName = "AI App Bridge Android Plugin"
             description = "Debug-only automatic capture instrumentation for AI App Bridge."
         }

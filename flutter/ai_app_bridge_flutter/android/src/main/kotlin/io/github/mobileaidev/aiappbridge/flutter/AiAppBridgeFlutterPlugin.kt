@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.flutter
+package io.github.mobileaidev.aiappbridge.flutter
 
 import android.app.Activity
 import android.content.Context
@@ -329,7 +329,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     companion object {
         private const val tag = "AiAppBridge"
         private const val channelName = "ai_app_bridge"
-        private const val androidBridgeClassName = "io.github.lidongping.aiappbridge.android.AiAppBridge"
+        private const val androidBridgeClassName = "io.github.mobileaidev.aiappbridge.android.AiAppBridge"
     }
 }
 

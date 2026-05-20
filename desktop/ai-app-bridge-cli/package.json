@@ -1,15 +1,15 @@
 {
-  "name": "@lidongping/ai-app-bridge",
-  "version": "0.1.25",
+  "name": "@mobileaidev/ai-app-bridge",
+  "version": "0.2.0",
   "description": "Desktop CLI and MCP server for AI App Bridge.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ldpGitHub/ai-app-bridge.git",
+    "url": "git+https://github.com/mobileAiDev/ai-app-bridge.git",
     "directory": "desktop/ai-app-bridge-cli"
   },
-  "homepage": "https://github.com/ldpGitHub/ai-app-bridge#readme",
+  "homepage": "https://github.com/mobileAiDev/ai-app-bridge#readme",
   "bugs": {
-    "url": "https://github.com/ldpGitHub/ai-app-bridge/issues"
+    "url": "https://github.com/mobileAiDev/ai-app-bridge/issues"
   },
   "bin": {
     "ai-app-bridge": "bin/ai-app-bridge.js",

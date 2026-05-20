@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.gradle;
+package io.github.mobileaidev.aiappbridge.gradle;
 
 import com.android.build.api.instrumentation.FramesComputationMode;
 import com.android.build.api.instrumentation.InstrumentationScope;

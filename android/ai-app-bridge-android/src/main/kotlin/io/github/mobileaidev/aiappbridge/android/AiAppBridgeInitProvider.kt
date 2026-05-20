@@ -1,4 +1,4 @@
-package io.github.lidongping.aiappbridge.android
+package io.github.mobileaidev.aiappbridge.android
 
 import android.app.Application
 import android.content.ContentProvider

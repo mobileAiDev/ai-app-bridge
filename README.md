@@ -68,7 +68,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.9")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.0")
 }
 ```
 
@@ -88,8 +88,8 @@ pluginManagement {
     }
     resolutionStrategy {
         eachPlugin {
-            if (requested.id.id == "io.github.lidongping.aiappbridge.android") {
-                useModule("com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
+            if (requested.id.id == "io.github.mobileaidev.aiappbridge.android") {
+                useModule("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
             }
         }
     }
@@ -100,7 +100,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.lidongping.aiappbridge.android") version "0.1.9"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.2.0"
 }
 
 aiAppBridge {
@@ -116,7 +116,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.1.10
+  ai_app_bridge_flutter: ^0.2.0
 ```
 
 初始化一次：
@@ -149,7 +149,7 @@ AiAppBridge.instance.registerH5Adapter(
 ## 连接 AI Agent
 
 ```bash
-npm install -g @lidongping/ai-app-bridge
+npm install -g @mobileaidev/ai-app-bridge
 ```
 
 在你的 AI agent 的 MCP 配置里添加。

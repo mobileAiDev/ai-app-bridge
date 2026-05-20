@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- Migrates Android package names, Gradle plugin id, repository metadata, and
+  debug Android runtime dependency to the `mobileAiDev` coordinates.
+
 ## 0.1.10
 
 - Uses Android runtime 0.1.9 for debug builds, including the native

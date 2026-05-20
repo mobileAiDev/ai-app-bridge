@@ -14,7 +14,7 @@ const defaults = {
   adbTimeoutMs: Number(process.env.AI_APP_BRIDGE_ADB_TIMEOUT_MS || 15000),
   serial: '',
   port: 18080,
-  packageName: 'io.github.lidongping.aiappbridge.sample',
+  packageName: 'io.github.mobileaidev.aiappbridge.sample',
   nativeActivity: '.debugbridge.DebugBridgeNativeTestActivity',
   flutterActivity: '.MainActivity',
 };

@@ -4,6 +4,62 @@ This file records issues found while using ai-app-bridge as a development loop
 for real Android apps. Keep each item evidence-based and include the current
 workaround when one exists.
 
+Note: historical dependency examples in this file have been identity-scrubbed
+to match the current public repository naming. They are retained as issue
+evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
+for current dependency coordinates.
+
+## MCP `input_text hideKeyboard=true` can report hidden while IME remains visible
+
+- Status: open
+- Found while validating `C:\project\reader` on OnePlus PKR110, Android SDK 36,
+  with desktop MCP server `ai-app-bridge` 0.1.25 and Android runtime 0.1.9.
+- Evidence: MCP `input_text` successfully set Chinese text into
+  `com.example.reader:id/search_et_input`, returned `keyboard.ok=true`,
+  `action=hide-keyboard`, `dismissed=false`, and
+  `reason=keyboard_not_visible`; the immediately captured screenshot still
+  showed the soft keyboard covering the bottom half of the screen.
+- Impact: an agent can believe the screen is unobstructed and tap a lower app
+  control, while the tap is actually intercepted by the IME. It also makes
+  "enter text then tap search" flows brittle when the search action is not in
+  the IME.
+- Workaround: after native `input_text`, explicitly verify keyboard state or
+  tap a top-screen app action that is not covered by the IME. For search fields,
+  prefer the visible in-app search button when it remains above the keyboard.
+
+## MCP `input_text` can target a stale package unless `packageName` is explicit
+
+- Status: open
+- Found while validating `C:\project\reader` on OnePlus PKR110, Android SDK 36,
+  with desktop MCP server `ai-app-bridge` 0.1.25 and Android runtime 0.1.9.
+- Evidence: while `com.example.reader` was foreground, MCP `status` and `tree`
+  with `packageName=com.example.reader` worked. A subsequent MCP `input_text`
+  without an explicit `packageName` attempted `/v1/action/input-text` against
+  stale package `io.github.mobileaidev.aiappbridge.sample` on port `18082` and
+  returned `bridge_not_ready`. Retrying the same `input_text` with
+  `packageName=com.example.reader` succeeded through the native-view bridge and set
+  Chinese text into `com.example.reader:id/search_et_input`.
+- Impact: multi-app agent sessions can silently route text input to an old
+  bridge context even when the current activity belongs to the intended app.
+- Workaround: pass `packageName` on every MCP `input_text` call in sessions
+  where more than one bridge-enabled app has been launched.
+
+## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
+
+- Status: open
+- Found while validating `C:\project\reader` on OnePlus PKR110, Android SDK 36,
+  with desktop MCP server `ai-app-bridge` 0.1.25 and Android runtime 0.1.9.
+- Evidence: MCP `logcat` without `appPid` returned normal log lines, proving
+  logcat access worked. MCP `logcat` with `appPid=true` and no matching app
+  lines returned a text payload containing only `ok`.
+- Impact: automation cannot reliably distinguish "command succeeded with an
+  empty app-pid log result" from an unstructured success marker unless it has
+  extra context.
+- Workaround: for crash checks, run a broader `logcat` query with explicit grep
+  filters such as `AndroidRuntime` or `FATAL EXCEPTION`, or treat bare `ok`
+  from app-pid filtering as an empty-result sentinel until the MCP output shape
+  is clarified.
+
 ## Android 16 ADB text input cannot enter Chinese
 
 - Status: fixed in Android runtime `0.1.9` and desktop CLI `0.1.25`
@@ -188,12 +244,12 @@ workaround when one exists.
 - Bridge version: Flutter `0.1.4`, Android runtime `0.1.4`
 - Evidence:
   - Adding only `ai_app_bridge_flutter` did not start an Android bridge server.
-  - Adding `debugImplementation("com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.4")`
+  - Adding `debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.1.4")`
     to the host Android app made `/v1/status` and `/v1/view/tree` work.
 - Impact: Flutter users must know an Android implementation detail, and the
   README can easily drift from the actual pub package behavior.
 - Fix: the Flutter plugin Android module now declares
-  `debugImplementation("com.github.ldpGitHub.ai-app-bridge:ai-app-bridge-android:0.1.5")`.
+  `debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.1.5")`.
   Kotlin calls stay reflection-based, so release variants can compile without
   the debug runtime class.
 - Verification: `platform_design` removed the host Android app's manual runtime
@@ -378,13 +434,13 @@ workaround when one exists.
     `AiAppOkHttpAutoCapture.installBuilder(...)` before
     `OkHttpClient.Builder.build()`.
   - The plugin excluded every class whose package started with
-    `io.github.lidongping.aiappbridge.`, which also excluded the sample app
+    `io.github.mobileaidev.aiappbridge.`, which also excluded the sample app
     package, not only bridge internals.
 - Impact: any consumer app whose package name reuses the bridge prefix can lose
   OkHttp auto capture while manual SDK network recording still works.
 - Fix: the instrumentation exclusion now targets only bridge runtime/plugin
-  internals (`io.github.lidongping.aiappbridge.android.*` and
-  `io.github.lidongping.aiappbridge.gradle.*`). After rebuilding, `javap`
+  internals (`io.github.mobileaidev.aiappbridge.android.*` and
+  `io.github.mobileaidev.aiappbridge.gradle.*`). After rebuilding, `javap`
   showed `installBuilder` injected before `Builder.build()`, and the sample
   produced `source=okhttp-auto` GET and POST network records on device.
 
@@ -490,7 +546,7 @@ workaround when one exists.
     instead of the app splash/main Activity when debug dependencies add their own
     launcher entry.
 - Workaround: launch the app with an explicit component, such as
-  `com.ldp.reader/.ui.activity.SplashActivity`.
+  `com.example.reader/.ui.activity.SplashActivity`.
 - Desired fix: if bridge adds app launch helpers, allow explicit component
   selection and report all launcher candidates before choosing a default.
 
@@ -500,7 +556,7 @@ workaround when one exists.
 - Found while validating: `C:\project\reader`, home/login visual checks
 - Bridge version: desktop CLI `0.1.6`, app bridge `0.1.4`
 - Evidence:
-  - `ai-app-bridge screenshot --package-name com.ldp.reader ...` can still
+  - `ai-app-bridge screenshot --package-name com.example.reader ...` can still
     return a valid PNG of the device's current foreground screen.
   - During reader validation, a screenshot request returned the Android
     launcher because the device was being used manually between bridge actions.
@@ -565,12 +621,12 @@ workaround when one exists.
 - Found while validating: `C:\project\reader`, bookshelf entry navigation
 - Bridge version: desktop CLI `0.1.6`, app bridge `0.1.4`
 - Evidence:
-  - `ai-app-bridge tap-text --target-text 一气朝阳 --package-name com.ldp.reader`
+  - `ai-app-bridge tap-text --target-text 一气朝阳 --package-name com.example.reader`
     returned `ok=true`, `source=bridge-tree`, and tap coordinates `x=718`,
     `y=2810`.
   - The device viewport reported by the preceding tree/status pass was
     `1264x2780`, so the selected node center was below the visible screen.
-  - The command did not navigate away from `com.ldp.reader.ui.activity.MainActivity`.
+  - The command did not navigate away from `com.example.reader.ui.activity.MainActivity`.
 - Impact: agent flows can believe a tap succeeded even though the target node is
   clipped/offscreen and Android ignores or misroutes the tap.
 - Fix: `tap-text` now filters bridge-tree matches by effective visibility,
@@ -588,12 +644,12 @@ workaround when one exists.
 - Bridge version: desktop CLI `0.1.6`, app bridge `0.1.4`
 - Evidence:
   - After installing the debug APK and clearing logcat, before explicitly
-    starting Reader, `ai-app-bridge status --package-name com.ldp.reader`
+    starting Reader, `ai-app-bridge status --package-name com.example.reader`
     failed with the raw Node error `Error: socket hang up`.
   - Starting the app with
-    `adb shell am start -W -n com.ldp.reader/.ui.activity.MainActivity` and
+    `adb shell am start -W -n com.example.reader/.ui.activity.MainActivity` and
     retrying the same status command returned structured JSON with
-    `activity.current=com.ldp.reader.ui.activity.MainActivity`.
+    `activity.current=com.example.reader.ui.activity.MainActivity`.
 - Impact: agent loops cannot reliably distinguish "target app is not started or
   bridge is not ready yet" from a real transport failure when the CLI exposes
   the low-level socket exception directly.
@@ -665,7 +721,7 @@ workaround when one exists.
     parser treated `--help` as an option and no command was present, it fell
     through to default `status`.
   - The command then attempted to query the default sample package
-    `io.github.lidongping.aiappbridge.sample` and waited for bridge readiness.
+    `io.github.mobileaidev.aiappbridge.sample` and waited for bridge readiness.
 - Impact: unattended scripts and humans can trigger device I/O while only trying
   to inspect CLI usage, which is confusing during multi-app validation.
 - Fix: `--help` and `help` now print static usage text and return without
@@ -681,7 +737,7 @@ workaround when one exists.
   - `:app:kspInternalDebugKotlin` failed in Glide KSP with
     `this and base files have different roots`.
   - The processor attempted to associate
-    `C:\Users\ldp\.gradle\caches\...\okhttp3-integration-4.16.0-api.jar!...`
+    `C:\Users\dev\.gradle\caches\...\okhttp3-integration-4.16.0-api.jar!...`
     with base project path `D:\TestProject\DuckDuckGo-Android\app`.
   - A narrower retry with quoted PowerShell argument `"-Pksp.incremental=false"`
     and `--no-build-cache` passed `:app:kspInternalDebugKotlin` in 4m12s.

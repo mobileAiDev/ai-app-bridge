@@ -3,7 +3,7 @@
 
     <application>
         <provider
-            android:name="io.github.lidongping.aiappbridge.android.AiAppBridgeInitProvider"
+            android:name="io.github.mobileaidev.aiappbridge.android.AiAppBridgeInitProvider"
             android:authorities="${applicationId}.ai_app_bridge_init"
             android:exported="false"
             android:initOrder="100" />
