@@ -65,3 +65,29 @@ commits, tags, and GitHub history are not rewritten.
 - npm auth state: `npm whoami` is not currently authenticated on this machine.
   Real npm publish needs a valid token or login, but the token must stay out of
   repo files and logs.
+
+### Release preparation results
+
+- Git remote was updated to `https://github.com/mobileAiDev/ai-app-bridge.git`.
+- Commit `1dc90ab` was pushed to `main`.
+- Tag `0.2.0` was pushed to GitHub and resolves to commit `1dc90ab`.
+- JitPack `0.2.0` remote artifacts were verified with HTTP 200:
+  - Android runtime POM
+  - Android runtime AAR
+  - Gradle plugin POM
+  - Gradle plugin JAR
+- npm organization `mobileaidev` was created manually by the maintainer.
+- Real npm publish for `@mobileaidev/ai-app-bridge@0.2.0` is still blocked:
+  `npm whoami` returned `E401`, and publish returned an authorization failure.
+  The package remains unpublished as confirmed by `npm view`.
+
+### Remaining publish steps
+
+- Provide a valid npm login or token with publish permission for the
+  `mobileaidev` organization, then publish
+  `@mobileaidev/ai-app-bridge@0.2.0`.
+- Publish `ai_app_bridge_flutter 0.2.0` to pub.dev after confirming pub.dev
+  credentials on this machine.
+- After npm publish, run `npm view @mobileaidev/ai-app-bridge version
+  dist-tags --json`, install the new package globally, and verify
+  `ai-app-bridge --help`.
