@@ -18,12 +18,14 @@ const serverInstructions = [
 
 let buffer = Buffer.alloc(0);
 
-process.stdin.on('data', (chunk) => {
-  buffer = Buffer.concat([buffer, chunk]);
-  drainMessages();
-});
+function startServer() {
+  process.stdin.on('data', (chunk) => {
+    buffer = Buffer.concat([buffer, chunk]);
+    drainMessages();
+  });
 
-process.stdin.on('error', () => {});
+  process.stdin.on('error', () => {});
+}
 
 function drainMessages() {
   while (true) {
@@ -566,6 +568,10 @@ function runBridgeChecked(command, args = {}) {
 }
 
 async function runBridge(command, args) {
+  return runProcess(buildBridgeCliArgs(command, args));
+}
+
+function buildBridgeCliArgs(command, args = {}) {
   const cliArgs = [cliScript, command];
   addCommonArgs(cliArgs, args);
   addArg(cliArgs, 'initial-route', args.initialRoute);
@@ -604,6 +610,12 @@ async function runBridge(command, args) {
   addArg(cliArgs, 'status-code', args.statusCode);
   addArg(cliArgs, 'compact', args.compact);
   addArg(cliArgs, 'full', args.full);
+  addArg(cliArgs, 'text-filter', args.textFilter);
+  addArg(cliArgs, 'resource-id-filter', args.resourceIdFilter);
+  addArg(cliArgs, 'class-filter', args.classFilter);
+  addArg(cliArgs, 'visible-only', args.visibleOnly);
+  addArg(cliArgs, 'max-nodes', args.maxNodes);
+  addArg(cliArgs, 'max-depth', args.maxDepth);
   addArg(cliArgs, 'no-bodies', args.noBodies);
   addArg(cliArgs, 'duration-ms', args.durationMs);
   addArg(cliArgs, 'include-response-body', args.includeResponseBody);
@@ -611,6 +623,9 @@ async function runBridge(command, args) {
   addArg(cliArgs, 'max-events', args.maxEvents);
   addArg(cliArgs, 'keep-forward', args.keepForward);
   addArg(cliArgs, 'key-code', args.keyCode);
+  addArg(cliArgs, 'payload', args.payload);
+  addArg(cliArgs, 'delta', args.delta);
+  addArg(cliArgs, 'max-swipes', args.maxSwipes);
   addArg(cliArgs, 'permission', args.permission);
   addArg(cliArgs, 'op', args.op);
   addArg(cliArgs, 'mode', args.mode);
@@ -625,6 +640,9 @@ async function runBridge(command, args) {
   addArg(cliArgs, 'interval-ms', args.intervalMs);
   addArg(cliArgs, 'delta-x', args.deltaX);
   addArg(cliArgs, 'delta-y', args.deltaY);
+  addArg(cliArgs, 'require-text', args.requireText);
+  addArg(cliArgs, 'absent-text', args.absentText);
+  addArg(cliArgs, 'require-activity', args.requireActivity);
   addArg(cliArgs, 'since-id', args.sinceId);
   addArg(cliArgs, 'since-ms', args.sinceMs);
   addArg(cliArgs, 'limit', args.limit);
@@ -638,7 +656,8 @@ async function runBridge(command, args) {
   addArg(cliArgs, 'follow', args.follow);
   addArg(cliArgs, 'duration-sec', args.durationSec);
   addArg(cliArgs, 'clear', args.clear);
-  return runProcess(cliArgs);
+  addArg(cliArgs, 'skip-flutter-launch', args.skipFlutterLaunch);
+  return cliArgs;
 }
 
 async function runSmoke(args) {
@@ -646,6 +665,7 @@ async function runSmoke(args) {
   addCommonArgs(cliArgs, args);
   addArg(cliArgs, 'out-file', args.outFile);
   addArg(cliArgs, 'artifact-dir', args.artifactDir || defaultArtifactDirFor('smoke', args));
+  addArg(cliArgs, 'skip-flutter-launch', args.skipFlutterLaunch);
   return runProcess(cliArgs);
 }
 
@@ -780,3 +800,11 @@ function writeLog(text) {
   process.stderr.write(`${text}\n`);
 }
 
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  buildBridgeCliArgs,
+  startServer,
+};

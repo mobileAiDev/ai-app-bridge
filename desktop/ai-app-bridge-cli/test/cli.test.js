@@ -51,6 +51,7 @@ const {
 
 const cliPath = path.join(__dirname, '..', 'bin', 'ai-app-bridge.js');
 const mcpPath = path.join(__dirname, '..', 'bin', 'mcp-server.js');
+const { buildBridgeCliArgs } = require('../bin/mcp-server.js');
 
 function encodeMcpMessage(message) {
   const body = JSON.stringify(message);
@@ -214,6 +215,47 @@ test('MCP capabilities advertise install and app control while target commands r
   assert.doesNotMatch(responses.get(3).result.content[0].text, /sample/);
   assert.equal(responses.get(4).result.isError, true);
   assert.match(responses.get(4).result.content[0].text, /packageName or explicit port is required/);
+});
+
+test('MCP run forwards advertised compact options to the CLI argument list', () => {
+  const args = buildBridgeCliArgs('flutter-action', {
+    packageName: 'com.example.app',
+    payload: '{"action":"openHarness"}',
+    textFilter: 'Runtime',
+    resourceIdFilter: 'button',
+    classFilter: 'TextView',
+    visibleOnly: true,
+    maxNodes: 10,
+    maxDepth: 4,
+    delta: 123,
+    maxSwipes: 3,
+    requireText: 'Ready',
+    absentText: 'Loading',
+    requireActivity: '.MainActivity',
+    skipFlutterLaunch: true,
+  });
+
+  assert.deepEqual(args.slice(0, 2), [cliPath, 'flutter-action']);
+  for (const [flag, value] of [
+    ['--package-name', 'com.example.app'],
+    ['--payload', '{"action":"openHarness"}'],
+    ['--text-filter', 'Runtime'],
+    ['--resource-id-filter', 'button'],
+    ['--class-filter', 'TextView'],
+    ['--visible-only', 'true'],
+    ['--max-nodes', '10'],
+    ['--max-depth', '4'],
+    ['--delta', '123'],
+    ['--max-swipes', '3'],
+    ['--require-text', 'Ready'],
+    ['--absent-text', 'Loading'],
+    ['--require-activity', '.MainActivity'],
+    ['--skip-flutter-launch', 'true'],
+  ]) {
+    const index = args.indexOf(flag);
+    assert.notEqual(index, -1, `${flag} is forwarded`);
+    assert.equal(args[index + 1], value);
+  }
 });
 
 test('parseArgs keeps repeated launch categories and extras', () => {

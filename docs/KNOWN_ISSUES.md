@@ -11,7 +11,7 @@ for current dependency coordinates.
 
 ## Current triage snapshot, 2026-05-20
 
-- Standard MCP stdio is working with desktop package `0.2.3`: `initialize`
+- Standard MCP stdio is working with desktop package `0.2.4`: `initialize`
   negotiated protocol `2025-06-18`, `ping` returned `{}`, `tools/list`
   exposed only `capabilities` and `run`, and `capabilities` advertised 52
   command entries.
@@ -24,6 +24,11 @@ for current dependency coordinates.
   positive rows passed. The single `ok=false` row was the expected negative
   check for `com.android.launcher`, which now returns
   `bridge_port_discovery_failed` instead of probing the default port.
+- Remaining command retest found one MCP argument-forwarding defect in `0.2.3`;
+  it is fixed in desktop MCP `0.2.4`. Local fixed retest passed
+  `launch-native-test`, `tap-uia-text`, raw `flutter-action`,
+  `input-flutter-text`, `scroll-flutter`, `forward`, `remove-forward`,
+  re-forwarded `status`, and `smoke --skip-flutter-launch`.
 - First-pass failures for DuckDuckGo and Flutter packages were not accepted as
   confirmed bridge bugs because that broad matrix changed foreground apps and
   stressed ADB while continuing to probe older targets. Re-run failing points
@@ -31,9 +36,13 @@ for current dependency coordinates.
 - `appops-set` failed on PKR110 with Android shell permission
   `MANAGE_APP_OPS_MODES`; this is a platform/device permission limitation, not
   a bridge behavior bug.
-- The confirmed product bug from this pass is explicit package port discovery
-  falling back to the default port. It is fixed for desktop CLI/MCP `0.2.3`
-  below.
+- `permission-grant` and `permission-revoke` also failed on PKR110 because the
+  Android shell user lacks `GRANT_RUNTIME_PERMISSIONS` and
+  `REVOKE_RUNTIME_PERMISSIONS`; `permission-dialog` itself works when a runtime
+  permission dialog is visible.
+- Confirmed product bugs from this pass are explicit package port discovery
+  falling back to the default port, fixed in desktop CLI/MCP `0.2.3`, and MCP
+  compact `run` omitting advertised arguments, fixed in desktop MCP `0.2.4`.
 
 ## MCP `input_text hideKeyboard=true` can report hidden while IME remains visible
 
@@ -127,6 +136,35 @@ for current dependency coordinates.
     DuckDuckGo permission-state, and Jetchat reinstall. All positive rows
     passed; the only `ok=false` result was the expected
     `bridge_port_discovery_failed` negative check.
+
+## Compact MCP `run` did not forward some advertised command options
+
+- Status: fixed in desktop MCP `0.2.4`
+- Found while running the 2026-05-20 remaining-command standard MCP matrix on
+  OnePlus PKR110.
+- Evidence:
+  - MCP `tools/call run` with `command=flutter-action` and a `payload` argument
+    returned `payload is required`, even though `capabilities` advertised
+    `payload`.
+  - MCP `scroll-flutter` ignored advertised `maxSwipes`/`delta` arguments.
+  - MCP `smoke` advertised `skipFlutterLaunch`, but the compact `run` path did
+    not forward it to the CLI.
+- Impact: an agent could correctly discover a capability through
+  `capabilities`, then fail when invoking it through the compact `run` tool
+  because the MCP server silently omitted the option before spawning the CLI.
+- Fix: the compact MCP `run` argument builder now forwards advertised advanced
+  options including Flutter payload/scroll args, compact tree filters, wait-text
+  conditions, and `skipFlutterLaunch`.
+- Verification:
+  - Unit test
+    `MCP run forwards advertised compact options to the CLI argument list`
+    passed.
+  - Local fixed MCP retest passed raw `flutter-action openHarness`,
+    `input-flutter-text`, `scroll-flutter`, `forward`, `remove-forward`,
+    re-forwarded `status`, and `smoke --skip-flutter-launch`.
+  - Global MCP `0.2.4` retest passed `flutter-action` with payload,
+    `input-flutter-text`, `scroll-flutter maxSwipes`, and
+    `smoke --skip-flutter-launch`.
 
 ## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
 
