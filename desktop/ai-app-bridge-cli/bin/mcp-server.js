@@ -446,6 +446,7 @@ const commandDefinitions = [
   { command: 'webview-console', domain: 'webview', summary: 'Capture WebView console/log events through CDP.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'durationMs', 'script', 'maxEvents'] },
   { command: 'forward', domain: 'advanced', summary: 'Create the ADB port forward for the bridge.', targetApp: true, options: ['serial', 'packageName', 'port'] },
   { command: 'remove-forward', domain: 'advanced', summary: 'Remove the ADB port forward for the bridge.', options: ['serial', 'port'] },
+  { command: 'batch', domain: 'advanced', summary: 'Run multiple AI App Bridge commands serially in one MCP call.', options: ['defaults', 'steps', 'stopOnError', 'includeRaw', 'maxRawChars'] },
   { command: 'smoke', domain: 'diagnostics', summary: 'Run the native sample smoke test.', options: ['serial', 'packageName', 'outFile', 'artifactDir', 'skipFlutterLaunch'] },
 ];
 
@@ -552,6 +553,9 @@ async function runGeneric(args = {}) {
       commandArgs[key] = args[key];
     }
   }
+  if (command === 'batch') {
+    return runBatch(commandArgs);
+  }
   return runBridgeChecked(command, commandArgs);
 }
 
@@ -567,8 +571,228 @@ function runBridgeChecked(command, args = {}) {
   return runBridge(command, args);
 }
 
+async function runBatch(args = {}, runner = runBridgeChecked) {
+  const startedAtMs = Date.now();
+  const mode = args.mode ? String(args.mode) : 'serial';
+  if (mode !== 'serial') {
+    return toolJson({ ok: false, error: 'batch_mode_not_supported', mode }, true);
+  }
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  if (steps.length === 0) {
+    return toolJson({ ok: false, error: 'batch_steps_required' }, true);
+  }
+  const maxSteps = args.maxSteps === undefined ? 30 : Number(args.maxSteps);
+  if (!Number.isInteger(maxSteps) || maxSteps < 1) {
+    return toolJson({ ok: false, error: 'invalid_max_steps', maxSteps: args.maxSteps }, true);
+  }
+  if (steps.length > maxSteps) {
+    return toolJson({ ok: false, error: 'batch_too_many_steps', stepCount: steps.length, maxSteps }, true);
+  }
+
+  const defaults = args.defaults && typeof args.defaults === 'object' ? { ...args.defaults } : {};
+  for (const key of ['adb', 'serial', 'port', 'packageName', 'artifactDir']) {
+    if (args[key] !== undefined && defaults[key] === undefined) {
+      defaults[key] = args[key];
+    }
+  }
+
+  const normalizedSteps = [];
+  const seenIds = new Set();
+  for (let index = 0; index < steps.length; index += 1) {
+    const rawStep = steps[index] && typeof steps[index] === 'object' ? steps[index] : {};
+    const stepId = String(rawStep.id || `step_${index + 1}`);
+    if (seenIds.has(stepId)) {
+      return toolJson({ ok: false, error: 'duplicate_batch_step_id', stepId }, true);
+    }
+    seenIds.add(stepId);
+    const command = normalizeCommandName(rawStep.command);
+    if (!commandByName.has(command)) {
+      return toolJson({ ok: false, error: 'unknown_batch_step_command', stepId, command: rawStep.command || '' }, true);
+    }
+    if (command === 'batch') {
+      return toolJson({ ok: false, error: 'nested_batch_not_supported', stepId }, true);
+    }
+    normalizedSteps.push({ ...rawStep, id: stepId, command });
+  }
+
+  const stopOnError = args.stopOnError !== false;
+  const includeRaw = Boolean(args.includeRaw);
+  const maxRawChars = args.maxRawChars === undefined ? 4000 : Number(args.maxRawChars);
+  if (!Number.isInteger(maxRawChars) || maxRawChars < 0) {
+    return toolJson({ ok: false, error: 'invalid_max_raw_chars', maxRawChars: args.maxRawChars }, true);
+  }
+  const results = [];
+  let stopped = false;
+
+  for (const step of normalizedSteps) {
+    if (stopped) {
+      results.push({
+        id: step.id,
+        command: step.command,
+        status: 'skipped',
+        ok: false,
+        skipped: true,
+        reason: 'stopOnError',
+      });
+      continue;
+    }
+
+    const stepStartedAtMs = Date.now();
+    const stepArgs = {
+      ...defaults,
+      ...(step.arguments && typeof step.arguments === 'object' ? step.arguments : {}),
+    };
+    for (const key of ['adb', 'serial', 'port', 'packageName']) {
+      if (step[key] !== undefined) {
+        stepArgs[key] = step[key];
+      }
+    }
+    try {
+      const toolResult = await runner(step.command, stepArgs);
+      const parsed = parseToolResult(toolResult);
+      const passed = !parsed.isError && parsed.payload?.ok !== false;
+      const stepResult = {
+        id: step.id,
+        command: step.command,
+        status: passed ? 'passed' : 'failed',
+        ok: passed,
+        packageName: stepArgs.packageName,
+        port: stepArgs.port,
+        durationMs: Date.now() - stepStartedAtMs,
+        summary: summarizeToolPayload(parsed),
+      };
+      if (!passed) {
+        stepResult.error = parsed.payload?.error || firstTextLine(parsed.text) || 'command_failed';
+      }
+      if (includeRaw) {
+        stepResult.result = parsed.payload || undefined;
+        stepResult.rawText = parsed.payload ? undefined : truncateText(parsed.text, maxRawChars);
+      }
+      results.push(stepResult);
+      if (!passed && stopOnError) {
+        stopped = true;
+      }
+    } catch (error) {
+      const stepResult = {
+        id: step.id,
+        command: step.command,
+        status: 'failed',
+        ok: false,
+        packageName: stepArgs.packageName,
+        port: stepArgs.port,
+        durationMs: Date.now() - stepStartedAtMs,
+        error: error.message || String(error),
+      };
+      results.push(stepResult);
+      if (stopOnError) {
+        stopped = true;
+      }
+    }
+  }
+
+  const failed = results.filter((item) => item.status === 'failed').length;
+  const skipped = results.filter((item) => item.status === 'skipped').length;
+  const passed = results.filter((item) => item.status === 'passed').length;
+  return toolJson({
+    ok: failed === 0,
+    batchId: args.batchId || generatedBatchId(),
+    mode,
+    stopOnError,
+    stepCount: normalizedSteps.length,
+    passed,
+    failed,
+    skipped,
+    durationMs: Date.now() - startedAtMs,
+    steps: results,
+  }, failed > 0);
+}
+
 async function runBridge(command, args) {
   return runProcess(buildBridgeCliArgs(command, args));
+}
+
+function parseToolResult(toolResult) {
+  const text = String(toolResult?.content?.[0]?.text || '');
+  try {
+    return {
+      isError: Boolean(toolResult?.isError),
+      text,
+      payload: JSON.parse(text),
+    };
+  } catch (_) {
+    return {
+      isError: Boolean(toolResult?.isError),
+      text,
+      payload: null,
+    };
+  }
+}
+
+function summarizeToolPayload(parsed) {
+  const payload = parsed.payload;
+  if (!payload || typeof payload !== 'object') {
+    return { text: truncateText(parsed.text, 500) };
+  }
+  const summary = {
+    ok: payload.ok,
+    error: payload.error || null,
+  };
+  if (payload.packageName) summary.packageName = payload.packageName;
+  if (payload.app?.packageName) summary.app = payload.app.packageName;
+  if (payload.activity) summary.activity = payload.activity;
+  if (payload.component) summary.component = payload.component;
+  if (payload.transport) summary.transport = payload.transport;
+  if (payload.source) summary.source = payload.source;
+  if (payload.path) summary.path = payload.path;
+  if (payload.debugBridge) {
+    summary.bridge = {
+      version: payload.debugBridge.version,
+      port: payload.debugBridge.port,
+    };
+  }
+  if (payload.count !== undefined) summary.count = payload.count;
+  if (payload.nodeCount !== undefined) summary.nodeCount = payload.nodeCount;
+  if (Array.isArray(payload.items)) summary.items = payload.items.length;
+  if (payload.values && typeof payload.values === 'object') {
+    summary.values = Object.keys(payload.values).length;
+  }
+  if (payload.counts) summary.counts = payload.counts;
+  if (Array.isArray(payload.requests)) summary.requests = payload.requests.length;
+  if (Array.isArray(payload.console)) summary.console = payload.console.length;
+  if (payload.flutter?.layout?.operable) {
+    summary.flutterOperable = {
+      ok: payload.flutter.layout.operable.ok,
+      count: payload.flutter.layout.operable.count,
+    };
+  }
+  if (payload.result && typeof payload.result === 'object') {
+    summary.result = {
+      ok: payload.result.ok,
+      error: payload.result.error || null,
+      value: truncateText(payload.result.value, 200),
+      bodyText: truncateText(payload.result.bodyText, 200),
+    };
+  }
+  return summary;
+}
+
+function truncateText(value, maxChars) {
+  if (value === undefined || value === null) return value;
+  const text = String(value);
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}...`;
+}
+
+function firstTextLine(value) {
+  const lines = String(value || '').split(/\r?\n/).filter((line) => line.trim());
+  return lines.find((line) => {
+    const text = line.trim().toLowerCase();
+    return text !== 'stderr:' && text !== 'stdout:';
+  }) || lines[0] || '';
+}
+
+function generatedBatchId() {
+  return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function buildBridgeCliArgs(command, args = {}) {
@@ -806,5 +1030,6 @@ if (require.main === module) {
 
 module.exports = {
   buildBridgeCliArgs,
+  runBatch,
   startServer,
 };

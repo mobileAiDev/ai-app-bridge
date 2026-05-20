@@ -1,6 +1,6 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Desktop CLI and MCP server for AI App Bridge.",
   "repository": {
     "type": "git",

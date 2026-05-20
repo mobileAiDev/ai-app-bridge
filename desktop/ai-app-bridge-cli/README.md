@@ -27,6 +27,27 @@ session start. Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
 `ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
 surface.
 
+For multi-step app automation, call `run` with `command: "batch"`. Batch steps
+run serially in one MCP call, so a failed step can stop and mark the remaining
+steps as skipped without mixing results from different commands:
+
+```json
+{
+  "command": "batch",
+  "arguments": {
+    "defaults": {
+      "packageName": "io.github.mobileaidev.aiappbridge.sample"
+    },
+    "steps": [
+      { "id": "launch", "command": "launch-app" },
+      { "id": "wait-home", "command": "wait-text", "arguments": { "targetText": "Home" } },
+      { "id": "capture-logs", "command": "logs", "arguments": { "limit": 20 } }
+    ],
+    "stopOnError": true
+  }
+}
+```
+
 WebView network and console capture use Android WebView DevTools/CDP when the
 target app is debuggable and WebView debugging is enabled.
 

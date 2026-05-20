@@ -5,6 +5,30 @@ to match the current public repository naming. They are retained as development
 evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
 for current dependency coordinates.
 
+## 2026-05-20
+
+- Desktop MCP `0.2.5` adds a compact serial batch mode without increasing the
+  default MCP tool count. Clients still call the existing `run` tool with
+  `command: "batch"` and put `defaults`, `steps`, `stopOnError`, and optional
+  raw-output controls inside `arguments`.
+- Batch step results keep caller-provided ids, execute one command at a time,
+  and mark later steps as `skipped` when `stopOnError` stops the run. This gives
+  agents a faster full-flow path while preserving command/result boundaries.
+- Standard MCP JSON-RPC validation used the compact `tools/call run` path, not
+  internal helpers. `platform_design` passed launch/status/Flutter action/text
+  input/log capture/HttpClient network capture/screenshot in one serial batch.
+  `flutter_inappwebview_android_example` passed launch/Flutter tap/Flutter H5
+  wait+click/logs/state/events/screenshot/WebView console/WebView network in
+  one serial batch. `AntennaPod` passed launch/status/UIAutomator search/input/
+  wait/logcat/logs/network/state/events/screenshot in serial batch when the
+  device foreground stayed on the target app.
+- While testing with other apps being debugged on the same device, foreground
+  changes could make later checks fail. These runs were treated as environment
+  interference, not confirmed product defects. The desktop CLI now also rejects
+  an explicit `packageName` bridge response whose `app.packageName` belongs to a
+  different app, so mixed-app sessions fail visibly instead of accepting stale
+  bridge output.
+
 ## 2026-05-18
 
 - Android runtime `0.1.9` adds `/v1/action/input-text`, which sets text on the

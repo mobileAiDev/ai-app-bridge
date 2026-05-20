@@ -976,6 +976,13 @@ function normalizeBridgeError(error) {
       suggestion: 'Check the device state and retry; if the bridge port is known, pass --port to skip package port discovery.',
     };
   }
+  if (error?.aiAppBridgePackageMismatch || lower.includes('bridge package mismatch')) {
+    return {
+      code: 'bridge_package_mismatch',
+      message,
+      suggestion: 'The resolved bridge port belongs to another package. Relaunch the target app and retry with the explicit packageName.',
+    };
+  }
   if (error?.aiAppBridgePortDiscovery || lower.includes('bridge port discovery failed') || lower.includes('run-as') || lower.includes('package not found')) {
     return {
       code: 'bridge_port_discovery_failed',
@@ -1004,17 +1011,34 @@ function firstErrorLine(error) {
 async function bridgeGet(ctx, requestPath) {
   await ensureForward(ctx);
   const body = await httpGet(bridgeUrl(ctx, requestPath));
-  return JSON.parse(body);
+  const payload = JSON.parse(body);
+  verifyBridgeTargetPackage(ctx, payload, requestPath);
+  return payload;
 }
 
 async function bridgePost(ctx, requestPath, payload) {
   await ensureForward(ctx);
   const body = await httpPost(bridgeUrl(ctx, requestPath), payload);
-  return JSON.parse(body);
+  const responsePayload = JSON.parse(body);
+  verifyBridgeTargetPackage(ctx, responsePayload, requestPath);
+  return responsePayload;
 }
 
 function bridgeUrl(ctx, requestPath) {
   return `http://127.0.0.1:${ctx.hostPort || ctx.port}${requestPath}`;
+}
+
+function verifyBridgeTargetPackage(ctx, payload, requestPath) {
+  if (!ctx.explicitPackageName || !payload || typeof payload !== 'object') return;
+  const responsePackageName = payload.app && typeof payload.app === 'object'
+    ? payload.app.packageName
+    : undefined;
+  if (!responsePackageName || responsePackageName === ctx.packageName) return;
+  const error = new Error(`bridge package mismatch for ${requestPath}: expected ${ctx.packageName}, got ${responsePackageName}`);
+  error.aiAppBridgePackageMismatch = true;
+  error.expectedPackageName = ctx.packageName;
+  error.actualPackageName = responsePackageName;
+  throw error;
 }
 
 function httpGet(url) {
@@ -4320,6 +4344,7 @@ module.exports = {
   screenshotOutputPath,
   statusSearchText,
   uiautomatorLockPath,
+  verifyBridgeTargetPackage,
   waitTextConditionsMet,
   withFileLock,
 };

@@ -45,13 +45,14 @@ const {
   screenshotOutputPath,
   statusSearchText,
   uiautomatorLockPath,
+  verifyBridgeTargetPackage,
   waitTextConditionsMet,
   withFileLock,
 } = require('../bin/ai-app-bridge.js');
 
 const cliPath = path.join(__dirname, '..', 'bin', 'ai-app-bridge.js');
 const mcpPath = path.join(__dirname, '..', 'bin', 'mcp-server.js');
-const { buildBridgeCliArgs } = require('../bin/mcp-server.js');
+const { buildBridgeCliArgs, runBatch } = require('../bin/mcp-server.js');
 
 function encodeMcpMessage(message) {
   const body = JSON.stringify(message);
@@ -215,6 +216,126 @@ test('MCP capabilities advertise install and app control while target commands r
   assert.doesNotMatch(responses.get(3).result.content[0].text, /sample/);
   assert.equal(responses.get(4).result.isError, true);
   assert.match(responses.get(4).result.content[0].text, /packageName or explicit port is required/);
+});
+
+test('MCP capabilities advertise batch as a run command without adding another compact tool', async () => {
+  const responses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'capabilities', arguments: { command: 'batch', includeOptions: true } } },
+  ]);
+
+  assert.deepEqual(responses.get(2).result.tools.map((tool) => tool.name), ['capabilities', 'run']);
+  const batchCapability = JSON.parse(responses.get(3).result.content[0].text);
+  assert.equal(batchCapability.ok, true);
+  assert.equal(batchCapability.command, 'batch');
+  assert.equal(batchCapability.domain, undefined);
+  assert.match(JSON.stringify(batchCapability.options), /steps/);
+  assert.match(JSON.stringify(batchCapability.options), /stopOnError/);
+});
+
+test('MCP run dispatches batch through command arguments', async () => {
+  const responses = await mcpRequestSequence([
+    {
+      jsonrpc: '2.0',
+      id: 2,
+      method: 'tools/call',
+      params: {
+        name: 'run',
+        arguments: {
+          command: 'batch',
+          arguments: {
+            steps: [
+              { id: 'same', command: 'status', arguments: { port: 18080 } },
+              { id: 'same', command: 'logs', arguments: { port: 18080 } },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  const payload = JSON.parse(responses.get(2).result.content[0].text);
+  assert.equal(responses.get(2).result.isError, true);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'duplicate_batch_step_id');
+  assert.equal(payload.stepId, 'same');
+});
+
+test('MCP batch runs steps serially with stable step ids and skips after failure', async () => {
+  const calls = [];
+  const result = await runBatch({
+    batchId: 'batch-test',
+    defaults: { serial: 'device-1', packageName: 'com.example.app' },
+    steps: [
+      { id: 'launch', command: 'launch-app' },
+      { id: 'tap', command: 'tap-text', arguments: { targetText: 'Missing' } },
+      { id: 'screenshot', command: 'screenshot' },
+    ],
+  }, async (command, args) => {
+    calls.push({ command, args });
+    if (command === 'tap-text') {
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'text_not_found', targetText: args.targetText }) }],
+        isError: false,
+      };
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify({ ok: true, command, packageName: args.packageName }) }],
+      isError: false,
+    };
+  });
+
+  assert.equal(result.isError, true);
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.batchId, 'batch-test');
+  assert.equal(payload.passed, 1);
+  assert.equal(payload.failed, 1);
+  assert.equal(payload.skipped, 1);
+  assert.deepEqual(payload.steps.map((step) => step.id), ['launch', 'tap', 'screenshot']);
+  assert.deepEqual(payload.steps.map((step) => step.status), ['passed', 'failed', 'skipped']);
+  assert.deepEqual(calls.map((call) => call.command), ['launch-app', 'tap-text']);
+  assert.equal(calls[0].args.serial, 'device-1');
+  assert.equal(calls[1].args.packageName, 'com.example.app');
+  assert.equal(calls[1].args.targetText, 'Missing');
+});
+
+test('MCP batch can continue after failure when stopOnError is false', async () => {
+  const result = await runBatch({
+    defaults: { port: 18080 },
+    stopOnError: false,
+    steps: [
+      { command: 'status' },
+      { command: 'logs' },
+    ],
+  }, async (command) => ({
+    content: [{ type: 'text', text: JSON.stringify({ ok: command !== 'status', error: command === 'status' ? 'bridge_not_ready' : undefined }) }],
+    isError: false,
+  }));
+
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.failed, 1);
+  assert.equal(payload.skipped, 0);
+  assert.deepEqual(payload.steps.map((step) => step.status), ['failed', 'passed']);
+  assert.deepEqual(payload.steps.map((step) => step.id), ['step_1', 'step_2']);
+});
+
+test('MCP batch rejects duplicate step ids before execution', async () => {
+  const result = await runBatch({
+    steps: [
+      { id: 'same', command: 'status', port: 18080 },
+      { id: 'same', command: 'logs', port: 18080 },
+    ],
+  }, async () => {
+    throw new Error('runner should not be called');
+  });
+
+  assert.equal(result.isError, true);
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'duplicate_batch_step_id');
+  assert.equal(payload.stepId, 'same');
 });
 
 test('MCP run forwards advertised compact options to the CLI argument list', () => {
@@ -466,6 +587,27 @@ test('normalizes status HTTP timeout as structured not-ready status', () => {
 test('normalizes adb timeout separately from bridge HTTP readiness', () => {
   const normalized = normalizeBridgeError(new Error('adb timed out after 15000ms: adb shell run-as app cat file'));
   assert.equal(normalized.code, 'adb_timeout');
+});
+
+test('explicit package bridge status rejects a response from another package', () => {
+  assert.doesNotThrow(() => verifyBridgeTargetPackage(
+    { explicitPackageName: true, packageName: 'com.example.target' },
+    { app: { packageName: 'com.example.target' } },
+    '/v1/status',
+  ));
+
+  assert.throws(
+    () => verifyBridgeTargetPackage(
+      { explicitPackageName: true, packageName: 'com.example.target' },
+      { app: { packageName: 'com.example.other' } },
+      '/v1/status',
+    ),
+    (error) => {
+      assert.equal(error.aiAppBridgePackageMismatch, true);
+      assert.equal(normalizeBridgeError(error).code, 'bridge_package_mismatch');
+      return true;
+    },
+  );
 });
 
 test('explicit package port discovery failure does not fall back to default sample port', () => {
