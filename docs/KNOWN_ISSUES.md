@@ -11,7 +11,7 @@ for current dependency coordinates.
 
 ## Current triage snapshot, 2026-05-20
 
-- Standard MCP stdio is working with desktop package `0.2.2`: `initialize`
+- Standard MCP stdio is working with desktop package `0.2.3`: `initialize`
   negotiated protocol `2025-06-18`, `ping` returned `{}`, `tools/list`
   exposed only `capabilities` and `run`, and `capabilities` advertised 52
   command entries.
@@ -20,6 +20,10 @@ for current dependency coordinates.
   `android-architecture-samples`, `AntennaPod`, `Jetchat`, `NewPipe`, and
   `nowinandroid`. Serialized follow-up validation passed `platform_design`
   launch/status/flutter-nodes.
+- Post-fix focused retest through global MCP `0.2.3` completed 35 rows. The 34
+  positive rows passed. The single `ok=false` row was the expected negative
+  check for `com.android.launcher`, which now returns
+  `bridge_port_discovery_failed` instead of probing the default port.
 - First-pass failures for DuckDuckGo and Flutter packages were not accepted as
   confirmed bridge bugs because that broad matrix changed foreground apps and
   stressed ADB while continuing to probe older targets. Re-run failing points
@@ -116,6 +120,13 @@ for current dependency coordinates.
     port file: `Jetchat` reported bridge `0.1.8` on port `18081`, and
     `platform_design` reported bridge `0.1.8` on port `18080` plus Flutter
     operable nodes.
+  - Global MCP `0.2.3` focused retest covered `AntennaPod` launch/status/tree/
+    uia-tree/wait/tap/input/screenshot/log/logs/network/state/events,
+    `platform_design` Flutter tree/nodes/tap/wait/scroll,
+    `flutter_inappwebview` Flutter-H5 and WebView DevTools operations,
+    DuckDuckGo permission-state, and Jetchat reinstall. All positive rows
+    passed; the only `ok=false` result was the expected
+    `bridge_port_discovery_failed` negative check.
 
 ## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
 
