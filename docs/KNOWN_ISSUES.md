@@ -26,10 +26,15 @@ for current dependency coordinates.
 - Workaround: after native `input_text`, explicitly verify keyboard state or
   tap a top-screen app action that is not covered by the IME. For search fields,
   prefer the visible in-app search button when it remains above the keyboard.
+- 2026-05-20 retest: not reproduced on OnePlus PKR110 with the native sample.
+  After focusing `ai_app_native_test_input`, `keyboard-state` reported visible;
+  `input-text --hide-keyboard` returned `dismissed=true`, and the next
+  `keyboard-state` reported hidden. Keep this open for the original Reader/IME
+  surface until that exact app path is retested.
 
 ## MCP `input_text` can target a stale package unless `packageName` is explicit
 
-- Status: open
+- Status: fixed in desktop MCP `0.2.1`
 - Found while validating `C:\project\reader` on OnePlus PKR110, Android SDK 36,
   with desktop MCP server `ai-app-bridge` 0.1.25 and Android runtime 0.1.9.
 - Evidence: while `com.example.reader` was foreground, MCP `status` and `tree`
@@ -43,10 +48,13 @@ for current dependency coordinates.
   bridge context even when the current activity belongs to the intended app.
 - Workaround: pass `packageName` on every MCP `input_text` call in sessions
   where more than one bridge-enabled app has been launched.
+- Fix: MCP `input_text` now requires `packageName` in its tool schema and also
+  rejects direct `tools/call` requests that omit it, instead of letting the CLI
+  fall back to the sample package default.
 
 ## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
 
-- Status: open
+- Status: fixed in desktop MCP/CLI `0.2.1`
 - Found while validating `C:\project\reader` on OnePlus PKR110, Android SDK 36,
   with desktop MCP server `ai-app-bridge` 0.1.25 and Android runtime 0.1.9.
 - Evidence: MCP `logcat` without `appPid` returned normal log lines, proving
@@ -59,6 +67,10 @@ for current dependency coordinates.
   filters such as `AndroidRuntime` or `FATAL EXCEPTION`, or treat bare `ok`
   from app-pid filtering as an empty-result sentinel until the MCP output shape
   is clarified.
+- Fix: CLI `logcat --app-pid` no longer falls back to unfiltered logcat when
+  the app PID cannot be resolved, and MCP now returns
+  `logcat: no matching lines for current app pid` instead of bare `ok` for an
+  empty app-pid result.
 
 ## Android 16 ADB text input cannot enter Chinese
 
@@ -538,7 +550,7 @@ for current dependency coordinates.
 
 ## Launcher ambiguity with debug-only launcher activities
 
-- Status: open
+- Status: fixed in desktop CLI/MCP `0.2.1`
 - Found while validating: `C:\project\reader`
 - Bridge version: `0.1.2`
 - Evidence:
@@ -547,8 +559,16 @@ for current dependency coordinates.
     launcher entry.
 - Workaround: launch the app with an explicit component, such as
   `com.example.reader/.ui.activity.SplashActivity`.
-- Desired fix: if bridge adds app launch helpers, allow explicit component
-  selection and report all launcher candidates before choosing a default.
+- Fix: `launch-app` queries LAUNCHER Activity candidates and returns
+  `launcher_ambiguous` with the candidate list when more than one entry exists.
+  `launch-activity`, `launch-app --activity`, and `launch-app --component`
+  provide explicit component startup with optional string extras.
+- Verification: on OnePlus PKR110, `launch-app --package-name
+  io.github.mobileaidev.aiappbridge.sample` reported the single candidate
+  `io.github.mobileaidev.aiappbridge.sample/.debugbridge.DebugBridgeNativeTestActivity`
+  and launched it; `launch-activity --activity
+  .debugbridge.DebugBridgeNativeTestActivity --extra probe=launch-activity`
+  also started the explicit component successfully.
 
 ## Screenshot capture does not prove the target package is foreground
 
@@ -711,6 +731,20 @@ for current dependency coordinates.
 - Workaround: for production-scale apps, run builds under an external watchdog
   that records the last output timestamp, current task evidence, JVM thread
   state, and artifact presence before terminating a stale run.
+
+## MCP tool list is large for smaller-context models
+
+- Status: open design follow-up
+- Found while publishing desktop MCP `0.2.1`: the MCP server exposed 48 tools
+  after adding `launch_app` and `launch_activity`.
+- Impact: models with smaller context windows may spend too much prompt budget
+  on full tool schemas, even though the agent still needs to know that install,
+  launch, UI, WebView, logcat, permission, and diagnostics capabilities exist.
+- Desired direction: keep a small always-visible capability index/help tool so
+  agents can discover the available domains and prefer bridge actions, then
+  move detailed schemas behind grouped execution tools or domain-specific
+  manifests. Do not hide important capabilities such as `install_apk`; shrink
+  the resident schema, not the advertised capability set.
 
 ## `--help` should not probe ADB or the default sample package
 

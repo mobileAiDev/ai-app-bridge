@@ -16,6 +16,7 @@ const {
   defaultInstallerButtonTexts,
   findFlutterNode,
   findTappableNodeByText,
+  filterLogcat,
   flutterNodePoint,
   flutterPhysicalViewport,
   helpText,
@@ -23,8 +24,12 @@ const {
   isAdbInputTextSafe,
   isLikelyInstallerSurface,
   normalizeBridgeError,
+  normalizeActivityComponent,
   parseWebViewDevToolsSockets,
+  parseArgs,
   parseKeyboardState,
+  parseLauncherActivityCandidates,
+  parseStartExtras,
   parseUiaBounds,
   parseUiaViewport,
   parseComponentFromWindowLine,
@@ -74,6 +79,76 @@ test('help command prints usage without probing adb', () => {
   });
 
   assert.equal(output, `${helpText}\n`);
+});
+
+test('parseArgs keeps repeated launch categories and extras', () => {
+  const parsed = parseArgs([
+    'launch-activity',
+    '--activity',
+    '.MainActivity',
+    '--category',
+    'android.intent.category.DEFAULT',
+    '--category',
+    'com.example.CUSTOM',
+    '--extra',
+    'first=1',
+    '--extra',
+    'second=two=kept',
+  ]);
+
+  assert.equal(parsed.command, 'launch-activity');
+  assert.equal(parsed.options.activity, '.MainActivity');
+  assert.deepEqual(parsed.options.category, ['android.intent.category.DEFAULT', 'com.example.CUSTOM']);
+  assert.deepEqual(parsed.options.extra, ['first=1', 'second=two=kept']);
+});
+
+test('launch helpers parse and normalize Android Activity components', () => {
+  assert.equal(
+    normalizeActivityComponent('com.example.app', '.MainActivity'),
+    'com.example.app/.MainActivity',
+  );
+  assert.equal(
+    normalizeActivityComponent('com.example.app', 'com.example.app.MainActivity'),
+    'com.example.app/com.example.app.MainActivity',
+  );
+  assert.equal(
+    normalizeActivityComponent('com.example.app', 'com.other/.EntryActivity'),
+    'com.other/.EntryActivity',
+  );
+
+  assert.deepEqual(parseStartExtras(['route=/home', 'token=a=b']), [
+    { key: 'route', value: '/home' },
+    { key: 'token', value: 'a=b' },
+  ]);
+  assert.throws(() => parseStartExtras(['broken']), /extra must use key=value/);
+});
+
+test('launcher query output reports concrete Activity candidates', () => {
+  const output = [
+    '2 activities found:',
+    '  Activity #0:',
+    '    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false',
+    '    com.example/.LeakLauncherActivity',
+    '  Activity #1:',
+    '    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false',
+    '    com.example/.ui.SplashActivity',
+    '',
+  ].join('\n');
+
+  assert.deepEqual(parseLauncherActivityCandidates(output), [
+    'com.example/.LeakLauncherActivity',
+    'com.example/.ui.SplashActivity',
+  ]);
+});
+
+test('logcat app-pid filtering does not fall back to unfiltered logs when pid is missing', () => {
+  const rawLogcat = [
+    '05-20 16:40:46.266  2225  2225 D SensorFeature: unrelated system line',
+    '05-20 16:40:47.100  3333  3333 E AndroidRuntime: crash line',
+  ].join('\n');
+
+  assert.equal(filterLogcat(rawLogcat, { appPid: true, pid: '' }), '');
+  assert.match(filterLogcat(rawLogcat, {}), /SensorFeature/);
 });
 
 test('help documents every implemented CLI command', () => {

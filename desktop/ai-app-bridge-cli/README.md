@@ -6,6 +6,8 @@ npm install -g @mobileaidev/ai-app-bridge
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge install-apk --package-name io.github.mobileaidev.aiappbridge.sample --apk-path app-debug.apk
+ai-app-bridge launch-app --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge launch-activity --package-name io.github.mobileaidev.aiappbridge.sample --activity .MainActivity --extra route=/home
 ai-app-bridge screenshot --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge input-text --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
 ai-app-bridge network --package-name io.github.mobileaidev.aiappbridge.sample --compact --url-filter /api/
@@ -27,3 +29,9 @@ or creating files in the project root.
 It keeps the newest 20 generated screenshots for each command prefix. Use
 `--artifact-dir` to choose that directory, or `--out-file` when a fixed path is
 intentional.
+
+`launch-app` queries Android LAUNCHER activities before starting the app. If a
+debug dependency exposes multiple launcher entries, it returns
+`launcher_ambiguous` with the candidates instead of guessing. Use
+`launch-activity` or `launch-app --activity/--component` to choose the intended
+entry point explicitly.

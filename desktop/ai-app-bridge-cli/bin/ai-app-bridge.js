@@ -70,6 +70,8 @@ Device/action commands:
 
 App/permission commands:
   install-apk            Install an APK and assist device-side installer screens.
+  launch-app             Launch the target package LAUNCHER Activity.
+  launch-activity        Launch an explicit Android Activity component.
   launch-native-test     Launch the debug native Android bridge test Activity.
   launch-flutter         Launch the Flutter Activity.
   permission-state       Read Android runtime permission state.
@@ -93,6 +95,12 @@ Options:
   --out-file <path>      Screenshot output path.
   --artifact-dir <path>  Directory for generated screenshot/artifact defaults.
   --apk-path <path>      APK path used by install-apk.
+  --activity <name>      Activity class for launch-activity or launch-app override.
+  --component <pkg/act>  Explicit Android component for launch-activity.
+  --action <name>        Intent action for launch-activity.
+  --category <name>      Intent category for launch-activity; may be repeated.
+  --data <uri>           Intent data URI for launch-activity.
+  --extra <key=value>    String intent extra for launch-activity; may be repeated.
   --text <text>          Text used by Unicode-safe bridge input commands.
   --value <text>         Text value used by h5-input or flutter-h5-input.
   --selector <css>       CSS selector used by H5 commands.
@@ -321,6 +329,10 @@ async function runCommand(command, options, ctx) {
       return tapUiaText(ctx, requiredString(options.targetText, 'targetText'), options);
     case 'permission-dialog':
       return permissionDialog(ctx, options);
+    case 'launch-app':
+      return launchApp(ctx, options);
+    case 'launch-activity':
+      return launchActivity(ctx, options);
     case 'launch-native-test':
       return launchNativeTest(ctx);
     case 'launch-flutter':
@@ -348,13 +360,22 @@ function parseArgs(argv) {
     const name = rawName.replace(/-([a-z])/g, (_, value) => value.toUpperCase());
     const next = argv[index + 1];
     if (next === undefined || next.startsWith('--')) {
-      options[name] = true;
+      appendOption(options, name, true);
       continue;
     }
-    options[name] = next;
+    appendOption(options, name, next);
     index += 1;
   }
   return { command, options };
+}
+
+function appendOption(options, name, value) {
+  if (name === 'extra' || name === 'category') {
+    if (!Array.isArray(options[name])) options[name] = [];
+    options[name].push(value);
+    return;
+  }
+  options[name] = value;
 }
 
 async function adb(ctx, args, { binary = false } = {}) {
@@ -3670,6 +3691,10 @@ function filterLogcat(text, options) {
   const grepCaseSensitive = Boolean(options.grepCaseSensitive);
   const minLevel = priorityValue(options.level || options.minLevel || '');
   const pid = options.pid ? String(options.pid) : '';
+  const requiresAppPid = options.appPid || options.packagePid || options.pid === 'current';
+  if (requiresAppPid && !pid) {
+    return '';
+  }
   const lines = String(text || '').split(/\r?\n/);
   const filtered = [];
   let previousIncluded = false;
@@ -3753,18 +3778,133 @@ function adbFollow(ctx, args, durationMs) {
   });
 }
 
+async function launchApp(ctx, options = {}) {
+  if (options.component || options.activity) {
+    return launchActivity(ctx, options);
+  }
+
+  const candidates = await launcherActivityCandidates(ctx);
+  if (candidates.length === 0) {
+    return {
+      ok: false,
+      error: 'launcher_not_found',
+      packageName: ctx.packageName,
+      launcherCandidates: candidates,
+    };
+  }
+  if (candidates.length > 1) {
+    return {
+      ok: false,
+      error: 'launcher_ambiguous',
+      packageName: ctx.packageName,
+      launcherCandidates: candidates,
+      suggestion: 'Pass --component or --activity to choose the intended launcher Activity.',
+    };
+  }
+
+  return startActivity(ctx, candidates[0], options, {
+    packageName: ctx.packageName,
+    launcherCandidates: candidates,
+  });
+}
+
+async function launchActivity(ctx, options = {}) {
+  const component = normalizeActivityComponent(
+    ctx.packageName,
+    options.component || requiredString(options.activity, 'activity'),
+  );
+  return startActivity(ctx, component, options, { packageName: ctx.packageName });
+}
+
 async function launchNativeTest(ctx) {
-  const component = `${ctx.packageName}/${ctx.nativeActivity}`;
-  await adb(ctx, ['shell', 'am', 'start', '-n', component]);
-  return { ok: true, transport: 'adb', component };
+  const component = normalizeActivityComponent(ctx.packageName, ctx.nativeActivity);
+  return startActivity(ctx, component, {}, { packageName: ctx.packageName });
 }
 
 async function launchFlutter(ctx, initialRoute) {
-  const component = `${ctx.packageName}/${ctx.flutterActivity}`;
-  const args = ['shell', 'am', 'start', '-n', component];
-  if (initialRoute) args.push('-e', 'ai_app_initial_route', initialRoute);
-  await adb(ctx, args);
-  return { ok: true, transport: 'adb', component, initialRoute };
+  const component = normalizeActivityComponent(ctx.packageName, ctx.flutterActivity);
+  const options = initialRoute ? { extra: [`ai_app_initial_route=${initialRoute}`] } : {};
+  const result = await startActivity(ctx, component, options, { packageName: ctx.packageName });
+  return { ...result, initialRoute };
+}
+
+async function launcherActivityCandidates(ctx) {
+  const result = await adb(ctx, [
+    'shell',
+    'cmd',
+    'package',
+    'query-activities',
+    '--brief',
+    '-a',
+    'android.intent.action.MAIN',
+    '-c',
+    'android.intent.category.LAUNCHER',
+    ctx.packageName,
+  ]);
+  return parseLauncherActivityCandidates(result.stdout);
+}
+
+function parseLauncherActivityCandidates(stdout) {
+  const candidates = [];
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    const candidate = line.trim();
+    if (/^[A-Za-z0-9_.$]+\/[A-Za-z0-9_.$]+$/.test(candidate) && !candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
+  }
+  return candidates;
+}
+
+function normalizeActivityComponent(packageName, activityOrComponent) {
+  const value = requiredString(activityOrComponent, 'activity');
+  if (value.includes('/')) return value;
+  return `${packageName}/${value}`;
+}
+
+async function startActivity(ctx, component, options = {}, extraResult = {}) {
+  const args = buildAmStartArgs(component, options);
+  const result = await adb(ctx, args);
+  return {
+    ok: true,
+    transport: 'adb',
+    component,
+    ...extraResult,
+    stdout: result.stdout.trim(),
+    stderr: result.stderr.trim(),
+  };
+}
+
+function buildAmStartArgs(component, options = {}) {
+  const args = ['shell', 'am', 'start'];
+  if (options.action) args.push('-a', options.action);
+  for (const category of optionList(options.category)) {
+    args.push('-c', category);
+  }
+  if (options.data) args.push('-d', options.data);
+  for (const extra of parseStartExtras(options.extra)) {
+    args.push('-e', extra.key, extra.value);
+  }
+  args.push('-n', component);
+  return args;
+}
+
+function parseStartExtras(rawExtras) {
+  return optionList(rawExtras).map((rawExtra) => {
+    const value = String(rawExtra);
+    const separator = value.indexOf('=');
+    if (separator <= 0) {
+      throw new Error('extra must use key=value');
+    }
+    return {
+      key: value.slice(0, separator),
+      value: value.slice(separator + 1),
+    };
+  });
+}
+
+function optionList(value) {
+  if (value === undefined || value === null || value === false || value === '') return [];
+  return Array.isArray(value) ? value : [value];
 }
 
 async function smoke(ctx, options) {
@@ -4133,6 +4273,7 @@ module.exports = {
   defaultArtifactPath,
   findFlutterNode,
   findTappableNodeByText,
+  filterLogcat,
   firstErrorLine,
   flutterNodePoint,
   flutterPhysicalViewport,
@@ -4142,8 +4283,12 @@ module.exports = {
   isLikelyInstallerSurface,
   nodeTapState,
   normalizeBridgeError,
+  normalizeActivityComponent,
   parseWebViewDevToolsSockets,
+  parseArgs,
   parseKeyboardState,
+  parseLauncherActivityCandidates,
+  parseStartExtras,
   parseUiaBounds,
   parseUiaViewport,
   parseComponentFromWindowLine,

@@ -219,6 +219,8 @@ function toolDefinitions() {
       installerTimeoutMs: { type: 'number', description: 'Maximum time to keep assisting installer screens after adb install exits. Defaults to 90000 ms.' },
       intervalMs: { type: 'number', description: 'Installer polling interval. Defaults to 700 ms.' },
     }, ['apkPath']),
+    bridgeTool('launch_app', 'Launch the target package LAUNCHER Activity. If multiple launcher Activities exist, returns launcher_ambiguous with candidates unless activity or component is explicit.', launchProperties()),
+    bridgeTool('launch_activity', 'Launch an explicit Android Activity component, optionally with action/data/category/string extras.', launchProperties()),
     bridgeTool('launch_native_test', 'Launch the debug native Android bridge test Activity.'),
     bridgeTool('launch_flutter', 'Launch the Flutter Activity, optionally with an initial route.'),
     bridgeTool('tap', 'Tap device coordinates through ADB.', {
@@ -233,12 +235,12 @@ function toolDefinitions() {
       targetText: { type: 'string' },
       timeoutSec: { type: 'number' },
     }, ['targetText']),
-    bridgeTool('input_text', 'Set native Android text through the in-app bridge. Use this for Chinese/Unicode; do not use raw adb shell input text for non-ASCII text.', {
+    bridgeTool('input_text', 'Set native Android text through the in-app bridge. Use this for Chinese/Unicode; always pass packageName so the tool targets the intended app.', {
       text: { type: 'string', description: 'Text to set in the focused or coordinate-matched native EditText.' },
       tapX: { type: 'number', description: 'Optional X coordinate used to choose a native EditText target.' },
       tapY: { type: 'number', description: 'Optional Y coordinate used to choose a native EditText target.' },
       hideKeyboard: { type: 'boolean', description: 'Hide the soft keyboard after setting text.' },
-    }, ['text']),
+    }, ['text', 'packageName']),
     bridgeTool('keyboard_state', 'Read Android soft-keyboard visibility from dumpsys input_method.'),
     bridgeTool('hide_keyboard', 'Hide the Android soft keyboard when it is visible.', {
       force: { type: 'boolean', description: 'Send keyboard-dismiss keys even when the visibility probe says the keyboard is hidden.' },
@@ -295,6 +297,30 @@ function bridgeTool(name, description, properties = {}, required = []) {
   };
 }
 
+function launchProperties() {
+  return {
+    activity: { type: 'string', description: 'Activity class, such as .MainActivity or com.example.MainActivity.' },
+    component: { type: 'string', description: 'Explicit Android component, such as com.example/.MainActivity.' },
+    action: { type: 'string', description: 'Intent action for explicit Activity launch.' },
+    category: {
+      oneOf: [
+        { type: 'string' },
+        { type: 'array', items: { type: 'string' } },
+      ],
+      description: 'Intent category or categories.',
+    },
+    data: { type: 'string', description: 'Intent data URI.' },
+    extra: {
+      oneOf: [
+        { type: 'string' },
+        { type: 'array', items: { type: 'string' } },
+        { type: 'object', additionalProperties: { type: 'string' } },
+      ],
+      description: 'String extras. Use key=value strings or an object of string values.',
+    },
+  };
+}
+
 function baseSchema(extraProperties = {}, extraRequired = []) {
   return {
     type: 'object',
@@ -328,6 +354,9 @@ async function callTool(name, args) {
   if (name === 'run_smoke') {
     return runSmoke(args);
   }
+  if (name === 'input_text' && !args.packageName) {
+    return toolText('packageName is required for input_text so text input is routed to the intended app bridge.', true);
+  }
   const commandMap = {
     flutter_tree: 'flutter-tree',
     h5_dom: 'h5-dom',
@@ -347,6 +376,8 @@ async function callTool(name, args) {
     input_flutter_text: 'input-flutter-text',
     uia_tree: 'uia-tree',
     install_apk: 'install-apk',
+    launch_app: 'launch-app',
+    launch_activity: 'launch-activity',
     launch_native_test: 'launch-native-test',
     launch_flutter: 'launch-flutter',
     tap_text: 'tap-text',
@@ -372,6 +403,12 @@ async function runBridge(command, args) {
   const cliArgs = [cliScript, command];
   addCommonArgs(cliArgs, args);
   addArg(cliArgs, 'initial-route', args.initialRoute);
+  addArg(cliArgs, 'activity', args.activity);
+  addArg(cliArgs, 'component', args.component);
+  addArg(cliArgs, 'action', args.action);
+  addRepeatedArg(cliArgs, 'category', args.category);
+  addArg(cliArgs, 'data', args.data);
+  addExtraArgs(cliArgs, args.extra);
   addArg(cliArgs, 'out-file', args.outFile);
   addArg(cliArgs, 'artifact-dir', args.artifactDir || defaultArtifactDirFor(command, args));
   addArg(cliArgs, 'apk-path', args.apkPath);
@@ -466,6 +503,28 @@ function addArg(cliArgs, name, value) {
   cliArgs.push(`--${name}`, String(value));
 }
 
+function addRepeatedArg(cliArgs, name, value) {
+  if (Array.isArray(value)) {
+    for (const item of value) addArg(cliArgs, name, item);
+    return;
+  }
+  addArg(cliArgs, name, value);
+}
+
+function addExtraArgs(cliArgs, value) {
+  if (Array.isArray(value)) {
+    for (const item of value) addArg(cliArgs, 'extra', item);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, extraValue] of Object.entries(value)) {
+      addArg(cliArgs, 'extra', `${key}=${extraValue}`);
+    }
+    return;
+  }
+  addArg(cliArgs, 'extra', value);
+}
+
 function runProcess(cliArgs) {
   return new Promise((resolve) => {
     const child = spawn(nodeBinary, cliArgs, {
@@ -490,9 +549,20 @@ function runProcess(cliArgs) {
         code === 0 ? '' : `exitCode: ${code}`,
         retryWithPackageNameHint(cliArgs, stdout, stderr, code),
       ].filter(Boolean).join('\n\n');
-      resolve(toolText(text || 'ok', code !== 0));
+      resolve(toolText(text || emptyProcessText(cliArgs), code !== 0));
     });
   });
+}
+
+function emptyProcessText(cliArgs) {
+  const command = cliArgs[1] || '';
+  if (command === 'logcat' && cliArgs.includes('--app-pid')) {
+    return 'logcat: no matching lines for current app pid';
+  }
+  if (command === 'logcat') {
+    return 'logcat: no matching lines';
+  }
+  return 'ok';
 }
 
 function retryWithPackageNameHint(cliArgs, stdout, stderr, code) {
