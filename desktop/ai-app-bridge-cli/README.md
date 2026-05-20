@@ -15,6 +15,18 @@ ai-app-bridge webview-network --package-name io.github.mobileaidev.aiappbridge.s
 ai-app-bridge-mcp
 ```
 
+MCP defaults to a compact tool surface to avoid loading every command schema
+into the model context:
+
+- `capabilities` lists the bridge domains and command names.
+- `run` executes a selected command with command-specific arguments.
+
+This keeps install, launch, UI, Flutter, WebView, logcat, network, and
+permission capabilities discoverable without exposing dozens of full schemas at
+session start. Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
+`ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
+surface.
+
 WebView network and console capture use Android WebView DevTools/CDP when the
 target app is debuggable and WebView debugging is enabled.
 

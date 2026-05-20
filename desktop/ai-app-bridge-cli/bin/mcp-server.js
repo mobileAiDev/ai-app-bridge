@@ -7,6 +7,14 @@ const packageInfo = require('../package.json');
 const bridgeDir = __dirname;
 const cliScript = path.join(bridgeDir, 'ai-app-bridge.js');
 const nodeBinary = process.env.AI_APP_BRIDGE_NODE || process.execPath;
+const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
+const defaultProtocolVersion = supportedProtocolVersions[0];
+const mcpSurface = (process.env.AI_APP_BRIDGE_MCP_SURFACE || 'compact').toLowerCase();
+const serverInstructions = [
+  'AI App Bridge observes and controls Android apps for agent workflows. Prefer these tools over raw adb when inspecting UI, text, WebView, logs, network, app install, launch, and permissions.',
+  'Default surface is compact: call capabilities to discover domains, then call run with a command and arguments.',
+  'Always pass packageName for app-specific commands, or pass an explicit port. Do not rely on a sample/default package in MCP sessions.',
+].join(' ');
 
 let buffer = Buffer.alloc(0);
 
@@ -72,15 +80,22 @@ async function handleMessage(body) {
   try {
     if (message.method === 'initialize') {
       sendResult(message.id, {
-        protocolVersion: message.params?.protocolVersion || '2024-11-05',
+        protocolVersion: negotiateProtocolVersion(message.params?.protocolVersion),
         capabilities: {
           tools: {},
         },
         serverInfo: {
           name: 'ai-app-bridge',
+          title: 'AI App Bridge',
           version: packageInfo.version,
         },
+        instructions: serverInstructions,
       });
+      return;
+    }
+
+    if (message.method === 'ping') {
+      sendResult(message.id, {});
       return;
     }
 
@@ -103,7 +118,43 @@ async function handleMessage(body) {
   }
 }
 
+function negotiateProtocolVersion(requestedVersion) {
+  if (supportedProtocolVersions.includes(requestedVersion)) {
+    return requestedVersion;
+  }
+  return defaultProtocolVersion;
+}
+
 function toolDefinitions() {
+  if (mcpSurface === 'full' || mcpSurface === 'legacy') {
+    return fullToolDefinitions();
+  }
+  return compactToolDefinitions();
+}
+
+function compactToolDefinitions() {
+  return [
+    bridgeTool('capabilities', 'List AI App Bridge capability domains and commands. Call this first when planning Android app automation; then use run to execute the selected command.', {
+      domain: { type: 'string', description: 'Optional domain filter such as core, app, action, flutter, webview, or diagnostics.' },
+      command: { type: 'string', description: 'Optional command name for detailed arguments, such as install-apk, launch-app, tree, input-text, or webview-network.' },
+      includeOptions: { type: 'boolean', description: 'Include per-command argument names. Defaults to false to keep output compact.' },
+    }),
+    bridgeTool('run', 'Run an AI App Bridge command. Use capabilities first to choose the command. Always pass packageName for app-specific commands.', {
+      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, input-text, tree, webview-network, or logcat.' },
+      packageName: { type: 'string', description: 'Target Android package for app-specific commands. Strongly recommended.' },
+      serial: { type: 'string', description: 'ADB serial when multiple devices are connected.' },
+      port: { type: 'number', description: 'Explicit bridge port when packageName discovery is not available.' },
+      adb: { type: 'string', description: 'ADB executable path or command.' },
+      arguments: {
+        type: 'object',
+        description: 'Command-specific arguments from capabilities. Example: {"apkPath":"app-debug.apk","allowDowngrade":true}.',
+        additionalProperties: true,
+      },
+    }, ['command']),
+  ];
+}
+
+function fullToolDefinitions() {
   return [
     bridgeTool('status', 'Read compact bridge status, app info, capture counts, and Flutter layout summary. If default port 18080 times out, agents should retry with the target Android packageName so the CLI can discover the app bridge port.', {
       full: { type: 'boolean', description: 'Return the full raw status payload, including large Flutter widget dumps.' },
@@ -302,21 +353,12 @@ function launchProperties() {
     activity: { type: 'string', description: 'Activity class, such as .MainActivity or com.example.MainActivity.' },
     component: { type: 'string', description: 'Explicit Android component, such as com.example/.MainActivity.' },
     action: { type: 'string', description: 'Intent action for explicit Activity launch.' },
-    category: {
-      oneOf: [
-        { type: 'string' },
-        { type: 'array', items: { type: 'string' } },
-      ],
-      description: 'Intent category or categories.',
-    },
+    category: { type: 'string', description: 'Intent category.' },
     data: { type: 'string', description: 'Intent data URI.' },
     extra: {
-      oneOf: [
-        { type: 'string' },
-        { type: 'array', items: { type: 'string' } },
-        { type: 'object', additionalProperties: { type: 'string' } },
-      ],
-      description: 'String extras. Use key=value strings or an object of string values.',
+      type: 'object',
+      additionalProperties: { type: 'string' },
+      description: 'String intent extras as an object of key/value pairs.',
     },
   };
 }
@@ -350,12 +392,72 @@ function h5TargetSchema() {
   };
 }
 
+const commandDefinitions = [
+  { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
+  { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
+  { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator XML for the current foreground window.', options: ['serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes'] },
+  { command: 'screenshot', domain: 'core', summary: 'Capture a screenshot, with foreground package verification when packageName is supplied.', options: ['serial', 'packageName', 'outFile', 'artifactDir'] },
+  { command: 'logs', domain: 'core', summary: 'Read in-app log records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'network', domain: 'core', summary: 'Read in-app network records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'urlFilter', 'method', 'statusCode', 'noBodies', 'bodyMaxBytes', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'state', domain: 'core', summary: 'Read in-app state records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'events', domain: 'core', summary: 'Read in-app event records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
+  { command: 'install-apk', domain: 'app', summary: 'Install an APK and assist device-side installer confirmation screens.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'streaming', 'installTimeoutMs', 'installerTimeoutMs', 'intervalMs'] },
+  { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
+  { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
+  { command: 'launch-native-test', domain: 'app', summary: 'Launch the debug native bridge test Activity.', targetApp: true, options: ['serial', 'packageName'] },
+  { command: 'launch-flutter', domain: 'app', summary: 'Launch the Flutter Activity, optionally with an initial route.', targetApp: true, options: ['serial', 'packageName', 'initialRoute'] },
+  { command: 'permission-state', domain: 'app', summary: 'Read Android runtime permission state.', targetApp: true, options: ['serial', 'packageName', 'permission'] },
+  { command: 'permission-grant', domain: 'app', summary: 'Grant an Android runtime permission.', targetApp: true, options: ['serial', 'packageName', 'permission'] },
+  { command: 'permission-revoke', domain: 'app', summary: 'Revoke an Android runtime permission.', targetApp: true, options: ['serial', 'packageName', 'permission'] },
+  { command: 'permission-dialog', domain: 'app', summary: 'Tap a visible Android permission dialog allow button.', options: ['serial', 'targetText', 'buttonText', 'resourceId', 'attempts', 'intervalMs', 'exact'] },
+  { command: 'appops-set', domain: 'app', summary: 'Set an Android app-op mode.', targetApp: true, options: ['serial', 'packageName', 'op', 'mode'] },
+  { command: 'tap', domain: 'action', summary: 'Tap device coordinates through ADB.', options: ['serial', 'tapX', 'tapY'] },
+  { command: 'tap-text', domain: 'action', summary: 'Tap a visible Android View node by text/contentDescription through the bridge tree.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'noAutoHideKeyboard'] },
+  { command: 'tap-uia-text', domain: 'action', summary: 'Tap a UIAutomator node by text without relying on the in-app tree.', options: ['serial', 'targetText', 'exact'] },
+  { command: 'wait-text', domain: 'action', summary: 'Wait until text appears in bridge status/tree or UIAutomator output.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'timeoutSec', 'requireText', 'absentText', 'requireActivity'] },
+  { command: 'input-text', domain: 'action', summary: 'Set native Android text through the in-app bridge; use this for Chinese/Unicode.', targetApp: true, options: ['serial', 'packageName', 'text', 'tapX', 'tapY', 'hideKeyboard'] },
+  { command: 'keyboard-state', domain: 'action', summary: 'Read Android soft keyboard visibility.', options: ['serial'] },
+  { command: 'hide-keyboard', domain: 'action', summary: 'Hide the Android soft keyboard.', options: ['serial', 'force', 'intervalMs'] },
+  { command: 'swipe', domain: 'action', summary: 'Swipe device coordinates through ADB.', options: ['serial', 'startX', 'startY', 'endX', 'endY', 'durationMs'] },
+  { command: 'keyevent', domain: 'action', summary: 'Send an Android keyevent through ADB.', options: ['serial', 'keyCode'] },
+  { command: 'flutter-tree', domain: 'flutter', summary: 'Read the latest Flutter layout snapshot.', targetApp: true, options: ['serial', 'packageName', 'port'] },
+  { command: 'flutter-nodes', domain: 'flutter', summary: 'Read Flutter operable nodes.', targetApp: true, options: ['serial', 'packageName', 'port'] },
+  { command: 'flutter-action', domain: 'flutter', summary: 'Dispatch a raw Flutter action payload.', targetApp: true, options: ['serial', 'packageName', 'payload'] },
+  { command: 'tap-flutter-text', domain: 'flutter', summary: 'Tap a Flutter node by visible text.', targetApp: true, options: ['serial', 'packageName', 'targetText'] },
+  { command: 'input-flutter-text', domain: 'flutter', summary: 'Set Flutter TextField text through the Flutter action bridge.', targetApp: true, options: ['serial', 'packageName', 'text', 'tapX', 'tapY', 'hideKeyboard'] },
+  { command: 'scroll-flutter', domain: 'flutter', summary: 'Scroll Flutter content by delta or until text is visible.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'delta', 'maxSwipes'] },
+  { command: 'h5-dom', domain: 'webview', summary: 'Read native Android WebView DOM.', targetApp: true, options: ['serial', 'packageName', 'port'] },
+  { command: 'h5-eval', domain: 'webview', summary: 'Execute JavaScript in the current native Android WebView.', targetApp: true, options: ['serial', 'packageName', 'script'] },
+  { command: 'h5-click', domain: 'webview', summary: 'Click a native WebView element by selector or text.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'exact'] },
+  { command: 'h5-input', domain: 'webview', summary: 'Set text in a native WebView input.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'value', 'exact'] },
+  { command: 'h5-wait', domain: 'webview', summary: 'Wait for native WebView text or selector.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'timeoutSec', 'intervalMs'] },
+  { command: 'h5-scroll', domain: 'webview', summary: 'Scroll native WebView content or a DOM element into view.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'deltaX', 'deltaY'] },
+  { command: 'flutter-h5-dom', domain: 'webview', summary: 'Read DOM through a Flutter H5 adapter.', targetApp: true, options: ['serial', 'packageName', 'port'] },
+  { command: 'flutter-h5-eval', domain: 'webview', summary: 'Execute JavaScript through a Flutter H5 adapter.', targetApp: true, options: ['serial', 'packageName', 'script'] },
+  { command: 'flutter-h5-click', domain: 'webview', summary: 'Click a Flutter H5 DOM element.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'exact'] },
+  { command: 'flutter-h5-input', domain: 'webview', summary: 'Set text in a Flutter H5 input.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'value', 'exact'] },
+  { command: 'flutter-h5-wait', domain: 'webview', summary: 'Wait for Flutter H5 text or selector.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'timeoutSec', 'intervalMs'] },
+  { command: 'flutter-h5-scroll', domain: 'webview', summary: 'Scroll Flutter H5 content or a DOM element into view.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'deltaX', 'deltaY'] },
+  { command: 'webview-pages', domain: 'webview', summary: 'List attachable Android WebView DevTools/CDP pages.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'keepForward'] },
+  { command: 'webview-network', domain: 'webview', summary: 'Capture WebView Network events through CDP.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'urlFilter', 'durationMs', 'script', 'includeResponseBody', 'bodyMaxBytes', 'maxEvents'] },
+  { command: 'webview-console', domain: 'webview', summary: 'Capture WebView console/log events through CDP.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'durationMs', 'script', 'maxEvents'] },
+  { command: 'forward', domain: 'advanced', summary: 'Create the ADB port forward for the bridge.', targetApp: true, options: ['serial', 'packageName', 'port'] },
+  { command: 'remove-forward', domain: 'advanced', summary: 'Remove the ADB port forward for the bridge.', options: ['serial', 'port'] },
+  { command: 'smoke', domain: 'diagnostics', summary: 'Run the native sample smoke test.', options: ['serial', 'packageName', 'outFile', 'artifactDir', 'skipFlutterLaunch'] },
+];
+
+const commandByName = new Map(commandDefinitions.map((definition) => [definition.command, definition]));
+
 async function callTool(name, args) {
+  if (name === 'capabilities') {
+    return toolJson(capabilityPayload(args));
+  }
+  if (name === 'run') {
+    return runGeneric(args);
+  }
   if (name === 'run_smoke') {
     return runSmoke(args);
-  }
-  if (name === 'input_text' && !args.packageName) {
-    return toolText('packageName is required for input_text so text input is routed to the intended app bridge.', true);
   }
   const commandMap = {
     flutter_tree: 'flutter-tree',
@@ -396,6 +498,70 @@ async function callTool(name, args) {
     permission_dialog: 'permission-dialog',
   };
   const command = commandMap[name] || name;
+  return runBridgeChecked(command, args);
+}
+
+function capabilityPayload(args = {}) {
+  const includeOptions = Boolean(args.includeOptions);
+  const requestedCommand = args.command ? normalizeCommandName(args.command) : '';
+  if (requestedCommand) {
+    const definition = commandByName.get(requestedCommand);
+    return {
+      ok: Boolean(definition),
+      command: requestedCommand,
+      ...(definition ? shapeCommandDefinition(definition, true) : { error: 'unknown_command' }),
+    };
+  }
+
+  const requestedDomain = args.domain ? String(args.domain) : '';
+  const domains = {};
+  for (const definition of commandDefinitions) {
+    if (requestedDomain && definition.domain !== requestedDomain) continue;
+    if (!domains[definition.domain]) domains[definition.domain] = [];
+    domains[definition.domain].push(shapeCommandDefinition(definition, includeOptions));
+  }
+  return {
+    ok: true,
+    surface: mcpSurface === 'full' || mcpSurface === 'legacy' ? 'full' : 'compact',
+    usage: 'Use run with one of these command names. Prefer packageName for app-specific commands; install-apk, launch-app, UI, WebView, logcat, network, and permission workflows are supported.',
+    domains,
+  };
+}
+
+function shapeCommandDefinition(definition, includeOptions) {
+  return {
+    command: definition.command,
+    summary: definition.summary,
+    targetApp: Boolean(definition.targetApp),
+    ...(includeOptions ? { options: definition.options || [] } : {}),
+  };
+}
+
+async function runGeneric(args = {}) {
+  const command = normalizeCommandName(args.command);
+  if (!commandByName.has(command)) {
+    return toolText(`unknown command: ${args.command || ''}`, true);
+  }
+  const commandArgs = {
+    ...(args.arguments && typeof args.arguments === 'object' ? args.arguments : {}),
+  };
+  for (const key of ['adb', 'serial', 'port', 'packageName']) {
+    if (args[key] !== undefined && commandArgs[key] === undefined) {
+      commandArgs[key] = args[key];
+    }
+  }
+  return runBridgeChecked(command, commandArgs);
+}
+
+function normalizeCommandName(value) {
+  return String(value || '').trim().replace(/_/g, '-');
+}
+
+function runBridgeChecked(command, args = {}) {
+  const definition = commandByName.get(command);
+  if (definition?.targetApp && !args.packageName && !args.port) {
+    return toolText(`${command}: packageName or explicit port is required in MCP mode so the command cannot fall back to a default package.`, true);
+  }
   return runBridge(command, args);
 }
 
@@ -586,6 +752,10 @@ function toolText(text, isError = false) {
     ],
     isError,
   };
+}
+
+function toolJson(value, isError = false) {
+  return toolText(JSON.stringify(value, null, 2), isError);
 }
 
 function sendResult(id, result) {

@@ -34,7 +34,7 @@ for current dependency coordinates.
 
 ## MCP `input_text` can target a stale package unless `packageName` is explicit
 
-- Status: fixed in desktop MCP `0.2.1`
+- Status: fixed in desktop MCP `0.2.2`
 - Found while validating `C:\project\reader` on OnePlus PKR110, Android SDK 36,
   with desktop MCP server `ai-app-bridge` 0.1.25 and Android runtime 0.1.9.
 - Evidence: while `com.example.reader` was foreground, MCP `status` and `tree`
@@ -51,6 +51,14 @@ for current dependency coordinates.
 - Fix: MCP `input_text` now requires `packageName` in its tool schema and also
   rejects direct `tools/call` requests that omit it, instead of letting the CLI
   fall back to the sample package default.
+- 2026-05-20 hardening: MCP target-app commands now reject calls without
+  `packageName` or explicit `port` before spawning the CLI, so compact `run`
+  and hidden legacy direct tools cannot route through the CLI sample default.
+- Verification: MCP `run status` without `packageName` returned a tool error
+  before ADB/HTTP. MCP `run status` with
+  `packageName=com.example.android.architecture.blueprints.main` on OnePlus
+  PKR110 returned `ok=true`, bridge `0.1.7`, and app package
+  `com.example.android.architecture.blueprints.main`.
 
 ## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
 
@@ -734,7 +742,7 @@ for current dependency coordinates.
 
 ## MCP tool list is large for smaller-context models
 
-- Status: open design follow-up
+- Status: fixed in desktop MCP `0.2.2`; further tuning can continue
 - Found while publishing desktop MCP `0.2.1`: the MCP server exposed 48 tools
   after adding `launch_app` and `launch_activity`.
 - Impact: models with smaller context windows may spend too much prompt budget
@@ -745,6 +753,15 @@ for current dependency coordinates.
   move detailed schemas behind grouped execution tools or domain-specific
   manifests. Do not hide important capabilities such as `install_apk`; shrink
   the resident schema, not the advertised capability set.
+- Fix: default MCP surface now exposes only `capabilities` and `run`.
+  `capabilities` advertises install, launch, UI/action, Flutter, WebView,
+  logcat, network, permission, and diagnostics domains; `run` executes the
+  selected CLI command. Legacy direct tools remain callable and can be listed
+  by launching the server with `AI_APP_BRIDGE_MCP_SURFACE=full`.
+- Compatibility hardening: MCP `initialize` now negotiates supported protocol
+  versions instead of echoing any client version, includes concise server
+  instructions for tool-search clients, supports `ping`, and accepts the
+  standard `notifications/initialized` lifecycle notification.
 
 ## `--help` should not probe ADB or the default sample package
 

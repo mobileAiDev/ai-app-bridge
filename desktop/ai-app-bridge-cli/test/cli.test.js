@@ -1,5 +1,5 @@
 const assert = require('assert/strict');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -49,6 +49,90 @@ const {
 } = require('../bin/ai-app-bridge.js');
 
 const cliPath = path.join(__dirname, '..', 'bin', 'ai-app-bridge.js');
+const mcpPath = path.join(__dirname, '..', 'bin', 'mcp-server.js');
+
+function encodeMcpMessage(message) {
+  const body = JSON.stringify(message);
+  return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
+}
+
+function readMcpMessages(buffer) {
+  const messages = [];
+  let remaining = buffer;
+  while (true) {
+    const marker = remaining.indexOf('\r\n\r\n');
+    if (marker < 0) break;
+    const header = remaining.subarray(0, marker).toString('utf8');
+    const match = /Content-Length:\s*(\d+)/i.exec(header);
+    if (!match) throw new Error(`bad MCP header: ${header}`);
+    const start = marker + 4;
+    const end = start + Number(match[1]);
+    if (remaining.length < end) break;
+    messages.push(JSON.parse(remaining.subarray(start, end).toString('utf8')));
+    remaining = remaining.subarray(end);
+  }
+  return { messages, remaining };
+}
+
+function mcpRequestSequence(requests, options = {}) {
+  const expectedIds = new Set([1, ...requests.filter((request) => request.id !== undefined).map((request) => request.id)]);
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [mcpPath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ...(options.env || {}),
+      },
+    });
+    const responses = new Map();
+    let stdoutBuffer = Buffer.alloc(0);
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`MCP probe timed out. stderr=${stderr}`));
+    }, 8000);
+
+    function finishIfReady() {
+      if ([...expectedIds].every((id) => responses.has(id))) {
+        clearTimeout(timer);
+        child.kill();
+        resolve(responses);
+      }
+    }
+
+    child.stdout.on('data', (chunk) => {
+      stdoutBuffer = Buffer.concat([stdoutBuffer, chunk]);
+      const parsed = readMcpMessages(stdoutBuffer);
+      stdoutBuffer = parsed.remaining;
+      for (const message of parsed.messages) {
+        responses.set(message.id, message);
+        if (message.id === 1) {
+          child.stdin.write(encodeMcpMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+          for (const request of requests) child.stdin.write(encodeMcpMessage(request));
+        }
+      }
+      finishIfReady();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.stdin.write(encodeMcpMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: options.protocolVersion || '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'test-client', version: '0' },
+      },
+    }));
+  });
+}
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -79,6 +163,56 @@ test('help command prints usage without probing adb', () => {
   });
 
   assert.equal(output, `${helpText}\n`);
+});
+
+test('MCP compact surface negotiates protocol and exposes a small capability index', async () => {
+  const responses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'ping' },
+    { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+  ], {
+    env: { AI_APP_BRIDGE_MCP_SURFACE: '' },
+  });
+
+  assert.equal(responses.get(1).result.protocolVersion, '2025-06-18');
+  assert.match(responses.get(1).result.instructions, /capabilities/);
+  assert.deepEqual(responses.get(2).result, {});
+  const tools = responses.get(3).result.tools;
+  assert.deepEqual(tools.map((tool) => tool.name), ['capabilities', 'run']);
+  assert.doesNotMatch(JSON.stringify(tools), /oneOf/);
+});
+
+test('MCP full surface remains available for legacy direct tools without oneOf schemas', async () => {
+  const responses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+  ], {
+    env: { AI_APP_BRIDGE_MCP_SURFACE: 'full' },
+    protocolVersion: '2024-11-05',
+  });
+
+  assert.equal(responses.get(1).result.protocolVersion, '2024-11-05');
+  const tools = responses.get(2).result.tools;
+  const names = tools.map((tool) => tool.name);
+  assert(names.includes('status'));
+  assert(names.includes('install_apk'));
+  assert(names.includes('launch_activity'));
+  assert.doesNotMatch(JSON.stringify(tools.find((tool) => tool.name === 'launch_activity')), /oneOf/);
+});
+
+test('MCP capabilities advertise install and app control while target commands reject sample fallback', async () => {
+  const responses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'capabilities', arguments: { domain: 'app', includeOptions: true } } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run', arguments: { command: 'status' } } },
+    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'status', arguments: {} } },
+  ]);
+
+  const capabilitiesText = responses.get(2).result.content[0].text;
+  assert.match(capabilitiesText, /install-apk/);
+  assert.match(capabilitiesText, /launch-app/);
+  assert.equal(responses.get(3).result.isError, true);
+  assert.match(responses.get(3).result.content[0].text, /packageName or explicit port is required/);
+  assert.doesNotMatch(responses.get(3).result.content[0].text, /sample/);
+  assert.equal(responses.get(4).result.isError, true);
+  assert.match(responses.get(4).result.content[0].text, /packageName or explicit port is required/);
 });
 
 test('parseArgs keeps repeated launch categories and extras', () => {
