@@ -9,6 +9,28 @@ to match the current public repository naming. They are retained as issue
 evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
 for current dependency coordinates.
 
+## Current triage snapshot, 2026-05-20
+
+- Standard MCP stdio is working with desktop package `0.2.2`: `initialize`
+  negotiated protocol `2025-06-18`, `ping` returned `{}`, `tools/list`
+  exposed only `capabilities` and `run`, and `capabilities` advertised 52
+  command entries.
+- Real-device MCP `tools/call run` validation on OnePlus PKR110 passed core
+  launch/status/tree/uia-tree/screenshot/logcat/capture checks for
+  `android-architecture-samples`, `AntennaPod`, `Jetchat`, `NewPipe`, and
+  `nowinandroid`. Serialized follow-up validation passed `platform_design`
+  launch/status/flutter-nodes.
+- First-pass failures for DuckDuckGo and Flutter packages were not accepted as
+  confirmed bridge bugs because that broad matrix changed foreground apps and
+  stressed ADB while continuing to probe older targets. Re-run failing points
+  serially before treating them as product defects.
+- `appops-set` failed on PKR110 with Android shell permission
+  `MANAGE_APP_OPS_MODES`; this is a platform/device permission limitation, not
+  a bridge behavior bug.
+- The confirmed product bug from this pass is explicit package port discovery
+  falling back to the default port. It is fixed for desktop CLI/MCP `0.2.3`
+  below.
+
 ## MCP `input_text hideKeyboard=true` can report hidden while IME remains visible
 
 - Status: open
@@ -59,6 +81,41 @@ for current dependency coordinates.
   `packageName=com.example.android.architecture.blueprints.main` on OnePlus
   PKR110 returned `ok=true`, bridge `0.1.7`, and app package
   `com.example.android.architecture.blueprints.main`.
+
+## Explicit `--package-name` port discovery could fall back to the default port
+
+- Status: fixed in desktop CLI/MCP `0.2.3`
+- Found while running the 2026-05-20 standard MCP TestProject matrix on OnePlus
+  PKR110.
+- Evidence:
+  - `status --package-name com.android.launcher` could not read
+    `files/ai_app_bridge_port.json` through `run-as`, but still attempted
+    `http://127.0.0.1:18080/v1/status` with
+    `devicePortSource=default-port`.
+  - In a multi-app validation run, that same fallback shape appeared on
+    `network`, `state`, and `events` after the target package could not be
+    resolved cleanly, which can make an agent query whichever bridged app owns
+    the default port.
+- Impact: even when an MCP client correctly supplied `packageName`, the desktop
+  CLI could still contact the default port after package port discovery failed.
+  If another bridged app or sample owned that port, the agent could observe the
+  wrong app.
+- Fix: when `--package-name` is explicit, port discovery failure is now a hard
+  `bridge_port_discovery_failed` result. The historical default-port fallback
+  remains only for the CLI's implicit default sample package path or when the
+  user explicitly supplies `--port`.
+- Verification:
+  - Unit test
+    `explicit package port discovery failure does not fall back to default
+    sample port` passed.
+  - Real-device negative check after the fix:
+    `status --package-name com.android.launcher` returned
+    `bridge_port_discovery_failed` with `devicePortSource=package-port-file`
+    and no HTTP request to a discovered app bridge.
+  - Real-device positive checks still passed when a TestProject app had a valid
+    port file: `Jetchat` reported bridge `0.1.8` on port `18081`, and
+    `platform_design` reported bridge `0.1.8` on port `18080` plus Flutter
+    operable nodes.
 
 ## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
 

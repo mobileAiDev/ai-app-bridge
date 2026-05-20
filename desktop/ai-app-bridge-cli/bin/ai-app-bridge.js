@@ -792,14 +792,30 @@ async function resolveDevicePort(ctx) {
       return { port: discoveredPort, source: 'package-port-file', state };
     }
   } catch (error) {
-    // Fall back to the historical default port for older bridge versions.
+    if (!shouldUseDefaultPortFallback(ctx)) {
+      ctx.devicePortSource = 'package-port-file';
+      ctx.devicePortError = firstErrorLine(error);
+      error.aiAppBridgePortDiscovery = true;
+      throw error;
+    }
     return {
       port: ctx.port,
       source: 'default-port',
       error: firstErrorLine(error),
     };
   }
+  if (!shouldUseDefaultPortFallback(ctx)) {
+    const error = new Error(`bridge port discovery failed for explicit package: ${ctx.packageName}`);
+    error.aiAppBridgePortDiscovery = true;
+    ctx.devicePortSource = 'package-port-file';
+    ctx.devicePortError = firstErrorLine(error);
+    throw error;
+  }
   return { port: ctx.port, source: 'default-port' };
+}
+
+function shouldUseDefaultPortFallback(ctx) {
+  return !ctx.explicitPackageName;
 }
 
 async function bridgeStatus(ctx, options = {}) {
@@ -960,7 +976,7 @@ function normalizeBridgeError(error) {
       suggestion: 'Check the device state and retry; if the bridge port is known, pass --port to skip package port discovery.',
     };
   }
-  if (lower.includes('run-as') || lower.includes('package not found')) {
+  if (error?.aiAppBridgePortDiscovery || lower.includes('bridge port discovery failed') || lower.includes('run-as') || lower.includes('package not found')) {
     return {
       code: 'bridge_port_discovery_failed',
       message,
@@ -4300,6 +4316,7 @@ module.exports = {
   pruneGeneratedArtifacts,
   shouldSkipInstallerTapForInstalledPackage,
   shouldDismissKeyboardForPoint,
+  shouldUseDefaultPortFallback,
   screenshotOutputPath,
   statusSearchText,
   uiautomatorLockPath,

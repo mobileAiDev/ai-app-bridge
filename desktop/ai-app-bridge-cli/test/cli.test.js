@@ -41,6 +41,7 @@ const {
   pruneGeneratedArtifacts,
   shouldSkipInstallerTapForInstalledPackage,
   shouldDismissKeyboardForPoint,
+  shouldUseDefaultPortFallback,
   screenshotOutputPath,
   statusSearchText,
   uiautomatorLockPath,
@@ -423,6 +424,69 @@ test('normalizes status HTTP timeout as structured not-ready status', () => {
 test('normalizes adb timeout separately from bridge HTTP readiness', () => {
   const normalized = normalizeBridgeError(new Error('adb timed out after 15000ms: adb shell run-as app cat file'));
   assert.equal(normalized.code, 'adb_timeout');
+});
+
+test('explicit package port discovery failure does not fall back to default sample port', () => {
+  assert.equal(shouldUseDefaultPortFallback({ explicitPackageName: true }), false);
+  assert.equal(shouldUseDefaultPortFallback({ explicitPackageName: false }), true);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-adb-mock-'));
+  const logPath = path.join(tempDir, 'adb.log');
+  const isWindows = process.platform === 'win32';
+  const adbPath = path.join(tempDir, isWindows ? 'adb.cmd' : 'adb');
+  const script = isWindows
+    ? [
+      '@echo off',
+      `echo %*>>"${logPath}"`,
+      'echo %* | findstr /C:"shell run-as" >nul',
+      'if %errorlevel%==0 (',
+      '  echo run-as failed 1>&2',
+      '  exit /b 1',
+      ')',
+      'echo unexpected adb call %* 1>&2',
+      'exit /b 1',
+      '',
+    ].join('\r\n')
+    : [
+      '#!/bin/sh',
+      `printf '%s\\n' "$*" >> '${logPath}'`,
+      'case "$*" in',
+      '  *"shell run-as"*) echo "run-as failed" >&2; exit 1 ;;',
+      '  *) echo "unexpected adb call $*" >&2; exit 1 ;;',
+      'esac',
+      '',
+    ].join('\n');
+
+  try {
+    fs.writeFileSync(adbPath, script);
+    if (!isWindows) fs.chmodSync(adbPath, 0o755);
+
+    const output = execFileSync(process.execPath, [
+      cliPath,
+      'status',
+      '--package-name',
+      'com.example.noport',
+    ], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ADB: adbPath,
+      },
+    });
+
+    const result = JSON.parse(output);
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'bridge_port_discovery_failed');
+    assert.equal(result.packageName, 'com.example.noport');
+    assert.equal(result.attempted.devicePortSource, 'package-port-file');
+
+    if (fs.existsSync(logPath)) {
+      const adbLog = fs.readFileSync(logPath, 'utf8');
+      assert.doesNotMatch(adbLog, /forward/);
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('parses foreground package and activity from window dumpsys lines', () => {
