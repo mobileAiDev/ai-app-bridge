@@ -166,6 +166,32 @@ for current dependency coordinates.
     `input-flutter-text`, `scroll-flutter maxSwipes`, and
     `smoke --skip-flutter-launch`.
 
+## MCP has no generic shell command
+
+- Status: app-data reset fixed in desktop CLI/MCP `0.2.6`; generic shell
+  remains intentionally unsupported
+- Found while validating `C:\project\reader` on OnePlus PKR110 through the
+  standard JSON-RPC `tools/call` path.
+- Evidence:
+  - `capabilities` advertised app launch/install, UI, logcat, network, state,
+    events, permissions, appops, WebView, Flutter, forward, remove-forward, and
+    batch commands, but no generic `shell` command.
+  - Attempting the local JSON-RPC helper shape
+    `node build\tmp\reader-mcp-jsonrpc.mjs shell pm clear com.ldp.reader`
+    returned `unknown command: shell`.
+  - Earlier versions had no advertised command equivalent to Android app-data
+    reset such as `pm clear <package>`.
+- Fix: desktop CLI/MCP `0.2.6` adds `clear-app-data`. With Android runtime
+  `0.2.1+`, it calls the in-app `/v1/app/clear-data` endpoint so the app clears
+  its own SharedPreferences, databases, caches, files, app WebView data, and
+  bridge capture buffers without needing `CLEAR_APP_USER_DATA`. Older runtimes
+  can still fall back to `adb shell pm clear <package>` where the device allows
+  it. The command requires an explicit `packageName` in both CLI and MCP mode so
+  it cannot clear the default sample package by accident.
+- Boundary: this does not add a generic shell tool. Validation flows that need
+  app-data reset should use `clear-app-data`; arbitrary shell remains outside
+  the public MCP command surface.
+
 ## MCP `logcat --app-pid` returns bare `ok` for empty app-filtered output
 
 - Status: fixed in desktop MCP/CLI `0.2.1`

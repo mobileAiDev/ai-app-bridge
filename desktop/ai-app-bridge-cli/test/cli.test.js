@@ -8,6 +8,7 @@ const test = require('node:test');
 const {
   buildBridgeFailureResult,
   artifactTimestamp,
+  clearAppDataAdbArgs,
   compactBridgeTree,
   compactStatus,
   compactUiaTree,
@@ -77,6 +78,24 @@ function readMcpMessages(buffer) {
   return { messages, remaining };
 }
 
+function encodeLineJsonMessage(message) {
+  return `${JSON.stringify(message)}\n`;
+}
+
+function readLineJsonMessages(buffer) {
+  const messages = [];
+  let remaining = buffer;
+  while (true) {
+    const marker = remaining.indexOf('\n');
+    if (marker < 0) break;
+    const end = marker > 0 && remaining[marker - 1] === 13 ? marker - 1 : marker;
+    const line = remaining.subarray(0, end).toString('utf8');
+    if (line.trim()) messages.push(JSON.parse(line));
+    remaining = remaining.subarray(marker + 1);
+  }
+  return { messages, remaining };
+}
+
 function mcpRequestSequence(requests, options = {}) {
   const expectedIds = new Set([1, ...requests.filter((request) => request.id !== undefined).map((request) => request.id)]);
   return new Promise((resolve, reject) => {
@@ -137,6 +156,68 @@ function mcpRequestSequence(requests, options = {}) {
   });
 }
 
+function lineJsonMcpRequestSequence(requests, options = {}) {
+  const expectedIds = new Set([1, ...requests.filter((request) => request.id !== undefined).map((request) => request.id)]);
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [mcpPath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ...(options.env || {}),
+      },
+    });
+    const responses = new Map();
+    let stdoutBuffer = Buffer.alloc(0);
+    let stderr = '';
+    let sawFramedOutput = false;
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`line JSON MCP probe timed out. stderr=${stderr}`));
+    }, 8000);
+
+    function finishIfReady() {
+      if ([...expectedIds].every((id) => responses.has(id))) {
+        clearTimeout(timer);
+        child.kill();
+        resolve({ responses, sawFramedOutput });
+      }
+    }
+
+    child.stdout.on('data', (chunk) => {
+      stdoutBuffer = Buffer.concat([stdoutBuffer, chunk]);
+      sawFramedOutput = sawFramedOutput || stdoutBuffer.includes(Buffer.from('Content-Length:'));
+      const parsed = readLineJsonMessages(stdoutBuffer);
+      stdoutBuffer = parsed.remaining;
+      for (const message of parsed.messages) {
+        responses.set(message.id, message);
+        if (message.id === 1) {
+          child.stdin.write(encodeLineJsonMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+          for (const request of requests) child.stdin.write(encodeLineJsonMessage(request));
+        }
+      }
+      finishIfReady();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.stdin.write(encodeLineJsonMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: options.protocolVersion || '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'line-json-test-client', version: '0' },
+      },
+    }));
+  });
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -184,6 +265,20 @@ test('MCP compact surface negotiates protocol and exposes a small capability ind
   assert.doesNotMatch(JSON.stringify(tools), /oneOf/);
 });
 
+test('MCP accepts single-line JSON and responds with single-line JSON', async () => {
+  const { responses, sawFramedOutput } = await lineJsonMcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'ping' },
+    { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+  ], {
+    env: { AI_APP_BRIDGE_MCP_SURFACE: '' },
+  });
+
+  assert.equal(responses.get(1).result.protocolVersion, '2025-06-18');
+  assert.deepEqual(responses.get(2).result, {});
+  assert.deepEqual(responses.get(3).result.tools.map((tool) => tool.name), ['capabilities', 'run']);
+  assert.equal(sawFramedOutput, false);
+});
+
 test('MCP full surface remains available for legacy direct tools without oneOf schemas', async () => {
   const responses = await mcpRequestSequence([
     { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
@@ -201,21 +296,28 @@ test('MCP full surface remains available for legacy direct tools without oneOf s
   assert.doesNotMatch(JSON.stringify(tools.find((tool) => tool.name === 'launch_activity')), /oneOf/);
 });
 
-test('MCP capabilities advertise install and app control while target commands reject sample fallback', async () => {
+test('MCP capabilities advertise install, data clear, and app control while target commands reject sample fallback', async () => {
   const responses = await mcpRequestSequence([
     { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'capabilities', arguments: { domain: 'app', includeOptions: true } } },
     { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run', arguments: { command: 'status' } } },
     { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'status', arguments: {} } },
+    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'run', arguments: { command: 'clear-app-data' } } },
+    { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'clear_app_data', arguments: {} } },
   ]);
 
   const capabilitiesText = responses.get(2).result.content[0].text;
   assert.match(capabilitiesText, /install-apk/);
+  assert.match(capabilitiesText, /clear-app-data/);
   assert.match(capabilitiesText, /launch-app/);
   assert.equal(responses.get(3).result.isError, true);
   assert.match(responses.get(3).result.content[0].text, /packageName or explicit port is required/);
   assert.doesNotMatch(responses.get(3).result.content[0].text, /sample/);
   assert.equal(responses.get(4).result.isError, true);
   assert.match(responses.get(4).result.content[0].text, /packageName or explicit port is required/);
+  assert.equal(responses.get(5).result.isError, true);
+  assert.match(responses.get(5).result.content[0].text, /packageName is required/);
+  assert.equal(responses.get(6).result.isError, true);
+  assert.match(responses.get(6).result.content[0].text, /packageName is required/);
 });
 
 test('MCP capabilities advertise batch as a run command without adding another compact tool', async () => {
@@ -398,6 +500,34 @@ test('parseArgs keeps repeated launch categories and extras', () => {
   assert.equal(parsed.options.activity, '.MainActivity');
   assert.deepEqual(parsed.options.category, ['android.intent.category.DEFAULT', 'com.example.CUSTOM']);
   assert.deepEqual(parsed.options.extra, ['first=1', 'second=two=kept']);
+});
+
+test('clear-app-data requires an explicit package and builds adb pm clear args', () => {
+  let missingPackage;
+  try {
+    execFileSync(process.execPath, [
+      cliPath,
+      'clear-app-data',
+    ], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ADB: 'adb-that-should-not-run',
+      },
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    missingPackage = error;
+  }
+  assert(missingPackage);
+  assert.match(String(missingPackage.stderr), /packageName is required for clear-app-data/);
+
+  assert.deepEqual(clearAppDataAdbArgs('com.example.app'), ['shell', 'pm', 'clear', 'com.example.app']);
+  const args = buildBridgeCliArgs('clear-app-data', { packageName: 'com.example.app' });
+  assert.deepEqual(args.slice(0, 2), [cliPath, 'clear-app-data']);
+  const packageIndex = args.indexOf('--package-name');
+  assert.notEqual(packageIndex, -1);
+  assert.equal(args[packageIndex + 1], 'com.example.app');
 });
 
 test('launch helpers parse and normalize Android Activity components', () => {

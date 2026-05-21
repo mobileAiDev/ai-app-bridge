@@ -6,6 +6,7 @@ npm install -g @mobileaidev/ai-app-bridge
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge install-apk --package-name io.github.mobileaidev.aiappbridge.sample --apk-path app-debug.apk
+ai-app-bridge clear-app-data --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge launch-app --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge launch-activity --package-name io.github.mobileaidev.aiappbridge.sample --activity .MainActivity --extra route=/home
 ai-app-bridge screenshot --package-name io.github.mobileaidev.aiappbridge.sample
@@ -21,11 +22,16 @@ into the model context:
 - `capabilities` lists the bridge domains and command names.
 - `run` executes a selected command with command-specific arguments.
 
-This keeps install, launch, UI, Flutter, WebView, logcat, network, and
-permission capabilities discoverable without exposing dozens of full schemas at
-session start. Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
+This keeps install, data reset, launch, UI, Flutter, WebView, logcat, network,
+and permission capabilities discoverable without exposing dozens of full schemas
+at session start. Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
 `ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
 surface.
+
+The MCP server accepts both standard `Content-Length` framed JSON-RPC messages
+and single-line JSON messages. Responses use the format of the first request on
+that connection, so standard MCP clients keep framed responses while local
+Node REPL scripts can send and read one JSON object per line.
 
 For multi-step app automation, call `run` with `command: "batch"`. Batch steps
 run serially in one MCP call, so a failed step can stop and mark the remaining

@@ -70,6 +70,7 @@ Device/action commands:
 
 App/permission commands:
   install-apk            Install an APK and assist device-side installer screens.
+  clear-app-data         Clear target app local data through the bridge runtime.
   launch-app             Launch the target package LAUNCHER Activity.
   launch-activity        Launch an explicit Android Activity component.
   launch-native-test     Launch the debug native Android bridge test Activity.
@@ -298,6 +299,8 @@ async function runCommand(command, options, ctx) {
       return hideKeyboard(ctx, options);
     case 'install-apk':
       return installApk(ctx, options);
+    case 'clear-app-data':
+      return clearAppData(ctx);
     case 'webview-pages':
       return webviewPages(ctx, options);
     case 'webview-network':
@@ -3710,6 +3713,59 @@ async function appopsSet(ctx, op, mode) {
   };
 }
 
+async function clearAppData(ctx) {
+  if (!ctx.explicitPackageName) {
+    throw new Error('packageName is required for clear-app-data');
+  }
+  let bridgeError = null;
+  try {
+    const bridgeResult = await bridgePost(ctx, '/v1/app/clear-data', {});
+    return {
+      ...bridgeResult,
+      packageName: ctx.packageName,
+      method: 'bridge-runtime',
+    };
+  } catch (error) {
+    bridgeError = firstErrorLine(error);
+  }
+
+  let result;
+  try {
+    result = await adb(ctx, clearAppDataAdbArgs(ctx.packageName));
+  } catch (error) {
+    return {
+      ok: false,
+      packageName: ctx.packageName,
+      action: 'clear-app-data',
+      error: 'clear_app_data_failed',
+      bridgeError,
+      message: error.message || String(error),
+    };
+  }
+  const output = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+  if (!/^Success\b/im.test(output)) {
+    return {
+      ok: false,
+      packageName: ctx.packageName,
+      error: 'clear_app_data_failed',
+      bridgeError,
+      output,
+    };
+  }
+  return {
+    ok: true,
+    packageName: ctx.packageName,
+    action: 'clear-app-data',
+    method: 'pm-clear',
+    bridgeError,
+    output,
+  };
+}
+
+function clearAppDataAdbArgs(packageName) {
+  return ['shell', 'pm', 'clear', packageName];
+}
+
 async function resolveLogcatPid(ctx, options) {
   if (options.pid && options.pid !== true && options.pid !== 'current') {
     return String(options.pid);
@@ -4304,6 +4360,7 @@ function requiredNumber(value, name) {
 
 module.exports = {
   buildBridgeFailureResult,
+  clearAppDataAdbArgs,
   defaultInstallerButtonTexts,
   artifactTimestamp,
   compactBridgeTree,

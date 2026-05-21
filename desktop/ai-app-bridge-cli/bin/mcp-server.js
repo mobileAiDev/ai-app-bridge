@@ -11,12 +11,13 @@ const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
 const defaultProtocolVersion = supportedProtocolVersions[0];
 const mcpSurface = (process.env.AI_APP_BRIDGE_MCP_SURFACE || 'compact').toLowerCase();
 const serverInstructions = [
-  'AI App Bridge observes and controls Android apps for agent workflows. Prefer these tools over raw adb when inspecting UI, text, WebView, logs, network, app install, launch, and permissions.',
+  'AI App Bridge observes and controls Android apps for agent workflows. Prefer these tools over raw adb when inspecting UI, text, WebView, logs, network, app install, data reset, launch, and permissions.',
   'Default surface is compact: call capabilities to discover domains, then call run with a command and arguments.',
   'Always pass packageName for app-specific commands, or pass an explicit port. Do not rely on a sample/default package in MCP sessions.',
 ].join(' ');
 
 let buffer = Buffer.alloc(0);
+let responseFormat = null;
 
 function startServer() {
   process.stdin.on('data', (chunk) => {
@@ -29,28 +30,71 @@ function startServer() {
 
 function drainMessages() {
   while (true) {
-    const delimiter = findHeaderDelimiter(buffer);
-    const headerEnd = delimiter.index;
-    if (headerEnd < 0) {
+    const parsed = readNextMessage(buffer);
+    if (!parsed) {
       return;
     }
-    const header = buffer.subarray(0, headerEnd).toString('utf8');
-    const match = /^Content-Length:\s*(\d+)$/im.exec(header);
-    if (!match) {
-      buffer = buffer.subarray(headerEnd + delimiter.length);
-      continue;
-    }
-    const contentLength = Number(match[1]);
-    const messageStart = headerEnd + delimiter.length;
-    const messageEnd = messageStart + contentLength;
-    if (buffer.length < messageEnd) {
-      return;
-    }
-    const body = buffer.subarray(messageStart, messageEnd).toString('utf8');
-    buffer = buffer.subarray(messageEnd);
-    handleMessage(body).catch((error) => {
+    buffer = parsed.remaining;
+    setResponseFormat(parsed.format);
+    handleMessage(parsed.body).catch((error) => {
       writeLog(`unhandled message error: ${error.stack || error}`);
     });
+  }
+}
+
+function readNextMessage(source) {
+  const text = source.toString('utf8');
+  if (/^Content-Length:/i.test(text)) {
+    return readContentLengthMessage(source);
+  }
+  return readLineJsonMessage(source);
+}
+
+function readContentLengthMessage(source) {
+  const delimiter = findHeaderDelimiter(source);
+  const headerEnd = delimiter.index;
+  if (headerEnd < 0) {
+    return null;
+  }
+  const header = source.subarray(0, headerEnd).toString('utf8');
+  const match = /^Content-Length:\s*(\d+)$/im.exec(header);
+  if (!match) {
+    return {
+      body: source.subarray(headerEnd + delimiter.length).toString('utf8'),
+      format: 'frame',
+      remaining: Buffer.alloc(0),
+    };
+  }
+  const contentLength = Number(match[1]);
+  const messageStart = headerEnd + delimiter.length;
+  const messageEnd = messageStart + contentLength;
+  if (source.length < messageEnd) {
+    return null;
+  }
+  return {
+    body: source.subarray(messageStart, messageEnd).toString('utf8'),
+    format: 'frame',
+    remaining: source.subarray(messageEnd),
+  };
+}
+
+function readLineJsonMessage(source) {
+  const lfIndex = source.indexOf('\n');
+  if (lfIndex < 0) {
+    return null;
+  }
+  const lineEnd = lfIndex > 0 && source[lfIndex - 1] === 13 ? lfIndex - 1 : lfIndex;
+  const body = source.subarray(0, lineEnd).toString('utf8');
+  return {
+    body,
+    format: 'line',
+    remaining: source.subarray(lfIndex + 1),
+  };
+}
+
+function setResponseFormat(format) {
+  if (!responseFormat) {
+    responseFormat = format;
   }
 }
 
@@ -272,6 +316,7 @@ function fullToolDefinitions() {
       installerTimeoutMs: { type: 'number', description: 'Maximum time to keep assisting installer screens after adb install exits. Defaults to 90000 ms.' },
       intervalMs: { type: 'number', description: 'Installer polling interval. Defaults to 700 ms.' },
     }, ['apkPath']),
+    bridgeTool('clear_app_data', 'Clear target app local data through the bridge runtime. Requires packageName so it cannot target the sample package by default.', {}, ['packageName']),
     bridgeTool('launch_app', 'Launch the target package LAUNCHER Activity. If multiple launcher Activities exist, returns launcher_ambiguous with candidates unless activity or component is explicit.', launchProperties()),
     bridgeTool('launch_activity', 'Launch an explicit Android Activity component, optionally with action/data/category/string extras.', launchProperties()),
     bridgeTool('launch_native_test', 'Launch the debug native Android bridge test Activity.'),
@@ -405,6 +450,7 @@ const commandDefinitions = [
   { command: 'events', domain: 'core', summary: 'Read in-app event records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
   { command: 'install-apk', domain: 'app', summary: 'Install an APK and assist device-side installer confirmation screens.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'streaming', 'installTimeoutMs', 'installerTimeoutMs', 'intervalMs'] },
+  { command: 'clear-app-data', domain: 'app', summary: 'Clear target app local data through the bridge runtime.', targetApp: true, options: ['serial', 'packageName'] },
   { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-native-test', domain: 'app', summary: 'Launch the debug native bridge test Activity.', targetApp: true, options: ['serial', 'packageName'] },
@@ -481,6 +527,7 @@ async function callTool(name, args) {
     input_flutter_text: 'input-flutter-text',
     uia_tree: 'uia-tree',
     install_apk: 'install-apk',
+    clear_app_data: 'clear-app-data',
     launch_app: 'launch-app',
     launch_activity: 'launch-activity',
     launch_native_test: 'launch-native-test',
@@ -526,7 +573,7 @@ function capabilityPayload(args = {}) {
   return {
     ok: true,
     surface: mcpSurface === 'full' || mcpSurface === 'legacy' ? 'full' : 'compact',
-    usage: 'Use run with one of these command names. Prefer packageName for app-specific commands; install-apk, launch-app, UI, WebView, logcat, network, and permission workflows are supported.',
+    usage: 'Use run with one of these command names. Prefer packageName for app-specific commands; install-apk, clear-app-data, launch-app, UI, WebView, logcat, network, and permission workflows are supported.',
     domains,
   };
 }
@@ -564,6 +611,9 @@ function normalizeCommandName(value) {
 }
 
 function runBridgeChecked(command, args = {}) {
+  if (command === 'clear-app-data' && !args.packageName) {
+    return toolText('clear-app-data: packageName is required in MCP mode so the command cannot clear a default package.', true);
+  }
   const definition = commandByName.get(command);
   if (definition?.targetApp && !args.packageName && !args.port) {
     return toolText(`${command}: packageName or explicit port is required in MCP mode so the command cannot fall back to a default package.`, true);
@@ -1016,6 +1066,10 @@ function sendError(id, code, message) {
 
 function send(message) {
   const body = Buffer.from(JSON.stringify(message), 'utf8');
+  if (responseFormat === 'line') {
+    process.stdout.write(`${body.toString('utf8')}\n`);
+    return;
+  }
   process.stdout.write(`Content-Length: ${body.length}\r\n\r\n`);
   process.stdout.write(body);
 }
@@ -1030,6 +1084,7 @@ if (require.main === module) {
 
 module.exports = {
   buildBridgeCliArgs,
+  readNextMessage,
   runBatch,
   startServer,
 };

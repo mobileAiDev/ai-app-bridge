@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val maxEventEntries = 300
     private const val maxStateEntries = 200
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.2.0"
+    private const val bridgeVersion = "0.2.1"
     private const val redactedValue = "[redacted]"
     private val sensitiveKeyPattern = Regex(
         "(?i)(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
@@ -933,6 +933,9 @@ object AiAppBridge {
                         request.method == "POST" && request.path == "/v1/events" -> {
                             writeJson(socket, 200, postEvent(request.body))
                         }
+                        request.method == "POST" && request.path == "/v1/app/clear-data" -> {
+                            writeJson(socket, 200, clearAppData())
+                        }
                         else -> {
                             writeJson(
                                 socket,
@@ -1002,6 +1005,80 @@ object AiAppBridge {
                 tail[(start + 1) % tail.size] == '\n'.code &&
                 tail[(start + 2) % tail.size] == '\r'.code &&
                 tail[(start + 3) % tail.size] == '\n'.code
+        }
+
+        private fun clearAppData(): JSONObject {
+            val cleared = JSONArray()
+            val failures = JSONArray()
+            synchronized(captureLock) {
+                logEntries.clear()
+                networkEntries.clear()
+                eventEntries.clear()
+                stateEntries.clear()
+            }
+            cleared.put("runtime-captures")
+
+            context.databaseList().forEach { databaseName ->
+                if (context.deleteDatabase(databaseName)) {
+                    cleared.put("database:$databaseName")
+                } else {
+                    failures.put("database:$databaseName")
+                }
+            }
+
+            deletePathContents("files", context.filesDir, cleared, failures)
+            deletePathContents("cache", context.cacheDir, cleared, failures)
+            deletePathContents("code-cache", context.codeCacheDir, cleared, failures)
+            deletePathContents("no-backup", context.noBackupFilesDir, cleared, failures)
+            context.getExternalFilesDirs(null).forEachIndexed { index, dir ->
+                deletePathContents("external-files-$index", dir, cleared, failures)
+            }
+            context.externalCacheDirs.forEachIndexed { index, dir ->
+                deletePathContents("external-cache-$index", dir, cleared, failures)
+            }
+
+            val dataDir = File(context.applicationInfo.dataDir)
+            deletePathContents("shared-prefs", File(dataDir, "shared_prefs"), cleared, failures)
+            deletePathContents("datastore", File(dataDir, "datastore"), cleared, failures)
+            deletePathContents("app-webview", File(dataDir, "app_webview"), cleared, failures)
+            writePortState(ok = true, port = activePort.get(), error = null)
+
+            return JSONObject()
+                .put("ok", failures.length() == 0)
+                .put("action", "clear-app-data")
+                .put(
+                    "app",
+                    JSONObject()
+                        .put("packageName", context.packageName),
+                )
+                .put("cleared", cleared)
+                .put("failures", failures)
+                .put("updatedAtMs", System.currentTimeMillis())
+        }
+
+        private fun deletePathContents(
+            label: String,
+            directory: File?,
+            cleared: JSONArray,
+            failures: JSONArray,
+        ) {
+            if (directory == null || !directory.exists()) {
+                return
+            }
+            val children = directory.listFiles()
+            if (children == null) {
+                failures.put(label)
+                return
+            }
+            var deleted = 0
+            children.forEach { child ->
+                if (child.deleteRecursively()) {
+                    deleted += 1
+                } else {
+                    failures.put("$label/${child.name}")
+                }
+            }
+            cleared.put(JSONObject().put("path", label).put("entries", deleted))
         }
 
         private fun buildStatus(): JSONObject {
