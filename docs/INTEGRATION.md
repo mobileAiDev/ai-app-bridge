@@ -20,7 +20,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.0")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.1")
 }
 ```
 
@@ -58,7 +58,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.0"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.2.1"
 }
 
 aiAppBridge {
