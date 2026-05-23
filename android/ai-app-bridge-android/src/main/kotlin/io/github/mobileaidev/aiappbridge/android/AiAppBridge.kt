@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val maxEventEntries = 300
     private const val maxStateEntries = 200
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.2.1"
+    private const val bridgeVersion = "0.2.7"
     private const val redactedValue = "[redacted]"
     private val sensitiveKeyPattern = Regex(
         "(?i)(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
