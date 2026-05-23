@@ -1,9 +1,8 @@
 # Changelog
 
-## 0.2.7
+## 0.2.1
 
 - Uses Android runtime 0.2.7 for debug builds.
-- Aligns the Flutter package version with the Android bridge and desktop CLI 0.2.7 release.
 
 ## 0.2.0
 
