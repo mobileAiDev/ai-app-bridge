@@ -116,7 +116,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.0
+  ai_app_bridge_flutter: ^0.2.7
 ```
 
 初始化一次：
