@@ -29,6 +29,7 @@ const {
   parseWebViewDevToolsSockets,
   parseArgs,
   parseKeyboardState,
+  parsePackagePidsFromPs,
   parseLauncherActivityCandidates,
   parseStartExtras,
   parseUiaBounds,
@@ -296,17 +297,20 @@ test('MCP full surface remains available for legacy direct tools without oneOf s
   assert.doesNotMatch(JSON.stringify(tools.find((tool) => tool.name === 'launch_activity')), /oneOf/);
 });
 
-test('MCP capabilities advertise install, data clear, and app control while target commands reject sample fallback', async () => {
+test('MCP capabilities advertise install, freeze/thaw, data clear, and app control while target commands reject sample fallback', async () => {
   const responses = await mcpRequestSequence([
     { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'capabilities', arguments: { domain: 'app', includeOptions: true } } },
     { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run', arguments: { command: 'status' } } },
     { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'status', arguments: {} } },
     { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'run', arguments: { command: 'clear-app-data' } } },
     { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'clear_app_data', arguments: {} } },
+    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'run', arguments: { command: 'freeze-app' } } },
   ]);
 
   const capabilitiesText = responses.get(2).result.content[0].text;
   assert.match(capabilitiesText, /install-apk/);
+  assert.match(capabilitiesText, /freeze-app/);
+  assert.match(capabilitiesText, /thaw-app/);
   assert.match(capabilitiesText, /clear-app-data/);
   assert.match(capabilitiesText, /launch-app/);
   assert.equal(responses.get(3).result.isError, true);
@@ -318,6 +322,8 @@ test('MCP capabilities advertise install, data clear, and app control while targ
   assert.match(responses.get(5).result.content[0].text, /packageName is required/);
   assert.equal(responses.get(6).result.isError, true);
   assert.match(responses.get(6).result.content[0].text, /packageName is required/);
+  assert.equal(responses.get(7).result.isError, true);
+  assert.match(responses.get(7).result.content[0].text, /packageName is required/);
 });
 
 test('MCP capabilities advertise batch as a run command without adding another compact tool', async () => {
@@ -479,6 +485,21 @@ test('MCP run forwards advertised compact options to the CLI argument list', () 
     assert.notEqual(index, -1, `${flag} is forwarded`);
     assert.equal(args[index + 1], value);
   }
+});
+
+test('MCP run forwards freeze/thaw commands and explicit pid to the CLI argument list', () => {
+  const freezeArgs = buildBridgeCliArgs('freeze-app', {
+    packageName: 'com.example.app',
+    serial: 'device-1',
+    pid: '1234',
+  });
+  assert.deepEqual(freezeArgs.slice(0, 2), [cliPath, 'freeze-app']);
+  assert.equal(freezeArgs[freezeArgs.indexOf('--package-name') + 1], 'com.example.app');
+  assert.equal(freezeArgs[freezeArgs.indexOf('--serial') + 1], 'device-1');
+  assert.equal(freezeArgs[freezeArgs.indexOf('--pid') + 1], '1234');
+
+  const thawArgs = buildBridgeCliArgs('thaw-app', { packageName: 'com.example.app' });
+  assert.deepEqual(thawArgs.slice(0, 2), [cliPath, 'thaw-app']);
 });
 
 test('parseArgs keeps repeated launch categories and extras', () => {
@@ -1305,6 +1326,18 @@ test('parses and selects WebView DevTools sockets by target package pid', () => 
 
   const explicit = chooseWebViewDevToolsSocket(sockets, { socketName: '@webview_devtools_remote_1111' }, ['2222']);
   assert.equal(explicit.socket.name, 'webview_devtools_remote_1111');
+});
+
+test('parses package main and remote process pids from Android ps output', () => {
+  const pids = parsePackagePidsFromPs([
+    'PID NAME',
+    '123 com.example.app',
+    '124 com.example.app:remote',
+    '125 com.example.app.debug',
+    '126 other.process',
+  ].join('\n'), 'com.example.app');
+
+  assert.deepEqual(pids, ['123', '124']);
 });
 
 test('selects WebView CDP page by target id, URL filter, then first page', () => {

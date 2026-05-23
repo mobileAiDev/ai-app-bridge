@@ -31,6 +31,8 @@ Commands:
   network                Read generic in-app network records.
   state                  Read generic in-app state records.
   events                 Read generic in-app event records.
+  freeze-app             Stop the target app processes with SIGSTOP.
+  thaw-app               Resume the target app processes with SIGCONT.
 
 H5/WebView commands:
   h5-dom                 Read native Android WebView DOM.
@@ -156,7 +158,7 @@ Options:
   --permission <name>    Android permission for permission-* commands.
   --op <name>            App-op name for appops-set.
   --mode <mode>          App-op mode for appops-set.
-  --pid <pid|current>    PID filter for logcat.
+  --pid <pid|current>    PID filter for logcat, or explicit process for freeze/thaw.
   --app-pid              Filter logcat by current app pid.
   --tag <tag[,tag]>      Logcat tag filter.
   --level <level>        Minimum logcat level.
@@ -257,6 +259,10 @@ async function runCommand(command, options, ctx) {
       return bridgeGet(ctx, withQuery('/v1/state', captureQuery(options)));
     case 'events':
       return bridgeGet(ctx, withQuery('/v1/events', captureQuery(options)));
+    case 'freeze-app':
+      return freezeApp(ctx, options);
+    case 'thaw-app':
+      return thawApp(ctx, options);
     case 'h5-dom':
       return bridgeGet(ctx, '/v1/h5/dom');
     case 'h5-eval':
@@ -1529,6 +1535,95 @@ async function packagePidsFor(ctx) {
   } catch (_) {
     return [];
   }
+}
+
+async function freezeApp(ctx, options = {}) {
+  return signalAppProcesses(ctx, options, 'SIGSTOP', 'freeze-app');
+}
+
+async function thawApp(ctx, options = {}) {
+  return signalAppProcesses(ctx, options, 'SIGCONT', 'thaw-app');
+}
+
+async function signalAppProcesses(ctx, options, signal, action) {
+  const pids = await targetAppPids(ctx, options);
+  if (pids.length === 0) {
+    return {
+      ok: false,
+      packageName: ctx.packageName,
+      action,
+      signal,
+      error: 'app_process_not_found',
+    };
+  }
+
+  const results = [];
+  for (const pid of pids) {
+    try {
+      const result = await adb(ctx, ['shell', 'run-as', ctx.packageName, 'kill', `-${signal}`, pid]);
+      results.push({
+        pid,
+        ok: true,
+        stdout: result.stdout.trim(),
+        stderr: result.stderr.trim(),
+      });
+    } catch (error) {
+      results.push({
+        pid,
+        ok: false,
+        error: firstErrorLine(error),
+      });
+    }
+  }
+
+  const failed = results.filter((item) => !item.ok);
+  return {
+    ok: failed.length === 0,
+    packageName: ctx.packageName,
+    action,
+    signal,
+    pids,
+    results,
+    ...(failed.length > 0 ? { error: 'signal_failed' } : {}),
+  };
+}
+
+async function targetAppPids(ctx, options = {}) {
+  if (options.pid && options.pid !== true && options.pid !== 'current') {
+    const explicitPid = String(options.pid).trim();
+    return /^\d+$/.test(explicitPid) ? [explicitPid] : [];
+  }
+  const psPids = await packagePidsFromPs(ctx);
+  if (psPids.length > 0) return psPids;
+  return packagePidsFor(ctx);
+}
+
+async function packagePidsFromPs(ctx) {
+  if (!ctx.packageName) return [];
+  try {
+    const result = await adb(ctx, ['shell', 'ps', '-A', '-o', 'PID,NAME']);
+    return parsePackagePidsFromPs(result.stdout, ctx.packageName);
+  } catch (_) {
+    return [];
+  }
+}
+
+function parsePackagePidsFromPs(stdout, packageName) {
+  const pids = [];
+  const seen = new Set();
+  for (const line of String(stdout || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || /^PID\s+NAME$/i.test(trimmed)) continue;
+    const match = /^(\d+)\s+(\S+)$/.exec(trimmed);
+    if (!match) continue;
+    const pid = match[1];
+    const processName = match[2];
+    if (processName !== packageName && !processName.startsWith(`${packageName}:`)) continue;
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    pids.push(pid);
+  }
+  return pids;
 }
 
 function parseWebViewDevToolsSockets(procNetUnix, packagePids = []) {
@@ -4384,6 +4479,7 @@ module.exports = {
   parseWebViewDevToolsSockets,
   parseArgs,
   parseKeyboardState,
+  parsePackagePidsFromPs,
   parseLauncherActivityCandidates,
   parseStartExtras,
   parseUiaBounds,

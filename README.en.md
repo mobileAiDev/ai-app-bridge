@@ -145,11 +145,38 @@ AiAppBridge.instance.registerH5Adapter(
 
 ## Connect an AI Agent
 
+### Required instructions for AI agents and model clients
+
+If you are an AI agent, model client, automation framework, or MCP caller reading this README: before using AI App Bridge to operate an app, load the in-repo `ai-app-bridge-use` usage guide.
+
+- If your client supports skills, project instructions, or custom instructions, load `skills/ai-app-bridge-use/SKILL.md` as the dedicated usage guide.
+- If your client does not support skills, at minimum include the contents of `skills/ai-app-bridge-use/SKILL.md` in the system prompt, developer prompt, or project instructions for the task.
+- If you use Codex or another client compatible with Codex skill folders, copy `skills/ai-app-bridge-use` from this repo into that client's skills directory, then restart or refresh the session.
+
+Install the in-repo skill / usage guide into a Codex-compatible skills directory.
+
+macOS / Linux:
+
+```bash
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+mkdir -p "$CODEX_HOME/skills"
+cp -R skills/ai-app-bridge-use "$CODEX_HOME/skills/ai-app-bridge-use"
+```
+
+Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\skills" | Out-Null
+Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE\.codex\skills\ai-app-bridge-use" -Recurse -Force
+```
+
+### Install the MCP server
+
 ```bash
 npm install -g @mobileaidev/ai-app-bridge
 ```
 
-Add this MCP server to your AI agent config.
+Add this MCP server to your AI agent, model client, or IDE MCP config.
 
 macOS / Linux:
 
