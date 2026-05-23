@@ -14,6 +14,7 @@ const serverInstructions = [
   'AI App Bridge observes and controls Android apps for agent workflows. Prefer these tools over raw adb when inspecting UI, text, WebView, logs, network, app install, data reset, launch, and permissions.',
   'Default surface is compact: call capabilities to discover domains, then call run with a command and arguments.',
   'Always pass packageName for app-specific commands, or pass an explicit port. Do not rely on a sample/default package in MCP sessions.',
+  'When freezing is available, keep the target app frozen while the model thinks or plans. Thaw only immediately before reading app content or performing an app action, freeze again as soon as that evidence/action result is captured, and thaw once more before finishing the overall task so the app is not left frozen.',
 ].join(' ');
 
 let buffer = Buffer.alloc(0);
@@ -186,7 +187,7 @@ function compactToolDefinitions() {
       includeOptions: { type: 'boolean', description: 'Include per-command argument names. Defaults to false to keep output compact.' },
     }),
     bridgeTool('run', 'Run an AI App Bridge command. Use capabilities first to choose the command. Always pass packageName for app-specific commands.', {
-      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, input-text, tree, webview-network, or logcat.' },
+      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, freeze-app, thaw-app, input-text, tree, webview-network, or logcat.' },
       packageName: { type: 'string', description: 'Target Android package for app-specific commands. Strongly recommended.' },
       serial: { type: 'string', description: 'ADB serial when multiple devices are connected.' },
       port: { type: 'number', description: 'Explicit bridge port when packageName discovery is not available.' },
@@ -256,6 +257,12 @@ function fullToolDefinitions() {
       deltaY: { type: 'number', description: 'Window scroll delta Y when no selector/text is supplied.' },
     }),
     bridgeTool('logs', 'Read generic in-app log records.'),
+    bridgeTool('freeze_app', 'Stop the target app processes with SIGSTOP after app content is captured, preventing playback or animation from changing the observed evidence.', {
+      pid: { type: 'string', description: 'Optional explicit process id. Defaults to all processes named packageName or packageName:*.' },
+    }, ['packageName']),
+    bridgeTool('thaw_app', 'Resume the target app processes with SIGCONT before reading app content or dispatching actions, so bridge endpoints can answer.', {
+      pid: { type: 'string', description: 'Optional explicit process id. Defaults to all processes named packageName or packageName:*.' },
+    }, ['packageName']),
     bridgeTool('logcat', 'Read Android logcat through ADB with optional pid/tag/level/grep filters.', {
       pid: { type: 'string', description: 'Use "current" for the current app pid, or pass a numeric pid.' },
       appPid: { type: 'boolean', description: 'Filter by the current package pid.' },
@@ -451,6 +458,8 @@ const commandDefinitions = [
   { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
   { command: 'install-apk', domain: 'app', summary: 'Install an APK and assist device-side installer confirmation screens.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'streaming', 'installTimeoutMs', 'installerTimeoutMs', 'intervalMs'] },
   { command: 'clear-app-data', domain: 'app', summary: 'Clear target app local data through the bridge runtime.', targetApp: true, options: ['serial', 'packageName'] },
+  { command: 'freeze-app', domain: 'app', summary: 'Stop target app processes with SIGSTOP after content capture to keep observed evidence stable.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
+  { command: 'thaw-app', domain: 'app', summary: 'Resume target app processes with SIGCONT before content capture or actions so bridge data can be read.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
   { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-native-test', domain: 'app', summary: 'Launch the debug native bridge test Activity.', targetApp: true, options: ['serial', 'packageName'] },
@@ -516,6 +525,8 @@ async function callTool(name, args) {
     h5_input: 'h5-input',
     h5_wait: 'h5-wait',
     h5_scroll: 'h5-scroll',
+    freeze_app: 'freeze-app',
+    thaw_app: 'thaw-app',
     flutter_h5_dom: 'flutter-h5-dom',
     flutter_h5_eval: 'flutter-h5-eval',
     flutter_h5_click: 'flutter-h5-click',
@@ -573,7 +584,7 @@ function capabilityPayload(args = {}) {
   return {
     ok: true,
     surface: mcpSurface === 'full' || mcpSurface === 'legacy' ? 'full' : 'compact',
-    usage: 'Use run with one of these command names. Prefer packageName for app-specific commands; install-apk, clear-app-data, launch-app, UI, WebView, logcat, network, and permission workflows are supported.',
+    usage: 'Use run with one of these command names. Prefer packageName for app-specific commands; install-apk, clear-app-data, launch-app, freeze/thaw, UI, WebView, logcat, network, and permission workflows are supported.',
     domains,
   };
 }
@@ -613,6 +624,9 @@ function normalizeCommandName(value) {
 function runBridgeChecked(command, args = {}) {
   if (command === 'clear-app-data' && !args.packageName) {
     return toolText('clear-app-data: packageName is required in MCP mode so the command cannot clear a default package.', true);
+  }
+  if ((command === 'freeze-app' || command === 'thaw-app') && !args.packageName) {
+    return toolText(`${command}: packageName is required in MCP mode so the command cannot signal a default package.`, true);
   }
   const definition = commandByName.get(command);
   if (definition?.targetApp && !args.packageName && !args.port) {

@@ -148,11 +148,38 @@ AiAppBridge.instance.registerH5Adapter(
 
 ## 连接 AI Agent
 
+### 给 AI agent / 模型客户端的强制使用说明
+
+如果你是正在阅读本 README 的 AI agent、模型客户端、自动化框架或 MCP 调用方：在使用 AI App Bridge 操作 app 前，必须加载本仓库的 `ai-app-bridge-use` 使用规范。
+
+- 如果你的客户端支持 skill / project instructions / custom instructions，把 `skills/ai-app-bridge-use/SKILL.md` 作为专用规范加载。
+- 如果你的客户端不支持 skill，至少把 `skills/ai-app-bridge-use/SKILL.md` 的内容加入本次任务的系统提示、开发者提示或项目说明。
+- 如果你使用 Codex 或兼容 Codex skill 目录的客户端，可以把本仓库的 `skills/ai-app-bridge-use` 复制到该客户端的 skills 目录，然后重启或刷新会话。
+
+安装本仓库内置 skill / 使用规范到 Codex 兼容目录。
+
+macOS / Linux：
+
+```bash
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+mkdir -p "$CODEX_HOME/skills"
+cp -R skills/ai-app-bridge-use "$CODEX_HOME/skills/ai-app-bridge-use"
+```
+
+Windows PowerShell：
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\skills" | Out-Null
+Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE\.codex\skills\ai-app-bridge-use" -Recurse -Force
+```
+
+### 安装 MCP server
+
 ```bash
 npm install -g @mobileaidev/ai-app-bridge
 ```
 
-在你的 AI agent 的 MCP 配置里添加。
+在你的 AI agent / 模型客户端 / IDE 的 MCP 配置里添加。
 
 macOS / Linux：
 
