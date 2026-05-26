@@ -59,7 +59,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io")
     }
 }
 ```
@@ -68,11 +67,12 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.7")
+    debugImplementation("io.github.mobileaidev.aiappbridge:ai-app-bridge-android:0.2.8")
 }
 ```
 
 Runtime SDK 会在 debuggable Android 应用中通过 init provider 自动启动。
+Android runtime 支持 `minSdk 19+`。
 
 可选的 OkHttp 自动捕获由 debug Gradle 插件提供：
 
@@ -84,14 +84,6 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven("https://jitpack.io")
-    }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "io.github.mobileaidev.aiappbridge.android") {
-                useModule("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
-            }
-        }
     }
 }
 ```
@@ -100,7 +92,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.7"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.2.8"
 }
 
 aiAppBridge {
@@ -108,15 +100,17 @@ aiAppBridge {
 }
 ```
 
+同一个插件会自动选择 AGP backend：AGP 7+ 使用新版 Android Components instrumentation，AGP 4.x 使用 legacy Transform API。
+
 ## Flutter 快速接入
 
 Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自动引入 `ai-app-bridge-android` runtime，用来启动设备内本地 bridge server；release variant 不会自动带入这个 debug runtime。
 
-如果 Android 工程还没有配置 JitPack，需要在仓库配置中加入 `https://jitpack.io`。然后添加 Flutter 插件：
+添加 Flutter 插件：
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.1
+  ai_app_bridge_flutter: ^0.2.2
 ```
 
 初始化一次：

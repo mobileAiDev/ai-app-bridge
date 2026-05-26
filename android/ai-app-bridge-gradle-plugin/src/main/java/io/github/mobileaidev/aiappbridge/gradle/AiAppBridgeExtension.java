@@ -12,11 +12,19 @@ public class AiAppBridgeExtension {
         return enabled;
     }
 
+    public boolean getEnabled() {
+        return enabled;
+    }
+
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
 
     public boolean isOkHttpCaptureEnabled() {
+        return okHttpCaptureEnabled;
+    }
+
+    public boolean getOkHttpCaptureEnabled() {
         return okHttpCaptureEnabled;
     }
 
@@ -28,6 +36,10 @@ public class AiAppBridgeExtension {
         return webSocketCaptureEnabled;
     }
 
+    public boolean getWebSocketCaptureEnabled() {
+        return webSocketCaptureEnabled;
+    }
+
     public void setWebSocketCaptureEnabled(boolean webSocketCaptureEnabled) {
         this.webSocketCaptureEnabled = webSocketCaptureEnabled;
     }
@@ -36,11 +48,19 @@ public class AiAppBridgeExtension {
         return logInstrumentationEnabled;
     }
 
+    public boolean getLogInstrumentationEnabled() {
+        return logInstrumentationEnabled;
+    }
+
     public void setLogInstrumentationEnabled(boolean logInstrumentationEnabled) {
         this.logInstrumentationEnabled = logInstrumentationEnabled;
     }
 
     public boolean isWebViewDebuggingEnabled() {
+        return webViewDebuggingEnabled;
+    }
+
+    public boolean getWebViewDebuggingEnabled() {
         return webViewDebuggingEnabled;
     }
 

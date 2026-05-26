@@ -56,7 +56,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io")
     }
 }
 ```
@@ -65,11 +64,12 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.7")
+    debugImplementation("io.github.mobileaidev.aiappbridge:ai-app-bridge-android:0.2.8")
 }
 ```
 
 The runtime SDK starts automatically in debuggable Android apps through its init provider.
+The Android runtime supports `minSdk 19+`.
 
 Optional OkHttp auto capture is provided by the debug Gradle plugin:
 
@@ -81,14 +81,6 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven("https://jitpack.io")
-    }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "io.github.mobileaidev.aiappbridge.android") {
-                useModule("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
-            }
-        }
     }
 }
 ```
@@ -97,7 +89,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.7"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.2.8"
 }
 
 aiAppBridge {
@@ -105,15 +97,17 @@ aiAppBridge {
 }
 ```
 
+The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Components instrumentation, and AGP 4.x uses the legacy Transform API.
+
 ## Flutter Quick Start
 
 Flutter projects only need the pub package. The plugin's Android debug variant automatically includes the `ai-app-bridge-android` runtime that starts the in-app bridge server; the release variant does not include this debug runtime automatically.
 
-If the Android project does not already include JitPack, add `https://jitpack.io` to its repositories. Then add the Flutter plugin:
+Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.1
+  ai_app_bridge_flutter: ^0.2.2
 ```
 
 Initialize once:

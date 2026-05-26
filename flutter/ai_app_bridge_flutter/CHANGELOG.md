@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Uses Android runtime 0.2.8 for debug builds.
+
 ## 0.2.1
 
 - Uses Android runtime 0.2.7 for debug builds.

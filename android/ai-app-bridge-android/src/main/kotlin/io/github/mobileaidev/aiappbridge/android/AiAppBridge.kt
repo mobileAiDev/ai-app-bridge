@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val maxEventEntries = 300
     private const val maxStateEntries = 200
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.2.7"
+    private const val bridgeVersion = "0.2.8"
     private const val redactedValue = "[redacted]"
     private val sensitiveKeyPattern = Regex(
         "(?i)(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
@@ -1028,8 +1028,10 @@ object AiAppBridge {
 
             deletePathContents("files", context.filesDir, cleared, failures)
             deletePathContents("cache", context.cacheDir, cleared, failures)
-            deletePathContents("code-cache", context.codeCacheDir, cleared, failures)
-            deletePathContents("no-backup", context.noBackupFilesDir, cleared, failures)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                deletePathContents("code-cache", context.codeCacheDir, cleared, failures)
+                deletePathContents("no-backup", context.noBackupFilesDir, cleared, failures)
+            }
             context.getExternalFilesDirs(null).forEachIndexed { index, dir ->
                 deletePathContents("external-files-$index", dir, cleared, failures)
             }

@@ -11,7 +11,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://jitpack.io")
     }
 }
 ```
@@ -20,11 +19,12 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.7")
+    debugImplementation("io.github.mobileaidev.aiappbridge:ai-app-bridge-android:0.2.8")
 }
 ```
 
 The runtime SDK starts automatically in debuggable apps through its init provider. Optional structured records can be emitted from app code:
+The Android runtime supports `minSdk 19+`.
 
 ```kotlin
 AiAppBridge.recordLog("info", "OrderPage", "loaded", """{"id":"1"}""")
@@ -42,14 +42,6 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
-        maven("https://jitpack.io")
-    }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "io.github.mobileaidev.aiappbridge.android") {
-                useModule("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:${requested.version}")
-            }
-        }
     }
 }
 ```
@@ -58,7 +50,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.7"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.2.8"
 }
 
 aiAppBridge {
@@ -66,15 +58,17 @@ aiAppBridge {
 }
 ```
 
+The plugin keeps one public id and chooses the implementation internally: AGP 7+ uses Android Components instrumentation, while AGP 4.x uses the legacy Transform API.
+
 ## Flutter
 
 Flutter projects only need the Flutter plugin dependency. The plugin's Android debug variant automatically brings in the Android runtime that starts the in-app bridge server; the release variant does not include that debug runtime automatically.
 
-If the Android project does not already include JitPack, add `https://jitpack.io` to its repositories. Then add the Flutter plugin:
+Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.1
+  ai_app_bridge_flutter: ^0.2.2
 ```
 
 Initialize once:

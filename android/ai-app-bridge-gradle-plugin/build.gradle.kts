@@ -1,3 +1,5 @@
+import org.gradle.api.attributes.java.TargetJvmVersion
+
 plugins {
     `java-gradle-plugin`
     `maven-publish`
@@ -16,16 +18,28 @@ group = if (
 } else {
     "io.github.mobileaidev.aiappbridge"
 }
-version = jitpackVersion ?: "0.2.7"
+version = jitpackVersion ?: "0.2.8"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+listOf("compileClasspath", "testCompileClasspath", "testRuntimeClasspath").forEach { configurationName ->
+    configurations.named(configurationName) {
+        attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 11)
+    }
 }
 
 dependencies {
     compileOnly("com.android.tools.build:gradle-api:7.4.2")
+    compileOnly("com.android.tools.build:gradle:7.4.2")
     implementation("org.ow2.asm:asm:9.7")
+    testCompileOnly("com.android.tools.build:gradle-api:7.4.2")
+    testCompileOnly("com.android.tools.build:gradle:7.4.2")
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("com.android.tools.build:gradle-api:7.4.2")
+    testRuntimeOnly("com.android.tools.build:gradle:7.4.2")
 }
 
 gradlePlugin {

@@ -1,13 +1,7 @@
 package io.github.mobileaidev.aiappbridge.gradle;
 
-import com.android.build.api.instrumentation.FramesComputationMode;
-import com.android.build.api.instrumentation.InstrumentationScope;
-import com.android.build.api.variant.AndroidComponentsExtension;
-import com.android.build.api.variant.Variant;
-import kotlin.Unit;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.api.Action;
 import org.gradle.api.logging.Logger;
 
 public final class AiAppBridgeGradlePlugin implements Plugin<Project> {
@@ -21,52 +15,43 @@ public final class AiAppBridgeGradlePlugin implements Plugin<Project> {
         });
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private void configureAndroidApp(Project project, AiAppBridgeExtension extension) {
         Logger logger = project.getLogger();
-        AndroidComponentsExtension androidComponents = project.getExtensions()
-                .getByType(AndroidComponentsExtension.class);
+        if (project.getExtensions().findByName("androidComponents") != null && classAvailable("com.android.build.api.variant.AndroidComponentsExtension")) {
+            invokeBackend("io.github.mobileaidev.aiappbridge.gradle.ModernAgpInstrumentation", project, extension);
+            return;
+        }
 
-        androidComponents.onVariants(
-                androidComponents.selector().all(),
-                (Action<Variant>) variant -> {
-                    if (!"debug".equalsIgnoreCase(variant.getBuildType())) {
-                        return;
-                    }
-                    if (!extension.isEnabled()) {
-                        logger.lifecycle("[AiAppBridge] Android Gradle plugin disabled for {}.", variant.getName());
-                        return;
-                    }
+        if (project.getExtensions().findByName("android") != null
+                && classAvailable("com.android.build.gradle.AppExtension")
+                && classAvailable("com.android.build.api.transform.Transform")) {
+            invokeBackend("io.github.mobileaidev.aiappbridge.gradle.LegacyAgpTransformInstrumentation", project, extension);
+            return;
+        }
 
-                    String runtimeDependencyNotation = extension.getRuntimeDependencyNotation().trim();
-                    if (!runtimeDependencyNotation.isEmpty()) {
-                        project.getDependencies().add(variant.getName() + "Implementation", runtimeDependencyNotation);
-                    }
+        logger.warn("[AiAppBridge] Android Gradle plugin APIs are not supported by this AGP version; use runtime-only integration.");
+    }
 
-                    if (extension.isOkHttpCaptureEnabled()) {
-                        variant.transformClassesWith(
-                                OkHttpAutoCaptureClassVisitorFactory.class,
-                                InstrumentationScope.ALL,
-                                parameters -> Unit.INSTANCE
-                        );
-                        variant.setAsmFramesComputationMode(FramesComputationMode.COMPUTE_FRAMES_FOR_INSTRUMENTED_METHODS);
-                    }
+    private boolean classAvailable(String className) {
+        try {
+            Class.forName(className, false, getClass().getClassLoader());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
 
-                    logger.lifecycle(
-                            "[AiAppBridge] Android Gradle plugin configured for {}. "
-                                    + "okHttpCaptureEnabled="
-                                    + extension.isOkHttpCaptureEnabled()
-                                    + ", webSocketCaptureEnabled="
-                                    + extension.isWebSocketCaptureEnabled()
-                                    + ", logInstrumentationEnabled="
-                                    + extension.isLogInstrumentationEnabled()
-                                    + ", webViewDebuggingEnabled="
-                                    + extension.isWebViewDebuggingEnabled()
-                                    + ".",
-                            variant.getName()
-                    );
-                }
-        );
+    private void invokeBackend(String className, Project project, AiAppBridgeExtension extension) {
+        try {
+            Object backend = Class.forName(className, true, getClass().getClassLoader())
+                    .getDeclaredConstructor()
+                    .newInstance();
+            backend.getClass()
+                    .getMethod("configure", Project.class, AiAppBridgeExtension.class)
+                    .invoke(backend, project, extension);
+        } catch (Throwable error) {
+            throw new IllegalStateException("[AiAppBridge] Failed to configure Android Gradle plugin backend " + className, error);
+        }
     }
 }
 
