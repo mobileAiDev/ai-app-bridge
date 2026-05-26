@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3
+
+- Uses the JitPack Android runtime 0.2.8 coordinate for debug builds.
+
 ## 0.2.2
 
 - Uses Android runtime 0.2.8 for debug builds.

@@ -15,11 +15,26 @@ Passed:
   --console=plain
 ```
 
-Verified local Maven coordinates:
+Verified Maven Local coordinates:
 
 ```text
 io.github.mobileaidev.aiappbridge:ai-app-bridge-android:0.2.8
 io.github.mobileaidev.aiappbridge:ai-app-bridge-gradle-plugin:0.2.8
+```
+
+Remote consumer coordinates use JitPack, not Maven Central:
+
+```text
+com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8
+com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:0.2.8
+```
+
+Verified JitPack `0.2.8` remote endpoints:
+
+```text
+https://jitpack.io/com/github/mobileAiDev/ai-app-bridge/ai-app-bridge-android/0.2.8/ai-app-bridge-android-0.2.8.pom -> HTTP 200
+https://jitpack.io/com/github/mobileAiDev/ai-app-bridge/ai-app-bridge-gradle-plugin/0.2.8/ai-app-bridge-gradle-plugin-0.2.8.pom -> HTTP 200
+https://jitpack.io/com/github/mobileAiDev/ai-app-bridge/io.github.mobileaidev.aiappbridge.android.gradle.plugin/0.2.8/io.github.mobileaidev.aiappbridge.android.gradle.plugin-0.2.8.pom -> HTTP 200
 ```
 
 Additional regression check after Kotlin DSL validation:
@@ -111,14 +126,15 @@ Passed:
 10. `D:\TestProject\flutter-samples\platform_design`
    - AGP: 8.11.1
    - Backend: modern ASM
-   - Flutter package: local `ai_app_bridge_flutter 0.2.2` path dependency
-   - Build: `flutter build apk --debug` passed with `PUB_CACHE=D:\TestProject\.pub-cache`
-   - Install: `adb install -r -d build\app\outputs\flutter-apk\app-debug.apk` passed
+   - Flutter package: local `ai_app_bridge_flutter 0.2.3` path dependency
+   - Build: `:app:assembleDebug --refresh-dependencies` passed without `mavenLocal()`
+   - Dependency proof: `debugRuntimeClasspath` resolved only `com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8` through project `:ai_app_bridge_flutter`
+   - Install: `adb install -r -d build\app\outputs\apk\debug\app-debug.apk` passed
    - Device package: `dev.flutter.platform_design`
    - Runtime: bridge `0.2.8`
    - Runtime commands: `status`, `tree`, `flutter-nodes`, `screenshot`, and `network` passed
-   - Note: published `ai_app_bridge_flutter 0.2.1` still depended on Android runtime `0.2.7`; the local `0.2.2` package fixes this by depending on `io.github.mobileaidev.aiappbridge:ai-app-bridge-android:0.2.8`.
+   - Note: published `ai_app_bridge_flutter 0.2.1` still depended on Android runtime `0.2.7`; the local `0.2.3` package fixes this by depending on JitPack Android runtime `0.2.8`.
 
 ## Release Gate
 
-Release can proceed. Flutter `pub publish --dry-run` passed with 0 warnings after committing the changes.
+Release can proceed. The `0.2.8` GitHub tag is visible through JitPack, and Flutter `ai_app_bridge_flutter 0.2.3` resolves the JitPack Android runtime coordinate.

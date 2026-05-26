@@ -8,7 +8,7 @@ Add the Flutter package. The plugin's Android debug variant automatically includ
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.2
+  ai_app_bridge_flutter: ^0.2.3
 ```
 
 ## Initialize
