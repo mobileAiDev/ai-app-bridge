@@ -137,4 +137,8 @@ Passed:
 
 ## Release Gate
 
-Release can proceed. The `0.2.8` GitHub tag is visible through JitPack, and Flutter `ai_app_bridge_flutter 0.2.3` resolves the JitPack Android runtime coordinate.
+Release completed:
+
+- GitHub tag `0.2.8` is visible through JitPack.
+- Flutter `ai_app_bridge_flutter 0.2.3` is published on pub.dev and resolves the JitPack Android runtime coordinate.
+- npm `@mobileaidev/ai-app-bridge 0.2.8` is published with `latest` dist-tag.
