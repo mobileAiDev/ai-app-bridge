@@ -66,10 +66,12 @@ steps as skipped without mixing results from different commands:
 }
 ```
 
-For dynamic screens, MCP agents should follow the `ai-app-bridge-use` cadence:
-thaw immediately before reading app content or performing an app action, freeze
-immediately after evidence or action results are captured, keep the app frozen
-while reasoning/planning, and thaw once more before finishing the overall task.
+For dynamic or transient screens, MCP agents can use `freeze-app`/`thaw-app` as
+an optional stabilization control: thaw before reads, actions, waits, or
+captures; freeze after evidence capture only when a changing UI would make
+reasoning unreliable; and thaw before the next app operation or before
+finishing so the app is not left frozen. Static screens and ordinary form
+flows usually do not need freezing.
 For visible state changes such as panels, dialogs, page transitions, tabs, or
 button-triggered content, verify with both `screenshot` and `tree`/`uia-tree`;
 do not conclude success from UI tree alone.

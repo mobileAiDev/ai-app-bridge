@@ -14,7 +14,7 @@ const serverInstructions = [
   'AI App Bridge observes and controls Android apps for agent workflows. Prefer these tools over raw adb when inspecting UI, text, WebView, logs, network, app install, data reset, launch, and permissions.',
   'Default surface is compact: call capabilities to discover domains, then call run with a command and arguments.',
   'Always pass packageName for app-specific commands, or pass an explicit port. Do not rely on a sample/default package in MCP sessions.',
-  'When freezing is available, keep the target app frozen while the model thinks or plans. Thaw only immediately before reading app content or performing an app action, freeze again as soon as that evidence/action result is captured, and thaw once more before finishing the overall task so the app is not left frozen.',
+  'Use freeze-app/thaw-app only as an optional stabilization control for dynamic or transient screens: thaw before reads/actions/captures, freeze after evidence capture only when it helps reasoning, and thaw before the next operation or before finishing so the app is not left frozen.',
 ].join(' ');
 
 let buffer = Buffer.alloc(0);
@@ -257,10 +257,10 @@ function fullToolDefinitions() {
       deltaY: { type: 'number', description: 'Window scroll delta Y when no selector/text is supplied.' },
     }),
     bridgeTool('logs', 'Read generic in-app log records.'),
-    bridgeTool('freeze_app', 'Stop the target app processes with SIGSTOP after app content is captured, preventing playback or animation from changing the observed evidence.', {
+    bridgeTool('freeze_app', 'Optionally stop target app processes with SIGSTOP when a dynamic or transient screen needs stable evidence for review.', {
       pid: { type: 'string', description: 'Optional explicit process id. Defaults to all processes named packageName or packageName:*.' },
     }, ['packageName']),
-    bridgeTool('thaw_app', 'Resume the target app processes with SIGCONT before reading app content or dispatching actions, so bridge endpoints can answer.', {
+    bridgeTool('thaw_app', 'Resume target app processes with SIGCONT before reads, waits, captures, or actions, and before finishing any task that used freeze-app.', {
       pid: { type: 'string', description: 'Optional explicit process id. Defaults to all processes named packageName or packageName:*.' },
     }, ['packageName']),
     bridgeTool('logcat', 'Read Android logcat through ADB with optional pid/tag/level/grep filters.', {
@@ -458,8 +458,8 @@ const commandDefinitions = [
   { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
   { command: 'install-apk', domain: 'app', summary: 'Install an APK and assist device-side installer confirmation screens.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'streaming', 'installTimeoutMs', 'installerTimeoutMs', 'intervalMs'] },
   { command: 'clear-app-data', domain: 'app', summary: 'Clear target app local data through the bridge runtime.', targetApp: true, options: ['serial', 'packageName'] },
-  { command: 'freeze-app', domain: 'app', summary: 'Stop target app processes with SIGSTOP after content capture to keep observed evidence stable.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
-  { command: 'thaw-app', domain: 'app', summary: 'Resume target app processes with SIGCONT before content capture or actions so bridge data can be read.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
+  { command: 'freeze-app', domain: 'app', summary: 'Optionally stop target app processes with SIGSTOP when dynamic UI needs stable evidence.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
+  { command: 'thaw-app', domain: 'app', summary: 'Resume target app processes with SIGCONT before reads, waits, captures, actions, or final handoff.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
   { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-native-test', domain: 'app', summary: 'Launch the debug native bridge test Activity.', targetApp: true, options: ['serial', 'packageName'] },

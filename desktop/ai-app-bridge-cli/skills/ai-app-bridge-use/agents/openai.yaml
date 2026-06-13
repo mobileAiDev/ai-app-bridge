@@ -1,4 +1,4 @@
 interface:
   display_name: "AI App Bridge Use"
-  short_description: "使用 AI App Bridge MCP，在思考期间冻结 app，结束前解冻。"
-  default_prompt: "使用 AI App Bridge MCP 观察和操作 Android app。每轮读取内容或操作前先解冻，拿到证据后立刻冻结，再思考和规划下一步；全部任务结束前最后解冻 app。"
+  short_description: "观察、操作并验证 Android/Flutter app。"
+  default_prompt: "使用 $ai-app-bridge-use 观察、操作和验证目标 Android/Flutter app；先发现能力并传 packageName，只有动态画面需要稳定证据时才使用 freeze/thaw。"
