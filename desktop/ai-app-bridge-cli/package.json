@@ -1,6 +1,6 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.2.9",
+  "version": "0.2.11",
   "description": "Desktop CLI and MCP server for AI App Bridge.",
   "repository": {
     "type": "git",
@@ -18,15 +18,18 @@
   "files": [
     "bin/ai-app-bridge.js",
     "bin/mcp-server.js",
+    "bin/ios-provider.js",
+    "bin/web-provider.js",
     "skills/ai-app-bridge-use",
     "README.md"
   ],
   "scripts": {
-    "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node --test",
+    "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node --test",
     "test": "node --test"
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "appium-webdriveragent": "^14.1.1",
     "ws": "^8.18.0"
   },
   "publishConfig": {

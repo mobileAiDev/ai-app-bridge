@@ -1,6 +1,8 @@
 .gradle/
 .kotlin/
 build/
+.build/
+.swiftpm/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -10,6 +12,7 @@ node_modules/
 *.log
 *.tmp
 *.png
+!examples/ios-native-sample/AiAppBridgeIOSSample/Assets.xcassets/**/*.png
 *.jpg
 *.jpeg
 *.webp

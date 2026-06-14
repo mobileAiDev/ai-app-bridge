@@ -13,6 +13,12 @@ ai-app-bridge screenshot --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge input-text --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
 ai-app-bridge network --package-name io.github.mobileaidev.aiappbridge.sample --compact --url-filter /api/
 ai-app-bridge webview-network --package-name io.github.mobileaidev.aiappbridge.sample --duration-ms 3000
+ai-app-bridge ios-devices
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-tap --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
+ai-app-bridge ios-input --bundle-id <ios.bundle.id> --accessibility-id sample_text_field --clear-first --text "hello" --wda-url <wda-url-from-setup>
 ai-app-bridge thaw-app --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge freeze-app --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge-mcp
@@ -35,7 +41,7 @@ into the model context:
 - `run` executes a selected command with command-specific arguments.
 
 This keeps install, data reset, launch, UI, Flutter, WebView, logcat, network,
-and permission capabilities discoverable without exposing dozens of full schemas
+permission, iOS, and web capabilities discoverable without exposing dozens of full schemas
 at session start. Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
 `ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
 surface.
@@ -78,6 +84,16 @@ do not conclude success from UI tree alone.
 
 WebView network and console capture use Android WebView DevTools/CDP when the
 target app is debuggable and WebView debugging is enabled.
+
+iOS commands use Xcode `devicectl` for device/app/screenshot operations, the
+AiAppBridgeIOS runtime for in-app evidence, and WebDriverAgent/XCUITest for
+full-control taps, input, swipes, and external UI tree reads. `ios-setup`
+can start the vendored `appium-webdriveragent` project when `--start-wda` and
+`--team-id` are supplied. On physical devices, reuse the returned WDA URL for
+later WDA commands; it may be a CoreDevice tunnel such as
+`http://[fdxx::1]:8100`. It returns explicit blockers for Developer Mode,
+device preparation, signing, or WDA reachability instead of silently
+downgrading iOS capability.
 
 `input-text` first uses the app bridge native text endpoint. This is required
 for Chinese and other Unicode text because `adb shell input text` is ASCII-only

@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const test = require('node:test');
+const WebSocket = require('ws');
 
 const {
   buildBridgeFailureResult,
@@ -55,6 +56,13 @@ const {
 const cliPath = path.join(__dirname, '..', 'bin', 'ai-app-bridge.js');
 const mcpPath = path.join(__dirname, '..', 'bin', 'mcp-server.js');
 const { buildBridgeCliArgs, runBatch } = require('../bin/mcp-server.js');
+const {
+  IOSBridgeProvider,
+  formatHostForUrl,
+  selectDeviceFromList,
+  shapeDevice,
+  wdaSessionIdFromResponse,
+} = require('../bin/ios-provider.js');
 
 function encodeMcpMessage(message) {
   const body = JSON.stringify(message);
@@ -219,8 +227,83 @@ function lineJsonMcpRequestSequence(requests, options = {}) {
   });
 }
 
+function createLineJsonMcpClient(options = {}) {
+  const child = spawn(process.execPath, [mcpPath], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      ...(options.env || {}),
+    },
+  });
+  let stdoutBuffer = Buffer.alloc(0);
+  let stderr = '';
+  let nextId = 1;
+  const pending = new Map();
+
+  child.stdout.on('data', (chunk) => {
+    stdoutBuffer = Buffer.concat([stdoutBuffer, chunk]);
+    const parsed = readLineJsonMessages(stdoutBuffer);
+    stdoutBuffer = parsed.remaining;
+    for (const message of parsed.messages) {
+      const waiter = pending.get(message.id);
+      if (!waiter) continue;
+      clearTimeout(waiter.timer);
+      pending.delete(message.id);
+      waiter.resolve(message);
+    }
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+  child.on('error', (error) => {
+    for (const waiter of pending.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+    }
+    pending.clear();
+  });
+
+  function request(method, params = {}, timeoutMs = 8000) {
+    const id = nextId++;
+    const message = { jsonrpc: '2.0', id, method, params };
+    const promise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`MCP request timed out: ${method}. stderr=${stderr}`));
+      }, timeoutMs);
+      pending.set(id, { resolve, reject, timer });
+    });
+    child.stdin.write(encodeLineJsonMessage(message));
+    return promise;
+  }
+
+  function notify(method, params = {}) {
+    child.stdin.write(encodeLineJsonMessage({ jsonrpc: '2.0', method, params }));
+  }
+
+  function close() {
+    child.kill();
+  }
+
+  return { child, request, notify, close };
+}
+
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function waitUntilTest(predicate, timeoutMs = 3000, intervalMs = 50) {
+  const startedAtMs = Date.now();
+  let lastError;
+  while (Date.now() - startedAtMs < timeoutMs) {
+    try {
+      if (await predicate()) return;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw lastError || new Error('waitUntilTest timed out');
 }
 
 test('--help prints usage without probing adb', () => {
@@ -235,6 +318,7 @@ test('--help prints usage without probing adb', () => {
   assert.equal(output, `${helpText}\n`);
   assert.match(output, /Usage: ai-app-bridge <command>/);
   assert.match(output, /--package-name <name>/);
+  assert.match(output, /--bundle-id <id>/);
   assert.match(output, /--text <text>\s+Text used by Unicode-safe bridge input commands\./);
 });
 
@@ -326,6 +410,159 @@ test('MCP capabilities advertise install, freeze/thaw, data clear, and app contr
   assert.match(responses.get(7).result.content[0].text, /packageName is required/);
 });
 
+test('MCP web provider accepts SDK session captures and commands', async () => {
+  const client = createLineJsonMcpClient();
+  let socket;
+  try {
+    await client.request('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'web-provider-test', version: '0' },
+    });
+    client.notify('notifications/initialized');
+
+    const capabilities = await client.request('tools/call', {
+      name: 'capabilities',
+      arguments: { domain: 'web', includeOptions: true },
+    });
+    const capabilityPayload = JSON.parse(capabilities.result.content[0].text);
+    assert.equal(capabilityPayload.ok, true);
+    assert.match(JSON.stringify(capabilityPayload.domains.web), /web-session-start/);
+    assert.match(JSON.stringify(capabilityPayload.domains.web), /web-command/);
+
+    const start = await client.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'web-session-start',
+        arguments: {
+          webPort: 0,
+          token: 'test-web-token',
+        },
+      },
+    });
+    const startPayload = JSON.parse(start.result.content[0].text);
+    assert.equal(startPayload.ok, true);
+    assert.match(startPayload.endpoint, /^ws:\/\/127\.0\.0\.1:\d+\/ai-app-bridge-web$/);
+
+    const received = [];
+    socket = new WebSocket(`${startPayload.endpoint}?token=${encodeURIComponent(startPayload.token)}`);
+    socket.on('message', (raw) => {
+      const message = JSON.parse(raw.toString());
+      received.push(message);
+      if (message.type !== 'command') return;
+      if (message.command?.name === 'domSnapshot') {
+        socket.send(JSON.stringify({
+          type: 'commandResult',
+          commandId: message.commandId,
+          ok: true,
+          result: {
+            ok: true,
+            dom: {
+              ok: true,
+              title: 'Web Bridge Test',
+              bodyText: 'Ready Submit',
+              controls: [{ tag: 'button', text: 'Submit' }],
+              controlCount: 1,
+            },
+          },
+        }));
+        return;
+      }
+      socket.send(JSON.stringify({
+        type: 'commandResult',
+        commandId: message.commandId,
+        ok: true,
+        result: { ok: true, value: `ran:${message.command?.name || ''}` },
+      }));
+    });
+
+    await new Promise((resolve, reject) => {
+      socket.once('open', resolve);
+      socket.once('error', reject);
+    });
+    socket.send(JSON.stringify({
+      type: 'hello',
+      sessionId: 'web-test-session',
+      appName: 'web-test-app',
+      url: 'http://example.test/app',
+      origin: 'http://example.test',
+      route: '/app',
+      capabilities: { logs: true, network: true, state: true, events: true, dom: true, command: true },
+    }));
+    await waitUntilTest(() => received.some((message) => message.type === 'helloAck'));
+
+    socket.send(JSON.stringify({
+      type: 'capture',
+      stream: 'logs',
+      item: { level: 'info', tag: 'test', message: 'hello web' },
+    }));
+    socket.send(JSON.stringify({
+      type: 'capture',
+      stream: 'network',
+      item: { method: 'GET', url: 'https://example.test/api', statusCode: 200, durationMs: 12 },
+    }));
+    socket.send(JSON.stringify({
+      type: 'capture',
+      stream: 'state',
+      item: { namespace: 'cart', key: 'count', value: 2 },
+    }));
+    socket.send(JSON.stringify({
+      type: 'capture',
+      stream: 'events',
+      item: { category: 'ui', name: 'submitted' },
+    }));
+    await waitUntilTest(async () => {
+      const logs = JSON.parse((await client.request('tools/call', {
+        name: 'run',
+        arguments: { command: 'web-logs', arguments: { sessionId: 'web-test-session' } },
+      })).result.content[0].text);
+      return logs.count === 1;
+    });
+
+    const batch = await client.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'batch',
+        arguments: {
+          defaults: { sessionId: 'web-test-session' },
+          steps: [
+            { id: 'status', command: 'web-status' },
+            { id: 'dom', command: 'web-dom' },
+            { id: 'logs', command: 'web-logs' },
+            { id: 'network', command: 'web-network' },
+            { id: 'state', command: 'web-state' },
+            { id: 'events', command: 'web-events' },
+            { id: 'command', command: 'web-command', arguments: { name: 'demo.action' } },
+          ],
+          stopOnError: true,
+        },
+      },
+    }, 12000);
+    const batchPayload = JSON.parse(batch.result.content[0].text);
+    assert.equal(batch.result.isError, false);
+    assert.equal(batchPayload.ok, true);
+    assert.equal(batchPayload.passed, 7);
+    assert.deepEqual(batchPayload.steps.map((step) => step.status), [
+      'passed',
+      'passed',
+      'passed',
+      'passed',
+      'passed',
+      'passed',
+      'passed',
+    ]);
+
+    const state = JSON.parse((await client.request('tools/call', {
+      name: 'run',
+      arguments: { command: 'web-state', arguments: { sessionId: 'web-test-session' } },
+    })).result.content[0].text);
+    assert.equal(state.values['cart.count'], 2);
+  } finally {
+    if (socket) socket.close();
+    client.close();
+  }
+});
+
 test('MCP capabilities advertise batch as a run command without adding another compact tool', async () => {
   const responses = await mcpRequestSequence([
     { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
@@ -339,6 +576,25 @@ test('MCP capabilities advertise batch as a run command without adding another c
   assert.equal(batchCapability.domain, undefined);
   assert.match(JSON.stringify(batchCapability.options), /steps/);
   assert.match(JSON.stringify(batchCapability.options), /stopOnError/);
+});
+
+test('MCP capabilities advertise iOS full-control commands through compact run', async () => {
+  const responses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'capabilities', arguments: { domain: 'ios', includeOptions: true } } },
+    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'capabilities', arguments: { command: 'ios-tap', includeOptions: true } } },
+  ]);
+
+  assert.deepEqual(responses.get(2).result.tools.map((tool) => tool.name), ['capabilities', 'run']);
+  const iosCapabilities = JSON.parse(responses.get(3).result.content[0].text);
+  assert.equal(iosCapabilities.ok, true);
+  assert.match(JSON.stringify(iosCapabilities.domains.ios), /ios-setup/);
+  assert.match(JSON.stringify(iosCapabilities.domains.ios), /ios-tap/);
+  assert.match(JSON.stringify(iosCapabilities.domains.ios), /ios-flutter-action/);
+  const iosTap = JSON.parse(responses.get(4).result.content[0].text);
+  assert.equal(iosTap.ok, true);
+  assert.equal(iosTap.targetKind, 'ios-device');
+  assert.deepEqual(iosTap.options, ['bundleId', 'wdaUrl', 'wdaSessionId', 'tapX', 'tapY']);
 });
 
 test('MCP run dispatches batch through command arguments', async () => {
@@ -502,6 +758,49 @@ test('MCP run forwards freeze/thaw commands and explicit pid to the CLI argument
   assert.deepEqual(thawArgs.slice(0, 2), [cliPath, 'thaw-app']);
 });
 
+test('MCP run forwards iOS command arguments to the CLI argument list', () => {
+  const args = buildBridgeCliArgs('ios-setup', {
+    deviceId: 'device-1',
+    bundleId: 'com.example.ios',
+    appPath: '/tmp/App.app',
+    iosHost: 'fd00::1',
+    iosPort: 18091,
+    runtimeUrl: 'http://127.0.0.1:18091',
+    wdaUrl: 'http://127.0.0.1:8100',
+    wdaSessionId: 'wda-session',
+    wdaProjectPath: '/tmp/WebDriverAgent.xcodeproj',
+    wdaBundleId: 'io.example.wda',
+    accessibilityId: 'sample_text_field',
+    elementId: 'element-1',
+    clearFirst: true,
+    teamId: 'TEAM123456',
+    startWda: true,
+  });
+
+  assert.deepEqual(args.slice(0, 2), [cliPath, 'ios-setup']);
+  for (const [flag, value] of [
+    ['--device-id', 'device-1'],
+    ['--bundle-id', 'com.example.ios'],
+    ['--app-path', '/tmp/App.app'],
+    ['--ios-host', 'fd00::1'],
+    ['--ios-port', '18091'],
+    ['--runtime-url', 'http://127.0.0.1:18091'],
+    ['--wda-url', 'http://127.0.0.1:8100'],
+    ['--wda-session-id', 'wda-session'],
+    ['--wda-project-path', '/tmp/WebDriverAgent.xcodeproj'],
+    ['--wda-bundle-id', 'io.example.wda'],
+    ['--accessibility-id', 'sample_text_field'],
+    ['--element-id', 'element-1'],
+    ['--clear-first', 'true'],
+    ['--team-id', 'TEAM123456'],
+    ['--start-wda', 'true'],
+  ]) {
+    const index = args.indexOf(flag);
+    assert.notEqual(index, -1, `${flag} is forwarded`);
+    assert.equal(args[index + 1], value);
+  }
+});
+
 test('parseArgs keeps repeated launch categories and extras', () => {
   const parsed = parseArgs([
     'launch-activity',
@@ -521,6 +820,84 @@ test('parseArgs keeps repeated launch categories and extras', () => {
   assert.equal(parsed.options.activity, '.MainActivity');
   assert.deepEqual(parsed.options.category, ['android.intent.category.DEFAULT', 'com.example.CUSTOM']);
   assert.deepEqual(parsed.options.extra, ['first=1', 'second=two=kept']);
+});
+
+test('iOS provider shapes devicectl devices and WDA responses', () => {
+  const device = shapeDevice({
+    identifier: 'CORE-DEVICE-ID',
+    connectionProperties: {
+      pairingState: 'paired',
+      transportType: 'wired',
+      tunnelIPAddress: 'fd00::1234',
+      potentialHostnames: ['iPhone.coredevice.local'],
+    },
+    deviceProperties: {
+      bootState: 'booted',
+      developerModeStatus: 'enabled',
+      ddiServicesAvailable: true,
+      name: 'iPhone',
+      osVersionNumber: '27.0',
+    },
+    hardwareProperties: {
+      marketingName: 'iPhone 17 Pro Max',
+      platform: 'iOS',
+      productType: 'iPhone18,2',
+      serialNumber: 'SERIAL',
+      udid: 'UDID',
+    },
+  });
+
+  assert.equal(device.identifier, 'CORE-DEVICE-ID');
+  assert.equal(device.udid, 'UDID');
+  assert.equal(device.developerModeStatus, 'enabled');
+  assert.equal(device.tunnelIPAddress, 'fd00::1234');
+  assert.equal(formatHostForUrl(device.tunnelIPAddress), '[fd00::1234]');
+  assert.equal(selectDeviceFromList([device], { deviceId: 'UDID' }).device.identifier, 'CORE-DEVICE-ID');
+  assert.equal(wdaSessionIdFromResponse({ value: { sessionId: 'wda-1' } }), 'wda-1');
+});
+
+test('iOS provider returns structured install signing failures', async () => {
+  const provider = new IOSBridgeProvider({
+    execFile(command, args, options, callback) {
+      if (args.includes('list') && args.includes('devices')) {
+        const jsonPath = args[args.indexOf('--json-output') + 1];
+        fs.writeFileSync(jsonPath, JSON.stringify({
+          result: {
+            devices: [{
+              identifier: 'device-1',
+              deviceProperties: {
+                name: 'iPhone',
+                developerModeStatus: 'enabled',
+                ddiServicesAvailable: true,
+              },
+              hardwareProperties: {
+                platform: 'iOS',
+                udid: 'udid-1',
+              },
+              connectionProperties: {
+                pairingState: 'paired',
+              },
+            }],
+          },
+        }));
+        callback(null, '', '');
+        return;
+      }
+      const error = new Error('Command failed: No code signature found.');
+      error.stderr = 'No code signature found.';
+      callback(error, '', 'No code signature found.');
+    },
+  });
+
+  const result = await provider.run('ios-install-app', {
+    deviceId: 'device-1',
+    appPath: '/tmp/AiAppBridgeIOSSample.app',
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'ios_code_signing_required');
+  assert.equal(result.command, 'ios-install-app');
+  assert.match(result.message, /No code signature found/);
 });
 
 test('clear-app-data requires an explicit package and builds adb pm clear args', () => {

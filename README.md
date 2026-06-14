@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 >
 > **Now:** AI can build and install the app, operate real flows, read real UI state, inspect network and logs, and verify the result itself.
 
-AI App Bridge gives autonomous AI agents a runtime interface to running Android and Flutter apps. Agents can inspect the current screen, operate native UI and WebViews, read View tree / Widget tree / DOM data, collect network requests and logs, verify outcomes, and keep iterating from real evidence.
+AI App Bridge gives autonomous AI agents a runtime interface to running Android, iOS, and Flutter apps. Agents can inspect the current screen, operate native UI and WebViews/WKWebViews, read View tree / Widget tree / DOM data, collect network requests and logs, verify outcomes, and keep iterating from real evidence.
 
 Its goal is to help AI agents move through an observe -> act -> read results -> verify -> iterate loop, instead of guessing without runtime evidence.
 
@@ -28,9 +28,11 @@ Screenshot-only automation is fragile. For autonomous iteration, an AI agent nee
 ```text
 android/ai-app-bridge-android          Android runtime SDK
 android/ai-app-bridge-gradle-plugin   Debug build instrumentation plugin
+ios/ai-app-bridge-ios                 iOS Swift runtime SDK
 flutter/ai_app_bridge_flutter         Flutter plugin
 desktop/ai-app-bridge-cli             Node CLI and MCP stdio server
 examples/android-native-sample        Clean Android sample app
+examples/ios-native-sample            Clean iOS sample app for runtime install validation
 docs                                  Design, integration, and test notes
 ```
 
@@ -39,6 +41,7 @@ docs                                  Design, integration, and test notes
 - Local bridge status on the first available port starting at `127.0.0.1:18080`
 - Android View tree, window tree, and screenshots
 - Native UI operations, with desktop-side ADB / UIAutomator fallback operations
+- iOS UIKit tree, WKWebView DOM/eval, screenshots, and XCUITest/WebDriverAgent actions
 - Native Android WebView DOM snapshots, JavaScript evaluation, and debug
   DevTools/CDP network/console capture
 - Flutter Widget snapshots, semantic action metadata, and runtime action handling
@@ -110,15 +113,43 @@ aiAppBridge {
 
 The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Components instrumentation, and AGP 4.x uses the legacy Transform API.
 
+## iOS Quick Start
+
+Add the Swift runtime to debug builds through Swift Package Manager:
+
+```swift
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", from: "0.2.11")
+```
+
+Start the runtime once in the debug app process:
+
+```swift
+#if DEBUG
+import AiAppBridgeIOS
+
+AiAppBridge.shared.start(appName: "your_ios_app")
+#endif
+```
+
+Install the desktop CLI and verify the full-control stack:
+
+```bash
+npm install -g @mobileaidev/ai-app-bridge
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+```
+
+Full iOS control requires Xcode, a trusted/unlocked device with Developer Mode enabled, the app debug runtime, and WebDriverAgent/XCUITest signed and reachable. The CLI vendors `appium-webdriveragent` and can start it with `ios-setup --start-wda --team-id <APPLE_TEAM_ID>`, using a unique default WDA bundle id unless `--wda-bundle-id` is supplied. On physical devices, reuse the WDA URL returned by setup; it may be a CoreDevice tunnel such as `http://[fdxx::1]:8100` rather than `127.0.0.1`.
+
 ## Flutter Quick Start
 
-Flutter projects only need the pub package. The plugin's Android debug variant automatically includes the `ai-app-bridge-android` runtime that starts the in-app bridge server; the release variant does not include this debug runtime automatically.
+Flutter projects only need the pub package. The plugin's Android debug variant automatically includes the `ai-app-bridge-android` runtime that starts the in-app bridge server; the iOS plugin starts the Swift runtime in the debug app process. Release builds should not expose the debug runtime automatically.
 
 Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.3
+  ai_app_bridge_flutter: ^0.2.4
 ```
 
 Initialize once:

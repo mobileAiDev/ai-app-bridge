@@ -6,6 +6,7 @@ const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
+const { IOSBridgeProvider } = require('./ios-provider');
 
 const generatedArtifactRetention = 20;
 
@@ -33,6 +34,30 @@ Commands:
   events                 Read generic in-app event records.
   freeze-app             Stop the target app processes with SIGSTOP.
   thaw-app               Resume the target app processes with SIGCONT.
+
+iOS commands:
+  ios-doctor             Check Xcode, connected iPhone, runtime, and WDA readiness.
+  ios-setup              Verify full-control iOS setup; can install/launch app and start WDA when configured.
+  ios-devices            List iOS devices known to xcrun devicectl.
+  ios-install-app        Install an iOS .app bundle through devicectl.
+  ios-launch-app         Launch an iOS app by bundle identifier.
+  ios-status             Read AiAppBridgeIOS runtime status.
+  ios-tree               Read UIKit tree from the iOS runtime.
+  ios-logs               Read in-app iOS log records.
+  ios-network            Read in-app iOS network records.
+  ios-state              Read in-app iOS state records.
+  ios-events             Read in-app iOS event records.
+  ios-h5-dom             Read WKWebView DOM from the iOS runtime.
+  ios-h5-eval            Execute JavaScript in a WKWebView through the iOS runtime.
+  ios-flutter-tree       Read Flutter iOS layout snapshot.
+  ios-flutter-nodes      Read Flutter iOS operable nodes.
+  ios-flutter-action     Dispatch a Flutter iOS action through the runtime.
+  ios-screenshot         Capture an iOS device screenshot through devicectl.
+  ios-wda-status         Check WebDriverAgent status.
+  ios-uia-tree           Read XCUITest/WDA UI tree.
+  ios-tap                Tap iOS device coordinates through WDA.
+  ios-input              Type text through WDA.
+  ios-swipe              Swipe through WDA.
 
 H5/WebView commands:
   h5-dom                 Read native Android WebView DOM.
@@ -93,6 +118,18 @@ Options:
   --package-name <name>  Target Android package; discovers its bridge port via run-as.
   --port <port>          Override bridge local/device port.
   --serial <serial>      Target a specific ADB device.
+  --device-id <id>       Target iOS devicectl identifier, UDID, serial, or device name.
+  --bundle-id <id>       Target iOS app bundle identifier.
+  --app-path <path>      iOS .app bundle path for ios-install-app or ios-setup.
+  --ios-host <host>      iOS runtime host or CoreDevice tunnel IP.
+  --ios-port <port>      iOS runtime port; defaults to runtime discovery or 18080 scan.
+  --runtime-url <url>    Explicit iOS runtime base URL.
+  --wda-url <url>        WebDriverAgent base URL; defaults to http://127.0.0.1:8100.
+  --wda-session-id <id>  Reuse an existing WDA session.
+  --wda-project-path <path> Path to WebDriverAgent.xcodeproj for ios-setup --start-wda.
+  --wda-bundle-id <id>   Unique WebDriverAgentRunner bundle id for signing.
+  --team-id <id>         Apple development team id for signing WebDriverAgentRunner.
+  --start-wda            Let ios-setup run xcodebuild for WebDriverAgentRunner.
   --adb <path>           ADB executable path.
   --adb-timeout-ms <ms>  Timeout for ADB subprocesses.
   --out-file <path>      Screenshot output path.
@@ -110,6 +147,9 @@ Options:
   --target-text <text>   Text used by tap-text or wait-text.
   --tap-x <n>            X coordinate used by tap or Flutter input.
   --tap-y <n>            Y coordinate used by tap or Flutter input.
+  --accessibility-id <s> iOS accessibility identifier for element input.
+  --element-id <s>       Existing WDA element id for element input.
+  --clear-first          Clear the iOS input element before typing.
   --start-x <n>          Swipe start X coordinate.
   --start-y <n>          Swipe start Y coordinate.
   --end-x <n>            Swipe end X coordinate.
@@ -190,6 +230,12 @@ async function main() {
     return;
   }
 
+  if (isIOSCommand(command || options.command)) {
+    const result = await new IOSBridgeProvider().run(command || options.command, options);
+    writeCliResult(result);
+    return;
+  }
+
   const ctx = {
     adb: options.adb || defaults.adb,
     adbTimeoutMs: Number(options.adbTimeoutMs || defaults.adbTimeoutMs),
@@ -203,6 +249,10 @@ async function main() {
   };
 
   const result = await runCommand(command || options.command || 'status', options, ctx);
+  writeCliResult(result);
+}
+
+function writeCliResult(result) {
   if (Buffer.isBuffer(result)) {
     process.stdout.write(result);
     return;
@@ -213,6 +263,10 @@ async function main() {
     return;
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+function isIOSCommand(command) {
+  return String(command || '').startsWith('ios-');
 }
 
 async function runCommand(command, options, ctx) {

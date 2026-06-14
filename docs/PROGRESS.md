@@ -5,6 +5,122 @@ to match the current public repository naming. They are retained as development
 evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
 for current dependency coordinates.
 
+## 2026-06-14
+
+- Prepared the iOS/full-control release line for native iOS, Flutter iOS, and
+  desktop MCP:
+  - Added a repository-root `Package.swift` so SwiftPM can consume
+    `https://github.com/mobileAiDev/ai-app-bridge.git` directly by Git tag.
+  - Kept the standalone `ios/ai-app-bridge-ios` package for local development
+    and sample validation.
+  - Updated the Flutter plugin to `0.2.4`, declared the iOS plugin platform,
+    and vendored the `AiAppBridgeIOS` Swift runtime sources inside the Flutter
+    package so pub.dev consumers only need `ai_app_bridge_flutter`.
+  - Updated the desktop CLI/MCP docs and bundled `ai-app-bridge-use` skill to
+    describe iOS runtime evidence plus WDA/XCUITest full-control operations,
+    CoreDevice tunnel WDA URLs, and element-targeted iOS text input.
+  - Bumped the desktop npm package to `@mobileaidev/ai-app-bridge@0.2.11`.
+- iOS/desktop validation for the release line passed:
+  - `swift package dump-package` passed at both the repository root and
+    `ios/ai-app-bridge-ios`.
+  - `xcodebuild -scheme AiAppBridgeIOS -destination 'generic/platform=iOS'
+    -sdk iphoneos CODE_SIGNING_ALLOWED=NO build` passed from both package
+    locations.
+  - The iOS native sample built for generic iOS with signing disabled and the
+    asset catalog app icon included.
+  - `cd desktop/ai-app-bridge-cli && npm run check` passed 55 Node tests.
+  - `npm pack --dry-run --json` for the desktop package included the iOS
+    provider and updated skill files.
+- Flutter pub.dev publication is intentionally blocked until a Flutter/Dart
+  toolchain and pub.dev credentials are available on the machine. Current PATH
+  has no `flutter`, `dart`, or `pod`, Homebrew has no Flutter/Dart/CocoaPods
+  install, and `~/.pub-cache/credentials.json` is absent.
+- Cross-platform generalization planning started with a compatibility-first
+  rule: existing Android runtime, Android Gradle plugin, Flutter plugin,
+  desktop CLI, and MCP command behavior are the baseline and must not regress.
+- Added `docs/CROSS_PLATFORM_BRIDGE_DESIGN.md` to define the shared provider
+  architecture, evidence model, target/session identifiers, compatibility
+  contract, provider phases, and release/secret-handling rules.
+- Added `docs/WEB_BRIDGE_DESIGN.md` for the phase-two web target: browser SDK,
+  desktop web provider, WebSocket/HTTP-polling transport, command whitelist,
+  DOM/network/log/state/event evidence, browser-provider pairing, and publish
+  gate.
+- Updated `docs/TEST_PLAN.md` with a compatibility gate for future provider
+  work: desktop CLI/MCP checks, Android runtime/plugin Gradle builds and tests,
+  Flutter analyze, and optional device smoke when hardware is available.
+- Initial Web Bridge MVP implementation is in place while keeping the existing
+  Android/Flutter runtime code path isolated from the new provider:
+  - `desktop/ai-app-bridge-cli/bin/web-provider.js` adds a long-lived
+    WebSocket session provider for web SDK clients.
+  - `desktop/ai-app-bridge-cli/bin/mcp-server.js` now exposes a separate `web`
+    command domain with `web-session-start`, `web-status`, `web-dom`,
+    `web-logs`, `web-network`, `web-state`, `web-events`, `web-command`,
+    `web-click`, `web-input`, `web-wait`, and `web-scroll`.
+  - `web/ai-app-bridge-web/` adds the browser SDK package, README, example
+    page, and SDK unit tests.
+  - Android/Flutter runtime code and dependency coordinates were not changed
+    by the Web Bridge MVP work.
+- Compatibility validation completed for the current Android/desktop baseline:
+  - `cd desktop/ai-app-bridge-cli && npm run check` passed 50 Node tests,
+    covering CLI syntax, MCP compact/full surfaces, JSON-RPC framed and
+    line-JSON transports, `capabilities`/`run`, serial `batch`, Android
+    `packageName` guards, network compaction, Flutter coordinate helpers,
+    UIAutomator locking, installer helpers, and WebView CDP selection logic.
+  - `./gradlew :ai-app-bridge-android:build
+    :ai-app-bridge-gradle-plugin:build :ai-app-bridge-gradle-plugin:test`
+    passed with `ANDROID_HOME=/Users/macbook/Library/Android/sdk`.
+  - `./gradlew -p examples/android-native-sample :app:installDebug` passed on
+    device `b46093e6` after using the existing UIAutomator path to confirm the
+    OPPO installer surfaces (`继续安装`, then `完成`).
+  - Native sample smoke passed with `ok=true`: status, Android tree,
+    UIAutomator tree, screenshot, tap/input operations, H5 DOM click/input/wait/
+    scroll, WebView CDP network/console capture (`events=10`, `requests=1`,
+    `console=5`), dialog handling, permission dialog handling, long-list
+    scrolling, back navigation, and capture buffers (`logs=3`, `network=1`,
+    `state=1`, `events=3`).
+  - A real MCP `run` batch against the foreground sample passed status, logs,
+    network, state, and events in 738 ms; the response reported bridge version
+    `0.2.8`, port `18081`, `logs=4`, `network=1`, `state=1`, and `events=5`.
+  - Flutter static validation was not run because this machine does not have
+    `flutter` on `PATH`; the package and Android/Flutter dependency files were
+    not changed in this phase.
+- Web Bridge MVP validation completed:
+  - `cd web/ai-app-bridge-web && npm test && npm run build` passed 2 SDK tests
+    and JavaScript syntax validation.
+  - `cd desktop/ai-app-bridge-cli && npm run check` passed 51 Node tests,
+    including the new MCP Web provider session/capture/command integration
+    test.
+  - Browser end-to-end verification passed with a local harness page connected
+    to the Web provider over `ws://127.0.0.1:*`: browser click changed the page
+    to `Count: 1`; provider-side evidence returned DOM controls, `logs=2`,
+    `state.counter.value=1`, and `events=1`; provider command
+    `counter.bump` executed in the page and changed both provider state and
+    visible page text to `Count: 11`.
+- Android compatibility was revalidated after the Web Bridge MVP:
+  - Local CLI native sample smoke passed with `ok=true`: status, Android tree,
+    UIAutomator tree, screenshot, tap/input, H5 DOM click/input/wait/scroll,
+    WebView CDP capture (`events=10`, `requests=1`, `console=5`),
+    logs/network/state/events capture (`logs=3`, `network=1`, `state=1`,
+    `events=3`), dialog, long-list scroll, and back navigation.
+  - MCP `batch` against the foreground sample passed status, logs, network,
+    state, and events in 796 ms; the response reported bridge version `0.2.8`,
+    port `18081`, `logs=4`, `network=1`, `state=1`, and `events=3`.
+- Published the Web Bridge npm packages:
+  - `@mobileaidev/ai-app-bridge@0.2.10` is published with the desktop MCP Web
+    provider included in the package tarball.
+  - `@mobileaidev/ai-app-bridge-web@0.1.0` is published as the standalone
+    browser SDK package.
+  - Global npm install was updated to `@mobileaidev/ai-app-bridge@0.2.10`; the
+    installed package contains `bin/web-provider.js`.
+- Added `web/remote-smoke/` as a source-controlled smoke page that consumes the
+  published Web SDK from npm instead of local source. `npm install` resolved
+  `@mobileaidev/ai-app-bridge-web@0.1.0`.
+- Remote dependency smoke passed with global `ai-app-bridge-mcp@0.2.10`:
+  browser page connected through the published SDK, manual page actions
+  produced DOM/log/network/state/event evidence, MCP `batch` passed 7/7 Web
+  steps, and MCP `web-command` updated page state (`note=from-global-mcp`,
+  `count=2`).
+
 ## 2026-05-20
 
 - Desktop MCP `0.2.5` adds a compact serial batch mode without increasing the

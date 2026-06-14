@@ -4,6 +4,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const packageInfo = require('../package.json');
+const { IOSBridgeProvider } = require('./ios-provider');
+const { WebBridgeProvider } = require('./web-provider');
 const bridgeDir = __dirname;
 const cliScript = path.join(bridgeDir, 'ai-app-bridge.js');
 const nodeBinary = process.env.AI_APP_BRIDGE_NODE || process.execPath;
@@ -11,11 +13,13 @@ const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
 const defaultProtocolVersion = supportedProtocolVersions[0];
 const mcpSurface = (process.env.AI_APP_BRIDGE_MCP_SURFACE || 'compact').toLowerCase();
 const serverInstructions = [
-  'AI App Bridge observes and controls Android apps for agent workflows. Prefer these tools over raw adb when inspecting UI, text, WebView, logs, network, app install, data reset, launch, and permissions.',
+  'AI App Bridge observes and controls Android, iOS, Flutter, and Web targets for agent workflows. Prefer these tools over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, and permissions.',
   'Default surface is compact: call capabilities to discover domains, then call run with a command and arguments.',
-  'Always pass packageName for app-specific commands, or pass an explicit port. Do not rely on a sample/default package in MCP sessions.',
+  'Always pass packageName for Android app-specific commands, or pass an explicit port. For iOS, pass bundleId plus deviceId when more than one iPhone is connected.',
   'Use freeze-app/thaw-app only as an optional stabilization control for dynamic or transient screens: thaw before reads/actions/captures, freeze after evidence capture only when it helps reasoning, and thaw before the next operation or before finishing so the app is not left frozen.',
 ].join(' ');
+const iosProvider = new IOSBridgeProvider();
+const webProvider = new WebBridgeProvider();
 
 let buffer = Buffer.alloc(0);
 let responseFormat = null;
@@ -181,16 +185,26 @@ function toolDefinitions() {
 
 function compactToolDefinitions() {
   return [
-    bridgeTool('capabilities', 'List AI App Bridge capability domains and commands. Call this first when planning Android app automation; then use run to execute the selected command.', {
-      domain: { type: 'string', description: 'Optional domain filter such as core, app, action, flutter, webview, or diagnostics.' },
-      command: { type: 'string', description: 'Optional command name for detailed arguments, such as install-apk, launch-app, tree, input-text, or webview-network.' },
+    bridgeTool('capabilities', 'List AI App Bridge capability domains and commands. Call this first when planning app automation; then use run to execute the selected command.', {
+      domain: { type: 'string', description: 'Optional domain filter such as core, app, action, flutter, webview, ios, web, or diagnostics.' },
+      command: { type: 'string', description: 'Optional command name for detailed arguments, such as install-apk, launch-app, tree, input-text, webview-network, ios-setup, or ios-tap.' },
       includeOptions: { type: 'boolean', description: 'Include per-command argument names. Defaults to false to keep output compact.' },
     }),
-    bridgeTool('run', 'Run an AI App Bridge command. Use capabilities first to choose the command. Always pass packageName for app-specific commands.', {
-      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, freeze-app, thaw-app, input-text, tree, webview-network, or logcat.' },
+    bridgeTool('run', 'Run an AI App Bridge command. Use capabilities first to choose the command. Pass packageName for Android app commands and bundleId for iOS app commands.', {
+      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, input-text, webview-network, ios-doctor, ios-setup, ios-status, ios-tap, or web-status.' },
       packageName: { type: 'string', description: 'Target Android package for app-specific commands. Strongly recommended.' },
       serial: { type: 'string', description: 'ADB serial when multiple devices are connected.' },
       port: { type: 'number', description: 'Explicit bridge port when packageName discovery is not available.' },
+      bundleId: { type: 'string', description: 'Target iOS app bundle identifier for ios-* commands.' },
+      deviceId: { type: 'string', description: 'iOS devicectl identifier, UDID, serial number, or device name.' },
+      iosHost: { type: 'string', description: 'iOS runtime host or CoreDevice tunnel IP.' },
+      iosPort: { type: 'number', description: 'iOS runtime port when auto-discovery is unavailable.' },
+      runtimeUrl: { type: 'string', description: 'Explicit iOS runtime base URL.' },
+      wdaUrl: { type: 'string', description: 'WebDriverAgent base URL for iOS full-control commands.' },
+      wdaSessionId: { type: 'string', description: 'Existing WebDriverAgent session id to reuse.' },
+      wdaBundleId: { type: 'string', description: 'Unique WebDriverAgentRunner bundle id for signing.' },
+      accessibilityId: { type: 'string', description: 'iOS accessibility identifier for element input.' },
+      elementId: { type: 'string', description: 'Existing WDA element id for element input.' },
       adb: { type: 'string', description: 'ADB executable path or command.' },
       arguments: {
         type: 'object',
@@ -499,6 +513,43 @@ const commandDefinitions = [
   { command: 'webview-pages', domain: 'webview', summary: 'List attachable Android WebView DevTools/CDP pages.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'keepForward'] },
   { command: 'webview-network', domain: 'webview', summary: 'Capture WebView Network events through CDP.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'urlFilter', 'durationMs', 'script', 'includeResponseBody', 'bodyMaxBytes', 'maxEvents'] },
   { command: 'webview-console', domain: 'webview', summary: 'Capture WebView console/log events through CDP.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'durationMs', 'script', 'maxEvents'] },
+  { command: 'ios-doctor', domain: 'ios', summary: 'Check Xcode, connected iPhone, AiAppBridgeIOS runtime, and WebDriverAgent readiness.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'wdaUrl'] },
+  { command: 'ios-setup', domain: 'ios', summary: 'Verify full-control iOS setup; can install/launch the app and start WDA when signing inputs are supplied.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'appPath', 'iosHost', 'iosPort', 'runtimeUrl', 'wdaUrl', 'wdaProjectPath', 'wdaBundleId', 'teamId', 'startWda'] },
+  { command: 'ios-devices', domain: 'ios', summary: 'List iOS devices known to xcrun devicectl.', targetKind: 'ios-device', options: ['deviceId'] },
+  { command: 'ios-install-app', domain: 'ios', summary: 'Install an iOS .app bundle through devicectl.', targetKind: 'ios-app', options: ['deviceId', 'appPath'] },
+  { command: 'ios-launch-app', domain: 'ios', summary: 'Launch an iOS app by bundle identifier through devicectl.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'terminateExisting'] },
+  { command: 'ios-status', domain: 'ios', summary: 'Read AiAppBridgeIOS runtime status.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
+  { command: 'ios-tree', domain: 'ios', summary: 'Read UIKit tree from the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
+  { command: 'ios-logs', domain: 'ios', summary: 'Read in-app iOS log records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'ios-network', domain: 'ios', summary: 'Read in-app iOS network records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'ios-state', domain: 'ios', summary: 'Read in-app iOS state records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'ios-events', domain: 'ios', summary: 'Read in-app iOS event records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'ios-h5-dom', domain: 'ios', summary: 'Read WKWebView DOM from the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
+  { command: 'ios-h5-eval', domain: 'ios', summary: 'Execute JavaScript in WKWebView through the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'script'] },
+  { command: 'ios-flutter-tree', domain: 'ios', summary: 'Read Flutter iOS layout snapshot from the runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
+  { command: 'ios-flutter-nodes', domain: 'ios', summary: 'Read Flutter iOS operable nodes from the runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
+  { command: 'ios-flutter-action', domain: 'ios', summary: 'Dispatch a Flutter iOS action through the runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'payload'] },
+  { command: 'ios-screenshot', domain: 'ios', summary: 'Capture an iOS device screenshot through devicectl.', targetKind: 'ios-device', options: ['deviceId', 'outFile', 'artifactDir', 'displayUniqueId'] },
+  { command: 'ios-wda-status', domain: 'ios', summary: 'Check WebDriverAgent status.', targetKind: 'ios-device', options: ['wdaUrl'] },
+  { command: 'ios-uia-tree', domain: 'ios', summary: 'Read the XCUITest/WebDriverAgent UI tree.', targetKind: 'ios-device', options: ['bundleId', 'wdaUrl', 'wdaSessionId'] },
+  { command: 'ios-tap', domain: 'ios', summary: 'Tap iOS device coordinates through WebDriverAgent.', targetKind: 'ios-device', options: ['bundleId', 'wdaUrl', 'wdaSessionId', 'tapX', 'tapY'] },
+  { command: 'ios-input', domain: 'ios', summary: 'Type text through WebDriverAgent, optionally tapping coordinates first.', targetKind: 'ios-device', options: ['bundleId', 'wdaUrl', 'wdaSessionId', 'text', 'tapX', 'tapY', 'accessibilityId', 'elementId', 'clearFirst'] },
+  { command: 'ios-swipe', domain: 'ios', summary: 'Swipe through WebDriverAgent.', targetKind: 'ios-device', options: ['bundleId', 'wdaUrl', 'wdaSessionId', 'startX', 'startY', 'endX', 'endY', 'durationMs'] },
+  { command: 'web-provider-status', domain: 'web', summary: 'Read desktop Web Bridge provider status.', options: [] },
+  { command: 'web-session-start', domain: 'web', summary: 'Start the desktop Web Bridge WebSocket session server.', options: ['host', 'webPort', 'path', 'token'] },
+  { command: 'web-connect-info', domain: 'web', summary: 'Read the Web Bridge endpoint and token for SDK clients.', options: [] },
+  { command: 'web-sessions', domain: 'web', summary: 'List connected Web Bridge SDK sessions.', options: [] },
+  { command: 'web-status', domain: 'web', summary: 'Read status and capture counts for a Web Bridge session.', targetKind: 'web-target', options: ['sessionId'] },
+  { command: 'web-dom', domain: 'web', summary: 'Read or refresh a Web Bridge DOM snapshot.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'refresh', 'timeoutMs'] },
+  { command: 'web-logs', domain: 'web', summary: 'Read Web Bridge log records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'web-network', domain: 'web', summary: 'Read Web Bridge network records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'web-state', domain: 'web', summary: 'Read Web Bridge state records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'web-events', domain: 'web', summary: 'Read Web Bridge event records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'web-command', domain: 'web', summary: 'Run a whitelisted command in a connected Web Bridge SDK session.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'name', 'arguments', 'timeoutMs'] },
+  { command: 'web-click', domain: 'web', summary: 'Click a DOM element through the Web Bridge SDK command path.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'targetText', 'timeoutMs'] },
+  { command: 'web-input', domain: 'web', summary: 'Set text in a DOM input through the Web Bridge SDK command path.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'value', 'timeoutMs'] },
+  { command: 'web-wait', domain: 'web', summary: 'Wait for text or selector through the Web Bridge SDK command path.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'targetText', 'timeoutMs'] },
+  { command: 'web-scroll', domain: 'web', summary: 'Scroll a Web Bridge DOM target.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'deltaX', 'deltaY', 'timeoutMs'] },
   { command: 'forward', domain: 'advanced', summary: 'Create the ADB port forward for the bridge.', targetApp: true, options: ['serial', 'packageName', 'port'] },
   { command: 'remove-forward', domain: 'advanced', summary: 'Remove the ADB port forward for the bridge.', options: ['serial', 'port'] },
   { command: 'batch', domain: 'advanced', summary: 'Run multiple AI App Bridge commands serially in one MCP call.', options: ['defaults', 'steps', 'stopOnError', 'includeRaw', 'maxRawChars'] },
@@ -558,7 +609,7 @@ async function callTool(name, args) {
     tap_uia_text: 'tap-uia-text',
     permission_dialog: 'permission-dialog',
   };
-  const command = commandMap[name] || name;
+  const command = commandMap[name] || normalizeCommandName(name);
   return runBridgeChecked(command, args);
 }
 
@@ -594,6 +645,7 @@ function shapeCommandDefinition(definition, includeOptions) {
     command: definition.command,
     summary: definition.summary,
     targetApp: Boolean(definition.targetApp),
+    targetKind: definition.targetKind || (definition.targetApp ? 'android-app' : 'none'),
     ...(includeOptions ? { options: definition.options || [] } : {}),
   };
 }
@@ -606,7 +658,7 @@ async function runGeneric(args = {}) {
   const commandArgs = {
     ...(args.arguments && typeof args.arguments === 'object' ? args.arguments : {}),
   };
-  for (const key of ['adb', 'serial', 'port', 'packageName']) {
+  for (const key of sharedRunArgKeys()) {
     if (args[key] !== undefined && commandArgs[key] === undefined) {
       commandArgs[key] = args[key];
     }
@@ -621,18 +673,62 @@ function normalizeCommandName(value) {
   return String(value || '').trim().replace(/_/g, '-');
 }
 
+function sharedRunArgKeys() {
+  return [
+    'adb',
+    'serial',
+    'port',
+    'packageName',
+    'artifactDir',
+    'sessionId',
+    'targetId',
+    'webPort',
+    'deviceId',
+    'bundleId',
+    'iosHost',
+    'iosPort',
+    'runtimeUrl',
+    'wdaUrl',
+    'wdaSessionId',
+    'wdaProjectPath',
+    'wdaBundleId',
+    'accessibilityId',
+    'elementId',
+    'teamId',
+    'appPath',
+    'xcodebuild',
+    'devicectl',
+  ];
+}
+
 function runBridgeChecked(command, args = {}) {
+  const definition = commandByName.get(command);
+  if (definition?.domain === 'ios') {
+    return runIOSChecked(command, args);
+  }
+  if (definition?.domain === 'web') {
+    return runWebChecked(command, args);
+  }
   if (command === 'clear-app-data' && !args.packageName) {
     return toolText('clear-app-data: packageName is required in MCP mode so the command cannot clear a default package.', true);
   }
   if ((command === 'freeze-app' || command === 'thaw-app') && !args.packageName) {
     return toolText(`${command}: packageName is required in MCP mode so the command cannot signal a default package.`, true);
   }
-  const definition = commandByName.get(command);
   if (definition?.targetApp && !args.packageName && !args.port) {
     return toolText(`${command}: packageName or explicit port is required in MCP mode so the command cannot fall back to a default package.`, true);
   }
   return runBridge(command, args);
+}
+
+async function runWebChecked(command, args = {}) {
+  const result = await webProvider.run(command, args);
+  return toolJson(result, result?.ok === false);
+}
+
+async function runIOSChecked(command, args = {}) {
+  const result = await iosProvider.run(command, args);
+  return toolJson(result, result?.ok === false);
 }
 
 async function runBatch(args = {}, runner = runBridgeChecked) {
@@ -654,7 +750,7 @@ async function runBatch(args = {}, runner = runBridgeChecked) {
   }
 
   const defaults = args.defaults && typeof args.defaults === 'object' ? { ...args.defaults } : {};
-  for (const key of ['adb', 'serial', 'port', 'packageName', 'artifactDir']) {
+  for (const key of sharedRunArgKeys()) {
     if (args[key] !== undefined && defaults[key] === undefined) {
       defaults[key] = args[key];
     }
@@ -706,7 +802,7 @@ async function runBatch(args = {}, runner = runBridgeChecked) {
       ...defaults,
       ...(step.arguments && typeof step.arguments === 'object' ? step.arguments : {}),
     };
-    for (const key of ['adb', 'serial', 'port', 'packageName']) {
+    for (const key of sharedRunArgKeys()) {
       if (step[key] !== undefined) {
         stepArgs[key] = step[key];
       }
@@ -721,7 +817,12 @@ async function runBatch(args = {}, runner = runBridgeChecked) {
         status: passed ? 'passed' : 'failed',
         ok: passed,
         packageName: stepArgs.packageName,
+        bundleId: stepArgs.bundleId,
+        deviceId: stepArgs.deviceId,
+        sessionId: stepArgs.sessionId,
+        targetId: stepArgs.targetId,
         port: stepArgs.port,
+        iosPort: stepArgs.iosPort,
         durationMs: Date.now() - stepStartedAtMs,
         summary: summarizeToolPayload(parsed),
       };
@@ -743,7 +844,10 @@ async function runBatch(args = {}, runner = runBridgeChecked) {
         status: 'failed',
         ok: false,
         packageName: stepArgs.packageName,
+        bundleId: stepArgs.bundleId,
+        deviceId: stepArgs.deviceId,
         port: stepArgs.port,
+        iosPort: stepArgs.iosPort,
         durationMs: Date.now() - stepStartedAtMs,
         error: error.message || String(error),
       };
@@ -802,6 +906,14 @@ function summarizeToolPayload(parsed) {
     error: payload.error || null,
   };
   if (payload.packageName) summary.packageName = payload.packageName;
+  if (payload.bundleId) summary.bundleId = payload.bundleId;
+  if (payload.endpoint) summary.endpoint = payload.endpoint;
+  if (payload.wdaUrl) summary.wdaUrl = payload.wdaUrl;
+  if (payload.device?.identifier) summary.deviceId = payload.device.identifier;
+  if (payload.selectedDevice?.identifier) summary.deviceId = payload.selectedDevice.identifier;
+  if (payload.sessionId) summary.sessionId = payload.sessionId;
+  if (payload.targetId) summary.targetId = payload.targetId;
+  if (payload.session?.sessionId) summary.sessionId = payload.session.sessionId;
   if (payload.app?.packageName) summary.app = payload.app.packageName;
   if (payload.activity) summary.activity = payload.activity;
   if (payload.component) summary.component = payload.component;
@@ -815,6 +927,7 @@ function summarizeToolPayload(parsed) {
     };
   }
   if (payload.count !== undefined) summary.count = payload.count;
+  if (payload.sessionCount !== undefined) summary.sessionCount = payload.sessionCount;
   if (payload.nodeCount !== undefined) summary.nodeCount = payload.nodeCount;
   if (Array.isArray(payload.items)) summary.items = payload.items.length;
   if (payload.values && typeof payload.values === 'object') {
@@ -862,6 +975,25 @@ function generatedBatchId() {
 function buildBridgeCliArgs(command, args = {}) {
   const cliArgs = [cliScript, command];
   addCommonArgs(cliArgs, args);
+  addArg(cliArgs, 'device-id', args.deviceId);
+  addArg(cliArgs, 'bundle-id', args.bundleId);
+  addArg(cliArgs, 'app-path', args.appPath);
+  addArg(cliArgs, 'ios-host', args.iosHost);
+  addArg(cliArgs, 'ios-port', args.iosPort);
+  addArg(cliArgs, 'runtime-url', args.runtimeUrl);
+  addArg(cliArgs, 'wda-url', args.wdaUrl);
+  addArg(cliArgs, 'wda-session-id', args.wdaSessionId);
+  addArg(cliArgs, 'wda-project-path', args.wdaProjectPath);
+  addArg(cliArgs, 'wda-bundle-id', args.wdaBundleId);
+  addArg(cliArgs, 'accessibility-id', args.accessibilityId);
+  addArg(cliArgs, 'element-id', args.elementId);
+  addArg(cliArgs, 'clear-first', args.clearFirst);
+  addArg(cliArgs, 'team-id', args.teamId);
+  addArg(cliArgs, 'start-wda', args.startWda);
+  addArg(cliArgs, 'devicectl', args.devicectl);
+  addArg(cliArgs, 'xcodebuild', args.xcodebuild);
+  addArg(cliArgs, 'display-unique-id', args.displayUniqueId);
+  addArg(cliArgs, 'terminate-existing', args.terminateExisting);
   addArg(cliArgs, 'initial-route', args.initialRoute);
   addArg(cliArgs, 'activity', args.activity);
   addArg(cliArgs, 'component', args.component);

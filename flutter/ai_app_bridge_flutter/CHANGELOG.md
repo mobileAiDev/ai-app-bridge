@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4
+
+- Adds Flutter iOS plugin publication support with vendored AiAppBridgeIOS runtime sources.
+- Declares the iOS Flutter plugin platform and starts the Swift runtime in the debug app process.
+
 ## 0.2.3
 
 - Uses the JitPack Android runtime 0.2.8 coordinate for debug builds.

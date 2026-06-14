@@ -69,15 +69,69 @@ aiAppBridge {
 
 The plugin keeps one public id and chooses the implementation internally: AGP 7+ uses Android Components instrumentation, while AGP 4.x uses the legacy Transform API.
 
+## iOS
+
+Add the Swift runtime to debug builds through Swift Package Manager:
+
+```swift
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", from: "0.2.11")
+```
+
+Start the runtime once from app startup code:
+
+```swift
+#if DEBUG
+import AiAppBridgeIOS
+
+AiAppBridge.shared.start(appName: "your_ios_app")
+#endif
+```
+
+The runtime exposes app-level evidence over HTTP from the first available port starting at `18080`:
+
+- `/v1/status`
+- `/v1/view/tree`
+- `/v1/screenshot`
+- `/v1/logs`, `/v1/network`, `/v1/state`, `/v1/events`
+- `/v1/h5/dom`, `/v1/h5/eval`
+- `/v1/flutter/snapshot`, `/v1/flutter/action`
+
+Full iOS control also requires XCUITest/WebDriverAgent. The app runtime provides structured evidence from inside the app; WDA provides system-level actions and external UI tree access, including taps, text input, swipes, screenshots, permission dialogs, and UI outside the app process.
+
+```bash
+ai-app-bridge ios-devices
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-tap --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
+ai-app-bridge ios-input --bundle-id <ios.bundle.id> --accessibility-id <field-accessibility-id> --clear-first --text "hello" --wda-url <wda-url-from-setup>
+```
+
+If WDA is not already running, `ios-setup` can attempt to start the CLI-vendored
+`appium-webdriveragent` project when the signing team is supplied. Use
+`--wda-bundle-id` only when your Apple team needs a different unique bundle id.
+
+```bash
+ai-app-bridge ios-setup \
+  --device-id <device-or-udid> \
+  --bundle-id <ios.bundle.id> \
+  --team-id <APPLE_TEAM_ID> \
+  --wda-bundle-id io.example.unique.wda \
+  --start-wda
+```
+
+The command intentionally stops with structured errors for missing Developer Mode, unavailable developer disk image services, missing signing team, or unreachable WDA. Do not treat those errors as optional if the target requires full-control iOS support.
+On physical devices, the reachable WDA endpoint can be a CoreDevice tunnel URL such as `http://[fdxx::1]:8100`; reuse the URL returned by setup rather than assuming localhost.
+
 ## Flutter
 
-Flutter projects only need the Flutter plugin dependency. The plugin's Android debug variant automatically brings in the Android runtime that starts the in-app bridge server; the release variant does not include that debug runtime automatically.
+Flutter projects only need the Flutter plugin dependency. The plugin's Android debug variant automatically brings in the Android runtime that starts the in-app bridge server; the iOS plugin starts the Swift runtime in the debug app process. The release variant should not expose the debug runtime automatically.
 
 Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.3
+  ai_app_bridge_flutter: ^0.2.4
 ```
 
 Initialize once:
@@ -115,10 +169,11 @@ npm install -g @mobileaidev/ai-app-bridge
 ai-app-bridge status --package-name <android.package>
 ai-app-bridge webview-pages --package-name <android.package>
 ai-app-bridge webview-network --package-name <android.package> --duration-ms 3000
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
 ai-app-bridge-mcp
 ```
 
-The desktop tool owns ADB port forwarding, UIAutomator, screenshots, input, permission dialogs, and MCP transport.
+The desktop tool owns ADB port forwarding, UIAutomator, devicectl, WDA HTTP calls, screenshots, input, permission dialogs, and MCP transport.
 For debuggable WebViews with WebView debugging enabled, it can also attach to
 the WebView DevTools socket and collect CDP Network and console events.
 
@@ -131,3 +186,9 @@ the WebView DevTools socket and collect CDP Network and console events.
 
 ### Flutter
 - **Flutter SDK Requirements**: The bridge plugin depends on Flutter 3.10+ (Dart 3.0+) to utilize the latest `SemanticsNode` APIs and `rootPipelineOwner`. Older Flutter versions are not supported out of the box.
+
+### iOS
+- **Xcode / Device Requirements**: Full-control iOS validation requires Xcode, a trusted/unlocked physical device, Developer Mode enabled, and developer disk image services available through `xcrun devicectl`.
+- **WDA Signing**: WebDriverAgentRunner must be signed for the target device. A paid developer account is not required just to publish a Swift package, but local WDA signing still needs an Apple account/team configured in Xcode.
+- **Runtime Port Discovery**: The Swift runtime writes `Documents/ai_app_bridge_port.json`. The CLI reads it through `devicectl` when possible, or accepts `--ios-host`, `--ios-port`, or `--runtime-url` explicitly.
+- **Flutter iOS Publishing**: The pub package vendors the iOS Swift runtime sources inside the plugin, so Flutter consumers only add `ai_app_bridge_flutter`. Native iOS consumers use the GitHub SwiftPM package/tag directly.

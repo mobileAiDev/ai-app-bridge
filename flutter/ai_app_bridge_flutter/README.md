@@ -1,14 +1,14 @@
 # AI App Bridge Flutter
 
-Flutter plugin for AI App Bridge. It exposes Flutter widget snapshots, runtime actions, structured logs, network records, state records, events, and H5 adapter registration so local AI agents can inspect, operate, verify, and iterate on Flutter apps.
+Flutter plugin for AI App Bridge. It exposes Flutter widget snapshots, runtime actions, structured logs, network records, state records, events, and H5 adapter registration so local AI agents can inspect, operate, verify, and iterate on Flutter apps on Android and iOS.
 
 ## Install
 
-Add the Flutter package. The plugin's Android debug variant automatically includes the Android runtime that starts the bridge server on the device; the release variant does not include that debug runtime automatically.
+Add the Flutter package. The plugin's Android debug variant automatically includes the Android runtime that starts the bridge server on the device. The iOS plugin starts the Swift runtime from the app process. Release builds should not expose the debug runtime automatically.
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.3
+  ai_app_bridge_flutter: ^0.2.4
 ```
 
 ## Initialize
@@ -41,3 +41,12 @@ AiAppBridge.instance.registerH5Adapter(
 ```
 
 AI App Bridge is intended for debug builds. Do not expose runtime control surfaces in production builds without a deliberate security review.
+
+## iOS Notes
+
+Flutter iOS support uses two layers:
+
+- The Flutter plugin publishes widget/action snapshots to `AiAppBridgeIOS`.
+- The desktop CLI/MCP uses WebDriverAgent/XCUITest for full-control device actions such as tap, input, swipe, permission dialogs, screenshots, and external UI tree reads.
+
+The published Flutter package contains the iOS Swift runtime sources used by the plugin, so Flutter apps only need the pub dependency. Native iOS apps can use the separate SwiftPM package from the GitHub repository.

@@ -8,7 +8,7 @@
 >
 > **现在：** AI 写完代码，可以自己构建安装 App、自动操作 UI 功能路径、读取真实 UI 状态、检查网络和日志，并完成验收。
 
-AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android / Flutter 应用。Agent 可以读取当前屏幕，操作原生 UI、WebView 和 Flutter H5，读取 View tree / Widget tree / DOM，采集网络请求和日志，验证结果，并基于真实证据持续迭代。
+AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS 和 Flutter 应用。Agent 可以读取当前屏幕，操作原生 UI、WebView / WKWebView 和 Flutter H5，读取 View tree / Widget tree / DOM，采集网络请求和日志，验证结果，并基于真实证据持续迭代。
 
 它的核心目标是让 AI agent 按“观察 -> 操作 -> 读取结果 -> 验证 -> 继续迭代”的方式自主推进，而不是在缺少运行证据时猜测。
 
@@ -28,9 +28,11 @@ AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android / Flu
 ```text
 android/ai-app-bridge-android          Android runtime SDK
 android/ai-app-bridge-gradle-plugin   Debug 构建插桩插件
+ios/ai-app-bridge-ios                 iOS Swift runtime SDK
 flutter/ai_app_bridge_flutter         Flutter 插件
 desktop/ai-app-bridge-cli             Node CLI 和 MCP stdio server
 examples/android-native-sample        干净的 Android 示例应用
+examples/ios-native-sample            用于 runtime 安装验证的干净 iOS 示例应用
 docs                                  设计、集成和测试文档
 ```
 
@@ -39,6 +41,7 @@ docs                                  设计、集成和测试文档
 - 本地 bridge 状态查询：从 `127.0.0.1:18080` 开始自动选择可用端口
 - Android View tree、窗口树和截图
 - 原生 UI 操作，以及桌面端 ADB / UIAutomator 兜底操作
+- iOS UIKit tree、WKWebView DOM/eval、截图，以及 XCUITest/WebDriverAgent 操作
 - 原生 Android WebView DOM 快照和 JavaScript 执行
 - Debug WebView DevTools/CDP 网络请求和 console 捕获
 - Flutter Widget 快照、语义动作信息和运行时动作处理
@@ -110,15 +113,43 @@ aiAppBridge {
 
 同一个插件会自动选择 AGP backend：AGP 7+ 使用新版 Android Components instrumentation，AGP 4.x 使用 legacy Transform API。
 
+## iOS 快速接入
+
+在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
+
+```swift
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", from: "0.2.11")
+```
+
+在 debug app 进程启动一次 runtime：
+
+```swift
+#if DEBUG
+import AiAppBridgeIOS
+
+AiAppBridge.shared.start(appName: "your_ios_app")
+#endif
+```
+
+安装桌面 CLI，并检查完整 iOS 控制栈：
+
+```bash
+npm install -g @mobileaidev/ai-app-bridge
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+```
+
+iOS 完整控制需要 Xcode、已信任且解锁的真机、已开启 Developer Mode、App 内 debug runtime，以及已签名并可访问的 WebDriverAgent/XCUITest。CLI 内置 `appium-webdriveragent`，可通过 `ios-setup --start-wda --team-id <APPLE_TEAM_ID>` 自动启动，并默认使用唯一的 WDA bundle id；需要时可用 `--wda-bundle-id` 覆盖。真机上后续命令应复用 setup 返回的 WDA URL，它可能是 CoreDevice tunnel，例如 `http://[fdxx::1]:8100`，不一定是 `127.0.0.1`。
+
 ## Flutter 快速接入
 
-Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自动引入 `ai-app-bridge-android` runtime，用来启动设备内本地 bridge server；release variant 不会自动带入这个 debug runtime。
+Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自动引入 `ai-app-bridge-android` runtime，用来启动设备内本地 bridge server；iOS plugin 会在 debug app 进程中启动 Swift runtime。release 构建不应自动暴露 debug runtime。
 
 添加 Flutter 插件：
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.3
+  ai_app_bridge_flutter: ^0.2.4
 ```
 
 初始化一次：
