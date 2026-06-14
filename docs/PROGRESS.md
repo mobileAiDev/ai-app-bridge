@@ -18,8 +18,9 @@ for current dependency coordinates.
     package so pub.dev consumers only need `ai_app_bridge_flutter`.
   - Updated the desktop CLI/MCP docs and bundled `ai-app-bridge-use` skill to
     describe iOS runtime evidence plus WDA/XCUITest full-control operations,
-    CoreDevice tunnel WDA URLs, and element-targeted iOS text input.
-  - Bumped the desktop npm package to `@mobileaidev/ai-app-bridge@0.2.11`.
+    CoreDevice tunnel WDA URLs, element-targeted iOS text input, and the Web
+    Bridge provider/SDK session workflow.
+  - Bumped the desktop npm package to `@mobileaidev/ai-app-bridge@0.2.12`.
 - iOS/desktop validation for the release line passed:
   - `swift package dump-package` passed at both the repository root and
     `ios/ai-app-bridge-ios`.
@@ -31,10 +32,18 @@ for current dependency coordinates.
   - `cd desktop/ai-app-bridge-cli && npm run check` passed 55 Node tests.
   - `npm pack --dry-run --json` for the desktop package included the iOS
     provider and updated skill files.
-- Flutter pub.dev publication is intentionally blocked until a Flutter/Dart
-  toolchain and pub.dev credentials are available on the machine. Current PATH
-  has no `flutter`, `dart`, or `pod`, Homebrew has no Flutter/Dart/CocoaPods
-  install, and `~/.pub-cache/credentials.json` is absent.
+- SwiftPM/iOS, Flutter, and npm publication completed:
+  - GitHub tag `0.2.11` is available for Swift Package Manager native iOS
+    consumers.
+  - Flutter package `ai_app_bridge_flutter 0.2.4` is published on pub.dev and
+    declares both Android and iOS plugin platforms.
+  - Desktop package `@mobileaidev/ai-app-bridge 0.2.12` carries the updated
+    MCP/skill instructions for Android, iOS, Flutter, WebView/H5, and Web
+    Bridge usage.
+- Android compatibility regression passed after the iOS/Flutter publication:
+  desktop CLI checks, Android runtime/plugin Gradle builds and tests, native
+  sample install/launch, CLI smoke with `--skip-flutter-launch`, line-JSON MCP,
+  and standard framed MCP all passed against the connected device.
 - Cross-platform generalization planning started with a compatibility-first
   rule: existing Android runtime, Android Gradle plugin, Flutter plugin,
   desktop CLI, and MCP command behavior are the baseline and must not regress.

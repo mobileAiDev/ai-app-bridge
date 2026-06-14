@@ -1,15 +1,15 @@
 ---
 name: ai-app-bridge-use
-description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android 或 Flutter 应用。Codex 需要检查移动端 UI、截图、Android View/UIAutomator tree、点击/输入/等待/滑动、安装/启动/清数据、Flutter widget 与 action、WebView/H5 DOM 或 CDP 网络/控制台、日志/网络/状态/事件、权限/appops、smoke 测试，或按需使用 freeze/thaw 稳定动态画面时触发。
+description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android、iOS、Flutter 或 Web 应用。Codex 需要检查移动端 UI、Web DOM、截图、Android View/UIAutomator tree、iOS UIKit/WDA tree、点击/输入/等待/滑动、安装/启动/清数据、Flutter widget 与 action、WebView/WKWebView/H5 DOM 或 CDP 网络/控制台、Web Bridge session/DOM/command、日志/网络/状态/事件、权限/appops、smoke 测试，或按需使用 freeze/thaw 稳定动态画面时触发。
 ---
 
 # AI App Bridge Use
 
 ## Agent 快速流程
 
-1. 确认目标 app：优先使用用户给出的 `packageName`；没有包名时先从上下文、构建配置或前台 app 线索推断。面向具体 app 的命令必须传 `packageName`，只有包名无法发现 bridge 端口时才传 `port`。
+1. 确认目标：Android 使用 `packageName`，iOS 使用 `bundleId`，真机多设备场景传 `deviceId`/UDID；Web 使用 `sessionId`，多 target 时加 `targetId`。没有目标 id 时先从上下文、构建配置或前台 app/session 线索推断。面向具体 app/session 的命令必须传目标 id，只有无法发现 bridge 端口时才传 `port`、`runtimeUrl` 或先启动 Web session。
 2. 发现能力：默认 MCP surface 只有 `capabilities` 和 `run`。不确定命令或参数时先调用 `capabilities`，再用 `run` 执行。
-3. 选择命令路径：按任务类型选 `core`、`app`、`action`、`flutter`、`webview`、`diagnostics` 或 `advanced` 域；不要先退回原始 `adb`。
+3. 选择命令路径：按任务类型选 `core`、`app`、`action`、`flutter`、`webview`、`ios`、`web`、`diagnostics` 或 `advanced` 域；不要先退回原始 `adb`、浏览器脚本或坐标猜测。
 4. 用 `batch` 串联相关步骤：观察、操作、等待、截图、tree 验证尽量放进一次 MCP 调用。
 5. 验证可见结果：界面变化必须用 `screenshot` 加 `tree`/`uia-tree` 交叉确认。
 6. 只在需要稳定动态画面时使用 `freeze-app`/`thaw-app`；如果本轮冻结过 app，最终回复前必须解冻。
@@ -55,6 +55,12 @@ description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android 
 | WebView CDP 网络/控制台 | `webview-pages`、`webview-network`、`webview-console` |
 | App 内记录 | `logs`、`network`、`state`、`events` |
 | Android 日志 | `logcat`，按 `pid`、`appPid`、`tag`、`level`、`grep` 过滤 |
+| iOS 设备/环境检查 | `ios-devices`、`ios-doctor`、`ios-setup` |
+| iOS App 内证据 | `ios-status`、`ios-tree`、`ios-logs`、`ios-network`、`ios-state`、`ios-events`、`ios-h5-dom`、`ios-h5-eval` |
+| iOS 系统级 UI 与动作 | `ios-uia-tree`、`ios-tap`、`ios-input`、`ios-swipe`、`ios-screenshot` |
+| Web Bridge session | `web-provider-status`、`web-session-start`、`web-connect-info`、`web-sessions` |
+| Web DOM 和证据 | `web-status`、`web-dom`、`web-logs`、`web-network`、`web-state`、`web-events` |
+| Web 页面动作 | `web-click`、`web-input`、`web-wait`、`web-scroll`、`web-command` |
 | 自检 | `smoke` |
 | 多步骤串行执行 | `batch` |
 | 动态画面稳定 | `freeze-app`、`thaw-app`，只按需使用 |
@@ -124,6 +130,76 @@ description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android 
 }
 ```
 
+iOS 观察和操作：
+
+```json
+{
+  "command": "batch",
+  "arguments": {
+    "defaults": {
+      "deviceId": "00008150-...",
+      "bundleId": "com.example.ios"
+    },
+    "steps": [
+      { "id": "status", "command": "ios-status" },
+      { "id": "tree", "command": "ios-tree" },
+      { "id": "uia", "command": "ios-uia-tree", "arguments": { "wdaUrl": "http://[fd00::1]:8100" } },
+      { "id": "tap", "command": "ios-tap", "arguments": { "wdaUrl": "http://[fd00::1]:8100", "tapX": 160, "tapY": 320 } },
+      { "id": "events", "command": "ios-events" }
+    ],
+    "stopOnError": true,
+    "includeRaw": true
+  }
+}
+```
+
+Web session 启动和连接：
+
+```json
+{
+  "command": "web-session-start",
+  "arguments": {
+    "webPort": 18180,
+    "token": "session-token"
+  }
+}
+```
+
+页面调试入口使用 Web SDK 连接：
+
+```js
+import { createAiAppBridge } from "@mobileaidev/ai-app-bridge-web";
+
+const bridge = createAiAppBridge({
+  endpoint: "ws://127.0.0.1:18180/ai-app-bridge-web",
+  token: "session-token",
+  appName: "demo-web-app",
+  capture: { console: true, errors: true, fetch: true, xhr: true, dom: true }
+});
+
+bridge.start();
+```
+
+Web 观察、操作和验证：
+
+```json
+{
+  "command": "batch",
+  "arguments": {
+    "defaults": { "sessionId": "web-session-abc123" },
+    "steps": [
+      { "id": "status", "command": "web-status" },
+      { "id": "dom", "command": "web-dom", "arguments": { "refresh": true } },
+      { "id": "click", "command": "web-click", "arguments": { "selector": "button[type=submit]" } },
+      { "id": "wait", "command": "web-wait", "arguments": { "targetText": "Saved", "timeoutMs": 5000 } },
+      { "id": "events", "command": "web-events" }
+    ],
+    "stopOnError": true,
+    "includeRaw": true
+  }
+}
+```
+
 ## 验证规则
 
 把 `screenshot` 当作当前可见画面的最高优先级证据，把 `tree`/`uia-tree` 当作可操作节点和结构证据。
@@ -140,6 +216,22 @@ description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android 
 异步 UI 用 `wait-text` 或 H5/Flutter wait 命令等待；不要用固定 sleep 代替状态判断。
 
 ## 平台专项
+
+iOS：
+
+- 完整能力必须同时使用两层：App 内 `AiAppBridgeIOS` runtime 负责结构化证据，WebDriverAgent/XCUITest 负责系统级 tap/input/swipe、权限弹窗、外部 UI tree 和跨 app UI。
+- 首次真机使用先跑 `ios-devices` 和 `ios-doctor`。如果 Developer Mode、DDI、信任、解锁、Xcode Apple team 或 WDA signing 不满足，停下来报告 blocker，不要跳过 WDA 降级成只读模式。
+- WDA 可由 `ios-setup --start-wda --team-id <APPLE_TEAM_ID>` 启动；真机上返回的 WDA URL 可能是 CoreDevice tunnel，例如 `http://[fdxx::1]:8100`，后续 `ios-uia-tree`、`ios-tap`、`ios-input`、`ios-swipe` 都优先复用这个 URL。
+- 文本输入优先用元素目标，例如 `ios-input` 搭配 `accessibilityId` 或 `elementId` 和 `clearFirst`；坐标输入仅用于没有稳定 accessibility id 的控件。
+- Flutter iOS 仍按 Flutter 路径读 widget/action 证据；设备级动作、权限弹窗和外部 UI 仍走 iOS WDA 命令。
+
+Web：
+
+- 独立 Web app 不用 Android `packageName`；先 `web-session-start` 启动桌面 WebSocket provider，再用 `web-connect-info` 读取 endpoint/token，让页面里的 `@mobileaidev/ai-app-bridge-web` SDK 连接。
+- SDK 只放在 debug/test/client 代码里；SSR 框架必须只在浏览器端初始化，生产环境默认不要启用。
+- 页面连接后先用 `web-sessions` 找 `sessionId`，再用 `web-status`、`web-dom`、`web-logs`、`web-network`、`web-state`、`web-events` 采集证据。
+- 操作页面优先用 `web-command` 调注册过的白名单 action；需要 DOM 操作时用 `web-click`、`web-input`、`web-wait`、`web-scroll`，并传稳定 `selector` 或 `targetText`。
+- 多页面、iframe 或自定义 surface 时传 `targetId`；如果返回 target ambiguous，先读取候选 target 再重试。
 
 Flutter：
 
@@ -165,6 +257,8 @@ WebView/H5：
 ## Freeze/Thaw 策略
 
 `freeze-app`/`thaw-app` 是稳定动态画面的能力之一，不是默认动作节奏。只有冻结能让证据更可靠时才用。
+
+`freeze-app`/`thaw-app` 只适用于移动 app runtime；Web Bridge 目标不要使用这两个命令。
 
 适合冻结：
 
@@ -217,6 +311,12 @@ WebView/H5：
 ## 失败处理
 
 - `packageName`/`port` 缺失：先补目标，不要让 MCP 回落到默认 sample。
+- iOS `bundleId`/`deviceId`/`wdaUrl` 缺失：先用 `ios-devices`/`ios-setup` 补齐；需要 full-control 时不要在没有 WDA 的情况下宣称完成。
+- iOS 设备锁屏、未信任、Developer Mode/DDI 不可用、WDA signing 失败、首次启动弹出授权/密码框：停下告诉用户需要操作，用户处理后再重试。
+- Web `sessionId` 缺失：先跑 `web-session-start`、让页面 SDK 连接，再用 `web-sessions` 获取 session；不要把 Web 命令改成 Android `packageName`。
+- Web provider 未运行或 endpoint/token 不匹配：用 `web-provider-status` 和 `web-connect-info` 重新确认连接信息，让页面刷新后重连。
+- Web target ambiguous：读取 `web-sessions` 或 `web-dom` 返回的 target 候选，明确传 `targetId`。
+- Web command 被拒绝：确认页面 SDK 是否注册了对应 action，或改用允许的 `web-click`/`web-input`/`web-scroll`；不要临时打开任意 `eval`。
 - `screenshot` 报前台 package 不匹配：先 `launch-app` 或确认当前前台，再继续判断。
 - `tree` 为空但截图正常：尝试 `uia-tree`、等待一轮或使用 Flutter/WebView 专用命令。
 - WebView CDP 不可用：确认 app debuggable、WebView debugging、目标 page；不能用 CDP 时退回 `h5-*` 或可见 UI 验证。
@@ -230,6 +330,12 @@ WebView/H5：
 
 ```bash
 npm install -g @mobileaidev/ai-app-bridge
+```
+
+Web 页面需要额外在目标项目中安装调试 SDK：
+
+```bash
+npm install --save-dev @mobileaidev/ai-app-bridge-web
 ```
 
 macOS / Linux:
