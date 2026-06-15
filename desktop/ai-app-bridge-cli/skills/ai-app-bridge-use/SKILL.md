@@ -1,9 +1,27 @@
 ---
 name: ai-app-bridge-use
-description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android、iOS、Flutter 或 Web 应用。Codex 需要检查移动端 UI、Web DOM、截图、Android View/UIAutomator tree、iOS UIKit/WDA tree、点击/输入/等待/滑动、安装/启动/清数据、Flutter widget 与 action、WebView/WKWebView/H5 DOM 或 CDP 网络/控制台、Web Bridge session/DOM/command、日志/网络/状态/事件、权限/appops、smoke 测试，或按需使用 freeze/thaw 稳定动态画面时触发。
+description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android native、Android WebView/H5/CDP、Flutter、iOS native + WDA/XCUITest、WKWebView 和桌面 Web Bridge。能力域包括 core/status/tree/screenshot/logs/network/state/events，app/install/clear-data/launch/freeze/thaw/permissions/appops，action/tap/input/swipe/keyevent/wait/keyboard，flutter/widget/action，webview/H5/CDP，ios/devices/setup/runtime/WDA/H5/flutter，web/session/DOM/logs/network/events/command，diagnostics/logcat/smoke，advanced/batch/port-forward。
 ---
 
 # AI App Bridge Use
+
+## 能力总览
+
+AI App Bridge 支持 Android native apps、Android WebView/H5/CDP、Flutter apps、iOS native apps via `AiAppBridgeIOS` + WebDriverAgent/XCUITest、WKWebView，以及桌面 Web Bridge sessions。
+
+默认 MCP surface 只有 `capabilities` 和 `run`；先用 `capabilities` 查 domain、command 和 options，再用 `run` 执行。
+
+目标标识：Android 用 `packageName` 或显式 `port`；iOS 用 `bundleId`，多设备加 `deviceId`，full-control 加 `wdaUrl`；Web 用 `sessionId`，多 target 加 `targetId`。
+
+命令域：
+- `core`: `status`/`tree`/`uia-tree`/`screenshot`/`logs`/`network`/`state`/`events`
+- `app`: `install-apk`/`clear-app-data`/`launch-*`/`freeze-app`/`thaw-app`/`permission-*`/`appops-set`
+- `action`: `tap`/`tap-text`/`tap-uia-text`/`input-text`/`swipe`/`keyevent`/`wait-text`/`keyboard-*`
+- `flutter`: `flutter-tree`/`flutter-nodes`/`flutter-action`/`tap-flutter-text`/`input-flutter-text`/`scroll-flutter`
+- `webview`: `h5-*`/`flutter-h5-*`/`webview-pages`/`webview-network`/`webview-console`
+- `ios`: `ios-devices`/`ios-doctor`/`ios-setup`/`ios-status`/`ios-tree`/`ios-uia-tree`/`ios-tap`/`ios-input`/`ios-swipe`/`ios-h5-*`/`ios-flutter-*`
+- `web`: `web-session-start`/`web-sessions`/`web-status`/`web-dom`/`web-logs`/`web-network`/`web-state`/`web-events`/`web-command`/`web-click`/`web-input`/`web-wait`/`web-scroll`
+- `diagnostics`/`advanced`: `logcat`/`smoke`/`batch`/`forward`/`remove-forward`
 
 ## Agent 快速流程
 

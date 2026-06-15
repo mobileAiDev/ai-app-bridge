@@ -1,0 +1,12 @@
+{
+  "name": "ai-app-bridge-web-remote-smoke",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Smoke page that consumes the published AI App Bridge Web SDK.",
+  "scripts": {
+    "check": "node -e \"require('@mobileaidev/ai-app-bridge-web')\""
+  },
+  "dependencies": {
+    "@mobileaidev/ai-app-bridge-web": "^0.1.0"
+  }
+}

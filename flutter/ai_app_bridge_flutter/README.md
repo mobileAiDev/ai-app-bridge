@@ -2,6 +2,12 @@
 
 Flutter plugin for AI App Bridge. It exposes Flutter widget snapshots, runtime actions, structured logs, network records, state records, events, and H5 adapter registration so local AI agents can inspect, operate, verify, and iterate on Flutter apps on Android and iOS.
 
+Agent-side MCP commands are discoverable through `capabilities`. Flutter UI uses
+the `flutter` domain (`flutter-tree`, `flutter-nodes`, `flutter-action`,
+`tap-flutter-text`, `input-flutter-text`, `scroll-flutter`); Flutter WebView/H5
+adapters use the `webview` domain (`flutter-h5-*`); Flutter iOS evidence and
+actions also appear under the `ios` domain (`ios-flutter-*`).
+
 ## Install
 
 Add the Flutter package. The plugin's Android debug variant automatically includes the Android runtime that starts the bridge server on the device. The iOS plugin starts the Swift runtime from the app process. Release builds should not expose the debug runtime automatically.

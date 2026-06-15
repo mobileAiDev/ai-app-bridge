@@ -5,6 +5,35 @@ to match the current public repository naming. They are retained as development
 evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
 for current dependency coordinates.
 
+## 2026-06-15
+
+- Audited the AI App Bridge entry docs, bundled skill, MCP compact surface
+  descriptions, CLI help, and Web/Flutter package READMEs for first-screen
+  capability discovery.
+- Confirmed the issue was real: the bridge and `capabilities` surface already
+  exposed Android, iOS, Flutter, WebView/H5/CDP, WKWebView, Web Bridge,
+  diagnostics, batch, and port-forward capabilities, but the first-screen
+  wording was split across operational docs and did not read like a capability
+  index.
+- Added a concise capability overview to the bundled `ai-app-bridge-use` skill,
+  the installed local skill copy, root README files, CLI README, integration
+  docs, design/test docs, Web SDK README, Flutter README, CLI `--help`, MCP
+  `initialize.instructions`, MCP tool descriptions, and `capabilities` output.
+- Added useful `ai-app-bridge-mcp --help` output with supported targets,
+  command domains, compact/full surface guidance, target id rules, and examples.
+- Updated the desktop npm package description and published
+  `@mobileaidev/ai-app-bridge@0.2.13` with the improved MCP/skill/docs
+  capability index.
+- Validation passed:
+  - `cd desktop/ai-app-bridge-cli && npm run check` passed 55 Node tests.
+  - MCP compact capability probe confirmed `supportedTargets`, `commandDomains`,
+    and the full `web` command domain.
+  - `npm pack --dry-run --json` and `npm publish --dry-run --json` passed.
+  - npm `latest` now resolves to `0.2.13`.
+  - Global install of `@mobileaidev/ai-app-bridge@0.2.13` completed, and
+    `/opt/homebrew/bin/ai-app-bridge-mcp --help` prints the new capability
+    summary.
+
 ## 2026-06-14
 
 - Prepared the iOS/full-control release line for native iOS, Flutter iOS, and

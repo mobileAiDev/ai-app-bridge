@@ -93,10 +93,12 @@ cd desktop/ai-app-bridge-cli && npm run check
 ```
 
 For an end-to-end web session, start a local desktop Web provider, open a
-browser page that calls `createAiAppBridge({ endpoint, token, sessionId })`,
+browser page that calls `createAiAppBridge({ endpoint, token, appName })`,
 then verify the provider can read `web-status`, `web-dom`, `web-logs`,
-`web-state`, and `web-events`, and can run a registered action through
-`web-command`.
+`web-network`, `web-state`, and `web-events`, can run a registered action
+through `web-command`, and can exercise DOM helpers through `web-click`,
+`web-input`, `web-wait`, or `web-scroll` where the page fixture exposes stable
+selectors.
 
 To verify the published npm packages rather than local source:
 

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>AI App Bridge Web Remote Smoke</title>
+    <style>
+      body {
+        color: #1f2937;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 32px;
+      }
+
+      main {
+        display: grid;
+        gap: 16px;
+        max-width: 720px;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button,
+      input,
+      pre {
+        border: 1px solid #9ca3af;
+        border-radius: 6px;
+        font: inherit;
+        padding: 8px 10px;
+      }
+
+      button {
+        background: #f3f4f6;
+        cursor: pointer;
+        min-height: 38px;
+      }
+
+      pre {
+        background: #f9fafb;
+        min-height: 72px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>AI App Bridge Web Remote Smoke</h1>
+      <div class="toolbar">
+        <button id="increment" data-testid="increment">Increment</button>
+        <button id="network" data-testid="network">Network Probe</button>
+      </div>
+      <input id="note" aria-label="Note" value="remote-ready">
+      <pre id="state">Waiting...</pre>
+    </main>
+    <script src="/node_modules/@mobileaidev/ai-app-bridge-web/src/index.js"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const stateNode = document.querySelector('#state');
+      const noteNode = document.querySelector('#note');
+      let count = 0;
+      let networkStatus = 'idle';
+
+      const bridge = AiAppBridgeWeb.createAiAppBridge({
+        endpoint: params.get('endpoint'),
+        token: params.get('token') || '',
+        appName: 'ai-app-bridge-web-remote-smoke',
+        capture: {
+          console: true,
+          errors: true,
+          fetch: true,
+          xhr: true
+        }
+      });
+
+      function render() {
+        stateNode.textContent = JSON.stringify({
+          connected: bridge.isConnected(),
+          count,
+          note: noteNode.value,
+          networkStatus
+        }, null, 2);
+      }
+
+      function record(reason) {
+        bridge.recordState('remote', 'count', count);
+        bridge.recordState('remote', 'note', noteNode.value);
+        bridge.recordEvent('remote', reason, { count, note: noteNode.value });
+        render();
+      }
+
+      document.querySelector('#increment').addEventListener('click', () => {
+        count += 1;
+        console.info('remote smoke increment', count);
+        record('increment_clicked');
+      });
+
+      document.querySelector('#network').addEventListener('click', async () => {
+        const response = await fetch('/probe.json');
+        networkStatus = `${response.status} ${await response.text()}`;
+        record('network_finished');
+      });
+
+      bridge.registerAction('remote.increment', async () => {
+        document.querySelector('#increment').click();
+        return { count };
+      });
+
+      bridge.registerAction('remote.setNote', async (args) => {
+        noteNode.value = args.value || '';
+        record('agent_set_note');
+        return { note: noteNode.value };
+      });
+
+      bridge.start();
+      bridge.recordLog('info', 'remote-smoke', 'started');
+      record('started');
+      setInterval(render, 500);
+    </script>
+  </body>
+</html>

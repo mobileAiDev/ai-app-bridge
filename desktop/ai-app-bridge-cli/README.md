@@ -1,5 +1,23 @@
 # AI App Bridge CLI
 
+AI App Bridge CLI/MCP supports Android native apps, Android WebView/H5/CDP,
+Flutter apps on Android and iOS, iOS native apps via `AiAppBridgeIOS` plus
+WebDriverAgent/XCUITest, WKWebView, and desktop Web Bridge sessions.
+
+Command domains:
+
+- `core`: `status`, `tree`, `uia-tree`, `screenshot`, `logs`, `network`, `state`, `events`
+- `app`: `install-apk`, `clear-app-data`, `launch-*`, `freeze-app`, `thaw-app`, `permission-*`, `appops-set`
+- `action`: `tap`, `tap-text`, `tap-uia-text`, `input-text`, `swipe`, `keyevent`, `wait-text`, `keyboard-state`, `hide-keyboard`
+- `flutter`: `flutter-tree`, `flutter-nodes`, `flutter-action`, `tap-flutter-text`, `input-flutter-text`, `scroll-flutter`
+- `webview`: `h5-*`, `flutter-h5-*`, `webview-pages`, `webview-network`, `webview-console`
+- `ios`: `ios-devices`, `ios-doctor`, `ios-setup`, `ios-*` runtime evidence, WDA tree/tap/input/swipe, WKWebView, and Flutter iOS
+- `web`: `web-session-start`, `web-sessions`, `web-status`, `web-dom`, `web-logs`, `web-network`, `web-state`, `web-events`, `web-command`, `web-click`, `web-input`, `web-wait`, `web-scroll`
+- `diagnostics` / `advanced`: `logcat`, `smoke`, `batch`, `forward`, `remove-forward`
+
+For MCP clients, the default surface is compact: call `capabilities` to discover
+domains, commands, and options, then call `run` with the selected command.
+
 ```bash
 npm install -g @mobileaidev/ai-app-bridge
 
@@ -19,9 +37,10 @@ ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id>
 ai-app-bridge ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
 ai-app-bridge ios-tap --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
 ai-app-bridge ios-input --bundle-id <ios.bundle.id> --accessibility-id sample_text_field --clear-first --text "hello" --wda-url <wda-url-from-setup>
+ai-app-bridge-mcp # then run web-session-start / web-* commands through MCP
 ai-app-bridge thaw-app --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge freeze-app --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge-mcp
+ai-app-bridge-mcp --help
 ```
 
 AI agents, model clients, automation frameworks, and IDE MCP clients reading
@@ -37,12 +56,13 @@ refresh the session.
 MCP defaults to a compact tool surface to avoid loading every command schema
 into the model context:
 
-- `capabilities` lists the bridge domains and command names.
+- `capabilities` lists supported targets, command domains, command names, and optional argument names.
 - `run` executes a selected command with command-specific arguments.
 
-This keeps install, data reset, launch, UI, Flutter, WebView, logcat, network,
-permission, iOS, and web capabilities discoverable without exposing dozens of full schemas
-at session start. Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
+This keeps install, data reset, launch, UI action, Flutter, WebView/H5/CDP,
+iOS, Web Bridge, logcat, network, permission, smoke, batch, and port-forward
+capabilities discoverable without exposing dozens of full schemas at session start.
+Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
 `ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
 surface.
 

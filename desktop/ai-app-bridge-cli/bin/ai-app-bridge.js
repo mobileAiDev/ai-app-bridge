@@ -22,6 +22,15 @@ const defaults = {
 
 const helpText = `Usage: ai-app-bridge <command> [options]
 
+Supports:
+  Android native apps; Android WebView/H5/CDP; Flutter apps on Android and iOS;
+  iOS native apps via AiAppBridgeIOS + WebDriverAgent/XCUITest; WKWebView;
+  desktop Web Bridge sessions through ai-app-bridge-mcp.
+
+MCP discovery:
+  ai-app-bridge-mcp exposes a compact capability index by default.
+  Call capabilities, then run a command from core/app/action/flutter/webview/ios/web/diagnostics/advanced.
+
 Commands:
   status                 Read bridge status and app/device metadata.
   tree                   Read the Android View tree from the in-app bridge.
@@ -83,6 +92,23 @@ Flutter commands:
   flutter-h5-input       Set text in a Flutter H5 input.
   flutter-h5-wait        Wait for Flutter H5 text or selector.
   flutter-h5-scroll      Scroll Flutter H5 content.
+
+Web Bridge MCP commands:
+  web-provider-status    Read desktop Web Bridge provider status.
+  web-session-start      Start the Web Bridge WebSocket session server.
+  web-connect-info       Read endpoint/token for browser SDK clients.
+  web-sessions           List connected Web Bridge SDK sessions.
+  web-status             Read Web Bridge session status.
+  web-dom                Read or refresh Web Bridge DOM snapshots.
+  web-logs               Read Web Bridge log records.
+  web-network            Read Web Bridge network records.
+  web-state              Read Web Bridge state records.
+  web-events             Read Web Bridge event records.
+  web-command            Run a whitelisted browser SDK command.
+  web-click              Click a DOM element through the browser SDK.
+  web-input              Set text in a DOM input through the browser SDK.
+  web-wait               Wait for text or selector through the browser SDK.
+  web-scroll             Scroll a Web Bridge DOM target.
 
 Device/action commands:
   tap                    Tap device coordinates through ADB.
@@ -4555,4 +4581,3 @@ module.exports = {
   waitTextConditionsMet,
   withFileLock,
 };
-

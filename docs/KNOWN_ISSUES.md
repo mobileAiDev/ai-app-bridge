@@ -878,18 +878,19 @@ for current dependency coordinates.
 - Found while publishing desktop MCP `0.2.1`: the MCP server exposed 48 tools
   after adding `launch_app` and `launch_activity`.
 - Impact: models with smaller context windows may spend too much prompt budget
-  on full tool schemas, even though the agent still needs to know that install,
-  launch, UI, WebView, logcat, permission, and diagnostics capabilities exist.
+  on full tool schemas, even though the agent still needs to know that Android,
+  iOS, Flutter, WebView/H5/CDP, Web Bridge, logcat, permission, diagnostics,
+  batch, and port-forward capabilities exist.
 - Desired direction: keep a small always-visible capability index/help tool so
   agents can discover the available domains and prefer bridge actions, then
   move detailed schemas behind grouped execution tools or domain-specific
   manifests. Do not hide important capabilities such as `install_apk`; shrink
   the resident schema, not the advertised capability set.
 - Fix: default MCP surface now exposes only `capabilities` and `run`.
-  `capabilities` advertises install, launch, UI/action, Flutter, WebView,
-  logcat, network, permission, and diagnostics domains; `run` executes the
-  selected CLI command. Legacy direct tools remain callable and can be listed
-  by launching the server with `AI_APP_BRIDGE_MCP_SURFACE=full`.
+  `capabilities` advertises supported targets plus `core`, `app`, `action`,
+  `flutter`, `webview`, `ios`, `web`, `diagnostics`, and `advanced` domains;
+  `run` executes the selected CLI command. Legacy direct tools remain callable
+  and can be listed by launching the server with `AI_APP_BRIDGE_MCP_SURFACE=full`.
 - Compatibility hardening: MCP `initialize` now negotiates supported protocol
   versions instead of echoing any client version, includes concise server
   instructions for tool-search clients, supports `ping`, and accepts the

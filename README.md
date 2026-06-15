@@ -8,9 +8,23 @@ English | [中文](README.zh.md)
 >
 > **Now:** AI can build and install the app, operate real flows, read real UI state, inspect network and logs, and verify the result itself.
 
-AI App Bridge gives autonomous AI agents a runtime interface to running Android, iOS, and Flutter apps. Agents can inspect the current screen, operate native UI and WebViews/WKWebViews, read View tree / Widget tree / DOM data, collect network requests and logs, verify outcomes, and keep iterating from real evidence.
+AI App Bridge gives autonomous AI agents a runtime interface to running Android, iOS, Flutter, WebView/WKWebView, and desktop Web targets. Agents can inspect the current screen, operate native UI and Web content, read View tree / Widget tree / DOM data, collect network requests and logs, verify outcomes, and keep iterating from real evidence.
 
 Its goal is to help AI agents move through an observe -> act -> read results -> verify -> iterate loop, instead of guessing without runtime evidence.
+
+## Capability Index
+
+Supported targets:
+
+- Android native apps through the debug runtime plus ADB/UIAutomator for device-level evidence and actions
+- Android WebView/H5 through runtime DOM/eval/click/input/wait/scroll and optional DevTools/CDP network/console capture
+- Flutter apps on Android and iOS through widget snapshots, operable nodes, runtime actions, text input, scroll, and H5 adapters
+- iOS native apps through `AiAppBridgeIOS` for UIKit/WKWebView/logs/network/state/events plus WebDriverAgent/XCUITest for screenshots, UI tree, tap, input, swipe, and system UI
+- Desktop Web Bridge sessions through the browser SDK for DOM, logs, network, state, events, whitelisted commands, click/input/wait, and scroll
+
+MCP command domains: `core` (`status`, `tree`, `uia-tree`, `screenshot`, `logs`, `network`, `state`, `events`), `app` (install, clear data, launch, freeze/thaw, permissions, appops), `action` (tap, input, swipe, keyevent, wait, keyboard), `flutter`, `webview`, `ios`, `web`, `diagnostics`, and `advanced` (`batch`, port forwarding).
+
+The default MCP surface is compact: call `capabilities` to discover domains, commands, and options, then call `run` with the chosen command.
 
 ## What It Solves
 
@@ -30,6 +44,7 @@ android/ai-app-bridge-android          Android runtime SDK
 android/ai-app-bridge-gradle-plugin   Debug build instrumentation plugin
 ios/ai-app-bridge-ios                 iOS Swift runtime SDK
 flutter/ai_app_bridge_flutter         Flutter plugin
+web/ai-app-bridge-web                 Browser SDK for desktop Web Bridge sessions
 desktop/ai-app-bridge-cli             Node CLI and MCP stdio server
 examples/android-native-sample        Clean Android sample app
 examples/ios-native-sample            Clean iOS sample app for runtime install validation
@@ -46,6 +61,7 @@ docs                                  Design, integration, and test notes
   DevTools/CDP network/console capture
 - Flutter Widget snapshots, semantic action metadata, and runtime action handling
 - Flutter H5 operations and DOM snapshots through a Dart-side H5 adapter registry
+- Desktop Web Bridge sessions with browser SDK DOM/log/network/state/event evidence and whitelisted page commands
 - Logs, network requests, state records, and event buffers with incremental `sinceId` / `sinceMs` reads
 - Debug Gradle plugin support for OkHttp auto capture
 - Node CLI / MCP stdio server for connecting AI tools to runtime capabilities

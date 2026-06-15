@@ -8,9 +8,23 @@
 >
 > **现在：** AI 写完代码，可以自己构建安装 App、自动操作 UI 功能路径、读取真实 UI 状态、检查网络和日志，并完成验收。
 
-AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS 和 Flutter 应用。Agent 可以读取当前屏幕，操作原生 UI、WebView / WKWebView 和 Flutter H5，读取 View tree / Widget tree / DOM，采集网络请求和日志，验证结果，并基于真实证据持续迭代。
+AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS、Flutter、WebView / WKWebView 和桌面 Web 目标。Agent 可以读取当前屏幕，操作原生 UI 和 Web 内容，读取 View tree / Widget tree / DOM，采集网络请求和日志，验证结果，并基于真实证据持续迭代。
 
 它的核心目标是让 AI agent 按“观察 -> 操作 -> 读取结果 -> 验证 -> 继续迭代”的方式自主推进，而不是在缺少运行证据时猜测。
+
+## 能力索引
+
+支持目标：
+
+- Android native app：debug runtime 提供应用内证据，ADB/UIAutomator 提供设备级截图、tree 和动作
+- Android WebView/H5：runtime DOM/eval/click/input/wait/scroll，以及可选 DevTools/CDP 网络和 console 捕获
+- Flutter Android/iOS：widget 快照、可操作节点、runtime action、文本输入、滚动和 H5 adapter
+- iOS native app：`AiAppBridgeIOS` 提供 UIKit/WKWebView/logs/network/state/events，WebDriverAgent/XCUITest 提供截图、UI tree、tap、input、swipe 和系统 UI
+- 桌面 Web Bridge session：浏览器 SDK 提供 DOM、logs、network、state、events、白名单 command、click/input/wait 和 scroll
+
+MCP 命令域：`core`（`status`、`tree`、`uia-tree`、`screenshot`、`logs`、`network`、`state`、`events`）、`app`（安装、清数据、启动、freeze/thaw、权限、appops）、`action`（tap、input、swipe、keyevent、wait、keyboard）、`flutter`、`webview`、`ios`、`web`、`diagnostics`、`advanced`（`batch`、端口转发）。
+
+默认 MCP surface 是 compact：先调用 `capabilities` 发现 domain、command 和 options，再调用 `run` 执行选定命令。
 
 ## 解决的问题
 
@@ -30,6 +44,7 @@ android/ai-app-bridge-android          Android runtime SDK
 android/ai-app-bridge-gradle-plugin   Debug 构建插桩插件
 ios/ai-app-bridge-ios                 iOS Swift runtime SDK
 flutter/ai_app_bridge_flutter         Flutter 插件
+web/ai-app-bridge-web                 桌面 Web Bridge session 的浏览器 SDK
 desktop/ai-app-bridge-cli             Node CLI 和 MCP stdio server
 examples/android-native-sample        干净的 Android 示例应用
 examples/ios-native-sample            用于 runtime 安装验证的干净 iOS 示例应用
@@ -46,6 +61,7 @@ docs                                  设计、集成和测试文档
 - Debug WebView DevTools/CDP 网络请求和 console 捕获
 - Flutter Widget 快照、语义动作信息和运行时动作处理
 - Flutter H5 操作和 DOM 快照，通过 Dart 层 H5 adapter 暴露
+- 桌面 Web Bridge session，通过浏览器 SDK 暴露 DOM/log/network/state/event 证据和白名单页面命令
 - 日志、网络请求、状态和事件缓冲区，支持 `sinceId` / `sinceMs` 增量读取
 - Debug Gradle 插件支持 OkHttp HTTP 自动捕获
 - Node CLI / MCP stdio server，方便 AI 工具接入运行时能力

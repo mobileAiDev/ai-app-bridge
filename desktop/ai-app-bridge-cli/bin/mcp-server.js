@@ -12,12 +12,62 @@ const nodeBinary = process.env.AI_APP_BRIDGE_NODE || process.execPath;
 const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
 const defaultProtocolVersion = supportedProtocolVersions[0];
 const mcpSurface = (process.env.AI_APP_BRIDGE_MCP_SURFACE || 'compact').toLowerCase();
+const supportedTargets = [
+  'Android native apps',
+  'Android WebView/H5/CDP',
+  'Flutter apps on Android and iOS',
+  'iOS native apps via AiAppBridgeIOS + WebDriverAgent/XCUITest',
+  'WKWebView',
+  'desktop Web Bridge sessions',
+];
+const commandDomains = {
+  core: 'status, tree, uia-tree, screenshot, logs, network, state, events',
+  app: 'install-apk, clear-app-data, launch-*, freeze-app/thaw-app, permission-*, appops-set',
+  action: 'tap, tap-text, tap-uia-text, input-text, swipe, keyevent, wait-text, keyboard-state, hide-keyboard',
+  flutter: 'flutter-tree, flutter-nodes, flutter-action, tap/input/scroll Flutter controls',
+  webview: 'h5-*, flutter-h5-*, webview-pages, webview-network, webview-console',
+  ios: 'ios-devices, ios-doctor, ios-setup, ios runtime evidence, ios-uia-tree/tap/input/swipe, ios-h5-*, ios-flutter-*',
+  web: 'web-session-start, web-sessions, web-status, web-dom, web-logs, web-network, web-state, web-events, web-command, web-click, web-input, web-wait, web-scroll',
+  diagnostics: 'logcat, smoke',
+  advanced: 'batch, forward, remove-forward',
+};
+const supportedTargetsText = `AI App Bridge supports ${supportedTargets.join('; ')}.`;
+const commandDomainsText = `Command domains: ${Object.entries(commandDomains).map(([domain, summary]) => `${domain}(${summary})`).join('; ')}.`;
+const discoveryText = 'Default MCP surface is compact: call capabilities to discover domains, commands, and options, then call run with the selected command and arguments.';
 const serverInstructions = [
-  'AI App Bridge observes and controls Android, iOS, Flutter, and Web targets for agent workflows. Prefer these tools over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, and permissions.',
-  'Default surface is compact: call capabilities to discover domains, then call run with a command and arguments.',
+  supportedTargetsText,
+  commandDomainsText,
+  discoveryText,
+  'Prefer AI App Bridge over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, permissions, or app-level Web evidence.',
   'Always pass packageName for Android app-specific commands, or pass an explicit port. For iOS, pass bundleId plus deviceId when more than one iPhone is connected.',
+  'For Web Bridge sessions, start the provider, connect the browser SDK, then pass sessionId and targetId when needed.',
   'Use freeze-app/thaw-app only as an optional stabilization control for dynamic or transient screens: thaw before reads/actions/captures, freeze after evidence capture only when it helps reasoning, and thaw before the next operation or before finishing so the app is not left frozen.',
 ].join(' ');
+const mcpHelpText = `Usage: ai-app-bridge-mcp [--help]
+
+${supportedTargetsText}
+
+${commandDomainsText}
+
+MCP surface:
+  compact (default)  exposes only capabilities and run.
+  full/legacy        exposes one tool per command; set AI_APP_BRIDGE_MCP_SURFACE=full.
+
+Discovery:
+  1. Call capabilities with optional domain or command filters.
+  2. Call run with a command name from capabilities.
+  3. Put command-specific options in arguments.
+
+Target ids:
+  Android app commands require packageName or explicit port.
+  iOS app commands use bundleId; add deviceId when multiple devices exist and wdaUrl for WDA actions.
+  Web Bridge commands use sessionId; add targetId for multi-target pages.
+
+Examples:
+  capabilities { "domain": "webview", "includeOptions": true }
+  run { "command": "screenshot", "packageName": "com.example.app" }
+  run { "command": "web-session-start", "arguments": { "webPort": 18180 } }
+`;
 const iosProvider = new IOSBridgeProvider();
 const webProvider = new WebBridgeProvider();
 
@@ -185,18 +235,20 @@ function toolDefinitions() {
 
 function compactToolDefinitions() {
   return [
-    bridgeTool('capabilities', 'List AI App Bridge capability domains and commands. Call this first when planning app automation; then use run to execute the selected command.', {
-      domain: { type: 'string', description: 'Optional domain filter such as core, app, action, flutter, webview, ios, web, or diagnostics.' },
-      command: { type: 'string', description: 'Optional command name for detailed arguments, such as install-apk, launch-app, tree, input-text, webview-network, ios-setup, or ios-tap.' },
+    bridgeTool('capabilities', `List AI App Bridge capability domains and commands across Android, iOS, Flutter, WebView/H5/CDP, and Web Bridge targets. ${commandDomainsText}`, {
+      domain: { type: 'string', description: 'Optional domain filter: core, app, action, flutter, webview, ios, web, diagnostics, or advanced.' },
+      command: { type: 'string', description: 'Optional command name for detailed arguments, such as install-apk, launch-app, tree, input-text, webview-network, ios-setup, ios-tap, web-session-start, or web-command.' },
       includeOptions: { type: 'boolean', description: 'Include per-command argument names. Defaults to false to keep output compact.' },
     }),
-    bridgeTool('run', 'Run an AI App Bridge command. Use capabilities first to choose the command. Pass packageName for Android app commands and bundleId for iOS app commands.', {
-      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, input-text, webview-network, ios-doctor, ios-setup, ios-status, ios-tap, or web-status.' },
+    bridgeTool('run', 'Run an AI App Bridge command from capabilities. Pass packageName/port for Android app commands, bundleId/deviceId for iOS app commands, and sessionId/targetId for Web Bridge commands.', {
+      command: { type: 'string', description: 'Command name from capabilities, using CLI form such as status, install-apk, launch-app, input-text, webview-network, ios-doctor, ios-setup, ios-status, ios-tap, web-session-start, web-status, or web-command.' },
       packageName: { type: 'string', description: 'Target Android package for app-specific commands. Strongly recommended.' },
       serial: { type: 'string', description: 'ADB serial when multiple devices are connected.' },
       port: { type: 'number', description: 'Explicit bridge port when packageName discovery is not available.' },
       bundleId: { type: 'string', description: 'Target iOS app bundle identifier for ios-* commands.' },
       deviceId: { type: 'string', description: 'iOS devicectl identifier, UDID, serial number, or device name.' },
+      sessionId: { type: 'string', description: 'Target Web Bridge SDK session id for web-* commands.' },
+      targetId: { type: 'string', description: 'Optional Web Bridge target id for multi-target pages.' },
       iosHost: { type: 'string', description: 'iOS runtime host or CoreDevice tunnel IP.' },
       iosPort: { type: 'number', description: 'iOS runtime port when auto-discovery is unavailable.' },
       runtimeUrl: { type: 'string', description: 'Explicit iOS runtime base URL.' },
@@ -635,7 +687,9 @@ function capabilityPayload(args = {}) {
   return {
     ok: true,
     surface: mcpSurface === 'full' || mcpSurface === 'legacy' ? 'full' : 'compact',
-    usage: 'Use run with one of these command names. Prefer packageName for app-specific commands; install-apk, clear-app-data, launch-app, freeze/thaw, UI, WebView, logcat, network, and permission workflows are supported.',
+    supportedTargets,
+    commandDomains,
+    usage: `${supportedTargetsText} ${discoveryText} Use run with one of these command names. Prefer packageName for Android app commands, bundleId/deviceId for iOS, and sessionId/targetId for Web Bridge sessions.`,
     domains,
   };
 }
@@ -1225,12 +1279,19 @@ function writeLog(text) {
 }
 
 if (require.main === module) {
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    process.stdout.write(`${mcpHelpText}\n`);
+    process.exit(0);
+  }
   startServer();
 }
 
 module.exports = {
   buildBridgeCliArgs,
+  commandDomains,
+  mcpHelpText,
   readNextMessage,
   runBatch,
   startServer,
+  supportedTargets,
 };

@@ -1,0 +1,20 @@
+{
+  "name": "@mobileaidev/ai-app-bridge-web",
+  "version": "0.1.0",
+  "description": "Browser SDK for AI App Bridge Web sessions.",
+  "main": "src/index.js",
+  "browser": "src/index.js",
+  "files": [
+    "src",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "build": "node -c src/index.js"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  }
+}

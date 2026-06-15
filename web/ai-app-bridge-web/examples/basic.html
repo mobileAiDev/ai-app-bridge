@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>AI App Bridge Web Demo</title>
+    <style>
+      body {
+        color: #1f2937;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 32px;
+      }
+
+      main {
+        display: grid;
+        gap: 16px;
+        max-width: 720px;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button,
+      input {
+        border: 1px solid #9ca3af;
+        border-radius: 6px;
+        font: inherit;
+        min-height: 38px;
+        padding: 8px 10px;
+      }
+
+      button {
+        background: #f3f4f6;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #e5e7eb;
+      }
+
+      output,
+      pre {
+        background: #f9fafb;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        min-height: 24px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>AI App Bridge Web Demo</h1>
+      <div class="toolbar">
+        <button id="increment" data-testid="increment">Increment</button>
+        <button id="log" data-testid="log">Write Log</button>
+        <button id="network" data-testid="network">Run Network Probe</button>
+      </div>
+      <input id="note" aria-label="Note" placeholder="Note" value="ready">
+      <output id="count">Count: 0</output>
+      <pre id="evidence">Waiting for bridge connection...</pre>
+    </main>
+    <script src="../src/index.js"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const bridge = AiAppBridgeWeb.createAiAppBridge({
+        endpoint: params.get('endpoint') || 'ws://127.0.0.1:18180/ai-app-bridge-web',
+        token: params.get('token') || '',
+        appName: 'ai-app-bridge-web-demo',
+        capture: {
+          console: true,
+          errors: true,
+          fetch: true,
+          xhr: true
+        }
+      });
+
+      let count = 0;
+      let networkStatus = 'idle';
+      const countNode = document.querySelector('#count');
+      const noteNode = document.querySelector('#note');
+      const evidenceNode = document.querySelector('#evidence');
+
+      function render() {
+        countNode.textContent = `Count: ${count}`;
+        evidenceNode.textContent = JSON.stringify({
+          connected: bridge.isConnected(),
+          count,
+          note: noteNode.value,
+          networkStatus
+        }, null, 2);
+      }
+
+      function recordDemoState(reason) {
+        bridge.recordState('demo', 'count', count);
+        bridge.recordState('demo', 'note', noteNode.value);
+        bridge.recordEvent('demo', reason, { count, note: noteNode.value });
+        render();
+      }
+
+      document.querySelector('#increment').addEventListener('click', () => {
+        count += 1;
+        console.info('AI App Bridge demo increment', count);
+        recordDemoState('increment_clicked');
+      });
+
+      document.querySelector('#log').addEventListener('click', () => {
+        bridge.recordLog('info', 'demo', 'manual log from page', {
+          count,
+          note: noteNode.value
+        });
+        recordDemoState('log_clicked');
+      });
+
+      document.querySelector('#network').addEventListener('click', async () => {
+        networkStatus = 'loading';
+        render();
+        try {
+          const response = await fetch('/probe.json?from=ai-app-bridge-web-demo');
+          networkStatus = `${response.status} ${await response.text()}`;
+        } catch (error) {
+          networkStatus = `error ${error.message}`;
+        }
+        recordDemoState('network_probe_finished');
+      });
+
+      noteNode.addEventListener('input', () => {
+        recordDemoState('note_changed');
+      });
+
+      bridge.registerAction('demo.increment', async () => {
+        document.querySelector('#increment').click();
+        return { count };
+      });
+
+      bridge.registerAction('demo.setNote', async (args) => {
+        noteNode.value = args.value || '';
+        recordDemoState('agent_set_note');
+        return { note: noteNode.value };
+      });
+
+      bridge.registerStateProvider('demo', () => ({
+        count,
+        note: noteNode.value,
+        networkStatus
+      }));
+
+      bridge.start();
+      setInterval(render, 500);
+      bridge.recordLog('info', 'demo', 'web demo started');
+      recordDemoState('started');
+    </script>
+  </body>
+</html>

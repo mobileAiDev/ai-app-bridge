@@ -1,4 +1,4 @@
 interface:
   display_name: "AI App Bridge Use"
-  short_description: "观察、操作并验证 Android/iOS/Flutter/Web app。"
-  default_prompt: "使用 $ai-app-bridge-use 观察、操作和验证目标 Android/iOS/Flutter/Web app；先发现能力，Android 传 packageName，iOS 传 bundleId/deviceId 并在 full-control 时使用 WDA，Web 先建立 sessionId，只有移动端动态画面需要稳定证据时才使用 freeze/thaw。"
+  short_description: "Android/iOS/Flutter/Web 全域观察、操作、验证能力索引。"
+  default_prompt: "使用 $ai-app-bridge-use 观察、操作和验证 Android native、Android WebView/H5/CDP、Flutter、iOS native/WKWebView/WDA/XCUITest 或桌面 Web Bridge；先用 capabilities 查 core/app/action/flutter/webview/ios/web/diagnostics/advanced，再用 run 执行。Android 传 packageName，iOS 传 bundleId/deviceId 并在 full-control 时使用 WDA，Web 先建立 sessionId，只有移动端动态画面需要稳定证据时才使用 freeze/thaw。"

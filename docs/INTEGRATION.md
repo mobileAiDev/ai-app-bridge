@@ -1,5 +1,21 @@
 # Integration
 
+## Supported Targets And MCP Domains
+
+AI App Bridge supports Android native apps, Android WebView/H5/CDP, Flutter
+apps on Android and iOS, iOS native apps via `AiAppBridgeIOS` plus
+WebDriverAgent/XCUITest, WKWebView, and desktop Web Bridge sessions.
+
+The MCP server defaults to a compact surface with two tools:
+
+- `capabilities` lists supported targets, domains, commands, and optional arguments.
+- `run` executes a command from the capability index.
+
+Command domains are `core`, `app`, `action`, `flutter`, `webview`, `ios`,
+`web`, `diagnostics`, and `advanced`. Use `packageName` or explicit `port` for
+Android app commands, `bundleId` plus `deviceId` when needed for iOS commands,
+and `sessionId` plus optional `targetId` for Web Bridge commands.
+
 ## Android
 
 Add the runtime SDK to debug builds:
@@ -161,6 +177,36 @@ AiAppBridge.instance.registerH5Adapter(
 );
 ```
 
+## Web Bridge
+
+Web apps use the browser SDK in debug/test browser code and the desktop MCP
+provider on the agent side.
+
+```bash
+npm install --save-dev @mobileaidev/ai-app-bridge-web
+npm install -g @mobileaidev/ai-app-bridge
+```
+
+Start the provider through MCP with `web-session-start`, read endpoint/token
+with `web-connect-info`, then connect the page:
+
+```js
+import { createAiAppBridge } from "@mobileaidev/ai-app-bridge-web";
+
+const bridge = createAiAppBridge({
+  endpoint: "ws://127.0.0.1:18180/ai-app-bridge-web",
+  token: "session-token",
+  appName: "your_web_app",
+  capture: { console: true, errors: true, fetch: true, xhr: true, dom: true }
+});
+
+bridge.start();
+```
+
+After the page connects, MCP commands in the `web` domain use `sessionId` and
+optional `targetId` to read DOM/log/network/state/event evidence or run
+whitelisted page commands.
+
 ## Desktop / MCP
 
 ```bash
@@ -170,10 +216,13 @@ ai-app-bridge status --package-name <android.package>
 ai-app-bridge webview-pages --package-name <android.package>
 ai-app-bridge webview-network --package-name <android.package> --duration-ms 3000
 ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge-mcp --help
 ai-app-bridge-mcp
 ```
 
-The desktop tool owns ADB port forwarding, UIAutomator, devicectl, WDA HTTP calls, screenshots, input, permission dialogs, and MCP transport.
+The desktop tool owns ADB port forwarding, UIAutomator, devicectl, WDA HTTP
+calls, screenshots, input, permission dialogs, the Web Bridge session provider,
+and MCP transport.
 For debuggable WebViews with WebView debugging enabled, it can also attach to
 the WebView DevTools socket and collect CDP Network and console events.
 
