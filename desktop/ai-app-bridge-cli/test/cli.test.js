@@ -1023,7 +1023,7 @@ test('ADB input fallback is limited to ASCII text', () => {
 test('generated default artifact paths are unique and run-scoped', () => {
   assert.equal(
     defaultArtifactDirectory(),
-    path.join(fs.realpathSync(path.join(__dirname, '..', '..', '..')), 'build', 'ai_app_bridge_artifacts'),
+    path.join(fs.realpathSync(path.join(__dirname, '..')), 'node_modules', '.cache', 'ai_app_bridge_artifacts'),
   );
 
   const first = defaultArtifactPath('ai app bridge screenshot', 'png', {
@@ -1069,6 +1069,22 @@ test('generated default artifact directory uses ignored Node cache when build is
   );
 });
 
+test('generated default artifact directory prefers the nearest ignored project directory in a monorepo', () => {
+  const repo = makeGitRepo(
+    {
+      'settings.gradle.kts': 'rootProject.name = "root"\n',
+      'examples/android-native-sample/settings.gradle.kts': 'rootProject.name = "sample"\n',
+    },
+    'build/\n',
+  );
+  const sample = path.join(repo, 'examples', 'android-native-sample');
+
+  assert.equal(
+    defaultArtifactDirectory({ cwd: sample }),
+    path.join(sample, 'build', 'ai_app_bridge_artifacts'),
+  );
+});
+
 test('generated default artifact directory falls back inside git metadata when no candidate is ignored', () => {
   const repo = makeGitRepo({ 'package.json': '{"name":"tracked-build"}\n' });
 
@@ -1081,7 +1097,7 @@ test('generated default artifact directory falls back inside git metadata when n
 test('screenshot default output path uses generated artifacts unless explicit', () => {
   assert.equal(
     path.dirname(screenshotOutputPath()),
-    path.join(fs.realpathSync(path.join(__dirname, '..', '..', '..')), 'build', 'ai_app_bridge_artifacts'),
+    path.join(fs.realpathSync(path.join(__dirname, '..')), 'node_modules', '.cache', 'ai_app_bridge_artifacts'),
   );
   assert.match(
     screenshotOutputPath({ artifactDir: path.join(os.tmpdir(), 'ai-app-bridge-artifact-test') }),
@@ -1099,16 +1115,20 @@ test('screenshot default output path uses generated artifacts unless explicit', 
 
 test('MCP generated artifact directory follows the caller git ignore rules', () => {
   const repo = makeGitRepo(
-    { 'settings.gradle': 'pluginManagement {}\n' },
+    {
+      'settings.gradle': 'pluginManagement {}\n',
+      'examples/android-native-sample/settings.gradle.kts': 'rootProject.name = "sample"\n',
+    },
     'build/\n',
   );
+  const sample = path.join(repo, 'examples', 'android-native-sample');
 
-  withCwd(repo, () => {
+  withCwd(sample, () => {
     const args = buildBridgeCliArgs('screenshot', {});
     const artifactDirIndex = args.indexOf('--artifact-dir');
     assert.notEqual(artifactDirIndex, -1);
-    assert.equal(args[artifactDirIndex + 1], path.join(repo, 'build', 'ai_app_bridge_artifacts'));
-    assert.equal(defaultArtifactDirFor('screenshot', {}), path.join(repo, 'build', 'ai_app_bridge_artifacts'));
+    assert.equal(args[artifactDirIndex + 1], path.join(sample, 'build', 'ai_app_bridge_artifacts'));
+    assert.equal(defaultArtifactDirFor('screenshot', {}), path.join(sample, 'build', 'ai_app_bridge_artifacts'));
   });
 });
 

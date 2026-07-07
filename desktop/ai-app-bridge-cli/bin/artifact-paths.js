@@ -11,9 +11,11 @@ function defaultArtifactDirectory(options = {}) {
     return path.join(cwd, 'build', artifactDirectoryName);
   }
 
-  for (const directory of artifactDirectoryCandidates(gitRoot)) {
-    if (isGitIgnored(gitRoot, directory)) {
-      return directory;
+  for (const projectRoot of projectRoots(cwd, gitRoot)) {
+    for (const directory of artifactDirectoryCandidates(projectRoot)) {
+      if (isGitIgnored(gitRoot, directory)) {
+        return directory;
+      }
     }
   }
 
@@ -30,6 +32,41 @@ function defaultArtifactPath(prefix, extension, options = {}) {
   ].join('-');
   const name = `${sanitizeArtifactName(prefix)}-${suffix}.${sanitizeArtifactExtension(extension)}`;
   return path.join(directory, name);
+}
+
+function projectRoots(cwd, gitRoot) {
+  const roots = [];
+  const resolvedGitRoot = path.resolve(gitRoot);
+  let current = path.resolve(cwd);
+
+  while (current === resolvedGitRoot || current.startsWith(`${resolvedGitRoot}${path.sep}`)) {
+    if (isProjectRoot(current)) {
+      roots.push(current);
+    }
+    if (current === resolvedGitRoot) {
+      break;
+    }
+    current = path.dirname(current);
+  }
+
+  if (!roots.includes(resolvedGitRoot)) {
+    roots.push(resolvedGitRoot);
+  }
+  return roots;
+}
+
+function isProjectRoot(directory) {
+  return hasAny(directory, [
+    'settings.gradle',
+    'settings.gradle.kts',
+    'build.gradle',
+    'build.gradle.kts',
+    'gradlew',
+    'pubspec.yaml',
+    'Package.swift',
+    'package.json',
+    'Cargo.toml',
+  ]);
 }
 
 function artifactDirectoryCandidates(gitRoot) {
