@@ -6,6 +6,7 @@ const path = require('path');
 const packageInfo = require('../package.json');
 const { IOSBridgeProvider } = require('./ios-provider');
 const { WebBridgeProvider } = require('./web-provider');
+const { defaultArtifactDirectory } = require('./artifact-paths');
 const bridgeDir = __dirname;
 const cliScript = path.join(bridgeDir, 'ai-app-bridge.js');
 const nodeBinary = process.env.AI_APP_BRIDGE_NODE || process.execPath;
@@ -1146,7 +1147,7 @@ async function runSmoke(args) {
 function defaultArtifactDirFor(command, args) {
   if (args.outFile) return '';
   if (command !== 'screenshot' && command !== 'smoke') return '';
-  return path.join(process.cwd(), 'build', 'ai_app_bridge_artifacts');
+  return defaultArtifactDirectory();
 }
 
 function addCommonArgs(cliArgs, args) {
@@ -1289,6 +1290,7 @@ if (require.main === module) {
 module.exports = {
   buildBridgeCliArgs,
   commandDomains,
+  defaultArtifactDirFor,
   mcpHelpText,
   readNextMessage,
   runBatch,

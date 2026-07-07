@@ -232,7 +232,7 @@ for current dependency coordinates.
 
 ## Default screenshot artifacts could dirty consuming repositories
 
-- Status: fixed in desktop CLI `0.1.23`
+- Status: strengthened in desktop CLI `0.2.14`
 - Found while using ai-app-bridge from consuming app repository roots.
 - Evidence: after desktop CLI `0.1.22` fixed stale screenshot filenames,
   generated `screenshot` and `smoke` PNGs defaulted to
@@ -240,10 +240,15 @@ for current dependency coordinates.
   created a new top-level directory that could show up as untracked git noise.
 - Impact: bridge-generated evidence files are temporary runtime artifacts, but
   the default path made users clean their repository manually.
-- Fix: default generated artifacts now live under
-  `<cwd>/build/ai_app_bridge_artifacts`. Explicit `--out-file` and
-  `--artifact-dir` behavior is unchanged.
-- Verification: desktop CLI `npm run check` passed 29 tests, including coverage
+- Fix: default generated artifacts now prefer a git-ignored project artifact
+  directory such as `<cwd>/build/ai_app_bridge_artifacts`,
+  `<cwd>/.build/ai_app_bridge_artifacts`,
+  `<cwd>/.dart_tool/ai_app_bridge_artifacts`,
+  `<cwd>/node_modules/.cache/ai_app_bridge_artifacts`, or
+  `<cwd>/target/ai_app_bridge_artifacts`. If no candidate is ignored in the
+  current git worktree, defaults go under `.git/ai_app_bridge_artifacts`.
+  Explicit `--out-file` and `--artifact-dir` behavior is unchanged.
+- Verification: desktop CLI `npm run check` passed 59 tests, including coverage
   for the default path and explicit override behavior.
 
 ## `wait-text` could match offstage Flutter widget dump text
@@ -759,14 +764,15 @@ for current dependency coordinates.
   stable default names. This is not limited to screenshots; any future exported
   tree, log, report, trace, or MCP artifact with a reused default path can create
   the same false-current evidence risk.
-- Fix: `screenshot` and `smoke` now generate unique default PNG paths under
-  `build/ai_app_bridge_artifacts` when `--out-file` is omitted. Screenshot results
-  include artifact metadata, MCP forwards `outFile` and `artifactDir` for
-  screenshot/smoke flows, and MCP defaults generated artifacts to the MCP
-  process working directory rather than the installed package `bin` directory.
+- Fix: `screenshot` and `smoke` now generate unique default PNG paths under a
+  git-ignored project artifact directory when `--out-file` is omitted.
+  Screenshot results include artifact metadata, MCP forwards `outFile` and
+  `artifactDir` for screenshot/smoke flows, and MCP resolves generated artifact
+  defaults from the caller worktree rather than the installed package `bin`
+  directory.
   The CLI keeps the newest 20 generated screenshots for each command prefix and
   does not prune explicit `--out-file` paths.
-- Verification: desktop CLI `npm run check` passed 29 tests, including
+- Verification: desktop CLI `npm run check` passed 59 tests, including
   regression coverage for generated artifact paths and fixed-count pruning.
   Real-device validation on TestProject apps
   `android-architecture-samples`, `AntennaPod`, and `platform_design` produced

@@ -1,6 +1,6 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "Desktop CLI and MCP server for AI App Bridge across Android, iOS, Flutter, WebView, and Web targets.",
   "repository": {
     "type": "git",
@@ -17,6 +17,7 @@
   },
   "files": [
     "bin/ai-app-bridge.js",
+    "bin/artifact-paths.js",
     "bin/mcp-server.js",
     "bin/ios-provider.js",
     "bin/web-provider.js",

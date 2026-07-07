@@ -4,6 +4,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
+const { defaultArtifactPath } = require('./artifact-paths');
 
 const defaultRuntimePort = 18080;
 const runtimePortSearchCount = 50;
@@ -304,7 +305,7 @@ class IOSBridgeProvider {
     const device = await this.requireDevice(args);
     const outFile = args.outFile
       ? path.resolve(args.outFile)
-      : defaultArtifactPath('ios-screenshot', 'png', args.artifactDir);
+      : defaultArtifactPath('ios-screenshot', 'png', { artifactDir: args.artifactDir });
     await fs.promises.mkdir(path.dirname(outFile), { recursive: true });
     const command = [
       'device',
@@ -1162,15 +1163,6 @@ function booleanArg(value) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function defaultArtifactPath(prefix, extension, artifactDir) {
-  const dir = artifactDir ? path.resolve(artifactDir) : path.join(process.cwd(), 'build', 'ai_app_bridge_artifacts');
-  return path.join(dir, `${prefix}-${artifactTimestamp()}.${extension}`);
-}
-
-function artifactTimestamp(date = new Date()) {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
 module.exports = {

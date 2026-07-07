@@ -121,11 +121,14 @@ on many Android 16 devices; ASCII text can still fall back to ADB when an older
 bridge runtime is running.
 
 When `screenshot` or `smoke` runs without `--out-file`, the CLI writes a unique
-PNG under `build/ai_app_bridge_artifacts` instead of reusing a stable filename
-or creating files in the project root.
-It keeps the newest 20 generated screenshots for each command prefix. Use
-`--artifact-dir` to choose that directory, or `--out-file` when a fixed path is
-intentional.
+PNG under a git-ignored project artifact directory. Gradle, Android, and Flutter
+projects normally use `build/ai_app_bridge_artifacts`; Node projects can use
+`node_modules/.cache/ai_app_bridge_artifacts`; Swift projects can use
+`.build/ai_app_bridge_artifacts`. If the current git worktree has no ignored
+artifact candidate, generated defaults go under `.git/ai_app_bridge_artifacts`
+so they cannot dirty the repository root. It keeps the newest 20 generated
+screenshots for each command prefix. Use `--artifact-dir` to choose an ignored
+directory, or `--out-file` when a fixed path is intentional.
 
 `launch-app` queries Android LAUNCHER activities before starting the app. If a
 debug dependency exposes multiple launcher entries, it returns

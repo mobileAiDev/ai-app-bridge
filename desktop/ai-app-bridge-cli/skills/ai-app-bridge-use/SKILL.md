@@ -30,7 +30,8 @@ AI App Bridge 支持 Android native apps、Android WebView/H5/CDP、Flutter apps
 3. 选择命令路径：按任务类型选 `core`、`app`、`action`、`flutter`、`webview`、`ios`、`web`、`diagnostics` 或 `advanced` 域；不要先退回原始 `adb`、浏览器脚本或坐标猜测。
 4. 用 `batch` 串联相关步骤：观察、操作、等待、截图、tree 验证尽量放进一次 MCP 调用。
 5. 验证可见结果：界面变化必须用 `screenshot` 加 `tree`/`uia-tree` 交叉确认。
-6. 只在需要稳定动态画面时使用 `freeze-app`/`thaw-app`；如果本轮冻结过 app，最终回复前必须解冻。
+6. 生成截图等默认产物时，让 AI Bridge 自动选择会被当前项目 git 忽略的目录；只有确实需要固定路径时才传 `outFile`/`artifactDir`，且路径必须在 `build`、`.build`、`.dart_tool`、`node_modules/.cache`、`target` 或其他已忽略目录内。
+7. 只在需要稳定动态画面时使用 `freeze-app`/`thaw-app`；如果本轮冻结过 app，最终回复前必须解冻。
 
 ## 能力发现和调用
 

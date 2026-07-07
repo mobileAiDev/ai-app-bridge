@@ -55,7 +55,7 @@ const {
 
 const cliPath = path.join(__dirname, '..', 'bin', 'ai-app-bridge.js');
 const mcpPath = path.join(__dirname, '..', 'bin', 'mcp-server.js');
-const { buildBridgeCliArgs, runBatch } = require('../bin/mcp-server.js');
+const { buildBridgeCliArgs, defaultArtifactDirFor, runBatch } = require('../bin/mcp-server.js');
 const {
   IOSBridgeProvider,
   formatHostForUrl,
@@ -89,6 +89,30 @@ function readMcpMessages(buffer) {
 
 function encodeLineJsonMessage(message) {
   return `${JSON.stringify(message)}\n`;
+}
+
+function makeGitRepo(files = {}, gitignore = '') {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-git-artifacts-')));
+  execFileSync('git', ['init'], { cwd: directory, stdio: 'ignore' });
+  if (gitignore) {
+    fs.writeFileSync(path.join(directory, '.gitignore'), gitignore);
+  }
+  for (const [fileName, contents] of Object.entries(files)) {
+    const filePath = path.join(directory, fileName);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, contents);
+  }
+  return directory;
+}
+
+function withCwd(directory, fn) {
+  const previous = process.cwd();
+  process.chdir(directory);
+  try {
+    return fn();
+  } finally {
+    process.chdir(previous);
+  }
 }
 
 function readLineJsonMessages(buffer) {
@@ -998,8 +1022,8 @@ test('ADB input fallback is limited to ASCII text', () => {
 
 test('generated default artifact paths are unique and run-scoped', () => {
   assert.equal(
-    path.relative(process.cwd(), defaultArtifactDirectory()),
-    path.join('build', 'ai_app_bridge_artifacts'),
+    defaultArtifactDirectory(),
+    path.join(fs.realpathSync(path.join(__dirname, '..', '..', '..')), 'build', 'ai_app_bridge_artifacts'),
   );
 
   const first = defaultArtifactPath('ai app bridge screenshot', 'png', {
@@ -1021,10 +1045,43 @@ test('generated default artifact paths are unique and run-scoped', () => {
   assert.notEqual(first, second);
 });
 
+test('generated default artifact directory uses ignored Gradle build directory', () => {
+  const repo = makeGitRepo(
+    { 'settings.gradle.kts': 'pluginManagement {}\n' },
+    'build/\n',
+  );
+
+  assert.equal(
+    defaultArtifactDirectory({ cwd: repo }),
+    path.join(repo, 'build', 'ai_app_bridge_artifacts'),
+  );
+});
+
+test('generated default artifact directory uses ignored Node cache when build is not ignored', () => {
+  const repo = makeGitRepo(
+    { 'package.json': '{"name":"node-only"}\n' },
+    'node_modules/\n',
+  );
+
+  assert.equal(
+    defaultArtifactDirectory({ cwd: repo }),
+    path.join(repo, 'node_modules', '.cache', 'ai_app_bridge_artifacts'),
+  );
+});
+
+test('generated default artifact directory falls back inside git metadata when no candidate is ignored', () => {
+  const repo = makeGitRepo({ 'package.json': '{"name":"tracked-build"}\n' });
+
+  assert.equal(
+    defaultArtifactDirectory({ cwd: repo }),
+    path.join(repo, '.git', 'ai_app_bridge_artifacts'),
+  );
+});
+
 test('screenshot default output path uses generated artifacts unless explicit', () => {
   assert.equal(
     path.dirname(screenshotOutputPath()),
-    path.resolve('build', 'ai_app_bridge_artifacts'),
+    path.join(fs.realpathSync(path.join(__dirname, '..', '..', '..')), 'build', 'ai_app_bridge_artifacts'),
   );
   assert.match(
     screenshotOutputPath({ artifactDir: path.join(os.tmpdir(), 'ai-app-bridge-artifact-test') }),
@@ -1038,6 +1095,21 @@ test('screenshot default output path uses generated artifacts unless explicit', 
     screenshotOutputPath({ outFile: path.join(os.tmpdir(), 'custom.png') }),
     path.join(os.tmpdir(), 'custom.png'),
   );
+});
+
+test('MCP generated artifact directory follows the caller git ignore rules', () => {
+  const repo = makeGitRepo(
+    { 'settings.gradle': 'pluginManagement {}\n' },
+    'build/\n',
+  );
+
+  withCwd(repo, () => {
+    const args = buildBridgeCliArgs('screenshot', {});
+    const artifactDirIndex = args.indexOf('--artifact-dir');
+    assert.notEqual(artifactDirIndex, -1);
+    assert.equal(args[artifactDirIndex + 1], path.join(repo, 'build', 'ai_app_bridge_artifacts'));
+    assert.equal(defaultArtifactDirFor('screenshot', {}), path.join(repo, 'build', 'ai_app_bridge_artifacts'));
+  });
 });
 
 test('generated screenshot artifact pruning keeps the newest 20 per prefix', async () => {

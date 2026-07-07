@@ -7,6 +7,13 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const { IOSBridgeProvider } = require('./ios-provider');
+const {
+  artifactTimestamp,
+  defaultArtifactDirectory,
+  defaultArtifactPath,
+  sanitizeArtifactExtension,
+  sanitizeArtifactName,
+} = require('./artifact-paths');
 
 const generatedArtifactRetention = 20;
 
@@ -2392,17 +2399,6 @@ function screenshotOutputPath(options = {}, prefix = 'ai_app_bridge_screenshot')
   return defaultArtifactPath(prefix, 'png', { artifactDir: options.artifactDir });
 }
 
-function defaultArtifactPath(prefix, extension, options = {}) {
-  const directory = path.resolve(options.artifactDir || defaultArtifactDirectory());
-  const suffix = [
-    artifactTimestamp(options.now || new Date()),
-    String(options.pid || process.pid),
-    options.randomSuffix || Math.random().toString(36).slice(2, 8),
-  ].join('-');
-  const name = `${sanitizeArtifactName(prefix)}-${suffix}.${sanitizeArtifactExtension(extension)}`;
-  return path.join(directory, name);
-}
-
 async function pruneGeneratedArtifacts(options = {}) {
   const keep = generatedArtifactRetention;
   const result = {
@@ -2473,34 +2469,6 @@ async function pruneGeneratedArtifacts(options = {}) {
     }
   }
   return result;
-}
-
-function artifactTimestamp(date) {
-  const value = date instanceof Date ? date : new Date(date);
-  const pad = (number, size = 2) => String(number).padStart(size, '0');
-  return [
-    value.getUTCFullYear(),
-    pad(value.getUTCMonth() + 1),
-    pad(value.getUTCDate()),
-    '-',
-    pad(value.getUTCHours()),
-    pad(value.getUTCMinutes()),
-    pad(value.getUTCSeconds()),
-    '-',
-    pad(value.getUTCMilliseconds(), 3),
-  ].join('');
-}
-
-function sanitizeArtifactName(value) {
-  return String(value || 'artifact').replace(/[^a-zA-Z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '') || 'artifact';
-}
-
-function sanitizeArtifactExtension(value) {
-  return sanitizeArtifactName(String(value || 'bin').replace(/^\.+/, '')) || 'bin';
-}
-
-function defaultArtifactDirectory() {
-  return path.join(process.cwd(), 'build', 'ai_app_bridge_artifacts');
 }
 
 function escapeRegExp(value) {
