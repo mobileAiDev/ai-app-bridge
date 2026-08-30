@@ -7,15 +7,18 @@ const net = require('net');
 const os = require('os');
 const path = require('path');
 const { IOSBridgeProvider } = require('./ios-provider');
+const { ConnectionCache } = require('./connection-cache');
 const {
   artifactTimestamp,
   defaultArtifactDirectory,
   defaultArtifactPath,
+  pruneGeneratedArtifacts,
   sanitizeArtifactExtension,
   sanitizeArtifactName,
 } = require('./artifact-paths');
-
-const generatedArtifactRetention = 20;
+const bridgeForwardCache = new ConnectionCache({
+  ttlMs: Number(process.env.AI_APP_BRIDGE_FORWARD_CACHE_TTL_MS || 15_000),
+});
 
 const defaults = {
   adb: process.env.ADB || 'adb',
@@ -263,10 +266,14 @@ async function main() {
     return;
   }
 
-  if (isIOSCommand(command || options.command)) {
-    const result = await new IOSBridgeProvider().run(command || options.command, options);
-    writeCliResult(result);
-    return;
+  const result = await executeCommand(command, options);
+  writeCliResult(result);
+}
+
+async function executeCommand(command, options = {}) {
+  const resolvedCommand = command || options.command || 'status';
+  if (isIOSCommand(resolvedCommand)) {
+    return new IOSBridgeProvider().run(resolvedCommand, options);
   }
 
   const ctx = {
@@ -281,8 +288,7 @@ async function main() {
     flutterActivity: options.flutterActivity || defaults.flutterActivity,
   };
 
-  const result = await runCommand(command || options.command || 'status', options, ctx);
-  writeCliResult(result);
+  return runCommand(resolvedCommand, options, ctx);
 }
 
 function writeCliResult(result) {
@@ -308,6 +314,7 @@ async function runCommand(command, options, ctx) {
       return ensureForward(ctx);
     case 'remove-forward':
       await adb(ctx, ['forward', '--remove', `tcp:${ctx.port}`]);
+      bridgeForwardCache.clear();
       return { ok: true, removed: `tcp:${ctx.port}` };
     case 'status':
       return bridgeStatus(ctx, options);
@@ -324,7 +331,7 @@ async function runCommand(command, options, ctx) {
     case 'input-flutter-text': {
       const result = await flutterAction(ctx, {
         action: 'inputText',
-        text: requiredString(options.text, 'text'),
+        text: requiredInputString(options.text, 'text'),
         ...(options.tapX !== undefined && options.tapY !== undefined ? { x: Number(options.tapX), y: Number(options.tapY) } : {}),
       });
       if (booleanOption(options.hideKeyboard)) {
@@ -379,13 +386,18 @@ async function runCommand(command, options, ctx) {
     case 'screenshot':
       return screenshot(ctx, screenshotOutputPath(options, 'ai_app_bridge_screenshot'), options);
     case 'tap':
-      return tap(ctx, requiredNumber(options.tapX, 'tapX'), requiredNumber(options.tapY, 'tapY'));
+      return tap(
+        ctx,
+        requiredNumber(options.tapX, 'tapX'),
+        requiredNumber(options.tapY, 'tapY'),
+        options,
+      );
     case 'tap-text':
       return tapText(ctx, requiredString(options.targetText, 'targetText'), options);
     case 'wait-text':
       return waitText(ctx, requiredString(options.targetText, 'targetText'), options);
     case 'input-text':
-      return inputText(ctx, requiredString(options.text, 'text'), options);
+      return inputText(ctx, requiredInputString(options.text, 'text'), options);
     case 'keyboard-state':
       return keyboardState(ctx);
     case 'hide-keyboard':
@@ -859,23 +871,46 @@ function shouldSkipInstallerTapForInstalledPackage({ phase, packageState } = {})
   return phase !== 'install-pending';
 }
 
-async function ensureForward(ctx) {
-  const resolvedPort = await resolveDevicePort(ctx);
-  const devicePort = resolvedPort.port;
-  const hostPort = ctx.explicitPort ? ctx.port : devicePort;
-  ctx.devicePort = devicePort;
-  ctx.hostPort = hostPort;
-  ctx.devicePortSource = resolvedPort.source;
-  ctx.devicePortState = resolvedPort.state;
-  ctx.devicePortError = resolvedPort.error;
-  await adb(ctx, ['forward', `tcp:${hostPort}`, `tcp:${devicePort}`]);
+async function ensureForward(ctx, { force = false } = {}) {
+  const cacheKey = bridgeForwardCacheKey(ctx);
+  const reused = !force && bridgeForwardCache.has(cacheKey);
+  const connection = await bridgeForwardCache.getOrCreate(cacheKey, async () => {
+    const resolvedPort = await resolveDevicePort(ctx);
+    const devicePort = resolvedPort.port;
+    const hostPort = ctx.explicitPort ? ctx.port : devicePort;
+    await adb(ctx, ['forward', `tcp:${hostPort}`, `tcp:${devicePort}`]);
+    return {
+      hostPort,
+      devicePort,
+      devicePortSource: resolvedPort.source,
+      devicePortState: resolvedPort.state,
+      devicePortError: resolvedPort.error,
+    };
+  }, { force });
+  ctx.devicePort = connection.devicePort;
+  ctx.hostPort = connection.hostPort;
+  ctx.devicePortSource = connection.devicePortSource;
+  ctx.devicePortState = connection.devicePortState;
+  ctx.devicePortError = connection.devicePortError;
+  ctx.forwardCacheKey = cacheKey;
+  ctx.forwardReused = reused;
   return {
     ok: true,
-    forward: `tcp:${hostPort} -> device tcp:${devicePort}`,
-    hostPort,
-    devicePort,
-    devicePortSource: resolvedPort.source,
+    forward: `tcp:${connection.hostPort} -> device tcp:${connection.devicePort}`,
+    hostPort: connection.hostPort,
+    devicePort: connection.devicePort,
+    devicePortSource: connection.devicePortSource,
+    reused,
   };
+}
+
+function bridgeForwardCacheKey(ctx) {
+  return JSON.stringify([
+    String(ctx.adb || ''),
+    String(ctx.serial || ''),
+    String(ctx.packageName || ''),
+    ctx.explicitPort ? Number(ctx.port) : null,
+  ]);
 }
 
 async function resolveDevicePort(ctx) {
@@ -1105,19 +1140,43 @@ function firstErrorLine(error) {
 }
 
 async function bridgeGet(ctx, requestPath) {
-  await ensureForward(ctx);
-  const body = await httpGet(bridgeUrl(ctx, requestPath));
-  const payload = JSON.parse(body);
-  verifyBridgeTargetPackage(ctx, payload, requestPath);
-  return payload;
+  return bridgeRequestWithCachedForward(ctx, async () => {
+    const body = await httpGet(bridgeUrl(ctx, requestPath));
+    const payload = JSON.parse(body);
+    verifyBridgeTargetPackage(ctx, payload, requestPath);
+    return payload;
+  }, { replaySafe: true });
 }
 
 async function bridgePost(ctx, requestPath, payload) {
-  await ensureForward(ctx);
-  const body = await httpPost(bridgeUrl(ctx, requestPath), payload);
-  const responsePayload = JSON.parse(body);
-  verifyBridgeTargetPackage(ctx, responsePayload, requestPath);
-  return responsePayload;
+  return bridgeRequestWithCachedForward(ctx, async () => {
+    const body = await httpPost(bridgeUrl(ctx, requestPath), payload);
+    const responsePayload = JSON.parse(body);
+    verifyBridgeTargetPackage(ctx, responsePayload, requestPath);
+    return responsePayload;
+  }, { replaySafe: false });
+}
+
+async function bridgeRequestWithCachedForward(ctx, request, options = {}) {
+  const ensureForwardFn = options.ensureForward || ensureForward;
+  const invalidateForward = options.invalidateForward
+    || ((key) => bridgeForwardCache.invalidate(key));
+  try {
+    await ensureForwardFn(ctx);
+  } catch (error) {
+    error.aiAppBridgeRequestNotStarted = true;
+    throw error;
+  }
+  try {
+    return await request();
+  } catch (error) {
+    if (ctx.forwardCacheKey) invalidateForward(ctx.forwardCacheKey);
+    // A POST may already have reached the App before its response was lost.
+    // Replaying it here could double-tap, double-submit, or duplicate input.
+    if (!ctx.forwardReused || !ctx.forwardCacheKey || options.replaySafe !== true) throw error;
+    await ensureForwardFn(ctx, { force: true });
+    return request();
+  }
 }
 
 function bridgeUrl(ctx, requestPath) {
@@ -2399,82 +2458,6 @@ function screenshotOutputPath(options = {}, prefix = 'ai_app_bridge_screenshot')
   return defaultArtifactPath(prefix, 'png', { artifactDir: options.artifactDir });
 }
 
-async function pruneGeneratedArtifacts(options = {}) {
-  const keep = generatedArtifactRetention;
-  const result = {
-    keep,
-    matched: 0,
-    deleted: 0,
-  };
-  const directory = path.resolve(options.directory || process.cwd());
-  const prefix = sanitizeArtifactName(options.prefix || 'artifact');
-  const extension = sanitizeArtifactExtension(options.extension || 'bin');
-  const currentPath = options.currentPath ? path.resolve(options.currentPath) : '';
-  const pattern = new RegExp(`^${escapeRegExp(prefix)}-\\d{8}-\\d{6}-\\d{3}-\\d+-[a-z0-9]+\\.${escapeRegExp(extension)}$`);
-
-  let entries;
-  try {
-    entries = await fs.promises.readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    return {
-      ...result,
-      error: firstErrorLine(error),
-    };
-  }
-
-  const files = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !pattern.test(entry.name)) {
-      continue;
-    }
-    const filePath = path.join(directory, entry.name);
-    try {
-      const stat = await fs.promises.stat(filePath);
-      files.push({
-        name: entry.name,
-        path: path.resolve(filePath),
-        mtimeMs: stat.mtimeMs,
-      });
-    } catch (_) {
-      // Ignore files that disappear while pruning.
-    }
-  }
-
-  result.matched = files.length;
-  if (files.length <= keep) {
-    return result;
-  }
-
-  files.sort((left, right) => (right.mtimeMs - left.mtimeMs) || right.name.localeCompare(left.name));
-  const keepSet = new Set();
-  if (currentPath) {
-    keepSet.add(currentPath);
-  }
-  for (const file of files) {
-    if (keepSet.size >= keep) {
-      break;
-    }
-    keepSet.add(file.path);
-  }
-
-  for (const file of files) {
-    if (keepSet.has(file.path)) {
-      continue;
-    }
-    try {
-      await fs.promises.rm(file.path, { force: true });
-      result.deleted += 1;
-    } catch (_) {
-      // Pruning is best-effort and should not make screenshot capture fail.
-    }
-  }
-  return result;
-}
-
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function pngSize(filePath) {
   const bytes = fs.readFileSync(filePath);
   if (bytes.length < 24) return { width: 0, height: 0 };
@@ -2543,9 +2526,69 @@ function parseComponentFromWindowLine(line) {
   };
 }
 
-async function tap(ctx, x, y) {
-  await adb(ctx, ['shell', 'input', 'tap', String(x), String(y)]);
-  return { ok: true, transport: 'adb', x, y };
+async function tap(ctx, x, y, options, dependencies = {}) {
+  const runAdb = dependencies.adb || adb;
+  const sendBridgePost = dependencies.bridgePost || bridgePost;
+  const readForeground = dependencies.foregroundWindow || foregroundWindow;
+  const feedbackMode = String(options?.feedback || 'auto').trim().toLowerCase();
+  const appLocalFeedback = Boolean(options)
+    && ctx.explicitPackageName
+    && (feedbackMode !== 'off' || options.appLocalAction === true);
+
+  if (!appLocalFeedback) {
+    await runAdb(ctx, ['shell', 'input', 'tap', String(x), String(y)]);
+    return { ok: true, transport: 'adb', x, y };
+  }
+
+  const foreground = await readForeground(ctx);
+  if (!foreground.ok || foreground.packageName !== ctx.packageName) {
+    await runAdb(ctx, ['shell', 'input', 'tap', String(x), String(y)]);
+    return {
+      ok: true,
+      transport: 'adb',
+      x,
+      y,
+      target: null,
+      targetFeedback: {
+        status: 'unavailable',
+        reason: foreground.ok ? 'foreground_package_mismatch' : 'foreground_probe_failed',
+        foreground,
+      },
+    };
+  }
+
+  try {
+    const runtimeActionId = options?.runtimeActionId ?? options?.requestId;
+    const result = await sendBridgePost(ctx, '/v1/action/tap', {
+      x,
+      y,
+      ...(runtimeActionId === undefined || runtimeActionId === null
+        ? {}
+        : { actionId: String(runtimeActionId) }),
+    });
+    return { ...result, transport: 'bridge' };
+  } catch (error) {
+    if (!bridgeTapWasDefinitelyNotDispatched(error)) throw error;
+    await runAdb(ctx, ['shell', 'input', 'tap', String(x), String(y)]);
+    return {
+      ok: true,
+      transport: 'adb',
+      x,
+      y,
+      target: null,
+      targetFeedback: {
+        status: 'unavailable',
+        reason: 'bridge_action_unavailable',
+        error: firstErrorLine(error),
+      },
+    };
+  }
+}
+
+function bridgeTapWasDefinitelyNotDispatched(error) {
+  if (error?.aiAppBridgeRequestNotStarted === true) return true;
+  if (error?.code === 'ECONNREFUSED') return true;
+  return /^HTTP 404:/.test(String(error?.message || error || ''));
 }
 
 async function tapText(ctx, targetText, options = {}) {
@@ -2578,13 +2621,23 @@ async function tapText(ctx, targetText, options = {}) {
         }
       }
     }
-    await tap(ctx, x, y);
+    const tapResult = await tap(ctx, x, y, { ...options, appLocalAction: true });
+    if (tapResult.ok === false) {
+      return {
+        ...tapResult,
+        targetText,
+        source: 'bridge-tree',
+        windowType: bridgeMatch.windowType,
+        keyboard,
+      };
+    }
     return {
+      ...tapResult,
       ok: true,
-      transport: 'adb',
       targetText,
       source: 'bridge-tree',
-      windowType: bridgeMatch.windowType,
+      windowType: tapResult.windowType || bridgeMatch.windowType,
+      target: tapResult.target || bridgeNodeTarget(node, bridgeMatch.windowType),
       x,
       y,
       keyboard,
@@ -2638,7 +2691,27 @@ async function tapText(ctx, targetText, options = {}) {
     }
   }
   await tap(ctx, x, y);
-  return { ok: true, transport: 'adb', targetText, source: 'uiautomator', x, y, keyboard };
+  return {
+    ok: true,
+    transport: 'adb',
+    targetText,
+    source: 'uiautomator',
+    x,
+    y,
+    keyboard,
+    matched: uiaNode.matched,
+  };
+}
+
+function bridgeNodeTarget(node, windowType) {
+  return {
+    className: node?.className || node?.simpleClassName || '',
+    resourceName: node?.resourceName || node?.resourceId || '',
+    clickable: Boolean(node?.clickable),
+    enabled: node?.enabled !== false,
+    windowType: windowType || 'window',
+    bounds: node?.bounds || null,
+  };
 }
 
 function findTappableNodeByText(tree, targetText) {
@@ -2728,24 +2801,7 @@ function nodeTapState(node, viewport) {
 }
 
 function findUiaNodeByText(xml, targetText) {
-  const escaped = escapeRegExp(targetText);
-  const nodeRegex = /<node\b[^>]*>/g;
-  let match;
-  while ((match = nodeRegex.exec(xml)) !== null) {
-    const nodeXml = match[0];
-    const textMatch = new RegExp(`\\btext="${escaped}"`).test(nodeXml);
-    const descMatch = new RegExp(`\\bcontent-desc="${escaped}"`).test(nodeXml);
-    if (!textMatch && !descMatch) continue;
-    const boundsMatch = /\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(nodeXml);
-    if (!boundsMatch) continue;
-    return {
-      left: Number(boundsMatch[1]),
-      top: Number(boundsMatch[2]),
-      right: Number(boundsMatch[3]),
-      bottom: Number(boundsMatch[4]),
-    };
-  }
-  return null;
+  return findUiaNodeByAny(xml, { texts: [targetText], exact: true });
 }
 
 function parseUiaViewport(xml) {
@@ -4495,6 +4551,11 @@ function requiredString(value, name) {
   return value;
 }
 
+function requiredInputString(value, name) {
+  if (typeof value !== 'string') throw new Error(`${name} is required`);
+  return value;
+}
+
 function requiredNumber(value, name) {
   const number = Number(value);
   if (!Number.isFinite(number)) throw new Error(`${name} is required`);
@@ -4503,6 +4564,8 @@ function requiredNumber(value, name) {
 
 module.exports = {
   buildBridgeFailureResult,
+  bridgeRequestWithCachedForward,
+  bridgeNodeTarget,
   clearAppDataAdbArgs,
   defaultInstallerButtonTexts,
   artifactTimestamp,
@@ -4511,6 +4574,7 @@ module.exports = {
   compactUiaTree,
   defaultArtifactDirectory,
   defaultArtifactPath,
+  executeCommand,
   findFlutterNode,
   findTappableNodeByText,
   filterLogcat,
@@ -4539,11 +4603,13 @@ module.exports = {
   shapeNetworkCapture,
   compactNetworkRecord,
   pruneGeneratedArtifacts,
+  requiredInputString,
   shouldSkipInstallerTapForInstalledPackage,
   shouldDismissKeyboardForPoint,
   shouldUseDefaultPortFallback,
   screenshotOutputPath,
   statusSearchText,
+  tap,
   uiautomatorLockPath,
   verifyBridgeTargetPackage,
   waitTextConditionsMet,

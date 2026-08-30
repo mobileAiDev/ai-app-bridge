@@ -1,4 +1,5 @@
 import Foundation
+#if canImport(UIKit)
 import Network
 import UIKit
 import WebKit
@@ -11,6 +12,7 @@ public final class AiAppBridge {
     private let defaultPort: UInt16 = 18080
     private let maxPortAttempts: UInt16 = 50
     private let bridgeVersion = "0.2.11"
+    private let runtimeEpoch = UUID().uuidString
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")
     private let serverQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.server")
     private let maxLogEntries = 300
@@ -35,6 +37,9 @@ public final class AiAppBridge {
     private var networkEntries: [[String: Any]] = []
     private var eventEntries: [[String: Any]] = []
     private var stateEntries: [String: [String: Any]] = [:]
+    #if DEBUG
+    private var uiObserver: AiAppBridgeUiObserver?
+    #endif
 
     private init() {}
 
@@ -45,11 +50,31 @@ public final class AiAppBridge {
                 self.appName = appName
             }
         }
+        runOnMain { [weak self] in
+            self?.startUiObservationIfNeeded()
+        }
         serverQueue.async {
             self.startServerIfNeeded()
         }
         #endif
     }
+
+    #if DEBUG
+    private func startUiObservationIfNeeded() {
+        precondition(Thread.isMainThread, "iOS UI observation must start on the main thread")
+        if uiObserver == nil {
+            uiObserver = AiAppBridgeUiObserver { [weak self] category, name, data in
+                guard let self else { return }
+                _ = self.recordEventPayload([
+                    "category": category,
+                    "name": name,
+                    "data": data
+                ], source: "ios-ui-observer")
+            }
+        }
+        uiObserver?.start()
+    }
+    #endif
 
     public func setFlutterActionHandler(_ handler: AiAppBridgeFlutterActionHandler?) {
         captureQueue.sync {
@@ -260,6 +285,7 @@ public final class AiAppBridge {
             "debugBridge": [
                 "name": "ai_app_bridge",
                 "version": bridgeVersion,
+                "runtimeEpoch": runtimeEpoch,
                 "platform": "ios",
                 "transport": "http",
                 "host": "0.0.0.0",
@@ -311,10 +337,17 @@ public final class AiAppBridge {
         ]
     }
 
-    private func viewJson(_ view: UIView, depth: Int, counter: inout NodeCounter) -> [String: Any] {
+    private func viewJson(
+        _ view: UIView,
+        depth: Int,
+        counter: inout NodeCounter,
+        redactInputText: Bool = false
+    ) -> [String: Any] {
         counter.count += 1
         let id = counter.count
         let frameInScreen = view.convert(view.bounds, to: nil)
+        let secureInput = (view as? UITextField)?.isSecureTextEntry == true
+        let redactText = redactInputText || secureInput
         var payload: [String: Any] = [
             "id": id,
             "depth": depth,
@@ -325,14 +358,26 @@ public final class AiAppBridge {
             "alpha": Double(view.alpha),
             "bounds": Self.rectJson(frameInScreen),
             "accessibilityIdentifier": view.accessibilityIdentifier ?? "",
-            "contentDescription": view.accessibilityLabel ?? "",
-            "text": viewText(view),
+            "contentDescription": redactText ? "" : (view.accessibilityLabel ?? ""),
+            "text": redactText ? "" : viewText(view),
             "clickable": view.isUserInteractionEnabled && !view.gestureRecognizers.orEmpty.isEmpty,
             "children": []
         ]
+        if let textField = view as? UITextField {
+            payload["input"] = [
+                "secure": textField.isSecureTextEntry,
+                "textLength": textField.text?.count ?? 0,
+                "rawTextCaptured": false
+            ]
+        }
         var children: [[String: Any]] = []
         for child in view.subviews.prefix(250) {
-            children.append(viewJson(child, depth: depth + 1, counter: &counter))
+            children.append(viewJson(
+                child,
+                depth: depth + 1,
+                counter: &counter,
+                redactInputText: redactText
+            ))
         }
         payload["children"] = children
         return payload
@@ -346,6 +391,9 @@ public final class AiAppBridge {
             return button.title(for: .normal) ?? button.accessibilityLabel ?? ""
         }
         if let textField = view as? UITextField {
+            if textField.isSecureTextEntry {
+                return ""
+            }
             return textField.text ?? textField.placeholder ?? ""
         }
         if let textView = view as? UITextView {
@@ -477,20 +525,22 @@ public final class AiAppBridge {
     }
 
     private func recordLogPayload(_ payload: [String: Any], source: String) -> [String: Any] {
-        let event = captureEvent(source: source).merging([
+        let details: [String: Any] = [
             "level": string(payload["level"], fallback: "info"),
             "tag": string(payload["tag"], fallback: ""),
             "message": boundedString(string(payload["message"], fallback: ""), max: 4_000),
             "data": payload["data"] ?? NSNull()
-        ]) { _, new in new }
-        captureQueue.sync {
+        ]
+        let event = captureQueue.sync {
+            let event = captureEvent(source: source).merging(details) { _, new in new }
             boundedAppend(&logEntries, event, maxSize: maxLogEntries)
+            return event
         }
         return ["ok": true, "record": event]
     }
 
     private func recordNetworkPayload(_ payload: [String: Any], source: String) -> [String: Any] {
-        var event = captureEvent(source: source).merging([
+        var details: [String: Any] = [
             "method": string(payload["method"], fallback: "GET"),
             "url": redactUrl(string(payload["url"], fallback: "")),
             "statusCode": int(payload["statusCode"], fallback: -1),
@@ -498,18 +548,20 @@ public final class AiAppBridge {
             "requestBody": redactedBoundedString(payload["requestBody"]),
             "responseBody": redactedBoundedString(payload["responseBody"]),
             "redacted": true
-        ]) { _, new in new }
+        ]
         if let requestHeaders = payload["requestHeaders"] {
-            event["requestHeaders"] = redactJsonValue(requestHeaders)
+            details["requestHeaders"] = redactJsonValue(requestHeaders)
         }
         if let responseHeaders = payload["responseHeaders"] {
-            event["responseHeaders"] = redactJsonValue(responseHeaders)
+            details["responseHeaders"] = redactJsonValue(responseHeaders)
         }
         if let error = payload["error"] as? String, !error.isEmpty {
-            event["error"] = error
+            details["error"] = error
         }
-        captureQueue.sync {
+        let event = captureQueue.sync {
+            let event = captureEvent(source: source).merging(details) { _, new in new }
             boundedAppend(&networkEntries, event, maxSize: maxNetworkEntries)
+            return event
         }
         return ["ok": true, "record": event]
     }
@@ -518,27 +570,30 @@ public final class AiAppBridge {
         let namespace = string(payload["namespace"], fallback: "app")
         let key = string(payload["key"], fallback: "")
         let stateKey = "\(namespace):\(key)"
-        var event = captureEvent(source: source).merging([
+        let details: [String: Any] = [
             "namespace": namespace,
             "key": key,
-            "value": redactJsonValue(payload["value"] ?? NSNull())
-        ]) { _, new in new }
-        event["stateKey"] = stateKey
-        captureQueue.sync {
+            "value": redactJsonValue(payload["value"] ?? NSNull()),
+            "stateKey": stateKey
+        ]
+        let event = captureQueue.sync {
+            let event = captureEvent(source: source).merging(details) { _, new in new }
             stateEntries[stateKey] = event
+            return event
         }
         return ["ok": true, "record": event]
     }
 
     private func recordEventPayload(_ payload: [String: Any], source: String) -> [String: Any] {
-        var event = captureEvent(source: source).merging([
+        let details: [String: Any] = [
             "category": string(payload["category"], fallback: "app"),
             "name": string(payload["name"], fallback: ""),
-            "data": payload["data"] ?? NSNull()
-        ]) { _, new in new }
-        event["data"] = redactJsonValue(event["data"] ?? NSNull())
-        captureQueue.sync {
+            "data": redactJsonValue(payload["data"] ?? NSNull())
+        ]
+        let event = captureQueue.sync {
+            let event = captureEvent(source: source).merging(details) { _, new in new }
             boundedAppend(&eventEntries, event, maxSize: maxEventEntries)
+            return event
         }
         return ["ok": true, "record": event]
     }
@@ -968,3 +1023,4 @@ private extension Optional where Wrapped == [UIGestureRecognizer] {
         self ?? []
     }
 }
+#endif

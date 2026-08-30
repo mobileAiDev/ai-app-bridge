@@ -40,6 +40,10 @@ android {
     }
 }
 
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+}
+
 afterEvaluate {
     publishing {
         publications {
@@ -52,4 +56,3 @@ afterEvaluate {
         }
     }
 }
-

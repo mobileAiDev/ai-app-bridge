@@ -18,8 +18,14 @@
   "files": [
     "bin/ai-app-bridge.js",
     "bin/artifact-paths.js",
+    "bin/connection-cache.js",
+    "bin/fact-cache.js",
+    "bin/fact-recorder.js",
+    "bin/feedback-probe.js",
     "bin/mcp-server.js",
+    "bin/observation-collector.js",
     "bin/ios-provider.js",
+    "bin/target-execution.js",
     "bin/web-provider.js",
     "skills/ai-app-bridge-use",
     "README.md"

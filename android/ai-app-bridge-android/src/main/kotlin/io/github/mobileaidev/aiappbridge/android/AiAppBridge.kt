@@ -44,6 +44,7 @@ import java.util.ArrayDeque
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.LinkedHashMap
+import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -64,6 +65,7 @@ object AiAppBridge {
     private const val maxCapturedBodyChars = 20_000
     private const val bridgeVersion = "0.2.8"
     private const val redactedValue = "[redacted]"
+    private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     private val sensitiveKeyPattern = Regex(
         "(?i)(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
     )
@@ -89,6 +91,17 @@ object AiAppBridge {
               height: rect.height
             };
           }
+          function sensitive(element) {
+            var probe = [
+              element.type,
+              element.id,
+              element.name,
+              element.autocomplete,
+              element.getAttribute('data-sensitive'),
+              element.getAttribute('data-private')
+            ].join(' ').toLowerCase();
+            return /password|passwd|pwd|secret|token|otp|pin|cvv|credit.?card|one-time-code/.test(probe);
+          }
           var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
           var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200)
             .map(function(element, index) {
@@ -101,7 +114,9 @@ object AiAppBridge {
                 role: text(element.getAttribute('role')),
                 ariaLabel: text(element.getAttribute('aria-label')),
                 placeholder: text(element.getAttribute('placeholder')),
-                text: cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
+                text: sensitive(element)
+                  ? '[redacted:length=' + text(element.value).length + ']'
+                  : cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
                 href: cut(element.href, 500),
                 disabled: !!element.disabled,
                 bounds: bounds(element)
@@ -150,6 +165,8 @@ object AiAppBridge {
     private val networkEntries = ArrayDeque<JSONObject>()
     private val eventEntries = ArrayDeque<JSONObject>()
     private val stateEntries = LinkedHashMap<String, JSONObject>()
+    @Volatile
+    private var uiObserver: AndroidUiObserver? = null
     private val webViewAdapters = CopyOnWriteArrayList<WebViewAdapter>(
         listOf(StandardAndroidWebViewAdapter, ReflectiveJavascriptWebViewAdapter),
     )
@@ -159,7 +176,11 @@ object AiAppBridge {
         if (context is Activity) {
             currentActivity = WeakReference(context)
         }
+        val observer = ensureUiObserver()
         registerLifecycleCallbacks(context)
+        if (context is Activity) {
+            observer.attach(context, reason = "bridge-start")
+        }
         if (server != null) {
             return
         }
@@ -273,6 +294,25 @@ object AiAppBridge {
         recordEventPayload(payload, source = "sdk")
     }
 
+    private fun ensureUiObserver(): AndroidUiObserver {
+        uiObserver?.let { return it }
+        synchronized(this) {
+            uiObserver?.let { return it }
+            return AndroidUiObserver(
+                mainHandler = mainHandler,
+                eventSink = { category, name, data ->
+                    recordEventPayload(
+                        JSONObject()
+                            .put("category", category)
+                            .put("name", name)
+                            .put("data", data),
+                        source = "ui-observer",
+                    )
+                },
+            ).also { uiObserver = it }
+        }
+    }
+
     private fun registerLifecycleCallbacks(context: Context) {
         if (lifecycleRegistered) {
             return
@@ -286,21 +326,30 @@ object AiAppBridge {
                 object : Application.ActivityLifecycleCallbacks {
                     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
                         currentActivity = WeakReference(activity)
+                        uiObserver?.onLifecycle(activity, "created")
                     }
 
                     override fun onActivityStarted(activity: Activity) {
                         currentActivity = WeakReference(activity)
+                        uiObserver?.onLifecycle(activity, "started")
                     }
 
                     override fun onActivityResumed(activity: Activity) {
                         currentActivity = WeakReference(activity)
+                        uiObserver?.onLifecycle(activity, "resumed")
                     }
 
-                    override fun onActivityPaused(activity: Activity) = Unit
-                    override fun onActivityStopped(activity: Activity) = Unit
+                    override fun onActivityPaused(activity: Activity) {
+                        uiObserver?.onLifecycle(activity, "paused")
+                    }
+
+                    override fun onActivityStopped(activity: Activity) {
+                        uiObserver?.onLifecycle(activity, "stopped")
+                    }
                     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 
                     override fun onActivityDestroyed(activity: Activity) {
+                        uiObserver?.onLifecycle(activity, "destroyed")
                         if (currentActivity?.get() == activity) {
                             currentActivity = null
                         }
@@ -406,6 +455,9 @@ object AiAppBridge {
             .put("type", type)
             .put("source", source)
             .put("timestampMs", System.currentTimeMillis())
+            .also { event ->
+                CaptureActionContext.currentActionId()?.let { event.put("actionId", it) }
+            }
     }
 
     private fun appendBounded(target: ArrayDeque<JSONObject>, event: JSONObject, maxSize: Int) {
@@ -1095,6 +1147,7 @@ object AiAppBridge {
                         .put("name", "ai_app_bridge")
                         .put("version", bridgeVersion)
                         .put("transport", "http")
+                        .put("runtimeEpoch", runtimeEpoch)
                         .put("host", "127.0.0.1")
                         .put("port", activePort.get()),
                 )
@@ -1495,6 +1548,7 @@ object AiAppBridge {
             val request = JSONObject(body.ifBlank { "{}" })
             val x = request.optDouble("x", Double.NaN).toFloat()
             val y = request.optDouble("y", Double.NaN).toFloat()
+            val actionId = request.optString("actionId", "").takeIf { it.isNotBlank() }
             if (x.isNaN() || y.isNaN()) {
                 return JSONObject()
                     .put("ok", false)
@@ -1520,40 +1574,56 @@ object AiAppBridge {
                 )
                 val localX = x - target.bounds.left
                 val localY = y - target.bounds.top
-                val downTime = SystemClock.uptimeMillis()
-                val eventTime = downTime + 48L
-                val down = MotionEvent.obtain(
-                    downTime,
-                    downTime,
-                    MotionEvent.ACTION_DOWN,
-                    localX,
-                    localY,
-                    0,
-                )
-                val up = MotionEvent.obtain(
-                    downTime,
-                    eventTime,
-                    MotionEvent.ACTION_UP,
-                    localX,
-                    localY,
-                    0,
-                )
-                val handledDown = target.root.dispatchTouchEvent(down)
-                val handledUp = target.root.dispatchTouchEvent(up)
-                down.recycle()
-                up.recycle()
-                JSONObject()
-                    .put("ok", true)
-                    .put("x", x.toDouble())
-                    .put("y", y.toDouble())
-                    .put("localX", localX.toDouble())
-                    .put("localY", localY.toDouble())
-                    .put("windowType", target.type)
-                    .put("rootClassName", target.root.javaClass.name)
-                    .put("rootBounds", rectToJson(target.bounds))
-                    .put("handledDown", handledDown)
-                    .put("handledUp", handledUp)
-                    .put("updatedAtMs", System.currentTimeMillis())
+                val response = CaptureActionContext.withActionId(actionId) {
+                    val hitView = findActionViewAtPoint(target.root, x.toInt(), y.toInt())
+                    val hitTarget = hitView?.let { actionViewToJson(activity, it) }
+                    val downTime = SystemClock.uptimeMillis()
+                    val eventTime = downTime + 48L
+                    val down = MotionEvent.obtain(
+                        downTime,
+                        downTime,
+                        MotionEvent.ACTION_DOWN,
+                        localX,
+                        localY,
+                        0,
+                    )
+                    val up = MotionEvent.obtain(
+                        downTime,
+                        eventTime,
+                        MotionEvent.ACTION_UP,
+                        localX,
+                        localY,
+                        0,
+                    )
+                    val handledDown = target.root.dispatchTouchEvent(down)
+                    val handledUp = target.root.dispatchTouchEvent(up)
+                    down.recycle()
+                    up.recycle()
+                    uiObserver?.noteTap(
+                        x = x,
+                        y = y,
+                        windowType = target.type,
+                        target = hitTarget,
+                        handledDown = handledDown,
+                        handledUp = handledUp,
+                    )
+                    JSONObject()
+                        .put("ok", true)
+                        .put("x", x.toDouble())
+                        .put("y", y.toDouble())
+                        .put("localX", localX.toDouble())
+                        .put("localY", localY.toDouble())
+                        .put("windowType", target.type)
+                        .put("rootClassName", target.root.javaClass.name)
+                        .put("rootBounds", rectToJson(target.bounds))
+                        .put("target", hitTarget ?: JSONObject.NULL)
+                        .put("handledDown", handledDown)
+                        .put("handledUp", handledUp)
+                        .put("actionId", actionId ?: JSONObject.NULL)
+                        .put("updatedAtMs", System.currentTimeMillis())
+                }
+                CaptureActionContext.deferActionId(actionId) { clear -> mainHandler.post(clear) }
+                response
             }
         }
 
@@ -1583,6 +1653,12 @@ object AiAppBridge {
                 val requestedFocus = target.view.requestFocus()
                 target.view.setText(text)
                 target.view.setSelection(target.view.text?.length ?: 0)
+                uiObserver?.noteInput(
+                    inputLength = text.length,
+                    windowType = target.root.type,
+                    targetClassName = target.view.javaClass.name,
+                    targetResourceName = resourceName(activity, target.view.id).toString(),
+                )
                 JSONObject()
                     .put("ok", true)
                     .put("transport", "bridge")
@@ -1703,6 +1779,36 @@ object AiAppBridge {
                 return view
             }
             return null
+        }
+
+        private fun findActionViewAtPoint(view: View, x: Int, y: Int): View? {
+            if (!view.isShown || view.alpha <= 0f || !boundsForView(view).contains(x, y)) {
+                return null
+            }
+            var deepest: View? = null
+            if (view is ViewGroup) {
+                for (index in view.childCount - 1 downTo 0) {
+                    val child = findActionViewAtPoint(view.getChildAt(index), x, y) ?: continue
+                    if (child.isClickable || child.isLongClickable || child is EditText) {
+                        return child
+                    }
+                    if (deepest == null) deepest = child
+                }
+            }
+            if (view.isClickable || view.isLongClickable || view is EditText) return view
+            return deepest ?: view
+        }
+
+        private fun actionViewToJson(activity: Activity, view: View): JSONObject {
+            return JSONObject()
+                .put("className", view.javaClass.name)
+                .put("simpleClassName", view.javaClass.simpleName)
+                .put("resourceName", resourceName(activity, view.id))
+                .put("bounds", rectToJson(boundsForView(view)))
+                .put("enabled", view.isEnabled)
+                .put("clickable", view.isClickable)
+                .put("longClickable", view.isLongClickable)
+                .put("focusable", view.isFocusable)
         }
 
         private fun findFocusedEditText(view: View): EditText? {
@@ -1966,4 +2072,3 @@ object AiAppBridge {
         var count: Int = 0
     }
 }
-

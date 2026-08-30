@@ -71,6 +71,82 @@ and single-line JSON messages. Responses use the format of the first request on
 that connection, so standard MCP clients keep framed responses while local
 Node REPL scripts can send and read one JSON object per line.
 
+## Persistent facts and action feedback
+
+The MCP process keeps one in-process connection path per target, serializes
+mutations for the same target, and continuously collects incremental
+`logs`/`network`/`state`/`events` facts after an explicit target is used. Android
+App logs come from that App's in-process `logs` stream by default; the collector
+does not attribute device-wide logcat to the App. Device logs are enabled only
+with the additive `deviceLogScope: "device"` option and are stored as an
+explicit device target. One bounded stream is then reused per explicit serial.
+The default buffers are `main`, `system`, and `crash`; sensitive `radio`,
+`security`, and `kernel` buffers still require explicit `deviceLogBuffers`.
+The observer keeps at most 32 targets and retires a target after 30 minutes
+without an explicit operation. Its limit, expirations, evictions, failures, and
+dropped-log counters are visible in `_feedback.observer`.
+
+Facts are stored in a local SQLite WAL database with `mmap` enabled. The MCP
+default `auto` profile selects 512 MB when total disk capacity is at least 16 GiB and at
+least 4 GiB is available, 256 MB when total capacity is at least 4 GiB and at
+least 2 GiB is available, and 64 MB otherwise. Explicitly select a profile with
+`AI_APP_BRIDGE_FACT_CACHE_PROFILE=512mb`, `256mb`, or `64mb`, disable persistence
+with `AI_APP_BRIDGE_FACT_CACHE=off`, or override the location with
+`AI_APP_BRIDGE_FACT_CACHE_PATH`. The default macOS path is
+`~/Library/Caches/ai-app-bridge/fact-cache/facts.sqlite`.
+
+Partitions have independent shares of the total budget: network 30%, UI 20%,
+App logs 12%, device logs 8%, state/events 10%, actions 10%, notes 5%, and index
+metadata 5%. Quotas include the database, WAL, and shared-memory sidecar. The
+feedback reports the selected profile, disk selection inputs, and requested and
+effective mmap sizes. Persistent mode requires a Node runtime with
+`node:sqlite`; if it is unavailable, foreground commands still run and report
+the explicit fact-cache failure, but history is unavailable. The server does
+not silently claim an in-memory buffer is persistent.
+
+The automatic collector persists network metadata and redacted headers. It
+stores raw body byte counts plus omission flags, not request or response body
+content. An explicit live `network` read keeps its existing behavior. Each fact
+also carries a canonical target key, App identity, runtime epoch, global
+sequence, timestamps, and an action id when correlation is available.
+
+Existing evidence commands read the persisted timeline without adding a new
+top-level command. Pass `history: true`, then reuse the returned opaque
+`factCursor` for the next page. `events`/`ios-events`/`web-events` additionally
+accept `includeActions: true` to return correlated execution records:
+
+```json
+{
+  "command": "events",
+  "packageName": "io.github.mobileaidev.aiappbridge.sample",
+  "history": true,
+  "includeActions": true,
+  "arguments": { "limit": 100 }
+}
+```
+
+Every normal object result keeps its legacy fields and adds `_feedback` unless
+`feedback: "off"` is requested. The default `auto` mode does not add post-action
+UI polling, trees, or screenshots. `feedback: "full"` waits briefly for a correlated UI event; when no
+change is observed, it returns an inconclusive result plus current tree and
+screenshot references instead of claiming success. Observer health, runtime
+epoch, dropped-log counters, and persisted fact references are reported in the
+same feedback object.
+
+For a coordinate tap on the foreground Android App, `auto`/`full` feedback uses
+one App-local bridge request and reports the actual hit View, bounds, window,
+and touch handling result. System UI and non-target foreground taps keep the
+single-ADB path and report that App-local component feedback is unavailable.
+The request id is carried into synchronous runtime log/network/state/event
+records. Later asynchronous records are correlated by the bounded action
+timeline instead of being presented as an exact runtime binding.
+
+Generated Android and iOS screenshot artifacts share the same automatic
+lifecycle: at most 20 files per screenshot prefix, no older than 24 hours, and
+at most 64 MB total. An explicitly supplied `outFile` is user-owned and is not
+automatically removed. Screenshot bytes remain files and are never copied into
+the fact database.
+
 For multi-step app automation, call `run` with `command: "batch"`. Batch steps
 run serially in one MCP call, so a failed step can stop and mark the remaining
 steps as skipped without mixing results from different commands:

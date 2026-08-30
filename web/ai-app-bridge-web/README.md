@@ -39,7 +39,12 @@ const bridge = createAiAppBridge({
     console: true,
     errors: true,
     fetch: true,
-    xhr: true
+    xhr: true,
+    ui: {
+      debounceMs: 80,
+      maxBatchSize: 50,
+      maxPendingEvents: 200
+    }
   }
 });
 
@@ -61,7 +66,8 @@ For SSR frameworks, initialize it only in client/browser code.
       console: true,
       errors: true,
       fetch: true,
-      xhr: true
+      xhr: true,
+      ui: true
     }
   });
 
@@ -74,6 +80,38 @@ For SSR frameworks, initialize it only in client/browser code.
   bridge.start();
 </script>
 ```
+
+## Continuous UI Observation
+
+`capture.ui` is opt-in. Set it to `true` for defaults, or pass an object to
+bound its work:
+
+```js
+capture: {
+  ui: {
+    debounceMs: 80,
+    maxBatchSize: 50,
+    maxPendingEvents: 200,
+    maxFingerprintElements: 200,
+    maxFingerprintText: 2000
+  }
+}
+```
+
+The SDK sends `events` captures with `category: "ui"` and `name: "batch"`.
+Each batch can contain document click/input/change/focus events, SPA route
+transitions, DOM mutation summaries, lightweight DOM fingerprint changes, and
+dialog-like open/close transitions. `droppedEvents` reports queue pressure.
+
+Password and other sensitive inputs never include their value; they contain
+only `changed`, `length`, and `sensitive: true`. Non-sensitive input values are
+limited to 300 characters. DOM body text contributes only to the fingerprint
+hash and is not included in the UI event payload.
+
+This observer does not continuously capture screenshots or video. Call
+`bridge.stop()` (or the existing `bridge.disconnect()`) to flush pending UI
+events, remove listeners and observers, restore patched History methods, and
+close the connection. A later `bridge.start()` installs a fresh observer.
 
 This package is intended for debug and test builds. Keep command handlers
 whitelisted and do not enable it in production without a deliberate security

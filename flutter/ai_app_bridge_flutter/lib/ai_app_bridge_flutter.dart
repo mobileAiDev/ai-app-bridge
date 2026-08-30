@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+
+import 'src/ui_observation.dart';
 
 typedef AiAppBridgeH5Evaluator = FutureOr<Object?> Function(String script);
 typedef AiAppBridgeH5MetadataProvider = FutureOr<Map<String, Object?>>
@@ -64,6 +67,17 @@ class AiAppBridge {
               height: rect.height
             };
           }
+          function sensitive(element) {
+            var probe = [
+              element.type,
+              element.id,
+              element.name,
+              element.autocomplete,
+              element.getAttribute('data-sensitive'),
+              element.getAttribute('data-private')
+            ].join(' ').toLowerCase();
+            return /password|passwd|pwd|secret|token|otp|pin|cvv|credit.?card|one-time-code/.test(probe);
+          }
           var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
           var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200)
             .map(function(element, index) {
@@ -76,7 +90,9 @@ class AiAppBridge {
                 role: text(element.getAttribute('role')),
                 ariaLabel: text(element.getAttribute('aria-label')),
                 placeholder: text(element.getAttribute('placeholder')),
-                text: cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
+                text: sensitive(element)
+                  ? '[redacted:length=' + text(element.value).length + ']'
+                  : cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
                 href: cut(element.href, 500),
                 disabled: !!element.disabled,
                 bounds: bounds(element)
@@ -100,8 +116,11 @@ class AiAppBridge {
   bool _debugPrintCaptureInstalled = false;
   bool _flutterErrorCaptureInstalled = false;
   bool _httpClientCaptureInstalled = false;
+  bool _uiObservationInstalled = false;
   Timer? _postTimer;
   Timer? _layoutTimer;
+  Timer? _uiStableTimer;
+  Timer? _animationSnapshotTimer;
   OverlayEntry? _harnessOverlayEntry;
   SemanticsHandle? _semanticsHandle;
   DebugPrintCallback? _previousDebugPrint;
@@ -115,6 +134,14 @@ class AiAppBridge {
   final Map<String, AiAppBridgeH5Adapter> _h5Adapters =
       <String, AiAppBridgeH5Adapter>{};
   String? _activeH5AdapterId;
+  final AiAppBridgeUiBurstTracker _uiBurstTracker = AiAppBridgeUiBurstTracker();
+  final Map<int, int> _pointerDownAtMs = <int, int>{};
+  int _lastAnimationSnapshotAtMs = 0;
+  bool _snapshotInFlight = false;
+  bool _snapshotPending = false;
+
+  late final NavigatorObserver navigatorObserver =
+      AiAppBridgeNavigatorObserver._(this);
 
   void initialize({
     required String appName,
@@ -137,12 +164,157 @@ class AiAppBridge {
       captureFlutterErrors: captureFlutterErrors,
       captureHttpClient: captureHttpClient,
     );
+    _installUiObservation();
     _semanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
     _channel.setMethodCallHandler(_handleNativeCall);
     _layoutTimer ??= Timer.periodic(const Duration(milliseconds: 1200), (_) {
       _schedulePost();
     });
     _schedulePost();
+  }
+
+  void shutdown() {
+    if (!_uiObservationInstalled) {
+      _enabled = false;
+      return;
+    }
+    SchedulerBinding.instance.removeTimingsCallback(_handleFrameTimings);
+    GestureBinding.instance.pointerRouter
+        .removeGlobalRoute(_handlePointerEvent);
+    _uiStableTimer?.cancel();
+    _animationSnapshotTimer?.cancel();
+    _postTimer?.cancel();
+    _layoutTimer?.cancel();
+    _uiStableTimer = null;
+    _animationSnapshotTimer = null;
+    _postTimer = null;
+    _layoutTimer = null;
+    _pointerDownAtMs.clear();
+    _semanticsHandle?.dispose();
+    _semanticsHandle = null;
+    _uiObservationInstalled = false;
+    _enabled = false;
+  }
+
+  void _installUiObservation() {
+    if (_uiObservationInstalled) return;
+    SchedulerBinding.instance.addTimingsCallback(_handleFrameTimings);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_handlePointerEvent);
+    _uiObservationInstalled = true;
+  }
+
+  void _handleFrameTimings(List<FrameTiming> timings) {
+    if (!_enabled || timings.isEmpty) return;
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    final List<AiAppBridgeUiTransition> transitions =
+        _uiBurstTracker.addFrames(nowMs: nowMs, count: timings.length);
+    final Map<String, Object?> timingSummary = _frameTimingSummary(timings);
+    for (final AiAppBridgeUiTransition transition in transitions) {
+      _recordUiTransition(transition, timingSummary: timingSummary);
+    }
+    _uiStableTimer?.cancel();
+    _uiStableTimer = Timer(const Duration(milliseconds: 275), () {
+      if (!_enabled) return;
+      final AiAppBridgeUiTransition? stable = _uiBurstTracker.settle(
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      if (stable != null) {
+        _recordUiTransition(stable);
+        _schedulePost();
+      }
+    });
+  }
+
+  Map<String, Object?> _frameTimingSummary(List<FrameTiming> timings) {
+    int maxBuildUs = 0;
+    int maxRasterUs = 0;
+    int maxTotalUs = 0;
+    for (final FrameTiming timing in timings) {
+      maxBuildUs = math.max(maxBuildUs, timing.buildDuration.inMicroseconds);
+      maxRasterUs = math.max(maxRasterUs, timing.rasterDuration.inMicroseconds);
+      maxTotalUs = math.max(maxTotalUs, timing.totalSpan.inMicroseconds);
+    }
+    return <String, Object?>{
+      'batchFrames': timings.length,
+      'maxBuildUs': maxBuildUs,
+      'maxRasterUs': maxRasterUs,
+      'maxTotalUs': maxTotalUs,
+    };
+  }
+
+  void _recordUiTransition(
+    AiAppBridgeUiTransition transition, {
+    Map<String, Object?> timingSummary = const <String, Object?>{},
+  }) {
+    final String name = switch (transition.phase) {
+      AiAppBridgeUiPhase.started => 'ui.animation.started',
+      AiAppBridgeUiPhase.changed => 'ui.changed',
+      AiAppBridgeUiPhase.stable => 'ui.stable',
+    };
+    recordEvent(
+      category: 'ui',
+      name: name,
+      data: <String, Object?>{
+        'platform': 'flutter',
+        'burstId': transition.burstId,
+        'frameCount': transition.frameCount,
+        'elapsedMs': transition.elapsedMs,
+        'semanticChanged': false,
+        'renderChanged': transition.phase != AiAppBridgeUiPhase.stable,
+        'interactionObserved': false,
+        ...timingSummary,
+      },
+    );
+    if (transition.phase == AiAppBridgeUiPhase.changed) {
+      _scheduleAnimationSnapshot();
+    }
+  }
+
+  void _scheduleAnimationSnapshot() {
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    final int remainingMs = 250 - (nowMs - _lastAnimationSnapshotAtMs);
+    if (remainingMs <= 0) {
+      _lastAnimationSnapshotAtMs = nowMs;
+      unawaited(_postSnapshot());
+      return;
+    }
+    _animationSnapshotTimer ??= Timer(
+      Duration(milliseconds: remainingMs),
+      () {
+        _animationSnapshotTimer = null;
+        if (!_enabled) return;
+        _lastAnimationSnapshotAtMs = DateTime.now().millisecondsSinceEpoch;
+        unawaited(_postSnapshot());
+      },
+    );
+  }
+
+  void _handlePointerEvent(PointerEvent event) {
+    if (!_enabled) return;
+    final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (event is PointerDownEvent) {
+      _pointerDownAtMs[event.pointer] = nowMs;
+      return;
+    }
+    if (event is PointerCancelEvent) {
+      _pointerDownAtMs.remove(event.pointer);
+      return;
+    }
+    if (event is! PointerUpEvent) return;
+    final int? downAtMs = _pointerDownAtMs.remove(event.pointer);
+    recordEvent(
+      category: 'ui.interaction',
+      name: 'pointer.tap',
+      data: <String, Object?>{
+        'x': event.position.dx.round(),
+        'y': event.position.dy.round(),
+        'kind': event.kind.name,
+        'semanticChanged': false,
+        'renderChanged': false,
+        'interactionObserved': true,
+        if (downAtMs != null) 'durationMs': nowMs - downAtMs,
+      },
+    );
   }
 
   Future<Object?> _handleNativeCall(MethodCall call) async {
@@ -267,6 +439,18 @@ class AiAppBridge {
       'extraType': extra?.runtimeType.toString(),
       'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
     };
+    recordEvent(
+      category: 'ui',
+      name: 'ui.route.changed',
+      data: <String, Object?>{
+        'location': location,
+        'action': action,
+        'extraType': extra?.runtimeType.toString(),
+        'semanticChanged': true,
+        'renderChanged': false,
+        'interactionObserved': false,
+      },
+    );
     _schedulePost();
   }
 
@@ -545,13 +729,62 @@ class AiAppBridge {
   }
 
   Map<String, Object?> _layoutSnapshot() {
+    final List<Map<String, Object?>> secureInputs = _secureInputSummaries();
+    final bool hasSecureInputs = secureInputs.isNotEmpty;
     final Map<String, Object?> result = <String, Object?>{
-      'widgetInspector': _widgetInspectorTree(),
-      'widgetDump': _widgetDump(),
+      // Flutter's diagnostic trees include TextEditingController values even
+      // when an EditableText is obscured. Suppress both raw diagnostic sources
+      // while a secure input exists; the semantic and operable trees below
+      // already expose only a length placeholder.
+      'widgetInspector': hasSecureInputs
+          ? <String, Object?>{
+              'ok': false,
+              'error': 'suppressed_secure_input',
+            }
+          : _widgetInspectorTree(),
+      'widgetDump': hasSecureInputs
+          ? <String, Object?>{
+              'ok': false,
+              'error': 'suppressed_secure_input',
+            }
+          : _widgetDump(),
       'semantics': _semanticsTree(),
       'operable': _operableTree(),
+      if (hasSecureInputs)
+        'privacy': <String, Object?>{
+          'secureInputCount': secureInputs.length,
+          'rawTextCaptured': false,
+          'inputs': secureInputs,
+        },
     };
     return result;
+  }
+
+  List<Map<String, Object?>> _secureInputSummaries() {
+    final Element? rootElement = WidgetsBinding.instance.rootElement;
+    if (rootElement == null) {
+      return const <Map<String, Object?>>[];
+    }
+    final List<Map<String, Object?>> inputs = <Map<String, Object?>>[];
+    final Set<Element> visited = HashSet<Element>.identity();
+
+    void visit(Element element) {
+      if (!visited.add(element)) {
+        return;
+      }
+      final Widget widget = element.widget;
+      if (widget is EditableText && widget.obscureText) {
+        inputs.add(<String, Object?>{
+          'value': '[secure:length=${widget.controller.text.length}]',
+          'textLength': widget.controller.text.length,
+          'rawTextCaptured': false,
+        });
+      }
+      element.visitChildren(visit);
+    }
+
+    visit(rootElement);
+    return inputs;
   }
 
   Map<String, Object?> _operableTree() {
@@ -918,6 +1151,15 @@ class AiAppBridge {
       ),
     );
     await _waitForFrame();
+    recordEvent(
+      category: 'ui.interaction',
+      name: 'input.changed',
+      data: <String, Object?>{
+        'length': text.length,
+        'x': point.dx.round(),
+        'y': point.dy.round(),
+      },
+    );
     return <String, Object?>{
       'ok': true,
       'text': text,
@@ -1534,16 +1776,18 @@ class AiAppBridge {
   }) {
     counter.count += 1;
     final SemanticsData data = node.getSemanticsData();
+    final String flags = data.flagsCollection.toString();
+    final bool obscured = flags.contains('isObscured');
     final Map<String, Object?> json = <String, Object?>{
       'nodeId': node.id,
       'identifier': data.identifier,
       'label': data.label,
-      'value': data.value,
+      'value': obscured ? '[secure:length=${data.value.length}]' : data.value,
       'hint': data.hint,
       'tooltip': data.tooltip,
       'role': data.role.toString(),
       'actions': _semanticActions(data),
-      'flags': data.flagsCollection.toString(),
+      'flags': flags,
       'rect': <String, Object?>{
         'left': data.rect.left,
         'top': data.rect.top,
@@ -1646,6 +1890,9 @@ class AiAppBridge {
       return widget.text.toPlainText();
     }
     if (widget is EditableText) {
+      if (widget.obscureText) {
+        return '[secure:length=${widget.controller.text.length}]';
+      }
       return widget.controller.text;
     }
     if (widget is Semantics) {
@@ -1660,6 +1907,9 @@ class AiAppBridge {
 
   String _widgetValue(Widget widget) {
     if (widget is EditableText) {
+      if (widget.obscureText) {
+        return '[secure:length=${widget.controller.text.length}]';
+      }
       return widget.controller.text;
     }
     if (widget is Semantics) {
@@ -1677,12 +1927,25 @@ class AiAppBridge {
   }
 
   Future<void> _postSnapshot() async {
-    await _refreshH5Snapshot();
-    final String snapshotJson = jsonEncode(_snapshot());
-    if (await _postSnapshotByMethodChannel(snapshotJson)) {
+    if (_snapshotInFlight) {
+      _snapshotPending = true;
       return;
     }
-    await _postJson(_snapshotPath, snapshotJson);
+    _snapshotInFlight = true;
+    try {
+      await _refreshH5Snapshot();
+      final String snapshotJson = jsonEncode(_snapshot());
+      if (await _postSnapshotByMethodChannel(snapshotJson)) {
+        return;
+      }
+      await _postJson(_snapshotPath, snapshotJson);
+    } finally {
+      _snapshotInFlight = false;
+      if (_snapshotPending && _enabled) {
+        _snapshotPending = false;
+        scheduleMicrotask(() => unawaited(_postSnapshot()));
+      }
+    }
   }
 
   Future<void> _sendCapture(
@@ -1747,6 +2010,41 @@ class AiAppBridge {
       return value;
     }
     return value.substring(0, max);
+  }
+}
+
+class AiAppBridgeNavigatorObserver extends NavigatorObserver {
+  AiAppBridgeNavigatorObserver._(this._bridge);
+
+  final AiAppBridge _bridge;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _record(route, 'push');
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _record(previousRoute, 'pop');
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    _record(newRoute, 'replace');
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _record(previousRoute, 'remove');
+  }
+
+  void _record(Route<dynamic>? route, String action) {
+    final RouteSettings? settings = route?.settings;
+    _bridge.recordRoute(
+      location: settings?.name ?? route?.runtimeType.toString() ?? '<none>',
+      action: action,
+      extra: settings?.arguments,
+    );
   }
 }
 

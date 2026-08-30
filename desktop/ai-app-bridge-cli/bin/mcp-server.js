@@ -4,8 +4,14 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const packageInfo = require('../package.json');
+const { executeCommand } = require('./ai-app-bridge');
+const { createFactCache } = require('./fact-cache');
+const { FactRecorder, historyDescriptor } = require('./fact-recorder');
+const { runWithFeedbackProbe } = require('./feedback-probe');
 const { IOSBridgeProvider } = require('./ios-provider');
+const { ObservationCollector } = require('./observation-collector');
 const { WebBridgeProvider } = require('./web-provider');
+const { TargetExecution } = require('./target-execution');
 const { defaultArtifactDirectory } = require('./artifact-paths');
 const bridgeDir = __dirname;
 const cliScript = path.join(bridgeDir, 'ai-app-bridge.js');
@@ -71,9 +77,32 @@ Examples:
 `;
 const iosProvider = new IOSBridgeProvider();
 const webProvider = new WebBridgeProvider();
+const targetExecution = new TargetExecution();
+const mutationCommands = new Set([
+  'install-apk', 'clear-app-data', 'freeze-app', 'thaw-app', 'launch-app',
+  'launch-activity', 'launch-native-test', 'launch-flutter', 'permission-grant',
+  'permission-revoke', 'permission-dialog', 'appops-set',
+  'tap', 'tap-text', 'tap-uia-text', 'input-text', 'hide-keyboard', 'swipe', 'keyevent',
+  'flutter-action', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter',
+  'h5-eval', 'h5-click', 'h5-input', 'h5-scroll',
+  'flutter-h5-eval', 'flutter-h5-click', 'flutter-h5-input', 'flutter-h5-scroll',
+  'ios-setup', 'ios-install-app', 'ios-launch-app', 'ios-h5-eval', 'ios-flutter-action',
+  'ios-tap', 'ios-input', 'ios-swipe',
+  'web-session-start', 'web-command', 'web-click', 'web-input', 'web-scroll',
+  'forward', 'remove-forward', 'smoke',
+]);
+let sharedFactCache = null;
+let sharedFactRecorder = null;
+let sharedObservationCollector = null;
+let factCacheCloseInstalled = false;
+let internalActionSequence = 0;
 
 let buffer = Buffer.alloc(0);
 let responseFormat = null;
+const activeMessages = new Set();
+let stdinEnded = false;
+let shutdownPromise = null;
+let signalHandlersInstalled = false;
 
 function startServer() {
   process.stdin.on('data', (chunk) => {
@@ -82,6 +111,11 @@ function startServer() {
   });
 
   process.stdin.on('error', () => {});
+  process.stdin.on('end', () => {
+    stdinEnded = true;
+    maybeShutdownAfterMessages();
+  });
+  installSignalHandlers();
 }
 
 function drainMessages() {
@@ -92,10 +126,52 @@ function drainMessages() {
     }
     buffer = parsed.remaining;
     setResponseFormat(parsed.format);
-    handleMessage(parsed.body).catch((error) => {
+    const active = handleMessage(parsed.body).catch((error) => {
       writeLog(`unhandled message error: ${error.stack || error}`);
+    }).finally(() => {
+      activeMessages.delete(active);
+      maybeShutdownAfterMessages();
+    });
+    activeMessages.add(active);
+  }
+}
+
+function maybeShutdownAfterMessages() {
+  if (!stdinEnded || activeMessages.size > 0) return;
+  void shutdownSharedResources();
+}
+
+function installSignalHandlers() {
+  if (signalHandlersInstalled) return;
+  signalHandlersInstalled = true;
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.once(signal, () => {
+      stdinEnded = true;
+      void Promise.allSettled([...activeMessages])
+        .then(() => shutdownSharedResources())
+        .finally(() => process.exit(0));
     });
   }
+}
+
+async function shutdownSharedResources() {
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = (async () => {
+    try {
+      await sharedObservationCollector?.stop();
+    } catch (_) {
+      // Shutdown must continue so the cache and process are not left open.
+    }
+    sharedObservationCollector = null;
+    try {
+      sharedFactCache?.close();
+    } catch (_) {
+      // Best-effort close during EOF/signal teardown.
+    }
+    sharedFactCache = null;
+    sharedFactRecorder = null;
+  })();
+  return shutdownPromise;
 }
 
 function readNextMessage(source) {
@@ -258,6 +334,13 @@ function compactToolDefinitions() {
       wdaBundleId: { type: 'string', description: 'Unique WebDriverAgentRunner bundle id for signing.' },
       accessibilityId: { type: 'string', description: 'iOS accessibility identifier for element input.' },
       elementId: { type: 'string', description: 'Existing WDA element id for element input.' },
+      requestId: { type: 'string', description: 'Optional idempotency key. Reusing it for the same target reuses the original result for a bounded time.' },
+      feedback: { type: 'string', description: 'Execution feedback mode: auto (default), full, or off.' },
+      history: { type: 'boolean', description: 'Read persisted facts through this existing evidence command instead of polling the live target.' },
+      includeActions: { type: 'boolean', description: 'For persisted events history, also return correlated execution records.' },
+      factCursor: { type: 'string', description: 'Opaque cursor returned by a prior persisted history read.' },
+      deviceLogScope: { type: 'string', enum: ['device'], description: 'Explicitly opt in to bounded device-wide Android logcat collection. App logs remain collected from the in-app bridge by default.' },
+      deviceLogBuffers: { type: 'array', items: { type: 'string' }, description: 'Device logcat buffers. main/system/crash are defaults; radio/security/kernel require explicit names.' },
       adb: { type: 'string', description: 'ADB executable path or command.' },
       arguments: {
         type: 'object',
@@ -498,6 +581,14 @@ function baseSchema(extraProperties = {}, extraRequired = []) {
       sinceId: { type: 'number', description: 'Capture query lower bound by record id.' },
       sinceMs: { type: 'number', description: 'Capture query lower bound by timestamp milliseconds.' },
       limit: { type: 'number', description: 'Maximum capture records to return.' },
+      requestId: { type: 'string', description: 'Optional bounded idempotency key for this target operation.' },
+      feedback: { type: 'string', description: 'Execution feedback mode: auto (default), full, or off.' },
+      history: { type: 'boolean', description: 'Read host-persisted facts instead of the live target for evidence commands.' },
+      includeActions: { type: 'boolean', description: 'For persisted events history, also return correlated execution records.' },
+      factCursor: { type: 'string', description: 'Opaque persisted-fact cursor from the previous page.' },
+      cursor: { type: 'string', description: 'Alias for factCursor when history is enabled.' },
+      deviceLogScope: { type: 'string', enum: ['device'], description: 'Explicitly opt in to bounded device-wide Android logcat collection. App logs remain collected from the in-app bridge by default.' },
+      deviceLogBuffers: { type: 'array', items: { type: 'string' }, description: 'Device logcat buffers. main/system/crash are defaults; radio/security/kernel require explicit names.' },
       ...extraProperties,
     },
     required: extraRequired,
@@ -521,7 +612,7 @@ const commandDefinitions = [
   { command: 'logs', domain: 'core', summary: 'Read in-app log records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'network', domain: 'core', summary: 'Read in-app network records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'urlFilter', 'method', 'statusCode', 'noBodies', 'bodyMaxBytes', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'state', domain: 'core', summary: 'Read in-app state records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
-  { command: 'events', domain: 'core', summary: 'Read in-app event records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'events', domain: 'core', summary: 'Read in-app event records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit', 'includeActions'] },
   { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
   { command: 'install-apk', domain: 'app', summary: 'Install an APK and assist device-side installer confirmation screens.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'streaming', 'installTimeoutMs', 'installerTimeoutMs', 'intervalMs'] },
   { command: 'clear-app-data', domain: 'app', summary: 'Clear target app local data through the bridge runtime.', targetApp: true, options: ['serial', 'packageName'] },
@@ -576,7 +667,7 @@ const commandDefinitions = [
   { command: 'ios-logs', domain: 'ios', summary: 'Read in-app iOS log records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'ios-network', domain: 'ios', summary: 'Read in-app iOS network records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'ios-state', domain: 'ios', summary: 'Read in-app iOS state records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
-  { command: 'ios-events', domain: 'ios', summary: 'Read in-app iOS event records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'ios-events', domain: 'ios', summary: 'Read in-app iOS event records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit', 'includeActions'] },
   { command: 'ios-h5-dom', domain: 'ios', summary: 'Read WKWebView DOM from the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
   { command: 'ios-h5-eval', domain: 'ios', summary: 'Execute JavaScript in WKWebView through the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'script'] },
   { command: 'ios-flutter-tree', domain: 'ios', summary: 'Read Flutter iOS layout snapshot from the runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
@@ -597,7 +688,7 @@ const commandDefinitions = [
   { command: 'web-logs', domain: 'web', summary: 'Read Web Bridge log records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'web-network', domain: 'web', summary: 'Read Web Bridge network records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'web-state', domain: 'web', summary: 'Read Web Bridge state records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
-  { command: 'web-events', domain: 'web', summary: 'Read Web Bridge event records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'web-events', domain: 'web', summary: 'Read Web Bridge event records.', targetKind: 'web-target', options: ['sessionId', 'sinceId', 'sinceMs', 'limit', 'includeActions'] },
   { command: 'web-command', domain: 'web', summary: 'Run a whitelisted command in a connected Web Bridge SDK session.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'name', 'arguments', 'timeoutMs'] },
   { command: 'web-click', domain: 'web', summary: 'Click a DOM element through the Web Bridge SDK command path.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'targetText', 'timeoutMs'] },
   { command: 'web-input', domain: 'web', summary: 'Set text in a DOM input through the Web Bridge SDK command path.', targetKind: 'web-target', options: ['sessionId', 'targetId', 'selector', 'value', 'timeoutMs'] },
@@ -696,12 +787,17 @@ function capabilityPayload(args = {}) {
 }
 
 function shapeCommandDefinition(definition, includeOptions) {
+  const options = [...(definition.options || [])];
+  if (historyDescriptor(definition.command)) {
+    if (!options.includes('history')) options.push('history');
+    if (!options.includes('factCursor')) options.push('factCursor');
+  }
   return {
     command: definition.command,
     summary: definition.summary,
     targetApp: Boolean(definition.targetApp),
     targetKind: definition.targetKind || (definition.targetApp ? 'android-app' : 'none'),
-    ...(includeOptions ? { options: definition.options || [] } : {}),
+    ...(includeOptions ? { options } : {}),
   };
 }
 
@@ -749,6 +845,14 @@ function sharedRunArgKeys() {
     'wdaBundleId',
     'accessibilityId',
     'elementId',
+    'requestId',
+    'feedback',
+    'history',
+    'includeActions',
+    'factCursor',
+    'cursor',
+    'deviceLogScope',
+    'deviceLogBuffers',
     'teamId',
     'appPath',
     'xcodebuild',
@@ -756,14 +860,8 @@ function sharedRunArgKeys() {
   ];
 }
 
-function runBridgeChecked(command, args = {}) {
+async function runBridgeChecked(command, args = {}, dependencies = {}) {
   const definition = commandByName.get(command);
-  if (definition?.domain === 'ios') {
-    return runIOSChecked(command, args);
-  }
-  if (definition?.domain === 'web') {
-    return runWebChecked(command, args);
-  }
   if (command === 'clear-app-data' && !args.packageName) {
     return toolText('clear-app-data: packageName is required in MCP mode so the command cannot clear a default package.', true);
   }
@@ -773,17 +871,393 @@ function runBridgeChecked(command, args = {}) {
   if (definition?.targetApp && !args.packageName && !args.port) {
     return toolText(`${command}: packageName or explicit port is required in MCP mode so the command cannot fall back to a default package.`, true);
   }
-  return runBridge(command, args);
+  const execution = dependencies.targetExecution || targetExecution;
+  const rawRunner = dependencies.rawRunner || runRawCommand;
+  let factRecorder = null;
+  let factCacheInitializationError = null;
+  try {
+    if (Object.prototype.hasOwnProperty.call(dependencies, 'factRecorder')) {
+      factRecorder = dependencies.factRecorder;
+    } else if (typeof dependencies.factRecorderFactory === 'function') {
+      factRecorder = dependencies.factRecorderFactory();
+    } else if (!dependencies.rawRunner) {
+      factRecorder = getSharedFactRecorder();
+    }
+  } catch (error) {
+    factCacheInitializationError = {
+      degraded: true,
+      persistence: false,
+      error: error.code || error.name || 'fact_cache_initialization_failed',
+      message: error.message || String(error),
+    };
+  }
+  const historyRead = wantsFactHistory(args);
+  let observerSetupError = null;
+  let observationCollector = null;
+  if (!historyRead) {
+    try {
+      observationCollector = Object.prototype.hasOwnProperty.call(dependencies, 'observationCollector')
+        ? dependencies.observationCollector
+        : (dependencies.rawRunner ? null : getSharedObservationCollector(factRecorder));
+    } catch (error) {
+      observerSetupError = error.message || String(error);
+    }
+  }
+  const observation = observerSetupError
+    ? { collector: null, registration: null, error: observerSetupError }
+    : safeRegisterObservation(observationCollector, command, args);
+  const actionId = historyRead ? null : actionIdForInvocation(args);
+  const tracksMutation = !historyRead && isMutationCommand(command, args);
+  const requestedAtMs = Date.now();
+  if (tracksMutation) {
+    noteObservationAction(observation, actionId, { requestedAtMs });
+  }
+  let feedbackProbe = null;
+  try {
+    const result = await execution.execute(command, args, async (normalizedCommand, normalizedArgs) => {
+      if (tracksMutation) {
+        noteObservationAction(observation, actionId, { startedAtMs: Date.now() });
+      }
+      if (historyRead && factRecorder) {
+        return factRecorder.readHistory(normalizedCommand, normalizedArgs);
+      }
+      if (historyRead) {
+        return {
+          ok: false,
+          error: factCacheInitializationError ? 'fact_cache_unavailable' : 'fact_cache_disabled',
+          command: normalizedCommand,
+          ...(factCacheInitializationError ? { factCache: factCacheInitializationError } : {}),
+        };
+      }
+      const runtimeArgs = tracksMutation
+        ? { ...normalizedArgs, runtimeActionId: actionId }
+        : normalizedArgs;
+      feedbackProbe = await runWithFeedbackProbe({
+        command: normalizedCommand,
+        args: runtimeArgs,
+        runner: rawRunner,
+      });
+      return feedbackProbe.result;
+    });
+    if (result && typeof result === 'object' && result._feedback) {
+      result._feedback.outcome = executionOutcome(result);
+      if (feedbackProbe?.observation) {
+        result._feedback.ui = feedbackProbe.observation;
+        if (
+          feedbackProbe.observation.semanticChanged === true
+          && result._feedback.status !== 'failed'
+        ) {
+          result._feedback.status = 'verified';
+        } else if (
+          feedbackProbe.observation.inconclusive === true
+          && result._feedback.status !== 'verified'
+          && result._feedback.status !== 'failed'
+        ) {
+          result._feedback.status = 'inconclusive';
+        }
+      }
+    }
+    const timings = completedActionTimings(result?._feedback?.timings, requestedAtMs);
+    if (tracksMutation) noteObservationAction(observation, actionId, timings);
+    let actionReference = null;
+    if (factRecorder) {
+      actionReference = attachRecordedFacts({
+        factRecorder,
+        command,
+        args,
+        result,
+        historyRead,
+        probeEvidence: feedbackProbe?.evidence || [],
+        actionId,
+        actionTimeline: actionTimelineFor(actionId, timings),
+      });
+    }
+    if (result && typeof result === 'object' && result._feedback) {
+      if (factCacheInitializationError) result._feedback.factCache = factCacheInitializationError;
+      const observerStatus = compactObservationStatus(observation);
+      if (observerStatus) result._feedback.observer = observerStatus;
+    }
+    return toolResultForRaw(result);
+  } catch (error) {
+    const timings = completedActionTimings(error._feedback?.timings, requestedAtMs);
+    if (tracksMutation) noteObservationAction(observation, actionId, timings);
+    let actionReference = null;
+    if (factRecorder) {
+      actionReference = safeRecordExecution(factRecorder, {
+        command,
+        args,
+        error,
+        feedback: error._feedback,
+        actionId,
+      });
+      if (actionReference && error._feedback) {
+        error._feedback.evidence.push(actionReference);
+        error._feedback.factCache = compactFactCacheStatus(factRecorder);
+      }
+    }
+    if (error._feedback) {
+      if (factCacheInitializationError) error._feedback.factCache = factCacheInitializationError;
+      const observerStatus = compactObservationStatus(observation);
+      if (observerStatus) error._feedback.observer = observerStatus;
+    }
+    return toolJson({
+      ok: false,
+      error: error.message || String(error),
+      ...(error._feedback ? { _feedback: error._feedback } : {}),
+    }, true);
+  }
 }
 
-async function runWebChecked(command, args = {}) {
-  const result = await webProvider.run(command, args);
-  return toolJson(result, result?.ok === false);
+function actionIdForInvocation(args = {}) {
+  if (args.requestId !== undefined && args.requestId !== null) return String(args.requestId);
+  internalActionSequence += 1;
+  return `mcp-action-${process.pid}-${Date.now()}-${internalActionSequence}`;
 }
 
-async function runIOSChecked(command, args = {}) {
-  const result = await iosProvider.run(command, args);
-  return toolJson(result, result?.ok === false);
+function isMutationCommand(command, args = {}) {
+  return mutationCommands.has(command)
+    || (command === 'logcat' && (args.clear === true || args.clear === 'true'));
+}
+
+function completedActionTimings(timings, requestedAtMs) {
+  if (timings && typeof timings === 'object') return { ...timings };
+  const completedAtMs = Date.now();
+  return {
+    requestedAtMs,
+    startedAtMs: requestedAtMs,
+    completedAtMs,
+    queueWaitMs: 0,
+    durationMs: Math.max(0, completedAtMs - requestedAtMs),
+  };
+}
+
+function actionTimelineFor(actionId, timings) {
+  if (actionId === undefined || actionId === null || !timings) return [];
+  return [{
+    actionId: String(actionId),
+    requestedAtMs: timings.requestedAtMs ?? null,
+    startedAtMs: timings.startedAtMs ?? null,
+    completedAtMs: timings.completedAtMs ?? null,
+  }];
+}
+
+function wantsFactHistory(args = {}) {
+  return args.history === true
+    || args.history === 'true'
+    || args.source === 'cache'
+    || args.factCursor !== undefined
+    || args.cursor !== undefined;
+}
+
+function attachRecordedFacts({
+  factRecorder,
+  command,
+  args,
+  result,
+  historyRead,
+  probeEvidence = [],
+  actionId,
+  actionTimeline = [],
+}) {
+  const feedback = result && typeof result === 'object' && !Buffer.isBuffer(result)
+    ? result._feedback
+    : null;
+  const evidence = historyRead
+    ? []
+    : safeRecordEvidence(factRecorder, command, args, result, { actionId, actionTimeline });
+  for (const captured of probeEvidence) {
+    evidence.push(...safeRecordEvidence(
+      factRecorder,
+      captured.command,
+      args,
+      captured.result,
+      { actionId, actionTimeline },
+    ));
+  }
+  const actionReference = safeRecordExecution(factRecorder, {
+    command,
+    args,
+    result,
+    feedback,
+    actionId,
+  });
+  if (!feedback) return actionReference;
+  feedback.evidence.push(...evidence);
+  if (actionReference) feedback.evidence.push(actionReference);
+  feedback.factCache = compactFactCacheStatus(factRecorder);
+  return actionReference;
+}
+
+function safeRegisterObservation(collector, command, args) {
+  if (!collector) return { collector: null, registration: null, error: null };
+  try {
+    const registration = collector.register(command, args);
+    if (!registration || registration.ignored) {
+      return { collector, registration: null, error: null };
+    }
+    return { collector, registration, error: null };
+  } catch (error) {
+    return {
+      collector,
+      registration: null,
+      error: error.message || String(error),
+    };
+  }
+}
+
+function noteObservationAction(observation, actionId, timings = {}) {
+  if (!observation.collector || !observation.registration?.target || actionId === undefined || actionId === null) {
+    return;
+  }
+  try {
+    observation.collector.noteAction(observation.registration.target, actionId, timings);
+  } catch (error) {
+    observation.error ||= error.message || String(error);
+  }
+}
+
+function compactObservationStatus(observation) {
+  if (observation.error) {
+    return { running: false, degraded: true, error: observation.error };
+  }
+  if (!observation.collector || !observation.registration?.target) return null;
+  try {
+    const status = observation.collector.status();
+    const key = observation.registration.target.key;
+    const target = Array.isArray(status.targets)
+      ? status.targets.find((candidate) => candidate.key === key)
+      : null;
+    return {
+      running: Boolean(status.running),
+      targetCount: Number(status.targetCount || 0),
+      maxTargets: Number(status.maxTargets || 0),
+      inactiveTargetTtlMs: Number(status.inactiveTargetTtlMs || 0),
+      targetEvictions: Number(status.targetEvictions || 0),
+      targetExpirations: Number(status.targetExpirations || 0),
+      ...(target ? {
+        target: {
+          key: target.key,
+          runtimeEpoch: target.runtimeEpoch ?? null,
+          failureCount: Number(target.failureCount || 0),
+          lastError: target.lastError ?? null,
+          lastSuccessAtMs: target.lastSuccessAtMs ?? null,
+          ...(target.deviceLog ? { deviceLog: target.deviceLog } : {}),
+        },
+      } : {}),
+      ...(status.dropped ? { dropped: status.dropped } : {}),
+    };
+  } catch (error) {
+    return { running: false, degraded: true, error: error.message || String(error) };
+  }
+}
+
+function executionOutcome(result) {
+  if (!result || typeof result !== 'object' || Buffer.isBuffer(result)) {
+    return { resultType: Buffer.isBuffer(result) ? 'buffer' : typeof result };
+  }
+  const outcome = {};
+  for (const key of [
+    'ok', 'error', 'action', 'source', 'transport', 'target', 'matched', 'activity',
+    'component', 'windowType', 'x', 'y', 'handledDown', 'handledUp', 'verified',
+    'inconclusive',
+  ]) {
+    if (result[key] !== undefined) outcome[key] = result[key];
+  }
+  return outcome;
+}
+
+function safeRecordEvidence(factRecorder, command, args, result, context) {
+  try {
+    return factRecorder.recordEvidence(command, args, result, context);
+  } catch (error) {
+    return [{ partition: 'index', stored: false, warning: `fact_evidence_write_failed:${error.message}` }];
+  }
+}
+
+function safeRecordExecution(factRecorder, input) {
+  try {
+    const recorded = factRecorder.recordExecution(input);
+    return {
+      partition: 'action',
+      globalSeq: recorded.globalSeq,
+      stored: recorded.stored,
+      actionId: recorded.actionId,
+    };
+  } catch (error) {
+    return { partition: 'action', stored: false, warning: `fact_action_write_failed:${error.message}` };
+  }
+}
+
+function compactFactCacheStatus(factRecorder) {
+  try {
+    const status = factRecorder.status();
+    return {
+      adapter: status.adapter,
+      persistence: status.persistence,
+      degraded: status.degraded,
+      profile: status.profile,
+      profileSelection: status.profileSelection,
+      budgetBytes: status.budgetBytes,
+      totalBytes: status.storage?.totalBytes,
+      overQuota: status.storage?.overQuota,
+      mmap: status.sqlite?.mmap,
+    };
+  } catch (error) {
+    return { degraded: true, persistence: false, error: error.message };
+  }
+}
+
+function getSharedFactRecorder() {
+  if (String(process.env.AI_APP_BRIDGE_FACT_CACHE || '').toLowerCase() === 'off') return null;
+  if (sharedFactRecorder) return sharedFactRecorder;
+  sharedFactCache = createFactCache({
+    profile: process.env.AI_APP_BRIDGE_FACT_CACHE_PROFILE || 'auto',
+  });
+  sharedFactRecorder = new FactRecorder({ cache: sharedFactCache });
+  if (!factCacheCloseInstalled) {
+    factCacheCloseInstalled = true;
+    process.once('exit', () => {
+      try {
+        const stopping = sharedObservationCollector?.stop();
+        stopping?.catch?.(() => {});
+      } catch (_) {
+        // Process shutdown must not be blocked by observer cleanup.
+      }
+      try {
+        sharedFactCache?.close();
+      } catch (_) {
+        // Process shutdown must not be blocked by cache cleanup.
+      }
+    });
+  }
+  return sharedFactRecorder;
+}
+
+function getSharedObservationCollector(factRecorder) {
+  if (!factRecorder) return null;
+  if (sharedObservationCollector) return sharedObservationCollector;
+  sharedObservationCollector = new ObservationCollector({
+    rawRunner: runRawCommand,
+    recordEvidence: (command, args, result, context) => {
+      safeRecordEvidence(factRecorder, command, args, result, context);
+    },
+    recordDeviceLog: (args, batch, context) => {
+      try {
+        factRecorder.recordDeviceLog(args, batch, context);
+      } catch (_) {
+        // Background persistence must never fail a foreground command.
+      }
+    },
+  });
+  sharedObservationCollector.start();
+  return sharedObservationCollector;
+}
+
+async function runRawCommand(command, args = {}) {
+  const definition = commandByName.get(command);
+  if (definition?.domain === 'ios') return iosProvider.run(command, args);
+  if (definition?.domain === 'web') return webProvider.run(command, args);
+  return executeCommand(command, args);
 }
 
 async function runBatch(args = {}, runner = runBridgeChecked) {
@@ -930,8 +1404,11 @@ async function runBatch(args = {}, runner = runBridgeChecked) {
   }, failed > 0);
 }
 
-async function runBridge(command, args) {
-  return runProcess(buildBridgeCliArgs(command, args));
+function toolResultForRaw(result) {
+  if (typeof result === 'string') return toolText(result);
+  if (Buffer.isBuffer(result)) return toolText(result.toString('utf8'));
+  if (result === undefined) return toolText('ok');
+  return toolJson(result, Boolean(result && typeof result === 'object' && result.ok === false));
 }
 
 function parseToolResult(toolResult) {
@@ -1294,6 +1771,7 @@ module.exports = {
   mcpHelpText,
   readNextMessage,
   runBatch,
+  runBridgeChecked,
   startServer,
   supportedTargets,
 };

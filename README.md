@@ -63,8 +63,16 @@ docs                                  Design, integration, and test notes
 - Flutter H5 operations and DOM snapshots through a Dart-side H5 adapter registry
 - Desktop Web Bridge sessions with browser SDK DOM/log/network/state/event evidence and whitelisted page commands
 - Logs, network requests, state records, and event buffers with incremental `sinceId` / `sinceMs` reads
+- Host-side mmap-backed fact cache with bounded per-stream quotas, opaque cursors, and persisted action/evidence correlation
+- Coalesced native, Flutter, and Web UI change/animation observation with explicit changed/stable events
+- Target connection reuse, same-target action serialization, idempotency keys, and additive structured feedback
 - Debug Gradle plugin support for OkHttp auto capture
 - Node CLI / MCP stdio server for connecting AI tools to runtime capabilities
+
+UI observation records bounded semantic/render change bursts, focus and input
+metadata, dialogs/windows/routes, and stable points. It is not continuous video
+or per-frame screenshot recording; agents request a tree and screenshot when a
+full visual state is needed.
 
 ## Android Quick Start
 

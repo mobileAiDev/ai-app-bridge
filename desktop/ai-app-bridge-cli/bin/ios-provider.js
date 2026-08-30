@@ -4,7 +4,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
-const { defaultArtifactPath } = require('./artifact-paths');
+const { defaultArtifactPath, pruneGeneratedArtifacts } = require('./artifact-paths');
 
 const defaultRuntimePort = 18080;
 const runtimePortSearchCount = 50;
@@ -303,6 +303,7 @@ class IOSBridgeProvider {
   async screenshot(args = {}) {
     const ctx = this.context(args);
     const device = await this.requireDevice(args);
+    const generatedDefault = !args.outFile;
     const outFile = args.outFile
       ? path.resolve(args.outFile)
       : defaultArtifactPath('ios-screenshot', 'png', { artifactDir: args.artifactDir });
@@ -318,10 +319,24 @@ class IOSBridgeProvider {
     ];
     if (args.displayUniqueId) command.push('--display-unique-id', String(args.displayUniqueId));
     const raw = await this.devicectlJson(ctx, command);
+    const artifact = {
+      path: outFile,
+      generatedDefault,
+      directory: path.dirname(outFile),
+    };
+    if (generatedDefault) {
+      artifact.retention = await pruneGeneratedArtifacts({
+        directory: artifact.directory,
+        prefix: 'ios-screenshot',
+        extension: 'png',
+        currentPath: outFile,
+      });
+    }
     return {
       ok: true,
       device,
       outFile,
+      artifact,
       result: raw.result || raw,
     };
   }
@@ -395,6 +410,22 @@ class IOSBridgeProvider {
     const explicitHost = args.iosHost || args.host;
     const explicitPort = args.iosPort || args.port;
     const device = options.device || await this.optionalDevice(args);
+    if (
+      !explicitHost
+      && device
+      && (
+        device.developerModeStatus === 'disabled'
+        || device.ddiServicesAvailable === false
+        || device.tunnelState === 'unavailable'
+      )
+    ) {
+      return {
+        ok: false,
+        error: 'ios_tunnel_unavailable',
+        device,
+        message: 'The selected iPhone cannot expose a debug runtime tunnel. Enable Developer Mode, unlock/trust the device, and let Xcode finish preparing it; or pass an explicit runtimeUrl/iosHost.',
+      };
+    }
     let port = explicitPort ? Number(explicitPort) : null;
     let portSource = explicitPort ? 'explicit' : '';
     if (!port && args.bundleId && device) {
@@ -537,7 +568,7 @@ class IOSBridgeProvider {
   }
 
   async wdaInput(args = {}) {
-    const text = requiredString(args.text || args.value, 'text');
+    const text = requiredInputString(args.text ?? args.value, 'text');
     const session = await this.ensureWdaSession(args);
     if (!session.ok) return session;
     const tapped = args.tapX !== undefined && args.tapY !== undefined
@@ -1141,6 +1172,11 @@ function requiredString(value, name) {
   return value;
 }
 
+function requiredInputString(value, name) {
+  if (typeof value !== 'string') throw new Error(`${name} is required`);
+  return value;
+}
+
 function requiredNumber(value, name) {
   const number = Number(value);
   if (!Number.isFinite(number)) throw new Error(`${name} is required`);
@@ -1171,5 +1207,6 @@ module.exports = {
   parseDevicectlDevices,
   selectDeviceFromList,
   shapeDevice,
+  requiredInputString,
   wdaSessionIdFromResponse,
 };

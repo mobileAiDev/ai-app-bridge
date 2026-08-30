@@ -17,6 +17,11 @@ let package = Package(
         .target(
             name: "AiAppBridgeIOS",
             path: "Sources/AiAppBridgeIOS"
+        ),
+        .testTarget(
+            name: "AiAppBridgeIOSTests",
+            dependencies: ["AiAppBridgeIOS"],
+            path: "Tests/AiAppBridgeIOSTests"
         )
     ]
 )

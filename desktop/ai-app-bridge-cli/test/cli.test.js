@@ -8,6 +8,8 @@ const WebSocket = require('ws');
 
 const {
   buildBridgeFailureResult,
+  bridgeRequestWithCachedForward,
+  bridgeNodeTarget,
   artifactTimestamp,
   clearAppDataAdbArgs,
   compactBridgeTree,
@@ -47,6 +49,7 @@ const {
   shouldUseDefaultPortFallback,
   screenshotOutputPath,
   statusSearchText,
+  tap,
   uiautomatorLockPath,
   verifyBridgeTargetPackage,
   waitTextConditionsMet,
@@ -114,6 +117,125 @@ function withCwd(directory, fn) {
     process.chdir(previous);
   }
 }
+
+test('cached-forward recovery never replays a mutating bridge request', async () => {
+  const invalidated = [];
+  const ensures = [];
+  const dependencies = {
+    ensureForward: async (_ctx, options = {}) => ensures.push(Boolean(options.force)),
+    invalidateForward: (key) => invalidated.push(key),
+  };
+  const postContext = { forwardReused: true, forwardCacheKey: 'post-cache-key' };
+  let postAttempts = 0;
+
+  await assert.rejects(
+    bridgeRequestWithCachedForward(postContext, async () => {
+      postAttempts += 1;
+      throw new Error('ambiguous response loss');
+    }, { replaySafe: false, ...dependencies }),
+    /ambiguous response loss/,
+  );
+
+  assert.equal(postAttempts, 1);
+  assert.deepEqual(ensures, [false]);
+  assert.deepEqual(invalidated, ['post-cache-key']);
+
+  const getContext = { forwardReused: true, forwardCacheKey: 'get-cache-key' };
+  let getAttempts = 0;
+  const recovered = await bridgeRequestWithCachedForward(getContext, async () => {
+    getAttempts += 1;
+    if (getAttempts === 1) throw new Error('stale forward');
+    return { ok: true };
+  }, { replaySafe: true, ...dependencies });
+
+  assert.deepEqual(recovered, { ok: true });
+  assert.equal(getAttempts, 2);
+  assert.deepEqual(ensures, [false, false, true]);
+  assert.deepEqual(invalidated, ['post-cache-key', 'get-cache-key']);
+});
+
+test('coordinate tap uses one app-local bridge action to return the actual component', async () => {
+  let bridgeCalls = 0;
+  let adbCalls = 0;
+  const result = await tap({
+    explicitPackageName: true,
+    packageName: 'com.example.app',
+  }, 12, 34, { feedback: 'auto', runtimeActionId: 'runtime-action-1' }, {
+    foregroundWindow: async () => ({ ok: true, packageName: 'com.example.app' }),
+    bridgePost: async (_ctx, requestPath, payload) => {
+      bridgeCalls += 1;
+      assert.equal(requestPath, '/v1/action/tap');
+      assert.deepEqual(payload, { x: 12, y: 34, actionId: 'runtime-action-1' });
+      return {
+        ok: true,
+        target: { className: 'android.widget.Button', resourceName: 'com.example.app:id/save' },
+        handledDown: true,
+        handledUp: true,
+      };
+    },
+    adb: async () => { adbCalls += 1; },
+  });
+
+  assert.equal(bridgeCalls, 1);
+  assert.equal(adbCalls, 0);
+  assert.equal(result.transport, 'bridge');
+  assert.equal(result.target.resourceName, 'com.example.app:id/save');
+});
+
+test('coordinate tap keeps feedback-off and non-app foreground paths on one ADB action', async () => {
+  let bridgeCalls = 0;
+  let foregroundCalls = 0;
+  let adbCalls = 0;
+  const dependencies = {
+    foregroundWindow: async () => {
+      foregroundCalls += 1;
+      return { ok: true, packageName: 'com.android.permissioncontroller' };
+    },
+    bridgePost: async () => {
+      bridgeCalls += 1;
+      return { ok: true };
+    },
+    adb: async () => { adbCalls += 1; },
+  };
+  const context = { explicitPackageName: true, packageName: 'com.example.app' };
+
+  const fast = await tap(context, 1, 2, { feedback: 'off' }, dependencies);
+  const systemUi = await tap(context, 3, 4, { feedback: 'auto' }, dependencies);
+
+  assert.equal(fast.transport, 'adb');
+  assert.equal(systemUi.transport, 'adb');
+  assert.equal(systemUi.targetFeedback.reason, 'foreground_package_mismatch');
+  assert.equal(foregroundCalls, 1);
+  assert.equal(bridgeCalls, 0);
+  assert.equal(adbCalls, 2);
+});
+
+test('coordinate tap falls back only before bridge dispatch and never after ambiguous response loss', async () => {
+  let adbCalls = 0;
+  const context = { explicitPackageName: true, packageName: 'com.example.app' };
+  const foregroundWindow = async () => ({ ok: true, packageName: 'com.example.app' });
+  const unavailable = new Error('bridge endpoint unavailable');
+  unavailable.aiAppBridgeRequestNotStarted = true;
+
+  const fallback = await tap(context, 7, 8, { feedback: 'auto' }, {
+    foregroundWindow,
+    bridgePost: async () => { throw unavailable; },
+    adb: async () => { adbCalls += 1; },
+  });
+  assert.equal(fallback.transport, 'adb');
+  assert.equal(fallback.targetFeedback.reason, 'bridge_action_unavailable');
+  assert.equal(adbCalls, 1);
+
+  await assert.rejects(
+    tap(context, 9, 10, { feedback: 'auto' }, {
+      foregroundWindow,
+      bridgePost: async () => { throw new Error('socket closed after request'); },
+      adb: async () => { adbCalls += 1; },
+    }),
+    /socket closed after request/,
+  );
+  assert.equal(adbCalls, 1);
+});
 
 function readLineJsonMessages(buffer) {
   const messages = [];
@@ -388,6 +510,50 @@ test('MCP accepts single-line JSON and responds with single-line JSON', async ()
   assert.equal(sawFramedOutput, false);
 });
 
+test('MCP EOF drains observation timers and closes the fact cache', async () => {
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-mcp-shutdown-'));
+  const client = createLineJsonMcpClient({
+    env: {
+      AI_APP_BRIDGE_FACT_CACHE_PATH: path.join(cacheDir, 'facts.sqlite'),
+      AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb',
+    },
+  });
+  try {
+    const initialized = await client.request('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'shutdown-test-client', version: '0' },
+    });
+    assert.equal(initialized.result.protocolVersion, '2025-06-18');
+    client.notify('notifications/initialized');
+
+    const status = await client.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'web-status',
+        arguments: { sessionId: 'shutdown-test-session' },
+      },
+    });
+    assert.equal(status.result.isError, true);
+
+    const closed = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        client.child.kill();
+        reject(new Error('MCP did not exit after stdin EOF'));
+      }, 3_000);
+      client.child.once('close', (code, signal) => {
+        clearTimeout(timer);
+        resolve({ code, signal });
+      });
+    });
+    client.child.stdin.end();
+    assert.deepEqual(await closed, { code: 0, signal: null });
+  } finally {
+    if (client.child.exitCode === null && client.child.signalCode === null) client.close();
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
+
 test('MCP full surface remains available for legacy direct tools without oneOf schemas', async () => {
   const responses = await mcpRequestSequence([
     { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
@@ -403,6 +569,22 @@ test('MCP full surface remains available for legacy direct tools without oneOf s
   assert(names.includes('install_apk'));
   assert(names.includes('launch_activity'));
   assert.doesNotMatch(JSON.stringify(tools.find((tool) => tool.name === 'launch_activity')), /oneOf/);
+});
+
+test('MCP exposes device-wide log collection only as an explicit additive opt-in', async () => {
+  const compactResponses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+  ]);
+  const compactRun = compactResponses.get(2).result.tools.find((tool) => tool.name === 'run');
+  assert.deepEqual(compactRun.inputSchema.properties.deviceLogScope.enum, ['device']);
+  assert.equal(compactRun.inputSchema.properties.deviceLogBuffers.type, 'array');
+
+  const fullResponses = await mcpRequestSequence([
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+  ], { env: { AI_APP_BRIDGE_MCP_SURFACE: 'full' } });
+  const tap = fullResponses.get(2).result.tools.find((tool) => tool.name === 'tap');
+  assert.deepEqual(tap.inputSchema.properties.deviceLogScope.enum, ['device']);
+  assert.equal(tap.inputSchema.properties.deviceLogBuffers.items.type, 'string');
 });
 
 test('MCP capabilities advertise install, freeze/thaw, data clear, and app control while target commands reject sample fallback', async () => {
@@ -924,6 +1106,121 @@ test('iOS provider returns structured install signing failures', async () => {
   assert.match(result.message, /No code signature found/);
 });
 
+test('iOS default screenshots use the shared bounded artifact lifecycle', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-ios-artifacts-'));
+  try {
+    const nowMs = Date.now();
+    for (let index = 0; index < 21; index += 1) {
+      const filePath = path.join(
+        directory,
+        `ios-screenshot-20260830-0101${String(index).padStart(2, '0')}-000-42-old${String(index).padStart(2, '0')}.png`,
+      );
+      fs.writeFileSync(filePath, 'old');
+      const mtime = new Date(nowMs - (index + 1) * 1_000);
+      fs.utimesSync(filePath, mtime, mtime);
+    }
+    const expiredPath = path.join(directory, 'ios-screenshot-20260828-010100-000-42-expired.png');
+    fs.writeFileSync(expiredPath, 'expired');
+    const expiredTime = new Date(nowMs - (25 * 60 * 60 * 1000));
+    fs.utimesSync(expiredPath, expiredTime, expiredTime);
+
+    const provider = new IOSBridgeProvider({
+      execFile(_command, args, _options, callback) {
+        const jsonPath = args[args.indexOf('--json-output') + 1];
+        if (args.includes('list') && args.includes('devices')) {
+          fs.writeFileSync(jsonPath, JSON.stringify({
+            result: {
+              devices: [{
+                identifier: 'ios-artifact-device',
+                deviceProperties: { name: 'iPhone', developerModeStatus: 'enabled' },
+                hardwareProperties: { platform: 'iOS', udid: 'ios-artifact-udid' },
+                connectionProperties: { pairingState: 'paired' },
+              }],
+            },
+          }));
+        } else {
+          const destination = args[args.indexOf('--destination') + 1];
+          fs.writeFileSync(destination, 'new screenshot');
+          fs.writeFileSync(jsonPath, JSON.stringify({ result: { captured: true } }));
+        }
+        callback(null, '', '');
+      },
+    });
+
+    const result = await provider.run('ios-screenshot', {
+      deviceId: 'ios-artifact-device',
+      artifactDir: directory,
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.artifact.path, result.outFile);
+    assert.equal(result.artifact.generatedDefault, true);
+    assert.equal(result.artifact.retention.keep, 20);
+    assert.equal(result.artifact.retention.maxAgeMs, 24 * 60 * 60 * 1000);
+    assert.equal(result.artifact.retention.maxBytes, 64 * 1024 * 1024);
+    assert.equal(fs.existsSync(expiredPath), false);
+    assert.equal(fs.readdirSync(directory).filter((name) => name.startsWith('ios-screenshot-')).length, 20);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('iOS doctor fails fast when the selected device cannot expose a debug runtime tunnel', async () => {
+  let unexpectedDeviceCalls = 0;
+  let httpCalls = 0;
+  const provider = new IOSBridgeProvider({
+    execFile(command, args, options, callback) {
+      if (command === 'xcodebuild') {
+        callback(null, 'Xcode 27.0\nBuild version 18A123\n', '');
+        return;
+      }
+      if (args.includes('list') && args.includes('devices')) {
+        const jsonPath = args[args.indexOf('--json-output') + 1];
+        fs.writeFileSync(jsonPath, JSON.stringify({
+          result: {
+            devices: [{
+              identifier: 'device-unavailable',
+              deviceProperties: {
+                name: 'iPhone',
+                developerModeStatus: 'disabled',
+                ddiServicesAvailable: false,
+              },
+              hardwareProperties: {
+                platform: 'iOS',
+                udid: 'udid-unavailable',
+              },
+              connectionProperties: {
+                pairingState: 'paired',
+                tunnelState: 'unavailable',
+                potentialHostnames: ['iPhone.coredevice.local'],
+              },
+            }],
+          },
+        }));
+        callback(null, '', '');
+        return;
+      }
+      unexpectedDeviceCalls += 1;
+      callback(new Error('unexpected devicectl call'), '', '');
+    },
+    httpRequest: async () => {
+      httpCalls += 1;
+      throw new Error('must not probe an unavailable tunnel');
+    },
+  });
+
+  const result = await provider.run('ios-doctor', {
+    deviceId: 'udid-unavailable',
+    bundleId: 'com.example.ios',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.ready, false);
+  assert.equal(result.checks.find((check) => check.name === 'runtime').error, 'ios_tunnel_unavailable');
+  assert.equal(unexpectedDeviceCalls, 0);
+  assert.equal(httpCalls, 0);
+});
+
 test('clear-app-data requires an explicit package and builds adb pm clear args', () => {
   let missingPackage;
   try {
@@ -1156,16 +1453,78 @@ test('generated screenshot artifact pruning keeps the newest 20 per prefix', asy
       prefix: 'ai_app_bridge_screenshot',
       extension: 'png',
       currentPath,
+      nowMs: baseTime + 100_000,
     });
 
     const remaining = fs.readdirSync(directory);
     const screenshotFiles = remaining.filter((name) => name.startsWith('ai_app_bridge_screenshot-'));
     assert.equal(result.keep, 20);
+    assert.equal(result.maxAgeMs, 24 * 60 * 60 * 1000);
+    assert.equal(result.maxBytes, 64 * 1024 * 1024);
     assert.equal(result.deleted, 4);
+    assert.equal(result.bytesAfter <= result.maxBytes, true);
     assert.equal(screenshotFiles.length, 20);
     assert.equal(fs.existsSync(currentPath), true);
     assert.equal(fs.existsSync(smokePath), true);
     assert.equal(fs.existsSync(explicitPath), true);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('generated screenshot artifact pruning enforces TTL and total-byte limits', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-prune-bounds-'));
+  try {
+    const nowMs = new Date('2026-05-12T10:00:00.000Z').getTime();
+    const makeFile = (name, contents, mtimeMs) => {
+      const filePath = path.join(directory, name);
+      fs.writeFileSync(filePath, contents);
+      const mtime = new Date(mtimeMs);
+      fs.utimesSync(filePath, mtime, mtime);
+      return filePath;
+    };
+    const expiredPath = makeFile(
+      'ai_app_bridge_screenshot-20260512-090000-000-42-expired.png',
+      'expired',
+      nowMs - 2_000,
+    );
+    const currentPath = makeFile(
+      'ai_app_bridge_screenshot-20260512-100000-000-42-current.png',
+      '123456',
+      nowMs,
+    );
+    const recentPath = makeFile(
+      'ai_app_bridge_screenshot-20260512-095959-990-42-recent1.png',
+      'abcdef',
+      nowMs - 10,
+    );
+    const olderPath = makeFile(
+      'ai_app_bridge_screenshot-20260512-095959-980-42-recent2.png',
+      'uvwxyz',
+      nowMs - 20,
+    );
+    const unrelatedPath = makeFile('manual.png', 'manual', nowMs - 100_000);
+
+    const result = await pruneGeneratedArtifacts({
+      directory,
+      prefix: 'ai_app_bridge_screenshot',
+      extension: 'png',
+      currentPath,
+      keep: 20,
+      maxAgeMs: 1_000,
+      maxBytes: 10,
+      nowMs,
+    });
+
+    assert.equal(result.deletedExpired, 1);
+    assert.equal(result.deletedForBytes, 2);
+    assert.equal(result.bytesBefore, 25);
+    assert.equal(result.bytesAfter, 6);
+    assert.equal(fs.existsSync(expiredPath), false);
+    assert.equal(fs.existsSync(recentPath), false);
+    assert.equal(fs.existsSync(olderPath), false);
+    assert.equal(fs.existsSync(currentPath), true);
+    assert.equal(fs.existsSync(unrelatedPath), true);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -1332,6 +1691,23 @@ test('tap-text candidate selection skips offscreen bridge nodes', () => {
 
   const match = findTappableNodeByText(tree, 'Open Detail');
   assert.equal(match.node.bounds.top, 20);
+  assert.deepEqual(
+    bridgeNodeTarget({
+      className: 'android.widget.Button',
+      resourceName: 'com.example:id/open_detail',
+      clickable: true,
+      enabled: true,
+      bounds: match.node.bounds,
+    }, 'dialog'),
+    {
+      className: 'android.widget.Button',
+      resourceName: 'com.example:id/open_detail',
+      clickable: true,
+      enabled: true,
+      windowType: 'dialog',
+      bounds: match.node.bounds,
+    },
+  );
 });
 
 test('tap-text candidate selection reports offscreen-only bridge match', () => {

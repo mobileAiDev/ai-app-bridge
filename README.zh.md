@@ -63,8 +63,13 @@ docs                                  设计、集成和测试文档
 - Flutter H5 操作和 DOM 快照，通过 Dart 层 H5 adapter 暴露
 - 桌面 Web Bridge session，通过浏览器 SDK 暴露 DOM/log/network/state/event 证据和白名单页面命令
 - 日志、网络请求、状态和事件缓冲区，支持 `sinceId` / `sinceMs` 增量读取
+- Host 侧 mmap + SQLite WAL 事实缓存，按数据流限额、持久化 action/证据关联并支持不透明游标
+- 原生、Flutter 和 Web 的 UI 变化/动画批次观察，记录 changed/stable 事件
+- 目标连接复用、同目标动作串行、幂等 request id 和加法式结构化反馈
 - Debug Gradle 插件支持 OkHttp HTTP 自动捕获
 - Node CLI / MCP stdio server，方便 AI 工具接入运行时能力
+
+UI 观察会有界记录语义/渲染变化批次、焦点和输入元数据、对话框/窗口/路由以及稳定点；它不是持续录像或逐帧截图。需要完整视觉状态时，Agent 再按需读取 tree 和 screenshot。
 
 ## Android 快速接入
 

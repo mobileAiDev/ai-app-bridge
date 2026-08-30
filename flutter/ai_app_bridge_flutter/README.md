@@ -30,6 +30,23 @@ void main() {
 }
 ```
 
+For automatic route names, reuse the provided observer without changing any
+agent-side command:
+
+```dart
+MaterialApp(
+  navigatorObservers: <NavigatorObserver>[
+    AiAppBridge.instance.navigatorObserver,
+  ],
+)
+```
+
+In debug mode the bridge also samples Flutter frame timings as bounded
+`ui.changed` / `ui.stable` events and observes pointer taps without intercepting
+them. Animation-time layout snapshots are capped at four per second; full trees
+and screenshots are not produced per frame. Call `AiAppBridge.instance.shutdown()`
+when a debug harness tears down the engine and may initialize it again later.
+
 ## WebView Adapter
 
 Flutter WebView DOM support requires a registered H5 adapter because the WebView controller lives in Dart:
