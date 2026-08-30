@@ -14,5 +14,18 @@
     <item name="ai_app_native_test_request_camera" type="id" />
     <item name="ai_app_native_test_request_microphone" type="id" />
     <item name="ai_app_native_test_finish" type="id" />
+    <item name="intent_fixture_root" type="id" />
+    <item name="intent_fixture_screen_host" type="id" />
+    <item name="intent_fixture_title" type="id" />
+    <item name="intent_fixture_scenario" type="id" />
+    <item name="intent_fixture_login_entry" type="id" />
+    <item name="intent_fixture_account" type="id" />
+    <item name="intent_fixture_password" type="id" />
+    <item name="intent_fixture_terms" type="id" />
+    <item name="intent_fixture_submit" type="id" />
+    <item name="intent_fixture_duplicate_submit" type="id" />
+    <item name="intent_fixture_status" type="id" />
+    <item name="intent_fixture_otp" type="id" />
+    <item name="intent_fixture_otp_submit" type="id" />
+    <item name="intent_fixture_home" type="id" />
 </resources>
-

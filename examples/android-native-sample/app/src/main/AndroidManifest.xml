@@ -8,6 +8,10 @@
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
         <activity
+            android:name=".intentfixture.IntentLoginFixtureActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
             android:name=".debugbridge.DebugBridgeNativeTestActivity"
             android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">

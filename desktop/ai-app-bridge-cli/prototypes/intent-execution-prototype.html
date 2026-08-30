@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Throwaway Intent Execution Prototype</title>
+        <style>
+            :root {
+                color-scheme: dark;
+                --background: #0c111b;
+                --panel: #141c2b;
+                --panel-soft: #1a2436;
+                --line: #2b3a52;
+                --text: #e7edf7;
+                --muted: #9aabc2;
+                --accent: #7dd3fc;
+                --good: #86efac;
+                --warn: #facc15;
+                --danger: #fda4af;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                background:
+                    radial-gradient(circle at 10% 0%, #19314c 0, transparent 32rem),
+                    var(--background);
+                color: var(--text);
+                font-family:
+                    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    sans-serif;
+            }
+
+            main {
+                width: min(1480px, calc(100% - 32px));
+                margin: 0 auto;
+                padding: 28px 0 52px;
+            }
+
+            h1,
+            h2,
+            h3,
+            p {
+                margin-top: 0;
+            }
+
+            h1 {
+                max-width: 920px;
+                margin-bottom: 10px;
+                font-size: clamp(28px, 4vw, 48px);
+                line-height: 1.04;
+            }
+
+            h2 {
+                margin-bottom: 14px;
+                font-size: 18px;
+            }
+
+            button,
+            select,
+            input {
+                border: 1px solid var(--line);
+                border-radius: 9px;
+                background: #0f1725;
+                color: var(--text);
+                font: inherit;
+            }
+
+            button {
+                min-height: 38px;
+                padding: 8px 12px;
+                cursor: pointer;
+            }
+
+            button:hover {
+                border-color: var(--accent);
+            }
+
+            button.primary {
+                border-color: #1682ae;
+                background: #0b6083;
+                font-weight: 700;
+            }
+
+            select,
+            input {
+                width: 100%;
+                min-height: 40px;
+                padding: 8px 10px;
+            }
+
+            pre {
+                overflow: auto;
+                min-height: 180px;
+                max-height: 440px;
+                margin: 0;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: #09101a;
+                color: #c7d7eb;
+                font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                white-space: pre-wrap;
+            }
+
+            .badge {
+                display: inline-flex;
+                margin-bottom: 16px;
+                padding: 6px 10px;
+                border: 1px solid #9f3143;
+                border-radius: 999px;
+                background: #3b1821;
+                color: var(--danger);
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: 0.08em;
+            }
+
+            .question {
+                max-width: 1080px;
+                margin-bottom: 10px;
+                color: var(--accent);
+                font-size: 18px;
+                line-height: 1.55;
+            }
+
+            .limitation {
+                max-width: 1080px;
+                margin-bottom: 24px;
+                color: var(--muted);
+                line-height: 1.55;
+            }
+
+            .panel {
+                padding: 18px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: color-mix(in srgb, var(--panel) 94%, transparent);
+                box-shadow: 0 14px 42px rgb(0 0 0 / 18%);
+            }
+
+            .setup-grid,
+            .evidence-grid,
+            .free-grid {
+                display: grid;
+                gap: 16px;
+            }
+
+            .setup-grid {
+                grid-template-columns: minmax(280px, 0.9fr) minmax(420px, 1.6fr);
+                margin-bottom: 16px;
+            }
+
+            .evidence-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                margin-bottom: 16px;
+            }
+
+            .free-grid {
+                grid-template-columns: 0.9fr 1.1fr;
+            }
+
+            .fields {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+
+            label {
+                display: grid;
+                gap: 6px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .run-row,
+            .manual-actions,
+            .scenario-buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .run-row {
+                align-items: end;
+                margin-top: 14px;
+            }
+
+            .run-row label {
+                min-width: 120px;
+            }
+
+            .scenario-buttons button {
+                min-height: 32px;
+                padding: 5px 9px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+
+            .scenario-buttons button.active {
+                border-color: var(--accent);
+                background: #12344b;
+                color: var(--accent);
+            }
+
+            .implementation-cards {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+                margin-top: 16px;
+            }
+
+            .implementation-card {
+                padding: 12px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: var(--panel-soft);
+            }
+
+            .implementation-card strong {
+                display: block;
+                margin-bottom: 5px;
+                color: var(--accent);
+            }
+
+            .implementation-card span,
+            .caption {
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 1.5;
+            }
+
+            .status {
+                min-height: 28px;
+                margin: 12px 0 0;
+                font-weight: 700;
+            }
+
+            .status.good {
+                color: var(--good);
+            }
+
+            .status.bad {
+                color: var(--danger);
+            }
+
+            .status.warn {
+                color: var(--warn);
+            }
+
+            .manual-actions {
+                margin-top: 14px;
+            }
+
+            .manual-actions button {
+                font-size: 12px;
+            }
+
+            .note {
+                margin: 10px 0 0;
+                color: var(--muted);
+                font-size: 12px;
+                line-height: 1.55;
+            }
+
+            @media (max-width: 980px) {
+                .setup-grid,
+                .evidence-grid,
+                .free-grid,
+                .implementation-cards {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main>
+            <div class="badge">THROWAWAY PROTOTYPE · 不进入生产</div>
+            <h1>从“执行命令”到“完成意图”</h1>
+            <p class="question">
+                要回答的问题：在统一的 <code>execute(intent)</code> Interface 下，静态 batch、通用登录 recipe、
+                bounded HTN/replanner 三种 Implementation，谁能从未知 UI 状态安全完成登录，同时减少 false
+                success、错误分类和危险的重复提交/重复 toggle？
+            </p>
+            <p class="limitation">
+                这是同步、确定性的模拟器，只验证状态模型与决策边界，不代表真实设备时延、Bridge
+                可靠性或最终 API。账号和密码只通过 secret reference 解析；状态与 trace 仅展示长度/指纹，不落明文。
+            </p>
+
+            <section class="setup-grid">
+                <div class="panel">
+                    <h2>Guided scenario</h2>
+                    <div class="fields">
+                        <label>
+                            Implementation
+                            <select id="implementation"></select>
+                        </label>
+                        <label>
+                            Scenario
+                            <select id="scenario"></select>
+                        </label>
+                    </div>
+                    <div class="run-row">
+                        <label>
+                            Fixed seed
+                            <input id="seed" type="number" value="85622289" />
+                        </label>
+                        <label>
+                            <span>Noise</span>
+                            <select id="noise">
+                                <option value="on" selected>stale + blocked actions</option>
+                                <option value="off">off</option>
+                            </select>
+                        </label>
+                        <button class="primary" id="run-guided">Run execute(intent)</button>
+                    </div>
+                    <p id="guided-status" class="status warn">尚未运行。</p>
+                    <p class="caption">
+                        选择按钮会载入对应起始状态；Run 会创建全新的环境并仅通过统一 execute(intent) 入口执行。
+                    </p>
+                </div>
+
+                <div class="panel">
+                    <h2>Scenario shortcuts</h2>
+                    <div id="scenario-buttons" class="scenario-buttons"></div>
+                    <div class="implementation-cards">
+                        <div class="implementation-card">
+                            <strong>static-batch</strong>
+                            <span>固定动作序列，以命令送达代替目标验证；unknown 时盲重试一次 submit。</span>
+                        </div>
+                        <div class="implementation-card">
+                            <strong>login-recipe</strong>
+                            <span>登录专用 ensure loop；每步观察并验证，但对 epoch 和歧义组件采取保守失败。</span>
+                        </div>
+                        <div class="implementation-card">
+                            <strong>bounded-htn</strong>
+                            <span>根据实时状态重建有界计划；精确组件契约、epoch 内重启、非幂等提交只执行一次。</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="evidence-grid">
+                <div class="panel">
+                    <h2>Complete current state (redacted)</h2>
+                    <pre id="current-state">{}</pre>
+                </div>
+                <div class="panel">
+                    <h2>Execution + oracle</h2>
+                    <pre id="execution">{}</pre>
+                </div>
+                <div class="panel">
+                    <h2>Observation/action trace</h2>
+                    <pre id="trace">[]</pre>
+                </div>
+            </section>
+
+            <section class="free-grid">
+                <div class="panel">
+                    <h2>Free play</h2>
+                    <p class="caption">
+                        手动对同一状态机发动作，观察“命令送达”和“目标达成”的差异。输入按钮使用模拟 secret，trace
+                        不记录值。
+                    </p>
+                    <div class="manual-actions">
+                        <button data-action="observe">Observe</button>
+                        <button data-action="navigate-login">Open login</button>
+                        <button data-action="wait-stable">Wait stable</button>
+                        <button data-action="dismiss-dialog">Dismiss dialog</button>
+                        <button data-action="focus-account">Focus account</button>
+                        <button data-action="input-account">Input account</button>
+                        <button data-action="focus-password">Focus password</button>
+                        <button data-action="input-password">Input password</button>
+                        <button data-action="toggle-agreement">Toggle agreement</button>
+                        <button data-action="hide-keyboard">Hide keyboard</button>
+                        <button data-action="submit-text">Submit by text</button>
+                        <button data-action="submit-exact">Submit exact target</button>
+                    </div>
+                    <div class="run-row">
+                        <button id="reset-free">Reset selected scenario</button>
+                    </div>
+                    <p id="manual-result" class="note">先选择场景，然后用按钮逐步操作。</p>
+                </div>
+                <div class="panel">
+                    <h2>Free-play live state</h2>
+                    <pre id="manual-state">{}</pre>
+                </div>
+            </section>
+        </main>
+
+        <script src="./intent_execution_engine.js"></script>
+        <script>
+            "use strict";
+
+            // Thin DOM shell only. All app state, actions, observation semantics, and
+            // three execute(intent) Implementations live in intent_execution_engine.js.
+            const engine = window.IntentExecutionPrototype;
+            const elements = {
+                implementation: document.querySelector("#implementation"),
+                scenario: document.querySelector("#scenario"),
+                seed: document.querySelector("#seed"),
+                noise: document.querySelector("#noise"),
+                runGuided: document.querySelector("#run-guided"),
+                guidedStatus: document.querySelector("#guided-status"),
+                scenarioButtons: document.querySelector("#scenario-buttons"),
+                currentState: document.querySelector("#current-state"),
+                execution: document.querySelector("#execution"),
+                trace: document.querySelector("#trace"),
+                resetFree: document.querySelector("#reset-free"),
+                manualResult: document.querySelector("#manual-result"),
+                manualState: document.querySelector("#manual-state"),
+            };
+
+            const expected = {
+                "wrong-password": "invalid-credentials",
+                "agreement-missing": "missing-required-control",
+                "network-failure": "network-error",
+                "network-timeout": "network-timeout",
+                "otp-required": "needs-user:otp",
+                "captcha-required": "needs-user:captcha",
+            };
+            let manualEnvironment = null;
+
+            function pretty(value) {
+                return JSON.stringify(value, null, 2);
+            }
+
+            function option(value) {
+                const element = document.createElement("option");
+                element.value = value;
+                element.textContent = value;
+                return element;
+            }
+
+            function currentSeed() {
+                return Number.parseInt(elements.seed.value, 10) || 1;
+            }
+
+            function inspectOutcome(run) {
+                const goalReached =
+                    run.finalState.authenticated === true && run.finalState.screen === "dashboard";
+                const requiredReason = expected[run.scenario] ?? null;
+                const correct = requiredReason
+                    ? !goalReached && run.execution.reason === requiredReason
+                    : goalReached && run.execution.status === "succeeded";
+                return {
+                    expected: requiredReason ? `classified failure: ${requiredReason}` : "observed dashboard goal",
+                    correct,
+                    goalReached,
+                    falseSuccess: run.execution.status === "succeeded" && !goalReached,
+                    missedObservedGoal: goalReached && run.execution.status !== "succeeded",
+                    unsafeDuplicateSubmit: run.environmentMetrics.unsafeDuplicateSubmit,
+                    unsafeDuplicateToggle: run.environmentMetrics.unsafeDuplicateToggle,
+                };
+            }
+
+            function highlightScenario() {
+                for (const button of elements.scenarioButtons.querySelectorAll("button")) {
+                    button.classList.toggle("active", button.dataset.scenario === elements.scenario.value);
+                }
+            }
+
+            function runGuided() {
+                const run = engine.runSingle(
+                    elements.implementation.value,
+                    elements.scenario.value,
+                    {
+                        seed: currentSeed(),
+                        noise: elements.noise.value === "on",
+                    },
+                );
+                const oracle = inspectOutcome(run);
+                elements.currentState.textContent = pretty(run.finalState);
+                elements.execution.textContent = pretty({
+                    interface: "execute(intent)",
+                    implementation: run.implementation,
+                    scenario: run.scenario,
+                    result: run.execution,
+                    oracle,
+                    environmentMetrics: run.environmentMetrics,
+                });
+                elements.trace.textContent = pretty(run.trace);
+                elements.guidedStatus.textContent = oracle.correct
+                    ? "Oracle: 正确。结果与真实终态一致。"
+                    : "Oracle: 不正确。查看 false success、分类或 unsafe 指标。";
+                elements.guidedStatus.className = `status ${oracle.correct ? "good" : "bad"}`;
+            }
+
+            function resetFreePlay() {
+                manualEnvironment = new engine.SimulatedLoginApp(elements.scenario.value, {
+                    seed: currentSeed(),
+                    noise: elements.noise.value === "on",
+                });
+                elements.manualResult.textContent = "环境已重置；当前状态未执行任何动作。";
+                elements.manualState.textContent = pretty(manualEnvironment.redactedState());
+            }
+
+            function freePlayAction(name) {
+                if (!manualEnvironment) {
+                    resetFreePlay();
+                }
+                const actionMap = {
+                    "navigate-login": { type: "navigate-login" },
+                    "wait-stable": { type: "wait-stable" },
+                    "dismiss-dialog": { type: "dismiss-dialog" },
+                    "focus-account": { type: "focus", target: "account" },
+                    "input-account": {
+                        type: "replace-text",
+                        target: "account",
+                        value: engine.CORRECT_ACCOUNT,
+                    },
+                    "focus-password": { type: "focus", target: "password" },
+                    "input-password": {
+                        type: "replace-text",
+                        target: "password",
+                        value:
+                            elements.scenario.value === "wrong-password"
+                                ? "wrong-pass"
+                                : engine.CORRECT_PASSWORD,
+                    },
+                    "toggle-agreement": { type: "toggle-agreement" },
+                    "hide-keyboard": { type: "hide-keyboard" },
+                    "submit-text": { type: "submit", target: "text:登录" },
+                    "submit-exact": { type: "submit", target: "login.submit.primary" },
+                };
+                const outcome =
+                    name === "observe" ? manualEnvironment.observe() : manualEnvironment.perform(actionMap[name]);
+                elements.manualResult.textContent = `${name}: ${pretty(outcome)}`;
+                elements.manualState.textContent = pretty({
+                    state: manualEnvironment.redactedState(),
+                    metrics: manualEnvironment.metrics,
+                    trace: manualEnvironment.trace,
+                });
+            }
+
+            for (const implementation of engine.IMPLEMENTATIONS) {
+                elements.implementation.append(option(implementation));
+            }
+            for (const scenario of engine.SCENARIOS) {
+                elements.scenario.append(option(scenario));
+                const button = document.createElement("button");
+                button.type = "button";
+                button.dataset.scenario = scenario;
+                button.textContent = scenario;
+                button.addEventListener("click", () => {
+                    elements.scenario.value = scenario;
+                    highlightScenario();
+                    resetFreePlay();
+                });
+                elements.scenarioButtons.append(button);
+            }
+
+            elements.implementation.value = "bounded-htn";
+            elements.scenario.value = "home-to-login";
+            highlightScenario();
+            resetFreePlay();
+            elements.runGuided.addEventListener("click", runGuided);
+            elements.resetFree.addEventListener("click", resetFreePlay);
+            elements.scenario.addEventListener("change", () => {
+                highlightScenario();
+                resetFreePlay();
+            });
+            for (const button of document.querySelectorAll("[data-action]")) {
+                button.addEventListener("click", () => freePlayAction(button.dataset.action));
+            }
+        </script>
+    </body>
+</html>
