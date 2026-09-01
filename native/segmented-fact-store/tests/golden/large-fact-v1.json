@@ -1,0 +1,64 @@
+{
+  "format": "ai-app-bridge.large-fact.v1",
+  "chunkWire": {
+    "magicAscii": "AIBCHN01",
+    "version": 1,
+    "headerBytes": 72,
+    "byteOrder": "little-endian",
+    "fields": [
+      { "name": "magic", "offset": 0, "size": 8, "type": "ascii" },
+      { "name": "version", "offset": 8, "size": 4, "type": "u32" },
+      { "name": "headerBytes", "offset": 12, "size": 4, "type": "u32" },
+      { "name": "factSha256", "offset": 16, "size": 32, "type": "bytes" },
+      { "name": "ordinal", "offset": 48, "size": 4, "type": "u32" },
+      { "name": "chunkCount", "offset": 52, "size": 4, "type": "u32" },
+      { "name": "factByteLength", "offset": 56, "size": 8, "type": "u64" },
+      { "name": "chunkByteLength", "offset": 64, "size": 4, "type": "u32" },
+      { "name": "reservedZero", "offset": 68, "size": 4, "type": "u32" },
+      { "name": "chunkBytes", "offset": 72, "size": "chunkByteLength", "type": "bytes" }
+    ]
+  },
+  "manifestWire": {
+    "encoding": "json-utf8",
+    "markerField": "__aiAppBridgeInternal",
+    "markerValue": "ai-app-bridge.large-fact-manifest.v1",
+    "commitOrder": "chunks-then-manifest",
+    "indexedRecord": "manifest-only"
+  },
+  "fixture": {
+    "payloadUtf8": "{\"partition\":\"ui\",\"targetKey\":\"android:golden:com.example\",\"app\":{\"platform\":\"android\",\"packageName\":\"com.example\"},\"runtimeEpoch\":\"runtime-golden\",\"actionId\":\"action-golden\",\"dedupeKey\":null,\"timestamps\":{\"occurredAtMs\":1,\"observedAtMs\":2,\"ingestedAtMs\":3},\"payload\":{\"kind\":\"evidence\",\"stream\":\"uia-tree\",\"record\":{\"value\":\"<hierarchy><node text=\\\"中文\\\" /></hierarchy>\"}}}",
+    "byteLength": 377,
+    "sha256Hex": "7d558e59cae1a8d3c6f77b5a9df1efc1f3889127a813b5f951479423290471d5",
+    "chunkHeaderHex": "41494243484e303101000000480000007d558e59cae1a8d3c6f77b5a9df1efc1f3889127a813b5f951479423290471d5000000000100000079010000000000007901000000000000",
+    "manifest": {
+      "__aiAppBridgeInternal": "ai-app-bridge.large-fact-manifest.v1",
+      "index": {
+        "partition": "ui",
+        "targetKey": "android:golden:com.example",
+        "runtimeEpoch": "runtime-golden",
+        "actionId": "action-golden",
+        "dedupeKey": null,
+        "timestamps": {
+          "occurredAtMs": 1,
+          "observedAtMs": 2,
+          "ingestedAtMs": 3
+        }
+      },
+      "content": {
+        "encoding": "json-utf8",
+        "byteLength": 377,
+        "sha256": "7d558e59cae1a8d3c6f77b5a9df1efc1f3889127a813b5f951479423290471d5",
+        "chunks": [
+          {
+            "ordinal": 0,
+            "sequence": 41,
+            "segmentId": 7,
+            "frameOffset": 64,
+            "payloadLength": 449,
+            "byteLength": 377
+          }
+        ]
+      }
+    }
+  }
+}

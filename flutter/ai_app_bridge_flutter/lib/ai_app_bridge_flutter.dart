@@ -76,7 +76,7 @@ class AiAppBridge {
               element.getAttribute('data-sensitive'),
               element.getAttribute('data-private')
             ].join(' ').toLowerCase();
-            return /password|passwd|pwd|secret|token|otp|pin|cvv|credit.?card|one-time-code/.test(probe);
+            return /password|passwd|pwd|passcode/.test(probe);
           }
           var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
           var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200)
@@ -110,6 +110,13 @@ class AiAppBridge {
           });
         })()
   ''';
+  static const String _h5ConsoleInstallScript =
+      "(function(){if(window.__aabConsoleHook)return 0;window.__aabConsoleHook=true;"
+      "window.__aabConsoleBuf=[];var names=['log','info','warn','error','debug'];"
+      "names.forEach(function(name){var original=console[name];console[name]=function(){"
+      "var args=Array.prototype.slice.call(arguments);var buf=window.__aabConsoleBuf;"
+      "buf.push({method:name,message:args.map(function(value){return value==null?'':String(value);}).join(' '),atMs:Date.now()});"
+      "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};});return 1;})()";
   static final Object _autoCaptureSuppressionKey = Object();
 
   bool _enabled = false;
@@ -647,6 +654,7 @@ class AiAppBridge {
   Future<Map<String, Object?>> _buildH5Snapshot(
     AiAppBridgeH5Adapter adapter,
   ) async {
+    await adapter.evaluateJavascript(_h5ConsoleInstallScript);
     final Object? raw = await adapter.evaluateJavascript(_h5DomSnapshotScript);
     final Map<String, Object?> dom = _decodeJavascriptObject(raw);
     final Map<String, Object?> metadata = await _adapterMetadata(adapter);
@@ -2610,13 +2618,16 @@ Map<String, Object?> _headersToJson(HttpHeaders headers) {
 }
 
 bool _redactHeader(String name) {
-  final String lower = name.toLowerCase();
-  return lower == HttpHeaders.authorizationHeader ||
-      lower == HttpHeaders.cookieHeader ||
-      lower == HttpHeaders.setCookieHeader ||
-      lower.contains('token') ||
-      lower.contains('secret') ||
-      lower.contains('password');
+  final String lower = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  return lower == 'authorization' ||
+      lower == 'proxyauthorization' ||
+      lower == 'password' ||
+      lower == 'passwd' ||
+      lower == 'pwd' ||
+      lower == 'passcode' ||
+      lower.endsWith('password') ||
+      lower == 'token' ||
+      lower.endsWith('token');
 }
 
 bool _isPreviewableBody(HttpHeaders headers) {

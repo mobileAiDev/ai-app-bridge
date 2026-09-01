@@ -15,6 +15,9 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
+import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
@@ -66,9 +69,6 @@ object AiAppBridge {
     private const val bridgeVersion = "0.2.8"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
-    private val sensitiveKeyPattern = Regex(
-        "(?i)(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
-    )
     @Volatile
     private var flutterActionHandler: FlutterActionHandler? = null
     private val h5DomSnapshotScript = """
@@ -100,7 +100,7 @@ object AiAppBridge {
               element.getAttribute('data-sensitive'),
               element.getAttribute('data-private')
             ].join(' ').toLowerCase();
-            return /password|passwd|pwd|secret|token|otp|pin|cvv|credit.?card|one-time-code/.test(probe);
+            return /password|passwd|pwd|passcode/.test(probe);
           }
           var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
           var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200)
@@ -158,7 +158,31 @@ object AiAppBridge {
     @Volatile
     private var currentActivity: WeakReference<Activity>? = null
 
+    @Volatile
+    private var factApplicationContext: Context? = null
+
+    private val observationFactStoreLifecycle = ObservationFactStoreLifecycle(SegmentedFactStore.shared)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val processLogcatCollector = ProcessLogcatCollector(
+        openSource = {
+            ProcessLogcatSource(
+                ProcessBuilder(logcatFollowCommand()).redirectErrorStream(true).start(),
+            )
+        },
+        persist = { line -> persistLogcatLine(line) },
+    )
+    private val h5ConsoleLogCollector = H5ConsoleLogCollector(
+        mainHandler = mainHandler,
+        intervalMs = 500L,
+        discover = {
+            val activity = activity() ?: return@H5ConsoleLogCollector emptyList()
+            AndroidWebViewPages.discover(
+                AndroidWebViewPages.activityRoots(activity),
+                webViewAdapters.toList(),
+            )
+        },
+        persist = { line -> persistH5ConsoleLine(line) },
+    )
     private val captureLock = Any()
     private val captureSequence = AtomicLong(0)
     private val logEntries = ArrayDeque<JSONObject>()
@@ -173,11 +197,14 @@ object AiAppBridge {
 
     @JvmStatic
     fun start(context: Context) {
+        factApplicationContext = context.applicationContext
         if (context is Activity) {
             currentActivity = WeakReference(context)
         }
         val observer = ensureUiObserver()
         registerLifecycleCallbacks(context)
+        startObservationFactStore(context)
+        startAutomaticLogPersist(context)
         if (context is Activity) {
             observer.attach(context, reason = "bridge-start")
         }
@@ -394,6 +421,7 @@ object AiAppBridge {
             event.put("data", payload.opt("data"))
         }
         appendBounded(logEntries, event, maxLogEntries)
+        persistMobileFact(event) { SanitizedFactPayload.log(it, event) }
         return event
     }
 
@@ -416,6 +444,7 @@ object AiAppBridge {
             event.put("error", payload.opt("error"))
         }
         appendBounded(networkEntries, event, maxNetworkEntries)
+        persistMobileFact(event) { SanitizedFactPayload.network(it, event) }
         return event
     }
 
@@ -435,6 +464,7 @@ object AiAppBridge {
             }
             stateEntries["$namespace.$key"] = event
         }
+        persistMobileFact(event) { SanitizedFactPayload.state(it, event) }
         return event
     }
 
@@ -446,7 +476,141 @@ object AiAppBridge {
             event.put("data", payload.opt("data"))
         }
         appendBounded(eventEntries, event, maxEventEntries)
+        persistMobileFact(event) { SanitizedFactPayload.event(it, event) }
         return event
+    }
+
+    private fun startObservationFactStore(context: Context?) {
+        val target = context ?: factApplicationContext ?: currentActivity?.get() ?: return
+        try {
+            observationFactStoreLifecycle.start(MobileFactStoreProfiles.forContext(target))
+        } catch (error: Throwable) {
+            Log.w(tag, "failed to configure observation fact store", error)
+        }
+    }
+
+    private fun stopObservationFactStoreForMaintenance(timeoutMs: Long = 2_000L): Boolean {
+        observationFactStoreLifecycle.stop()
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+        while (System.nanoTime() < deadline) {
+            if (observationFactStoreLifecycle.snapshot().lifecycleState == SegmentedFactStoreState.CLOSED) {
+                return true
+            }
+            try {
+                Thread.sleep(10L)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+        }
+        return observationFactStoreLifecycle.snapshot().lifecycleState == SegmentedFactStoreState.CLOSED
+    }
+
+    private fun startAutomaticLogPersist(context: Context) {
+        try {
+            if (isMainProcess(context.applicationContext)) {
+                processLogcatCollector.start()
+            }
+            h5ConsoleLogCollector.start()
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun persistLogcatLine(line: CapturedLogLine) {
+        val data = JSONObject()
+            .put("pid", line.processId)
+            .put("time", line.time)
+            .put("raw", line.raw)
+        persistCapturedLog(
+            source = "logcat",
+            level = line.level,
+            tag = line.tag,
+            message = line.message,
+            data = data,
+            partition = LogcatLineParser.partition(line.processId, android.os.Process.myPid()),
+        )
+    }
+
+    private fun persistH5ConsoleLine(line: H5ConsoleLine) {
+        persistCapturedLog(
+            source = "console",
+            level = if (line.method == "log") "info" else line.method,
+            tag = "console",
+            message = line.message,
+            data = JSONObject()
+                .put("method", line.method)
+                .put("atMs", line.atMs),
+            partition = MobileFactPartition.APP_LOG,
+            occurredAtMs = line.atMs.takeIf { it > 0L },
+        )
+    }
+
+    private fun persistCapturedLog(
+        source: String,
+        level: String,
+        tag: String,
+        message: String,
+        data: JSONObject?,
+        partition: MobileFactPartition,
+        occurredAtMs: Long? = null,
+    ) {
+        val event = JSONObject()
+            .put("type", "log")
+            .put("source", source)
+            .put("level", level)
+            .put("tag", tag)
+            .put("message", message)
+            .put("timestampMs", occurredAtMs ?: System.currentTimeMillis())
+        data?.let { event.put("data", it) }
+        persistMobileFact(event) { context ->
+            if (partition == MobileFactPartition.DEVICE_LOG) {
+                SanitizedFactPayload.deviceLog(context, event)
+            } else {
+                SanitizedFactPayload.log(context, event)
+            }
+        }
+    }
+
+    private fun persistMobileFact(
+        event: JSONObject,
+        factory: (MobileFactEnvelopeContext) -> SanitizedFactPayload,
+    ) {
+        try {
+            AndroidObservationFactStoreRegistry.enqueue(factory(mobileFactContext(event)))
+        } catch (_: Throwable) {
+            // Persistent observation is additive and must never affect the host app.
+        }
+    }
+
+    private fun mobileFactContext(event: JSONObject? = null): MobileFactEnvelopeContext {
+        val context = factApplicationContext ?: currentActivity?.get()?.applicationContext
+        val packageName = context?.packageName ?: "unknown"
+        val rawDeviceIdentity = try {
+            context?.contentResolver?.let {
+                Settings.Secure.getString(it, Settings.Secure.ANDROID_ID)
+            }
+        } catch (_: Throwable) {
+            null
+        } ?: "${Build.MANUFACTURER}:${Build.MODEL}:${Build.FINGERPRINT}"
+        val nowMs = System.currentTimeMillis()
+        val occurredAtMs = event?.optLong("timestampMs", nowMs) ?: nowMs
+        val actionId = event?.optString("actionId")?.takeIf { it.isNotBlank() }
+            ?: CaptureActionContext.currentActionId()
+        return MobileFactEnvelopeContext(
+            platform = "android",
+            packageName = packageName,
+            bundleId = null,
+            model = Build.MODEL,
+            deviceIdentity = SanitizedFactPayload.stableDeviceIdentity(
+                platform = "android",
+                appIdentifier = packageName,
+                rawIdentity = rawDeviceIdentity,
+            ),
+            runtimeEpoch = runtimeEpoch,
+            actionId = actionId,
+            occurredAtMs = occurredAtMs,
+            observedAtMs = nowMs,
+        )
     }
 
     private fun baseCapture(type: String, source: String): JSONObject {
@@ -717,7 +881,16 @@ object AiAppBridge {
     }
 
     private fun isSensitiveKey(key: String): Boolean {
-        return sensitiveKeyPattern.containsMatchIn(key)
+        val normalized = key.lowercase().replace(Regex("[^a-z0-9]"), "")
+        return normalized == "authorization" ||
+            normalized == "proxyauthorization" ||
+            normalized == "password" ||
+            normalized == "passwd" ||
+            normalized == "pwd" ||
+            normalized == "passcode" ||
+            normalized.endsWith("password") ||
+            normalized == "token" ||
+            normalized.endsWith("token")
     }
 
     private fun jsonStringOrNull(json: JSONObject, key: String): String? {
@@ -1062,6 +1235,7 @@ object AiAppBridge {
         private fun clearAppData(): JSONObject {
             val cleared = JSONArray()
             val failures = JSONArray()
+            stopObservationFactStoreForMaintenance()
             synchronized(captureLock) {
                 logEntries.clear()
                 networkEntries.clear()
@@ -1096,6 +1270,7 @@ object AiAppBridge {
             deletePathContents("datastore", File(dataDir, "datastore"), cleared, failures)
             deletePathContents("app-webview", File(dataDir, "app_webview"), cleared, failures)
             writePortState(ok = true, port = activePort.get(), error = null)
+            startObservationFactStore(context)
 
             return JSONObject()
                 .put("ok", failures.length() == 0)
@@ -1732,7 +1907,7 @@ object AiAppBridge {
                         .put("height", view.height),
                 )
             if (view is TextView) {
-                json.put("text", view.text?.toString()?.take(300) ?: "")
+                json.put("text", if (isPasswordField(view)) "" else (view.text?.toString()?.take(300) ?: ""))
             }
             if (view is ViewGroup && depth < 24) {
                 val children = JSONArray()
@@ -1742,6 +1917,23 @@ object AiAppBridge {
                 json.put("children", children)
             }
             return json
+        }
+
+        private fun isPasswordField(view: View): Boolean {
+            if (view !is EditText) {
+                return false
+            }
+            if (view.transformationMethod is PasswordTransformationMethod) {
+                return true
+            }
+            val inputType = view.inputType
+            val klass = inputType and InputType.TYPE_MASK_CLASS
+            val variation = inputType and InputType.TYPE_MASK_VARIATION
+            return (klass == InputType.TYPE_CLASS_TEXT && variation in setOf(
+                InputType.TYPE_TEXT_VARIATION_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD,
+                InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
+            )) || (klass == InputType.TYPE_CLASS_NUMBER && variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD)
         }
 
         private fun findInputTextTarget(roots: List<WindowRoot>, x: Float, y: Float): TextInputTarget? {

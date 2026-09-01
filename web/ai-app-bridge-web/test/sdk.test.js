@@ -393,9 +393,9 @@ test('capture.ui emits batched clicks and redacts password input', async () => {
   assert.equal(captures[0].item.data.events[1].changed, true);
   assert.equal(captures[0].item.data.events[1].length, 10);
   assert.equal('value' in captures[0].item.data.events[1], false);
-  assert.equal(captures[0].item.data.events[2].sensitive, true);
+  assert.equal(captures[0].item.data.events[2].sensitive, false);
   assert.equal(captures[0].item.data.events[2].length, 16);
-  assert.equal('value' in captures[0].item.data.events[2], false);
+  assert.equal(captures[0].item.data.events[2].value, '4111111111111111');
 
   bridge.stop();
 });

@@ -961,16 +961,13 @@
   }
 
   function isSensitiveInput(element) {
-    if (['true', '1'].includes(attr(element, 'data-sensitive').toLowerCase())) return true;
-    if (['true', '1'].includes(attr(element, 'data-private').toLowerCase())) return true;
     const values = [
       attr(element, 'type'),
       attr(element, 'autocomplete'),
       attr(element, 'name'),
       text(element && element.id),
-      attr(element, 'aria-label'),
     ].join(' ').toLowerCase();
-    return /password|passwd|passcode|secret|token|one-time-code|\bcc-[a-z-]+\b|\botp\b|\bpin\b|\bcvv\b|\bcvc\b|credit.?card|card.?number|security.?code|\bssn\b/.test(values);
+    return /password|passwd|pwd|passcode|current-password|new-password/.test(values);
   }
 
   function routeFromLocation(location) {

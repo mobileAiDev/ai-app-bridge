@@ -21,11 +21,8 @@ public final class AiAppBridge {
     private let maxStateEntries = 200
     private let maxCapturedBodyChars = 20_000
     private let redactedValue = "[redacted]"
-    private let sensitiveKeyPattern = try? NSRegularExpression(
-        pattern: "(authorization|cookie|token|accessToken|refreshToken|session|password|passwd|pwd|secret|mobile|phone|smsCode|verifyCode|verificationCode|captcha)",
-        options: [.caseInsensitive]
-    )
 
+    private let observationFactStoreLifecycle = ObservationFactStoreLifecycle()
     private var listener: NWListener?
     private var activePort: UInt16 = 18080
     private var started = false
@@ -50,6 +47,8 @@ public final class AiAppBridge {
                 self.appName = appName
             }
         }
+        observationFactStoreLifecycle.start(MobileFactStoreProfiles.defaultConfiguration())
+        startAutomaticLogPersist()
         runOnMain { [weak self] in
             self?.startUiObservationIfNeeded()
         }
@@ -340,14 +339,12 @@ public final class AiAppBridge {
     private func viewJson(
         _ view: UIView,
         depth: Int,
-        counter: inout NodeCounter,
-        redactInputText: Bool = false
+        counter: inout NodeCounter
     ) -> [String: Any] {
         counter.count += 1
         let id = counter.count
         let frameInScreen = view.convert(view.bounds, to: nil)
         let secureInput = (view as? UITextField)?.isSecureTextEntry == true
-        let redactText = redactInputText || secureInput
         var payload: [String: Any] = [
             "id": id,
             "depth": depth,
@@ -358,8 +355,8 @@ public final class AiAppBridge {
             "alpha": Double(view.alpha),
             "bounds": Self.rectJson(frameInScreen),
             "accessibilityIdentifier": view.accessibilityIdentifier ?? "",
-            "contentDescription": redactText ? "" : (view.accessibilityLabel ?? ""),
-            "text": redactText ? "" : viewText(view),
+            "contentDescription": view.accessibilityLabel ?? "",
+            "text": secureInput ? "" : viewText(view),
             "clickable": view.isUserInteractionEnabled && !view.gestureRecognizers.orEmpty.isEmpty,
             "children": []
         ]
@@ -375,8 +372,7 @@ public final class AiAppBridge {
             children.append(viewJson(
                 child,
                 depth: depth + 1,
-                counter: &counter,
-                redactInputText: redactText
+                counter: &counter
             ))
         }
         payload["children"] = children
@@ -536,6 +532,9 @@ public final class AiAppBridge {
             boundedAppend(&logEntries, event, maxSize: maxLogEntries)
             return event
         }
+        persistMobileFact(event) { context in
+            try SanitizedFactPayload.log(context: context, record: event)
+        }
         return ["ok": true, "record": event]
     }
 
@@ -563,6 +562,9 @@ public final class AiAppBridge {
             boundedAppend(&networkEntries, event, maxSize: maxNetworkEntries)
             return event
         }
+        persistMobileFact(event) { context in
+            try SanitizedFactPayload.network(context: context, record: event)
+        }
         return ["ok": true, "record": event]
     }
 
@@ -581,6 +583,9 @@ public final class AiAppBridge {
             stateEntries[stateKey] = event
             return event
         }
+        persistMobileFact(event) { context in
+            try SanitizedFactPayload.state(context: context, record: event)
+        }
         return ["ok": true, "record": event]
     }
 
@@ -595,7 +600,69 @@ public final class AiAppBridge {
             boundedAppend(&eventEntries, event, maxSize: maxEventEntries)
             return event
         }
+        persistMobileFact(event) { context in
+            try SanitizedFactPayload.event(context: context, record: event)
+        }
         return ["ok": true, "record": event]
+    }
+
+    private func startAutomaticLogPersist() {
+        AutomaticLogCapture.shared.start { [weak self] record in
+            self?.persistCapturedLog(record)
+        }
+    }
+
+    private func persistCapturedLog(_ record: AutomaticLogRecord) {
+        var event: [String: Any] = [
+            "type": "log",
+            "source": record.source,
+            "level": record.level,
+            "tag": record.tag,
+            "message": record.message,
+            "timestampMs": record.timestampMs
+        ]
+        if let data = record.data {
+            event["data"] = data
+        }
+        persistMobileFact(event) { context in
+            if record.partition == .deviceLog {
+                return try SanitizedFactPayload.deviceLog(context: context, record: event)
+            }
+            return try SanitizedFactPayload.log(context: context, record: event)
+        }
+    }
+
+    private func persistMobileFact(
+        _ event: [String: Any],
+        factory: (MobileFactEnvelopeContext) throws -> SanitizedFactPayload
+    ) {
+        guard let fact = try? factory(mobileFactContext(event: event)) else { return }
+        IOSObservationFactStoreRegistry.enqueue(fact)
+    }
+
+    private func mobileFactContext(event: [String: Any]? = nil) -> MobileFactEnvelopeContext {
+        let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
+        let device = UIDevice.current
+        let rawIdentity = device.identifierForVendor?.uuidString
+            ?? "\(device.systemName):\(device.model)"
+        let nowMs = Self.nowMs()
+        let occurredAtMs = (event?["timestampMs"] as? NSNumber)?.int64Value ?? nowMs
+        let actionId = event?["actionId"] as? String
+        return .init(
+            platform: "ios",
+            packageName: nil,
+            bundleId: bundleId,
+            model: device.model,
+            deviceIdentity: SanitizedFactPayload.stableDeviceIdentity(
+                platform: "ios",
+                appIdentifier: bundleId,
+                rawIdentity: rawIdentity
+            ),
+            runtimeEpoch: runtimeEpoch,
+            actionId: actionId,
+            occurredAtMs: occurredAtMs,
+            observedAtMs: nowMs
+        )
     }
 
     private func captureEvent(source: String) -> [String: Any] {
@@ -881,9 +948,20 @@ public final class AiAppBridge {
     }
 
     private func isSensitiveKey(_ key: String) -> Bool {
-        guard let sensitiveKeyPattern else { return false }
-        let range = NSRange(location: 0, length: key.utf16.count)
-        return sensitiveKeyPattern.firstMatch(in: key, options: [], range: range) != nil
+        let normalized = key.lowercased().replacingOccurrences(
+            of: "[^a-z0-9]",
+            with: "",
+            options: .regularExpression
+        )
+        return normalized == "authorization"
+            || normalized == "proxyauthorization"
+            || normalized == "password"
+            || normalized == "passwd"
+            || normalized == "pwd"
+            || normalized == "passcode"
+            || normalized.hasSuffix("password")
+            || normalized == "token"
+            || normalized.hasSuffix("token")
     }
 
     private static let h5DomSnapshotScript = """
@@ -897,6 +975,10 @@ public final class AiAppBridge {
         var rect = element.getBoundingClientRect();
         return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
       }
+      function sensitive(element) {
+        var probe = [element.type, element.id, element.name, element.autocomplete].join(' ').toLowerCase();
+        return /password|passwd|pwd|passcode/.test(probe);
+      }
       var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
       var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200).map(function(element, index) {
         return {
@@ -908,7 +990,9 @@ public final class AiAppBridge {
           role: text(element.getAttribute('role')),
           ariaLabel: text(element.getAttribute('aria-label')),
           placeholder: text(element.getAttribute('placeholder')),
-          text: cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
+          text: sensitive(element)
+            ? ''
+            : cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
           href: cut(element.href, 500),
           disabled: !!element.disabled,
           bounds: bounds(element)

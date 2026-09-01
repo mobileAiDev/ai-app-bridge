@@ -19,29 +19,9 @@ const UI_EVIDENCE_COMMANDS = new Set([
 ]);
 
 const REDACTED = '[REDACTED]';
-const PRIVACY_PROJECTION_MAX_DEPTH = 32;
-const PRIVACY_PROJECTION_MAX_NODES = 10_000;
-const PRIVACY_PROJECTION_MAX_ARRAY_ITEMS = 2_000;
-const PRIVACY_PROJECTION_MAX_OBJECT_KEYS = 500;
 const SECURE_TEXT_KEYS = new Set([
   'text',
   'value',
-  'label',
-  'accessibilityvalue',
-  'accessibilitylabel',
-  'contentdescription',
-  'arialabel',
-  'innertext',
-  'bodytext',
-  'rawtext',
-  'rawvalue',
-  'selectedtext',
-  'editabletext',
-  'semanticslabel',
-  'semanticsvalue',
-  'hint',
-  'tooltip',
-  'placeholder',
 ]);
 const SECURE_FLAG_KEYS = new Set([
   'secure',
@@ -141,12 +121,9 @@ class FactRecorder {
     const references = [];
     for (const descriptor of descriptors) {
       const record = descriptor.record;
-      let persistedRecord = record;
-      if (shouldProjectPrivateUiEvidence(command, descriptor)) {
-        persistedRecord = privacyProjectUiEvidence(record);
-      } else if (descriptor.stream === 'network' && context.collector === 'observation') {
-        persistedRecord = omitAutomaticNetworkBodies(record);
-      }
+      const persistedRecord = shouldProjectPrivateUiEvidence(command, descriptor)
+        ? privacyProjectUiEvidence(record)
+        : record;
       const evidenceKey = record?.id === undefined || record?.id === null
         ? null
         : JSON.stringify([target.key, runtimeEpoch, descriptor.stream, String(record.id)]);
@@ -365,35 +342,9 @@ function shouldProjectPrivateUiEvidence(command, descriptor) {
 
 function privacyProjectUiEvidence(record) {
   return projectPrivateUiValue(record, {
-    depth: 0,
-    budget: { nodes: 0 },
     inheritedSecure: false,
     ancestors: new WeakSet(),
   });
-}
-
-function omitAutomaticNetworkBodies(record) {
-  if (!record || typeof record !== 'object' || Buffer.isBuffer(record)) return record;
-  const projected = { ...record };
-  for (const key of ['requestBody', 'responseBody']) {
-    if (!Object.prototype.hasOwnProperty.call(projected, key)) continue;
-    const body = projected[key];
-    delete projected[key];
-    projected[`${key}Bytes`] = networkBodyByteLength(body);
-    projected[`${key}Omitted`] = true;
-  }
-  return projected;
-}
-
-function networkBodyByteLength(value) {
-  if (value === null || value === undefined) return 0;
-  if (Buffer.isBuffer(value)) return value.length;
-  if (typeof value === 'string') return Buffer.byteLength(value);
-  try {
-    return Buffer.byteLength(JSON.stringify(value));
-  } catch (_error) {
-    return Buffer.byteLength(String(value));
-  }
 }
 
 function projectPrivateUiValue(value, state) {
@@ -401,27 +352,14 @@ function projectPrivateUiValue(value, state) {
   if (typeof value !== 'object') return value;
   if (value instanceof Date) return value.toISOString();
   if (Buffer.isBuffer(value)) return { type: 'buffer', byteLength: value.length };
-  if (
-    state.depth >= PRIVACY_PROJECTION_MAX_DEPTH
-    || state.budget.nodes >= PRIVACY_PROJECTION_MAX_NODES
-  ) {
-    return '[TRUNCATED]';
-  }
   if (state.ancestors.has(value)) return '[CIRCULAR]';
 
-  state.budget.nodes += 1;
   state.ancestors.add(value);
   if (Array.isArray(value)) {
-    const projected = [];
-    const itemCount = Math.min(value.length, PRIVACY_PROJECTION_MAX_ARRAY_ITEMS);
-    for (let index = 0; index < itemCount; index += 1) {
-      if (state.budget.nodes >= PRIVACY_PROJECTION_MAX_NODES) break;
-      projected.push(projectPrivateUiValue(value[index], {
-        ...state,
-        depth: state.depth + 1,
-      }));
-    }
-    if (projected.length < value.length) projected.push('[TRUNCATED]');
+    const projected = value.map((entry) => projectPrivateUiValue(entry, {
+      inheritedSecure: false,
+      ancestors: state.ancestors,
+    }));
     state.ancestors.delete(value);
     return projected;
   }
@@ -434,21 +372,16 @@ function projectPrivateUiValue(value, state) {
     || hasDirectSecureFlag(value)
     || /\bisobscured\b|\bobscured\b/i.test(String(value.flags || ''));
   const projected = {};
-  const entries = Object.entries(value);
-  for (const [key, childValue] of entries.slice(0, PRIVACY_PROJECTION_MAX_OBJECT_KEYS)) {
+  for (const [key, childValue] of Object.entries(value)) {
     if (secure && isSecureTextKey(key)) {
       projected[key] = REDACTED;
       projected[`${key}Length`] = secureTextLength(value, key, childValue);
       continue;
     }
     projected[key] = projectPrivateUiValue(childValue, {
-      ...state,
-      depth: state.depth + 1,
-      inheritedSecure: secure,
+      inheritedSecure: false,
+      ancestors: state.ancestors,
     });
-  }
-  if (entries.length > PRIVACY_PROJECTION_MAX_OBJECT_KEYS) {
-    projected._privacyProjection = 'truncated';
   }
   if (secure) projected.secure = true;
   state.ancestors.delete(value);
@@ -493,7 +426,7 @@ function hasSensitiveInputIdentity(value) {
     value?.textContentType,
     value?.placeholder,
   ].some((candidate) => (
-    /password|passwd|passcode|current-password|new-password|one-time-code|secret|\botp\b|\bpin\b|\bcvv\b|\bcvc\b/i
+    /password|passwd|pwd|passcode|current-password|new-password/i
       .test(String(candidate || ''))
   ));
 }

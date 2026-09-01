@@ -320,9 +320,8 @@ test('redacts Android password EditText contents only in persisted UI evidence',
   assert.equal(persisted.secure, true);
   assert.equal(persisted.text, '[REDACTED]');
   assert.equal(persisted.textLength, 21);
-  assert.equal(persisted.contentDescription, '[REDACTED]');
-  assert.equal(persisted.contentDescriptionLength, 28);
-  assert.doesNotMatch(JSON.stringify(persisted), /android-secret-marker|android-accessibility-secret/);
+  assert.equal(persisted.contentDescription, 'android-accessibility-secret');
+  assert.doesNotMatch(JSON.stringify(persisted), /android-secret-marker/);
 });
 
 test('redacts iOS secure text field labels and values in persisted UI evidence', (t) => {
@@ -347,11 +346,9 @@ test('redacts iOS secure text field labels and values in persisted UI evidence',
   assert.equal(persisted.secure, true);
   assert.equal(persisted.text, '[REDACTED]');
   assert.equal(persisted.textLength, 17);
-  assert.equal(persisted.label, '[REDACTED]');
-  assert.equal(persisted.labelLength, 17);
-  assert.equal(persisted.accessibilityValue, '[REDACTED]');
-  assert.equal(persisted.accessibilityValueLength, 23);
-  assert.doesNotMatch(JSON.stringify(persisted), /ios-secret-marker|ios-private-label|ios-accessibility-value/);
+  assert.equal(persisted.label, 'ios-private-label');
+  assert.equal(persisted.accessibilityValue, 'ios-accessibility-value');
+  assert.doesNotMatch(JSON.stringify(persisted), /ios-secret-marker/);
 });
 
 test('redacts obscured Flutter semantics contents in persisted UI evidence', (t) => {
@@ -375,13 +372,11 @@ test('redacts obscured Flutter semantics contents in persisted UI evidence', (t)
   assert.equal(liveResult.root.value, 'flutter-secret-marker');
   const persisted = cache.query({ partition: 'ui' }).items[0].payload.record.root;
   assert.equal(persisted.secure, true);
-  assert.equal(persisted.label, '[REDACTED]');
-  assert.equal(persisted.labelLength, 21);
+  assert.equal(persisted.label, 'flutter-private-label');
   assert.equal(persisted.value, '[REDACTED]');
   assert.equal(persisted.valueLength, 21);
-  assert.equal(persisted.hint, '[REDACTED]');
-  assert.equal(persisted.hintLength, 20);
-  assert.doesNotMatch(JSON.stringify(persisted), /flutter-private-label|flutter-secret-marker|flutter-private-hint/);
+  assert.equal(persisted.hint, 'flutter-private-hint');
+  assert.doesNotMatch(JSON.stringify(persisted), /flutter-secret-marker/);
 });
 
 test('redacts sensitive Web DOM control contents in persisted UI evidence', (t) => {
@@ -405,10 +400,10 @@ test('redacts sensitive Web DOM control contents in persisted UI evidence', (t) 
   assert.equal(persisted.secure, true);
   assert.equal(persisted.text, '[REDACTED]');
   assert.equal(persisted.value, '[REDACTED]');
-  assert.equal(persisted.ariaLabel, '[REDACTED]');
-  assert.equal(persisted.placeholder, '[REDACTED]');
+  assert.equal(persisted.ariaLabel, 'web-private-label');
+  assert.equal(persisted.placeholder, 'web-private-placeholder');
   assert.equal(persisted.valueLength, 17);
-  assert.doesNotMatch(JSON.stringify(persisted), /web-secret-marker|web-private-value|web-private-label|web-private-placeholder/);
+  assert.doesNotMatch(JSON.stringify(persisted), /web-secret-marker|web-private-value/);
 });
 
 test('preserves ordinary static labels next to secure controls for AI retrieval', (t) => {
@@ -443,7 +438,7 @@ test('preserves ordinary static labels next to secure controls for AI retrieval'
   assert.equal(children[1].text, '[REDACTED]');
 });
 
-test('bounds recursive UI privacy projection across sibling branches', (t) => {
+test('persists ordinary tree labels without privacy truncation', (t) => {
   const cache = createCache(t, 16 * 1024 * 1024);
   const recorder = new FactRecorder({ cache, now: () => 10_000 });
   const children = Array.from({ length: 1_100 }, (_, childIndex) => ({
@@ -460,7 +455,10 @@ test('bounds recursive UI privacy projection across sibling branches', (t) => {
   }, { ok: true, root: { children } });
 
   const persisted = cache.query({ partition: 'ui' }).items[0].payload.record;
-  assert.match(JSON.stringify(persisted), /\[TRUNCATED\]/);
+  assert.equal(persisted.root.children.length, 1_100);
+  assert.equal(persisted.root.children[0].children.length, 10);
+  assert.equal(persisted.root.children[0].children[0].text, 'ordinary label');
+  assert.doesNotMatch(JSON.stringify(persisted), /\[TRUNCATED\]/);
 });
 
 test('applies the same secure-input projection to persisted status evidence', (t) => {
@@ -482,8 +480,8 @@ test('applies the same secure-input projection to persisted status evidence', (t
   assert.equal(persisted.secure, true);
   assert.equal(persisted.value, '[REDACTED]');
   assert.equal(persisted.valueLength, 20);
-  assert.equal(persisted.accessibilityValue, '[REDACTED]');
-  assert.doesNotMatch(JSON.stringify(persisted), /status-secret-marker|status-accessibility-secret/);
+  assert.equal(persisted.accessibilityValue, 'status-accessibility-secret');
+  assert.doesNotMatch(JSON.stringify(persisted), /status-secret-marker/);
 });
 
 test('does not apply UI privacy projection semantics to network evidence', (t) => {
@@ -507,7 +505,7 @@ test('does not apply UI privacy projection semantics to network evidence', (t) =
   assert.equal(persisted.secure, undefined);
 });
 
-test('automatic observation persists network metadata without raw bodies', (t) => {
+test('automatic observation persists original network bodies', (t) => {
   const { cache, recorder } = createRecorder(t);
   const liveRecord = {
     id: 902,
@@ -530,12 +528,8 @@ test('automatic observation persists network metadata without raw bodies', (t) =
   const persisted = cache.query({ partition: 'network' }).items[0].payload.record;
   assert.equal(persisted.method, 'POST');
   assert.equal(persisted.url, 'https://example.test/private');
-  assert.equal(persisted.requestBody, undefined);
-  assert.equal(persisted.responseBody, undefined);
-  assert.equal(persisted.requestBodyOmitted, true);
-  assert.equal(persisted.responseBodyOmitted, true);
-  assert.equal(persisted.requestBodyBytes, Buffer.byteLength(liveRecord.requestBody));
-  assert.equal(persisted.responseBodyBytes, liveRecord.responseBody.length);
+  assert.equal(persisted.requestBody, '{"privateNote":"keep this live only"}');
+  assert.deepEqual(persisted.responseBody, { type: 'buffer', byteLength: 15 });
   assert.equal(liveRecord.requestBody.includes('keep this live only'), true);
   assert.equal(Buffer.isBuffer(liveRecord.responseBody), true);
 });

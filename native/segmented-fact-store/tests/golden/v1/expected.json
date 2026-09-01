@@ -1,0 +1,40 @@
+{
+  "formatVersion": 1,
+  "segmentSize": 512,
+  "nextSequence": 4,
+  "recordCount": 3,
+  "payloadBytes": 10,
+  "partitions": {
+    "0": {
+      "quotaBytes": 1024,
+      "segmentCount": 1,
+      "records": [
+        {
+          "sequence": 1,
+          "segmentId": 1,
+          "frameOffset": 64,
+          "payloadHex": "00017f80ff"
+        },
+        {
+          "sequence": 3,
+          "segmentId": 1,
+          "frameOffset": 104,
+          "payloadHex": ""
+        }
+      ]
+    },
+    "1": {
+      "quotaBytes": 1024,
+      "segmentCount": 1,
+      "records": [
+        {
+          "sequence": 2,
+          "segmentId": 1,
+          "frameOffset": 64,
+          "payloadHex": "68656c6c6f"
+        }
+      ]
+    }
+  },
+  "globalSequenceOrder": [1, 2, 3]
+}

@@ -2,12 +2,12 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { normalizePersistentFact } = require('./fact-codec');
 
 const DEFAULT_BUDGET_BYTES = 512 * 1024 * 1024;
 const DEFAULT_MMAP_BYTES = DEFAULT_BUDGET_BYTES;
 const SOFT_QUOTA_RATIO = 0.9;
 const GIB = 1024 * 1024 * 1024;
-const REDACTED = '[REDACTED]';
 const FACT_CACHE_PROFILES = Object.freeze({
   '512mb': 512 * 1024 * 1024,
   '256mb': 256 * 1024 * 1024,
@@ -623,128 +623,7 @@ class FactCache {
 }
 
 function normalizeFact(fact) {
-  if (!fact || typeof fact !== 'object' || Array.isArray(fact)) {
-    throw new TypeError('fact must be an object');
-  }
-  const now = Date.now();
-  const timestamps = fact.timestamps && typeof fact.timestamps === 'object' ? fact.timestamps : {};
-  return {
-    partition: requiredString(fact.partition, 'partition'),
-    targetKey: requiredString(fact.targetKey, 'targetKey'),
-    app: sanitizeValue(fact.app === undefined ? {} : fact.app, 'app'),
-    runtimeEpoch: requiredString(fact.runtimeEpoch, 'runtimeEpoch'),
-    actionId: fact.actionId === undefined || fact.actionId === null ? null : String(fact.actionId),
-    dedupeKey: fact.dedupeKey === undefined || fact.dedupeKey === null
-      ? null
-      : normalizeDedupeKey(fact.dedupeKey),
-    timestamps: {
-      occurredAtMs: finiteInteger(timestamps.occurredAtMs, now, 'timestamps.occurredAtMs'),
-      observedAtMs: finiteInteger(timestamps.observedAtMs, now, 'timestamps.observedAtMs'),
-      ingestedAtMs: now,
-    },
-    payload: sanitizeValue(fact.payload === undefined ? null : fact.payload, 'payload'),
-  };
-}
-
-function sanitizeValue(value, key = '', ancestors = new WeakSet()) {
-  if (isSensitiveKey(key)) return REDACTED;
-  if (value === null || value === undefined) return value === undefined ? null : value;
-  if (typeof value === 'string') return sanitizeString(value, key);
-  if (typeof value === 'bigint') return value.toString();
-  if (typeof value !== 'object') return value;
-  if (value instanceof Date) return value.toISOString();
-  if (ancestors.has(value)) throw new TypeError('fact must be JSON-serializable without cycles');
-  ancestors.add(value);
-  let result;
-  if (Array.isArray(value)) {
-    result = value.map((entry) => sanitizeValue(entry, key, ancestors));
-  } else {
-    result = {};
-    for (const [childKey, childValue] of Object.entries(value)) {
-      result[childKey] = sanitizeValue(childValue, childKey, ancestors);
-    }
-  }
-  ancestors.delete(value);
-  return result;
-}
-
-function sanitizeString(value, key) {
-  const trimmed = value.trim();
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (parsed && typeof parsed === 'object') {
-        value = JSON.stringify(sanitizeValue(parsed));
-      }
-    } catch (_) {
-      // Preserve non-JSON text and apply the bounded inline rules below.
-    }
-  }
-  if (looksLikeUrlKey(key)) {
-    try {
-      const url = new URL(value);
-      for (const parameter of [...url.searchParams.keys()]) {
-        if (isSensitiveKey(parameter)) url.searchParams.set(parameter, REDACTED);
-      }
-      value = url.toString();
-    } catch (_) {
-      // Non-absolute URL-like values still receive credential pattern redaction below.
-    }
-  }
-  let sanitized = value.replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, '$1 [REDACTED]');
-  // Device/app logs are intentionally unstructured, so key-based object
-  // redaction is not enough. Scrub common header and assignment forms before
-  // any string becomes observable through the cache.
-  sanitized = sanitized.replace(
-    /(\b(?:authorization|proxy[-_ ]?authorization|cookie|set[-_ ]?cookie)\b\s*[:=]\s*)[^\r\n]*/gi,
-    '$1[REDACTED]',
-  );
-  const assignmentPattern = /((?:["']?)(?:password|passwd|passcode|client[-_ ]?secret|api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|id[-_ ]?token|session[-_ ]?token|secret|token|credentials?)(?:["']?)\s*[:=]\s*)("[^"\r\n]*"|'[^'\r\n]*'|[^\s,;&#"'{}\[\]]+)/gi;
-  sanitized = sanitized.replace(assignmentPattern, (_match, prefix, secretValue) => {
-    const unquotedValue = secretValue.replace(/^["']|["']$/g, '');
-    if (unquotedValue === REDACTED || /^%5bredacted%5d$/i.test(unquotedValue)) {
-      return _match;
-    }
-    const quote = secretValue.length >= 2
-      && (secretValue[0] === '"' || secretValue[0] === "'")
-      && secretValue.at(-1) === secretValue[0]
-      ? secretValue[0]
-      : '';
-    return `${prefix}${quote}${REDACTED}${quote}`;
-  });
-  return sanitized;
-}
-
-function isSensitiveKey(key) {
-  const normalized = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
-  return [
-    'authorization',
-    'proxyauthorization',
-    'cookie',
-    'setcookie',
-    'password',
-    'passwd',
-    'passcode',
-    'secret',
-    'clientsecret',
-    'apikey',
-    'token',
-    'accesstoken',
-    'refreshtoken',
-    'idtoken',
-    'sessiontoken',
-    'credential',
-    'credentials',
-  ].includes(normalized)
-    || normalized.endsWith('password')
-    || normalized.endsWith('secret')
-    || normalized.endsWith('token')
-    || normalized === 'privatekey';
-}
-
-function looksLikeUrlKey(key) {
-  const normalized = String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
-  return normalized === 'url' || normalized === 'uri' || normalized.endsWith('url') || normalized.endsWith('uri');
+  return normalizePersistentFact(fact);
 }
 
 function resolveSqliteModule(options) {

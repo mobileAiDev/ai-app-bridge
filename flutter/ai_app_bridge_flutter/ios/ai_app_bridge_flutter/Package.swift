@@ -18,11 +18,30 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "SegmentedFactStoreC",
+            path: "Sources/SegmentedFactStoreC",
+            publicHeadersPath: "include"
+        ),
+        .target(
+            name: "AiAppBridgeFactStoreC",
+            dependencies: ["SegmentedFactStoreC"],
+            path: "Sources/AiAppBridgeFactStoreC",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .linkedFramework("Foundation")
+            ]
+        ),
+        .target(
             name: "ai_app_bridge_flutter",
             dependencies: [
-                .product(name: "FlutterFramework", package: "FlutterFramework")
+                .product(name: "FlutterFramework", package: "FlutterFramework"),
+                "AiAppBridgeFactStoreC"
             ],
-            path: "Sources"
+            path: "Sources",
+            exclude: [
+                "SegmentedFactStoreC",
+                "AiAppBridgeFactStoreC"
+            ]
         )
     ]
 )
