@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="org.wikipedia" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][1080,2400]">
+    <node index="0" text="Explore" resource-id="org.wikipedia:id/title" class="android.widget.TextView" package="org.wikipedia" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" bounds="[48,96][400,160]"/>
+    <node index="1" text="" resource-id="org.wikipedia:id/search" class="android.widget.EditText" package="org.wikipedia" content-desc="Search Wikipedia" checkable="false" checked="false" clickable="true" enabled="true" bounds="[48,180][1032,260]"/>
+    <node index="2" text="Saved" resource-id="org.wikipedia:id/saved" class="android.widget.Button" package="org.wikipedia" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" selected="true" bounds="[0,2280][360,2400]"/>
+  </node>
+</hierarchy>

@@ -13,6 +13,18 @@ function payloadOf(result) {
   return JSON.parse(result.content[0].text);
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function nextTurn() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function createSqliteCache(t, budgetBytes = 1024 * 1024) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-mcp-execution-'));
   const cache = new FactCache({ directory, budgetBytes });
@@ -56,6 +68,41 @@ test('MCP execution uses the in-process target actor and keeps compatibility ali
     y: 0,
   });
   assert.deepEqual(duplicate, first);
+});
+
+test('MCP legacy execution keeps same-serial different-package concurrency', async () => {
+  const gate = deferred();
+  const starts = [];
+  const dependencies = {
+    targetExecution: new TargetExecution(),
+    rawRunner: async (_command, args) => {
+      starts.push(args.packageName);
+      await gate.promise;
+      return { ok: true, packageName: args.packageName };
+    },
+  };
+
+  const first = runBridgeChecked('tap', {
+    serial: 'android-1',
+    packageName: 'com.example.first',
+    feedback: 'off',
+  }, dependencies);
+  const second = runBridgeChecked('tap', {
+    serial: 'android-1',
+    packageName: 'com.example.second',
+    feedback: 'off',
+  }, dependencies);
+
+  await nextTurn();
+  try {
+    assert.deepEqual(
+      new Set(starts),
+      new Set(['com.example.first', 'com.example.second']),
+    );
+  } finally {
+    gate.resolve();
+    await Promise.allSettled([first, second]);
+  }
 });
 
 test('MCP execution preserves an empty input value for clearing a field', async () => {

@@ -270,13 +270,8 @@ async function main() {
   writeCliResult(result);
 }
 
-async function executeCommand(command, options = {}) {
-  const resolvedCommand = command || options.command || 'status';
-  if (isIOSCommand(resolvedCommand)) {
-    return new IOSBridgeProvider().run(resolvedCommand, options);
-  }
-
-  const ctx = {
+function createBridgeContext(options = {}) {
+  return {
     adb: options.adb || defaults.adb,
     adbTimeoutMs: Number(options.adbTimeoutMs || defaults.adbTimeoutMs),
     serial: options.serial || defaults.serial,
@@ -287,8 +282,15 @@ async function executeCommand(command, options = {}) {
     nativeActivity: options.nativeActivity || defaults.nativeActivity,
     flutterActivity: options.flutterActivity || defaults.flutterActivity,
   };
+}
 
-  return runCommand(resolvedCommand, options, ctx);
+async function executeCommand(command, options = {}) {
+  const resolvedCommand = command || options.command || 'status';
+  if (isIOSCommand(resolvedCommand)) {
+    return new IOSBridgeProvider().run(resolvedCommand, options);
+  }
+
+  return runCommand(resolvedCommand, options, createBridgeContext(options));
 }
 
 function writeCliResult(result) {
@@ -2089,6 +2091,22 @@ async function uiaTree(ctx) {
     await adb(ctx, ['shell', 'uiautomator', 'dump', remotePath]);
     return (await adb(ctx, ['exec-out', 'cat', remotePath])).stdout;
   }, 4, 500), {
+    timeoutMs: Number(process.env.AI_APP_BRIDGE_UIA_LOCK_TIMEOUT_MS || 30000),
+    staleMs: Number(process.env.AI_APP_BRIDGE_UIA_LOCK_STALE_MS || 120000),
+  });
+}
+
+async function uiaTreeOnce(ctx) {
+  const remotePath = '/sdcard/ai_app_window.xml';
+  return withFileLock(uiautomatorLockPath(ctx), async () => {
+    await adb(ctx, ['shell', 'rm', '-f', remotePath]);
+    const dumped = await adb(ctx, ['shell', 'uiautomator', 'dump', remotePath]);
+    const dumpOutput = `${dumped.stdout || ''}\n${dumped.stderr || ''}`;
+    if (/could not get idle state/i.test(dumpOutput)) {
+      throw new Error('uiautomator_dump_failed');
+    }
+    return (await adb(ctx, ['exec-out', 'cat', remotePath])).stdout;
+  }, {
     timeoutMs: Number(process.env.AI_APP_BRIDGE_UIA_LOCK_TIMEOUT_MS || 30000),
     staleMs: Number(process.env.AI_APP_BRIDGE_UIA_LOCK_STALE_MS || 120000),
   });
@@ -4564,6 +4582,19 @@ function requiredNumber(value, name) {
 
 module.exports = {
   buildBridgeFailureResult,
+  bridgeTree,
+  createBridgeContext,
+  flutterAction,
+  flutterNodes,
+  tapText,
+  tapUiaText,
+  launchApp,
+  launchFlutter,
+  launchNativeTest,
+  keyevent,
+  uiaTree,
+  uiaTreeOnce,
+  findUiaNodeByAny,
   bridgeRequestWithCachedForward,
   bridgeNodeTarget,
   clearAppDataAdbArgs,
@@ -4609,6 +4640,7 @@ module.exports = {
   shouldUseDefaultPortFallback,
   screenshotOutputPath,
   statusSearchText,
+  swipe,
   tap,
   uiautomatorLockPath,
   verifyBridgeTargetPackage,

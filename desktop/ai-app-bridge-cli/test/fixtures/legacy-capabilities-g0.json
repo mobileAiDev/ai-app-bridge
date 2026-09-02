@@ -1,0 +1,1406 @@
+{
+  "headHint": "3b33e9e",
+  "commandDomains": {
+    "core": "status, tree, uia-tree, screenshot, logs, network, state, events",
+    "app": "install-apk, clear-app-data, launch-*, freeze-app/thaw-app, permission-*, appops-set",
+    "action": "tap, tap-text, tap-uia-text, input-text, swipe, keyevent, wait-text, keyboard-state, hide-keyboard",
+    "flutter": "flutter-tree, flutter-nodes, flutter-action, tap/input/scroll Flutter controls",
+    "webview": "h5-*, flutter-h5-*, webview-pages, webview-network, webview-console",
+    "ios": "ios-devices, ios-doctor, ios-setup, ios runtime evidence, ios-uia-tree/tap/input/swipe, ios-h5-*, ios-flutter-*",
+    "web": "web-session-start, web-sessions, web-status, web-dom, web-logs, web-network, web-state, web-events, web-command, web-click, web-input, web-wait, web-scroll",
+    "diagnostics": "logcat, smoke",
+    "advanced": "batch, forward, remove-forward"
+  },
+  "supportedTargets": [
+    "Android native apps",
+    "Android WebView/H5/CDP",
+    "Flutter apps on Android and iOS",
+    "iOS native apps via AiAppBridgeIOS + WebDriverAgent/XCUITest",
+    "WKWebView",
+    "desktop Web Bridge sessions"
+  ],
+  "usage": "AI App Bridge supports Android native apps; Android WebView/H5/CDP; Flutter apps on Android and iOS; iOS native apps via AiAppBridgeIOS + WebDriverAgent/XCUITest; WKWebView; desktop Web Bridge sessions. Default MCP surface is compact: call capabilities to discover domains, commands, and options, then call run with the selected command and arguments. Use run with one of these command names. Prefer packageName for Android app commands, bundleId/deviceId for iOS, and sessionId/targetId for Web Bridge sessions.",
+  "domains": {
+    "core": [
+      {
+        "command": "status",
+        "summary": "Read bridge status, app/device metadata, capture counts, and Flutter summary.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "packageName",
+          "port",
+          "serial",
+          "full"
+        ]
+      },
+      {
+        "command": "tree",
+        "summary": "Read Android View tree from the in-app bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "packageName",
+          "port",
+          "serial",
+          "compact",
+          "textFilter",
+          "resourceIdFilter",
+          "classFilter",
+          "visibleOnly",
+          "maxNodes",
+          "maxDepth",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "uia-tree",
+        "summary": "Read UIAutomator XML for the current foreground window.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "compact",
+          "textFilter",
+          "resourceIdFilter",
+          "classFilter",
+          "visibleOnly",
+          "maxNodes",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "screenshot",
+        "summary": "Capture a screenshot, with foreground package verification when packageName is supplied.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "packageName",
+          "outFile",
+          "artifactDir",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "logs",
+        "summary": "Read in-app log records from the bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "packageName",
+          "port",
+          "serial",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "network",
+        "summary": "Read in-app network records from the bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "packageName",
+          "port",
+          "serial",
+          "compact",
+          "urlFilter",
+          "method",
+          "statusCode",
+          "noBodies",
+          "bodyMaxBytes",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "state",
+        "summary": "Read in-app state records from the bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "packageName",
+          "port",
+          "serial",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "events",
+        "summary": "Read in-app event records from the bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "packageName",
+          "port",
+          "serial",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "includeActions",
+          "history",
+          "factCursor"
+        ]
+      }
+    ],
+    "diagnostics": [
+      {
+        "command": "logcat",
+        "summary": "Read Android logcat with optional app pid, tag, level, and grep filters.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "packageName",
+          "pid",
+          "appPid",
+          "tag",
+          "level",
+          "grep",
+          "lines",
+          "since",
+          "follow",
+          "durationSec",
+          "clear",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "smoke",
+        "summary": "Run the native sample smoke test.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "packageName",
+          "outFile",
+          "artifactDir",
+          "skipFlutterLaunch"
+        ]
+      }
+    ],
+    "app": [
+      {
+        "command": "install-apk",
+        "summary": "Install an APK and assist device-side installer confirmation screens.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "packageName",
+          "apkPath",
+          "allowDowngrade",
+          "streaming",
+          "installTimeoutMs",
+          "installerTimeoutMs",
+          "intervalMs"
+        ]
+      },
+      {
+        "command": "clear-app-data",
+        "summary": "Clear target app local data through the bridge runtime.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName"
+        ]
+      },
+      {
+        "command": "freeze-app",
+        "summary": "Optionally stop target app processes with SIGSTOP when dynamic UI needs stable evidence.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "pid"
+        ]
+      },
+      {
+        "command": "thaw-app",
+        "summary": "Resume target app processes with SIGCONT before reads, waits, captures, actions, or final handoff.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "pid"
+        ]
+      },
+      {
+        "command": "launch-app",
+        "summary": "Launch the target package LAUNCHER Activity and report launcher candidates.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "activity",
+          "component",
+          "action",
+          "category",
+          "data",
+          "extra"
+        ]
+      },
+      {
+        "command": "launch-activity",
+        "summary": "Launch an explicit Android Activity component with optional string extras.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "activity",
+          "component",
+          "action",
+          "category",
+          "data",
+          "extra"
+        ]
+      },
+      {
+        "command": "launch-native-test",
+        "summary": "Launch the debug native bridge test Activity.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName"
+        ]
+      },
+      {
+        "command": "launch-flutter",
+        "summary": "Launch the Flutter Activity, optionally with an initial route.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "initialRoute"
+        ]
+      },
+      {
+        "command": "permission-state",
+        "summary": "Read Android runtime permission state.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "permission"
+        ]
+      },
+      {
+        "command": "permission-grant",
+        "summary": "Grant an Android runtime permission.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "permission"
+        ]
+      },
+      {
+        "command": "permission-revoke",
+        "summary": "Revoke an Android runtime permission.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "permission"
+        ]
+      },
+      {
+        "command": "permission-dialog",
+        "summary": "Tap a visible Android permission dialog allow button.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "targetText",
+          "buttonText",
+          "resourceId",
+          "attempts",
+          "intervalMs",
+          "exact"
+        ]
+      },
+      {
+        "command": "appops-set",
+        "summary": "Set an Android app-op mode.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "op",
+          "mode"
+        ]
+      }
+    ],
+    "action": [
+      {
+        "command": "tap",
+        "summary": "Tap device coordinates through ADB.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "tapX",
+          "tapY"
+        ]
+      },
+      {
+        "command": "tap-text",
+        "summary": "Tap a visible Android View node by text/contentDescription through the bridge tree.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "targetText",
+          "noAutoHideKeyboard"
+        ]
+      },
+      {
+        "command": "tap-uia-text",
+        "summary": "Tap a UIAutomator node by text without relying on the in-app tree.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "targetText",
+          "exact"
+        ]
+      },
+      {
+        "command": "wait-text",
+        "summary": "Wait until text appears in bridge status/tree or UIAutomator output.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "targetText",
+          "timeoutSec",
+          "requireText",
+          "absentText",
+          "requireActivity"
+        ]
+      },
+      {
+        "command": "input-text",
+        "summary": "Set native Android text through the in-app bridge; use this for Chinese/Unicode.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "text",
+          "tapX",
+          "tapY",
+          "hideKeyboard"
+        ]
+      },
+      {
+        "command": "keyboard-state",
+        "summary": "Read Android soft keyboard visibility.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial"
+        ]
+      },
+      {
+        "command": "hide-keyboard",
+        "summary": "Hide the Android soft keyboard.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "force",
+          "intervalMs"
+        ]
+      },
+      {
+        "command": "swipe",
+        "summary": "Swipe device coordinates through ADB.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "startX",
+          "startY",
+          "endX",
+          "endY",
+          "durationMs"
+        ]
+      },
+      {
+        "command": "keyevent",
+        "summary": "Send an Android keyevent through ADB.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "keyCode"
+        ]
+      }
+    ],
+    "flutter": [
+      {
+        "command": "flutter-tree",
+        "summary": "Read the latest Flutter layout snapshot.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "port",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "flutter-nodes",
+        "summary": "Read Flutter operable nodes.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "port",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "flutter-action",
+        "summary": "Dispatch a raw Flutter action payload.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "payload"
+        ]
+      },
+      {
+        "command": "tap-flutter-text",
+        "summary": "Tap a Flutter node by visible text.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "targetText"
+        ]
+      },
+      {
+        "command": "input-flutter-text",
+        "summary": "Set Flutter TextField text through the Flutter action bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "text",
+          "tapX",
+          "tapY",
+          "hideKeyboard"
+        ]
+      },
+      {
+        "command": "scroll-flutter",
+        "summary": "Scroll Flutter content by delta or until text is visible.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "targetText",
+          "delta",
+          "maxSwipes"
+        ]
+      }
+    ],
+    "webview": [
+      {
+        "command": "h5-dom",
+        "summary": "Read native Android WebView DOM.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "port",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "h5-eval",
+        "summary": "Execute JavaScript in the current native Android WebView.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "script"
+        ]
+      },
+      {
+        "command": "h5-click",
+        "summary": "Click a native WebView element by selector or text.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "exact"
+        ]
+      },
+      {
+        "command": "h5-input",
+        "summary": "Set text in a native WebView input.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "value",
+          "exact"
+        ]
+      },
+      {
+        "command": "h5-wait",
+        "summary": "Wait for native WebView text or selector.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "timeoutSec",
+          "intervalMs"
+        ]
+      },
+      {
+        "command": "h5-scroll",
+        "summary": "Scroll native WebView content or a DOM element into view.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "deltaX",
+          "deltaY"
+        ]
+      },
+      {
+        "command": "flutter-h5-dom",
+        "summary": "Read DOM through a Flutter H5 adapter.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "port"
+        ]
+      },
+      {
+        "command": "flutter-h5-eval",
+        "summary": "Execute JavaScript through a Flutter H5 adapter.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "script"
+        ]
+      },
+      {
+        "command": "flutter-h5-click",
+        "summary": "Click a Flutter H5 DOM element.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "exact"
+        ]
+      },
+      {
+        "command": "flutter-h5-input",
+        "summary": "Set text in a Flutter H5 input.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "value",
+          "exact"
+        ]
+      },
+      {
+        "command": "flutter-h5-wait",
+        "summary": "Wait for Flutter H5 text or selector.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "timeoutSec",
+          "intervalMs"
+        ]
+      },
+      {
+        "command": "flutter-h5-scroll",
+        "summary": "Scroll Flutter H5 content or a DOM element into view.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "selector",
+          "targetText",
+          "deltaX",
+          "deltaY"
+        ]
+      },
+      {
+        "command": "webview-pages",
+        "summary": "List attachable Android WebView DevTools/CDP pages.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "webviewPort",
+          "socketName",
+          "targetId",
+          "pageUrlFilter",
+          "keepForward"
+        ]
+      },
+      {
+        "command": "webview-network",
+        "summary": "Capture WebView Network events through CDP.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "webviewPort",
+          "socketName",
+          "targetId",
+          "pageUrlFilter",
+          "urlFilter",
+          "durationMs",
+          "script",
+          "includeResponseBody",
+          "bodyMaxBytes",
+          "maxEvents"
+        ]
+      },
+      {
+        "command": "webview-console",
+        "summary": "Capture WebView console/log events through CDP.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "webviewPort",
+          "socketName",
+          "targetId",
+          "pageUrlFilter",
+          "durationMs",
+          "script",
+          "maxEvents"
+        ]
+      }
+    ],
+    "ios": [
+      {
+        "command": "ios-doctor",
+        "summary": "Check Xcode, connected iPhone, AiAppBridgeIOS runtime, and WebDriverAgent readiness.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "wdaUrl"
+        ]
+      },
+      {
+        "command": "ios-setup",
+        "summary": "Verify full-control iOS setup; can install/launch the app and start WDA when signing inputs are supplied.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "appPath",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "wdaUrl",
+          "wdaProjectPath",
+          "wdaBundleId",
+          "teamId",
+          "startWda"
+        ]
+      },
+      {
+        "command": "ios-devices",
+        "summary": "List iOS devices known to xcrun devicectl.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "deviceId"
+        ]
+      },
+      {
+        "command": "ios-install-app",
+        "summary": "Install an iOS .app bundle through devicectl.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "appPath"
+        ]
+      },
+      {
+        "command": "ios-launch-app",
+        "summary": "Launch an iOS app by bundle identifier through devicectl.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "terminateExisting"
+        ]
+      },
+      {
+        "command": "ios-status",
+        "summary": "Read AiAppBridgeIOS runtime status.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl"
+        ]
+      },
+      {
+        "command": "ios-tree",
+        "summary": "Read UIKit tree from the AiAppBridgeIOS runtime.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-logs",
+        "summary": "Read in-app iOS log records.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-network",
+        "summary": "Read in-app iOS network records.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-state",
+        "summary": "Read in-app iOS state records.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-events",
+        "summary": "Read in-app iOS event records.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "includeActions",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-h5-dom",
+        "summary": "Read WKWebView DOM from the AiAppBridgeIOS runtime.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-h5-eval",
+        "summary": "Execute JavaScript in WKWebView through the AiAppBridgeIOS runtime.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "script"
+        ]
+      },
+      {
+        "command": "ios-flutter-tree",
+        "summary": "Read Flutter iOS layout snapshot from the runtime.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-flutter-nodes",
+        "summary": "Read Flutter iOS operable nodes from the runtime.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-flutter-action",
+        "summary": "Dispatch a Flutter iOS action through the runtime.",
+        "targetApp": false,
+        "targetKind": "ios-app",
+        "options": [
+          "deviceId",
+          "bundleId",
+          "iosHost",
+          "iosPort",
+          "runtimeUrl",
+          "payload"
+        ]
+      },
+      {
+        "command": "ios-screenshot",
+        "summary": "Capture an iOS device screenshot through devicectl.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "deviceId",
+          "outFile",
+          "artifactDir",
+          "displayUniqueId",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-wda-status",
+        "summary": "Check WebDriverAgent status.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "wdaUrl"
+        ]
+      },
+      {
+        "command": "ios-uia-tree",
+        "summary": "Read the XCUITest/WebDriverAgent UI tree.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "bundleId",
+          "wdaUrl",
+          "wdaSessionId",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "ios-tap",
+        "summary": "Tap iOS device coordinates through WebDriverAgent.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "bundleId",
+          "wdaUrl",
+          "wdaSessionId",
+          "tapX",
+          "tapY"
+        ]
+      },
+      {
+        "command": "ios-input",
+        "summary": "Type text through WebDriverAgent, optionally tapping coordinates first.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "bundleId",
+          "wdaUrl",
+          "wdaSessionId",
+          "text",
+          "tapX",
+          "tapY",
+          "accessibilityId",
+          "elementId",
+          "clearFirst"
+        ]
+      },
+      {
+        "command": "ios-swipe",
+        "summary": "Swipe through WebDriverAgent.",
+        "targetApp": false,
+        "targetKind": "ios-device",
+        "options": [
+          "bundleId",
+          "wdaUrl",
+          "wdaSessionId",
+          "startX",
+          "startY",
+          "endX",
+          "endY",
+          "durationMs"
+        ]
+      }
+    ],
+    "web": [
+      {
+        "command": "web-provider-status",
+        "summary": "Read desktop Web Bridge provider status.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": []
+      },
+      {
+        "command": "web-session-start",
+        "summary": "Start the desktop Web Bridge WebSocket session server.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "host",
+          "webPort",
+          "path",
+          "token"
+        ]
+      },
+      {
+        "command": "web-connect-info",
+        "summary": "Read the Web Bridge endpoint and token for SDK clients.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": []
+      },
+      {
+        "command": "web-sessions",
+        "summary": "List connected Web Bridge SDK sessions.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": []
+      },
+      {
+        "command": "web-status",
+        "summary": "Read status and capture counts for a Web Bridge session.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId"
+        ]
+      },
+      {
+        "command": "web-dom",
+        "summary": "Read or refresh a Web Bridge DOM snapshot.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "targetId",
+          "selector",
+          "refresh",
+          "timeoutMs",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "web-logs",
+        "summary": "Read Web Bridge log records.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "web-network",
+        "summary": "Read Web Bridge network records.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "web-state",
+        "summary": "Read Web Bridge state records.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "web-events",
+        "summary": "Read Web Bridge event records.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "sinceId",
+          "sinceMs",
+          "limit",
+          "includeActions",
+          "history",
+          "factCursor"
+        ]
+      },
+      {
+        "command": "web-command",
+        "summary": "Run a whitelisted command in a connected Web Bridge SDK session.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "targetId",
+          "name",
+          "arguments",
+          "timeoutMs"
+        ]
+      },
+      {
+        "command": "web-click",
+        "summary": "Click a DOM element through the Web Bridge SDK command path.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "targetId",
+          "selector",
+          "targetText",
+          "timeoutMs"
+        ]
+      },
+      {
+        "command": "web-input",
+        "summary": "Set text in a DOM input through the Web Bridge SDK command path.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "targetId",
+          "selector",
+          "value",
+          "timeoutMs"
+        ]
+      },
+      {
+        "command": "web-wait",
+        "summary": "Wait for text or selector through the Web Bridge SDK command path.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "targetId",
+          "selector",
+          "targetText",
+          "timeoutMs"
+        ]
+      },
+      {
+        "command": "web-scroll",
+        "summary": "Scroll a Web Bridge DOM target.",
+        "targetApp": false,
+        "targetKind": "web-target",
+        "options": [
+          "sessionId",
+          "targetId",
+          "selector",
+          "deltaX",
+          "deltaY",
+          "timeoutMs"
+        ]
+      }
+    ],
+    "advanced": [
+      {
+        "command": "forward",
+        "summary": "Create the ADB port forward for the bridge.",
+        "targetApp": true,
+        "targetKind": "android-app",
+        "options": [
+          "serial",
+          "packageName",
+          "port"
+        ]
+      },
+      {
+        "command": "remove-forward",
+        "summary": "Remove the ADB port forward for the bridge.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "serial",
+          "port"
+        ]
+      },
+      {
+        "command": "batch",
+        "summary": "Run multiple AI App Bridge commands serially in one MCP call.",
+        "targetApp": false,
+        "targetKind": "none",
+        "options": [
+          "defaults",
+          "steps",
+          "stopOnError",
+          "includeRaw",
+          "maxRawChars"
+        ]
+      }
+    ]
+  },
+  "compactTools": [
+    "capabilities",
+    "run"
+  ],
+  "fullTools": [
+    "status",
+    "tree",
+    "flutter_tree",
+    "flutter_nodes",
+    "tap_flutter_text",
+    "input_flutter_text",
+    "h5_dom",
+    "h5_eval",
+    "h5_click",
+    "h5_input",
+    "h5_wait",
+    "h5_scroll",
+    "flutter_h5_dom",
+    "flutter_h5_eval",
+    "flutter_h5_click",
+    "flutter_h5_input",
+    "flutter_h5_wait",
+    "flutter_h5_scroll",
+    "logs",
+    "freeze_app",
+    "thaw_app",
+    "logcat",
+    "network",
+    "webview_pages",
+    "webview_network",
+    "webview_console",
+    "state",
+    "events",
+    "uia_tree",
+    "screenshot",
+    "install_apk",
+    "clear_app_data",
+    "launch_app",
+    "launch_activity",
+    "launch_native_test",
+    "launch_flutter",
+    "tap",
+    "tap_text",
+    "wait_text",
+    "input_text",
+    "keyboard_state",
+    "hide_keyboard",
+    "swipe",
+    "keyevent",
+    "permission_state",
+    "permission_grant",
+    "permission_revoke",
+    "appops_set",
+    "tap_uia_text",
+    "permission_dialog",
+    "run_smoke"
+  ],
+  "legacyTools": [
+    "status",
+    "tree",
+    "flutter_tree",
+    "flutter_nodes",
+    "tap_flutter_text",
+    "input_flutter_text",
+    "h5_dom",
+    "h5_eval",
+    "h5_click",
+    "h5_input",
+    "h5_wait",
+    "h5_scroll",
+    "flutter_h5_dom",
+    "flutter_h5_eval",
+    "flutter_h5_click",
+    "flutter_h5_input",
+    "flutter_h5_wait",
+    "flutter_h5_scroll",
+    "logs",
+    "freeze_app",
+    "thaw_app",
+    "logcat",
+    "network",
+    "webview_pages",
+    "webview_network",
+    "webview_console",
+    "state",
+    "events",
+    "uia_tree",
+    "screenshot",
+    "install_apk",
+    "clear_app_data",
+    "launch_app",
+    "launch_activity",
+    "launch_native_test",
+    "launch_flutter",
+    "tap",
+    "tap_text",
+    "wait_text",
+    "input_text",
+    "keyboard_state",
+    "hide_keyboard",
+    "swipe",
+    "keyevent",
+    "permission_state",
+    "permission_grant",
+    "permission_revoke",
+    "appops_set",
+    "tap_uia_text",
+    "permission_dialog",
+    "run_smoke"
+  ]
+}

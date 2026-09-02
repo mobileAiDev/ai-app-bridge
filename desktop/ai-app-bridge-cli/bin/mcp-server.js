@@ -13,6 +13,9 @@ const { ObservationCollector } = require('./observation-collector');
 const { WebBridgeProvider } = require('./web-provider');
 const { TargetExecution } = require('./target-execution');
 const { defaultArtifactDirectory } = require('./artifact-paths');
+const { createCommandRouter, isolatedCommandDefinitions } = require('./command-router');
+const { createLegacyDispatcher } = require('./legacy/legacy-dispatcher');
+const { createHistorySink } = require('./legacy/history-sink');
 const bridgeDir = __dirname;
 const cliScript = path.join(bridgeDir, 'ai-app-bridge.js');
 const nodeBinary = process.env.AI_APP_BRIDGE_NODE || process.execPath;
@@ -93,6 +96,7 @@ const mutationCommands = new Set([
 ]);
 let sharedFactCache = null;
 let sharedFactRecorder = null;
+let sharedHistorySink = null;
 let sharedObservationCollector = null;
 let factCacheCloseInstalled = false;
 let internalActionSequence = 0;
@@ -701,6 +705,40 @@ const commandDefinitions = [
 ];
 
 const commandByName = new Map(commandDefinitions.map((definition) => [definition.command, definition]));
+const isolatedByName = new Map(isolatedCommandDefinitions.map((definition) => [definition.command, definition]));
+const legacyDispatcher = createLegacyDispatcher((command, args) => {
+  if (command === 'batch') {
+    return runBatch(args);
+  }
+  return runBridgeChecked(command, args);
+});
+const commandRouter = createCommandRouter({
+  loadScript: () => wrapIsolatedEntry(require('./script/script-entry'), 'script'),
+  loadIntent: () => wrapIsolatedEntry(require('./intent/intent-entry'), 'intent'),
+  legacyDispatch: (command, args) => legacyDispatcher.dispatch(command, args),
+});
+
+function wrapIsolatedEntry(entry, namespace) {
+  return {
+    handle(args) {
+      const next = { ...args };
+      if (!next.adapter) next.adapter = 'production';
+      if (!next.store) {
+        const { createFileEvidenceAdapter } = require('./shared-kernel/evidence-adapters');
+        const storeFactory = namespace === 'script'
+          ? require('./script/script-evidence-store').createScriptEvidenceStore
+          : require('./intent/intent-evidence-store').createIntentEvidenceStore;
+        next.store = storeFactory({
+          adapter: createFileEvidenceAdapter({
+            dir: path.join(defaultArtifactDirectory(), `${namespace}-evidence`),
+          }),
+        });
+      }
+      if (next.isolatedTimeoutMs == null) next.isolatedTimeoutMs = 120000;
+      return entry.handle(next);
+    },
+  };
+}
 
 async function callTool(name, args) {
   if (name === 'capabilities') {
@@ -761,7 +799,7 @@ function capabilityPayload(args = {}) {
   const includeOptions = Boolean(args.includeOptions);
   const requestedCommand = args.command ? normalizeCommandName(args.command) : '';
   if (requestedCommand) {
-    const definition = commandByName.get(requestedCommand);
+    const definition = commandByName.get(requestedCommand) || isolatedByName.get(requestedCommand);
     return {
       ok: Boolean(definition),
       command: requestedCommand,
@@ -772,6 +810,11 @@ function capabilityPayload(args = {}) {
   const requestedDomain = args.domain ? String(args.domain) : '';
   const domains = {};
   for (const definition of commandDefinitions) {
+    if (requestedDomain && definition.domain !== requestedDomain) continue;
+    if (!domains[definition.domain]) domains[definition.domain] = [];
+    domains[definition.domain].push(shapeCommandDefinition(definition, includeOptions));
+  }
+  for (const definition of isolatedCommandDefinitions) {
     if (requestedDomain && definition.domain !== requestedDomain) continue;
     if (!domains[definition.domain]) domains[definition.domain] = [];
     domains[definition.domain].push(shapeCommandDefinition(definition, includeOptions));
@@ -803,7 +846,7 @@ function shapeCommandDefinition(definition, includeOptions) {
 
 async function runGeneric(args = {}) {
   const command = normalizeCommandName(args.command);
-  if (!commandByName.has(command)) {
+  if (!commandByName.has(command) && !isolatedByName.has(command)) {
     return toolText(`unknown command: ${args.command || ''}`, true);
   }
   const commandArgs = {
@@ -814,10 +857,7 @@ async function runGeneric(args = {}) {
       commandArgs[key] = args[key];
     }
   }
-  if (command === 'batch') {
-    return runBatch(commandArgs);
-  }
-  return runBridgeChecked(command, commandArgs);
+  return commandRouter.route(command, commandArgs);
 }
 
 function normalizeCommandName(value) {
@@ -959,9 +999,8 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
     }
     const timings = completedActionTimings(result?._feedback?.timings, requestedAtMs);
     if (tracksMutation) noteObservationAction(observation, actionId, timings);
-    let actionReference = null;
     if (factRecorder) {
-      actionReference = attachRecordedFacts({
+      const recorded = {
         factRecorder,
         command,
         args,
@@ -970,7 +1009,13 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
         probeEvidence: feedbackProbe?.evidence || [],
         actionId,
         actionTimeline: actionTimelineFor(actionId, timings),
-      });
+      };
+      try {
+        attachRecordedFacts(recorded);
+      } catch (error) {
+        getSharedHistorySink().offer({ command, actionId, error: error.message || String(error) });
+      }
+      getSharedHistorySink().offer({ command, actionId, stored: true });
     }
     if (result && typeof result === 'object' && result._feedback) {
       if (factCacheInitializationError) result._feedback.factCache = factCacheInitializationError;
@@ -981,19 +1026,27 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
   } catch (error) {
     const timings = completedActionTimings(error._feedback?.timings, requestedAtMs);
     if (tracksMutation) noteObservationAction(observation, actionId, timings);
-    let actionReference = null;
     if (factRecorder) {
-      actionReference = safeRecordExecution(factRecorder, {
-        command,
-        args,
-        error,
-        feedback: error._feedback,
-        actionId,
-      });
-      if (actionReference && error._feedback) {
-        error._feedback.evidence.push(actionReference);
-        error._feedback.factCache = compactFactCacheStatus(factRecorder);
+      try {
+        const actionReference = safeRecordExecution(factRecorder, {
+          command,
+          args,
+          error,
+          feedback: error._feedback,
+          actionId,
+        });
+        if (actionReference && error._feedback) {
+          error._feedback.evidence.push(actionReference);
+          error._feedback.factCache = compactFactCacheStatus(factRecorder);
+        }
+      } catch (recordError) {
+        getSharedHistorySink().offer({
+          command,
+          actionId,
+          error: recordError.message || String(recordError),
+        });
       }
+      getSharedHistorySink().offer({ command, actionId, stored: true });
     }
     if (error._feedback) {
       if (factCacheInitializationError) error._feedback.factCache = factCacheInitializationError;
@@ -1205,6 +1258,18 @@ function compactFactCacheStatus(factRecorder) {
   } catch (error) {
     return { degraded: true, persistence: false, error: error.message };
   }
+}
+
+function getSharedHistorySink() {
+  if (sharedHistorySink) return sharedHistorySink;
+  sharedHistorySink = createHistorySink({
+    adapter: {
+      record() {
+        return { ok: true };
+      },
+    },
+  });
+  return sharedHistorySink;
 }
 
 function getSharedFactRecorder() {
@@ -1766,12 +1831,15 @@ if (require.main === module) {
 
 module.exports = {
   buildBridgeCliArgs,
+  capabilityPayload,
   commandDomains,
+  commandRouter,
   defaultArtifactDirFor,
   mcpHelpText,
   readNextMessage,
   runBatch,
   runBridgeChecked,
+  runGeneric,
   startServer,
   supportedTargets,
 };

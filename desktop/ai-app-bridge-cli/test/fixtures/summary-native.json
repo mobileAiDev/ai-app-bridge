@@ -1,0 +1,50 @@
+{
+  "provider": "native",
+  "rawTreeId": "native-tree-1",
+  "rawTree": {
+    "activity": "com.example/.Main",
+    "root": {
+      "id": "root",
+      "className": "FrameLayout",
+      "children": [
+        {
+          "id": "title",
+          "className": "TextView",
+          "text": "Settings",
+          "bounds": { "left": 0, "top": 0, "right": 200, "bottom": 40 }
+        },
+        {
+          "id": "about",
+          "className": "Button",
+          "text": "About",
+          "clickable": true,
+          "enabled": true,
+          "bounds": { "left": 8, "top": 48, "right": 192, "bottom": 88 }
+        },
+        {
+          "id": "search",
+          "className": "EditText",
+          "text": "",
+          "contentDescription": "Search",
+          "enabled": true,
+          "bounds": { "left": 8, "top": 96, "right": 192, "bottom": 136 }
+        },
+        {
+          "id": "logo",
+          "className": "ImageView",
+          "contentDescription": "App logo",
+          "clickable": true,
+          "bounds": { "left": 8, "top": 144, "right": 40, "bottom": 176 }
+        },
+        {
+          "id": "wifi",
+          "className": "CheckBox",
+          "text": "Wi-Fi",
+          "checked": true,
+          "clickable": true,
+          "bounds": { "left": 8, "top": 184, "right": 192, "bottom": 224 }
+        }
+      ]
+    }
+  }
+}

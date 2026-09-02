@@ -1,0 +1,32 @@
+{
+  "provider": "flutter",
+  "rawTreeId": "flutter-tree-1",
+  "rawTree": {
+    "operable": {
+      "ok": true,
+      "nodes": [
+        {
+          "id": "settings-tile",
+          "widgetType": "ListTile",
+          "text": "Settings",
+          "actions": ["tap"],
+          "bounds": { "left": 0, "top": 80, "right": 400, "bottom": 128 }
+        },
+        {
+          "id": "about-tile",
+          "widgetType": "ListTile",
+          "text": "About",
+          "actions": ["tap"],
+          "bounds": { "left": 0, "top": 128, "right": 400, "bottom": 176 }
+        },
+        {
+          "id": "name-field",
+          "widgetType": "TextField",
+          "text": "LocalSend",
+          "actions": ["setText"],
+          "bounds": { "left": 16, "top": 200, "right": 384, "bottom": 248 }
+        }
+      ]
+    }
+  }
+}

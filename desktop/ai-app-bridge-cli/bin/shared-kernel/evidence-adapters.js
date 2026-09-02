@@ -1,0 +1,174 @@
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+function createMemoryEvidenceAdapter({ maxBytes = Number.MAX_SAFE_INTEGER, fault = null } = {}) {
+  const records = new Map();
+  let sequence = 0;
+  const adapter = {
+    record(envelope) {
+      if (fault === 'throw') {
+        throw new Error('writer_crash');
+      }
+      if (fault === 'enospc') {
+        const error = new Error('ENOSPC');
+        error.code = 'ENOSPC';
+        return { ok: false, error: 'ENOSPC' };
+      }
+      if (fault === 'hang') {
+        return new Promise(() => {});
+      }
+      const bytes = Buffer.byteLength(JSON.stringify(envelope));
+      if (bytes > maxBytes) {
+        return { ok: false, error: 'payload_too_large', bytes, maxBytes };
+      }
+      sequence += 1;
+      const stored = fault === 'corrupt_manifest'
+        ? { ...envelope, checksum: '0'.repeat(64) }
+        : { ...envelope };
+      records.set(stored.evidenceId, stored);
+      return { ok: true, stored: true, globalSeq: sequence, evidenceId: stored.evidenceId };
+    },
+    readById(evidenceId) {
+      return records.get(evidenceId) || null;
+    },
+    list({ namespace, operationId } = {}) {
+      return [...records.values()].filter((item) => (
+        (!namespace || item.namespace === namespace)
+        && (!operationId || item.operationId === operationId)
+      ));
+    },
+    status() {
+      if (fault === 'corrupt_manifest') {
+        return { ok: false, error: 'corrupt_manifest', count: records.size };
+      }
+      return { ok: true, adapter: 'memory', count: records.size, degraded: false };
+    },
+    close() {
+      records.clear();
+    },
+  };
+  return adapter;
+}
+
+function createSegmentedEvidenceAdapter(factStore) {
+  if (!factStore || typeof factStore.record !== 'function' || typeof factStore.read !== 'function') {
+    throw new TypeError('segmented evidence adapter requires a FactStore');
+  }
+  return {
+    record(envelope) {
+      try {
+        const result = factStore.record({
+          partition: partitionFor(envelope.kind),
+          targetKey: `evidence:${envelope.namespace}:${envelope.operationId}`,
+          app: { platform: 'host', packageName: envelope.namespace },
+          runtimeEpoch: String(envelope.operationId),
+          actionId: envelope.evidenceId,
+          timestamps: {
+            occurredAtMs: envelope.committedAtMs,
+            observedAtMs: envelope.committedAtMs,
+          },
+          payload: envelope,
+        });
+        const receipt = result.receipt || result.receipts?.[0] || result;
+        if (receipt?.ok === false || result.ok === false) {
+          return { ok: false, error: receipt?.error || result.error || 'persist_failed' };
+        }
+        return { ok: true, stored: true, evidenceId: envelope.evidenceId, globalSeq: receipt.globalSeq };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error.code || 'persist_failed',
+          detail: error.message || String(error),
+        };
+      }
+    },
+    readById(evidenceId) {
+      const page = factStore.read({ actionId: evidenceId, limit: 1 });
+      if (!page.ok) return null;
+      const item = page.items?.[0];
+      return item?.payload || null;
+    },
+    list({ namespace, operationId } = {}) {
+      const page = factStore.read({
+        targetKey: operationId ? `evidence:${namespace}:${operationId}` : undefined,
+        limit: 10_000,
+      });
+      if (!page.ok) return [];
+      return (page.items || [])
+        .map((item) => item.payload)
+        .filter((payload) => payload
+          && (!namespace || payload.namespace === namespace)
+          && (!operationId || payload.operationId === operationId));
+    },
+    status() {
+      return factStore.status();
+    },
+    close() {
+      factStore.close?.();
+    },
+  };
+}
+
+function partitionFor(kind) {
+  if (kind === 'observation' || kind === 'summary') return 'ui';
+  return 'action';
+}
+
+function createFileEvidenceAdapter({ dir } = {}) {
+  if (!dir) throw new TypeError('dir is required');
+  fs.mkdirSync(dir, { recursive: true });
+  const indexPath = path.join(dir, 'index.json');
+
+  function loadIndex() {
+    if (!fs.existsSync(indexPath)) return [];
+    return JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+  }
+
+  function writeAtomic(file, data) {
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, data);
+    fs.renameSync(tmp, file);
+  }
+
+  function saveIndex(ids) {
+    writeAtomic(indexPath, JSON.stringify(ids));
+  }
+
+  function fileFor(evidenceId) {
+    return path.join(dir, `${encodeURIComponent(evidenceId)}.json`);
+  }
+
+  return {
+    record(envelope) {
+      writeAtomic(fileFor(envelope.evidenceId), JSON.stringify(envelope));
+      const ids = loadIndex();
+      ids.push(envelope.evidenceId);
+      saveIndex(ids);
+      return { ok: true, stored: true, evidenceId: envelope.evidenceId, globalSeq: ids.length };
+    },
+    readById(evidenceId) {
+      const file = fileFor(evidenceId);
+      if (!fs.existsSync(file)) return null;
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    },
+    list({ namespace, operationId } = {}) {
+      return loadIndex()
+        .map((id) => this.readById(id))
+        .filter((item) => item
+          && (!namespace || item.namespace === namespace)
+          && (!operationId || item.operationId === operationId));
+    },
+    status() {
+      return { ok: true, adapter: 'file', dir, count: loadIndex().length };
+    },
+    close() {},
+  };
+}
+
+module.exports = {
+  createMemoryEvidenceAdapter,
+  createSegmentedEvidenceAdapter,
+  createFileEvidenceAdapter,
+};

@@ -179,6 +179,40 @@ test('runs actors for different targets in parallel', async () => {
   await Promise.all([first, second]);
 });
 
+test('runs different Android packages on the same serial in parallel', async () => {
+  const execution = new TargetExecution();
+  const gate = deferred();
+  const starts = [];
+
+  const first = execution.execute('tap', {
+    serial: 'android-1',
+    packageName: 'com.example.first',
+  }, async () => {
+    starts.push('com.example.first');
+    await gate.promise;
+    return { ok: true };
+  });
+  const second = execution.execute('tap', {
+    serial: 'android-1',
+    packageName: 'com.example.second',
+  }, async () => {
+    starts.push('com.example.second');
+    await gate.promise;
+    return { ok: true };
+  });
+
+  await nextTurn();
+  try {
+    assert.deepEqual(
+      new Set(starts),
+      new Set(['com.example.first', 'com.example.second']),
+    );
+  } finally {
+    gate.resolve();
+    await Promise.allSettled([first, second]);
+  }
+});
+
 test('deduplicates in-flight and completed requests by requestId within a target', async () => {
   const execution = new TargetExecution();
   const gate = deferred();
