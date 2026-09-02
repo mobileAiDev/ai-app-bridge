@@ -76,6 +76,23 @@ test('G1 a throwing isolated loader does not break legacy dispatch', async () =>
   assert.equal(legacy.command, 'tree');
 });
 
+test('G1 an exclusive FactStore writer conflict is explicit and remains isolated', async () => {
+  const router = createCommandRouter({
+    loadScript: () => ({
+      handle() {
+        const error = new Error('store writer lock is busy');
+        error.code = 'sfs_busy';
+        throw error;
+      },
+    }),
+    legacyDispatch: async () => ({ ok: true }),
+  });
+  const result = await router.route('script', {});
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(result.isError, true);
+  assert.equal(payload.error, 'fact_store_writer_busy');
+});
+
 test('G1 batch still rejects Script and Intent steps', async () => {
   const script = payloadOf(await runBatch({ steps: [{ id: 's1', command: 'script' }] }));
   const intent = payloadOf(await runBatch({ steps: [{ id: 's1', command: 'intent' }] }));
@@ -151,6 +168,13 @@ test('G1 isolated modules do not import each other or Legacy', () => {
   assert.equal(/intent|legacy|mcp-server|runBatch|runBridgeChecked/.test(script), false);
   assert.equal(/script|legacy|mcp-server|runBatch|runBridgeChecked/.test(intent), false);
   assert.equal(/script|intent/.test(legacy), false);
+});
+
+test('G1 production wiring uses one segmented FactStore and no file or HistorySink backend', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../bin/mcp-server.js'), 'utf8');
+  assert.equal(/createFileEvidenceAdapter|createHistorySink|getSharedHistorySink|sharedHistorySink/.test(source), false);
+  assert.match(source, /createSegmentedEvidenceAdapter\(getSharedFactStore\(\)\)/);
+  assert.match(source, /createLegacyFactStoreAdapter\(sharedFactStore\)/);
 });
 
 async function listToolNames(surface) {

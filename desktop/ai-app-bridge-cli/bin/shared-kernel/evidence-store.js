@@ -11,15 +11,21 @@ function createEvidenceStore({ namespace, adapter, now = Date.now, maxBytes = 8 
   }
   let sequence = 0;
 
-  async function persist(kind, record) {
+  function prepare(kind, record) {
     sequence += 1;
     const built = buildEnvelope(namespace, kind, record, { now, sequence });
     if (!built.ok) {
-      return { ok: false, persisted: false, error: built.error, field: built.field, detail: built.detail };
+      return { ok: false, error: built.error, field: built.field, detail: built.detail };
     }
     if (built.bytes > maxBytes) {
-      return { ok: false, persisted: false, error: 'payload_too_large', bytes: built.bytes, maxBytes };
+      return { ok: false, error: 'payload_too_large', bytes: built.bytes, maxBytes };
     }
+    return built;
+  }
+
+  async function persist(kind, record) {
+    const built = prepare(kind, record);
+    if (!built.ok) return { ...built, persisted: false };
     let receipt;
     try {
       receipt = await adapter.record(built.envelope);
@@ -47,6 +53,62 @@ function createEvidenceStore({ namespace, adapter, now = Date.now, maxBytes = 8 
       revision: built.envelope.revision,
       kind,
       namespace,
+    };
+  }
+
+  function offer(kind, record) {
+    const built = prepare(kind, record);
+    if (!built.ok) return { ...built, accepted: false };
+    if (typeof adapter.offer !== 'function') {
+      return { ok: false, accepted: false, reason: 'async_offer_unsupported' };
+    }
+    let offered;
+    try {
+      offered = adapter.offer(built.envelope);
+    } catch (error) {
+      return {
+        ok: false,
+        accepted: false,
+        reason: error.code || 'offer_failed',
+        detail: error.message || String(error),
+      };
+    }
+    if (!offered?.accepted) return { ok: false, ...offered };
+    return {
+      ok: true,
+      accepted: true,
+      evidenceId: built.envelope.evidenceId,
+      checksum: built.envelope.checksum,
+      revision: built.envelope.revision,
+      kind,
+      namespace,
+      completion: Promise.resolve(offered.completion).then(
+        (receipt) => {
+          if (!receipt || receipt.ok === false) {
+            return {
+              ok: false,
+              persisted: false,
+              error: receipt?.error || 'persist_failed',
+              detail: receipt?.detail,
+            };
+          }
+          return {
+            ok: true,
+            persisted: true,
+            evidenceId: built.envelope.evidenceId,
+            checksum: built.envelope.checksum,
+            revision: built.envelope.revision,
+            kind,
+            namespace,
+          };
+        },
+        (error) => ({
+          ok: false,
+          persisted: false,
+          error: error.code || 'persist_failed',
+          detail: error.message || String(error),
+        }),
+      ),
     };
   }
 
@@ -111,7 +173,9 @@ function createEvidenceStore({ namespace, adapter, now = Date.now, maxBytes = 8 
 
   return {
     namespace,
+    commit: persist,
     persist,
+    offer,
     read,
     list,
     latest,

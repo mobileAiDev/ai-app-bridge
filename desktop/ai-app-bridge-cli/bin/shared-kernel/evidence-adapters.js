@@ -30,6 +30,9 @@ function createMemoryEvidenceAdapter({ maxBytes = Number.MAX_SAFE_INTEGER, fault
       records.set(stored.evidenceId, stored);
       return { ok: true, stored: true, globalSeq: sequence, evidenceId: stored.evidenceId };
     },
+    offer(envelope) {
+      return { accepted: true, completion: Promise.resolve().then(() => adapter.record(envelope)) };
+    },
     readById(evidenceId) {
       return records.get(evidenceId) || null;
     },
@@ -52,25 +55,28 @@ function createMemoryEvidenceAdapter({ maxBytes = Number.MAX_SAFE_INTEGER, fault
   return adapter;
 }
 
-function createSegmentedEvidenceAdapter(factStore) {
+function createSegmentedEvidenceAdapter(factStore, { ownsStore = false } = {}) {
   if (!factStore || typeof factStore.record !== 'function' || typeof factStore.read !== 'function') {
     throw new TypeError('segmented evidence adapter requires a FactStore');
   }
-  return {
+  function factFor(envelope) {
+    return {
+      partition: partitionFor(envelope.kind),
+      targetKey: `evidence:${envelope.namespace}:${envelope.operationId}`,
+      app: { platform: 'host', packageName: envelope.namespace },
+      runtimeEpoch: String(envelope.operationId),
+      actionId: envelope.evidenceId,
+      timestamps: {
+        occurredAtMs: envelope.committedAtMs,
+        observedAtMs: envelope.committedAtMs,
+      },
+      payload: envelope,
+    };
+  }
+  const adapter = {
     record(envelope) {
       try {
-        const result = factStore.record({
-          partition: partitionFor(envelope.kind),
-          targetKey: `evidence:${envelope.namespace}:${envelope.operationId}`,
-          app: { platform: 'host', packageName: envelope.namespace },
-          runtimeEpoch: String(envelope.operationId),
-          actionId: envelope.evidenceId,
-          timestamps: {
-            occurredAtMs: envelope.committedAtMs,
-            observedAtMs: envelope.committedAtMs,
-          },
-          payload: envelope,
-        });
+        const result = factStore.record(factFor(envelope), { durability: 'sync' });
         const receipt = result.receipt || result.receipts?.[0] || result;
         if (receipt?.ok === false || result.ok === false) {
           return { ok: false, error: receipt?.error || result.error || 'persist_failed' };
@@ -84,6 +90,28 @@ function createSegmentedEvidenceAdapter(factStore) {
         };
       }
     },
+    offer(envelope) {
+      if (typeof factStore.offer !== 'function') {
+        return { accepted: false, reason: 'async_offer_unsupported' };
+      }
+      const offered = factStore.offer(factFor(envelope), { durability: 'sync' });
+      if (!offered.accepted) return offered;
+      return {
+        ...offered,
+        completion: offered.completion.then((result) => {
+          const receipt = result.receipt || result.receipts?.[0] || result;
+          if (receipt?.ok === false || result.ok === false) {
+            return { ok: false, stored: false, error: receipt?.error || result.error || 'persist_failed' };
+          }
+          return {
+            ok: true,
+            stored: true,
+            evidenceId: envelope.evidenceId,
+            globalSeq: receipt.globalSeq,
+          };
+        }),
+      };
+    },
     readById(evidenceId) {
       const page = factStore.read({ actionId: evidenceId, limit: 1 });
       if (!page.ok) return null;
@@ -91,12 +119,19 @@ function createSegmentedEvidenceAdapter(factStore) {
       return item?.payload || null;
     },
     list({ namespace, operationId } = {}) {
-      const page = factStore.read({
-        targetKey: operationId ? `evidence:${namespace}:${operationId}` : undefined,
-        limit: 10_000,
-      });
-      if (!page.ok) return [];
-      return (page.items || [])
+      const items = [];
+      let cursor;
+      do {
+        const page = factStore.read({
+          targetKey: operationId ? `evidence:${namespace}:${operationId}` : undefined,
+          cursor,
+          limit: 1_000,
+        });
+        if (!page.ok) return [];
+        items.push(...(page.items || []));
+        cursor = page.hasMore ? page.cursor : null;
+      } while (cursor);
+      return items
         .map((item) => item.payload)
         .filter((payload) => payload
           && (!namespace || payload.namespace === namespace)
@@ -106,8 +141,45 @@ function createSegmentedEvidenceAdapter(factStore) {
       return factStore.status();
     },
     close() {
-      factStore.close?.();
+      if (ownsStore) factStore.close?.();
     },
+  };
+  return adapter;
+}
+
+function createLegacyFactStoreAdapter(factStore) {
+  if (
+    !factStore
+    || typeof factStore.record !== 'function'
+    || typeof factStore.read !== 'function'
+    || typeof factStore.status !== 'function'
+  ) {
+    throw new TypeError('legacy fact adapter requires a FactStore');
+  }
+  return {
+    append(partitionOrFact, maybeFact) {
+      const fact = maybeFact === undefined
+        ? partitionOrFact
+        : { ...maybeFact, partition: String(partitionOrFact) };
+      const result = factStore.record(fact, { durability: 'sync' });
+      return result.receipt || result.receipts?.[0] || result;
+    },
+    query(query = {}) {
+      return factStore.read({
+        partitions: query.partitions || (query.partition ? [query.partition] : undefined),
+        targetKey: query.targetKey ?? query.target,
+        runtimeEpoch: query.runtimeEpoch,
+        cursor: query.cursor,
+        limit: query.limit,
+        ...(Object.prototype.hasOwnProperty.call(query, 'actionId')
+          ? { actionId: query.actionId }
+          : {}),
+      });
+    },
+    status() {
+      return factStore.status();
+    },
+    close() {},
   };
 }
 
@@ -140,13 +212,16 @@ function createFileEvidenceAdapter({ dir } = {}) {
     return path.join(dir, `${encodeURIComponent(evidenceId)}.json`);
   }
 
-  return {
+  const adapter = {
     record(envelope) {
       writeAtomic(fileFor(envelope.evidenceId), JSON.stringify(envelope));
       const ids = loadIndex();
       ids.push(envelope.evidenceId);
       saveIndex(ids);
       return { ok: true, stored: true, evidenceId: envelope.evidenceId, globalSeq: ids.length };
+    },
+    offer(envelope) {
+      return { accepted: true, completion: Promise.resolve().then(() => adapter.record(envelope)) };
     },
     readById(evidenceId) {
       const file = fileFor(evidenceId);
@@ -165,9 +240,11 @@ function createFileEvidenceAdapter({ dir } = {}) {
     },
     close() {},
   };
+  return adapter;
 }
 
 module.exports = {
+  createLegacyFactStoreAdapter,
   createMemoryEvidenceAdapter,
   createSegmentedEvidenceAdapter,
   createFileEvidenceAdapter,

@@ -6,9 +6,13 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
-const { createFactStore } = require('../bin/fact-store');
-const { createHistorySink } = require('../bin/legacy/history-sink');
-const { createMemoryEvidenceAdapter, createSegmentedEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
+const { FactStore, createFactStore } = require('../bin/fact-store');
+const { FactRecorder } = require('../bin/fact-recorder');
+const {
+  createLegacyFactStoreAdapter,
+  createMemoryEvidenceAdapter,
+  createSegmentedEvidenceAdapter,
+} = require('../bin/shared-kernel/evidence-adapters');
 const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
@@ -62,39 +66,39 @@ async function legacyStillWorks() {
   assert.equal(batch.error, 'unknown_batch_step_command');
 }
 
-test('G2 HistorySink init failure, ENOSPC, queue full, hang, and crash do not affect Legacy', async () => {
-  const initFailed = createHistorySink({
-    adapterFactory: () => { throw new Error('disk missing'); },
-  });
-  assert.equal(initFailed.offer({ kind: 'log' }).accepted, false);
-  assert.equal(initFailed.status().reason, 'init_failed');
-
-  const enospc = createHistorySink({
-    adapter: { record: () => ({ ok: false, error: 'ENOSPC' }) },
-  });
-  assert.equal(enospc.offer({ kind: 'log' }).accepted, true);
-
-  const queued = [];
-  const full = createHistorySink({
-    queueLimit: 2,
-    adapter: { record: () => new Promise(() => {}) },
-  });
-  assert.equal(full.offer({ n: 1 }).accepted, true);
-  assert.equal(full.offer({ n: 2 }).accepted, true);
-  assert.equal(full.offer({ n: 3 }).accepted, false);
-  assert.equal(full.offer({ n: 3 }).reason, 'queue_full');
-  assert.equal(full.status().dropped >= 1, true);
-
-  const crashed = createHistorySink({
-    adapter: {
-      record() {
-        queued.push('crash');
-        throw new Error('writer_crash');
-      },
+test('G2 unified FactStore supports synchronous commit and bounded asynchronous offer', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const written = [];
+  const store = new FactStore({
+    record(fact) {
+      if (fact.actionId === 'sync') {
+        written.push(fact.actionId);
+        return { ok: true, stored: true, globalSeq: written.length };
+      }
+      return gate.then(() => {
+        written.push(fact.actionId);
+        return { ok: true, stored: true, globalSeq: written.length };
+      });
     },
-  });
-  assert.equal(crashed.offer({ n: 1 }).accepted, true);
+    read() { return { ok: true, items: [], count: 0 }; },
+    status() { return { ok: true, adapter: 'async-memory' }; },
+    close() {},
+  }, { queueLimit: 2 });
 
+  assert.equal(store.record({ partition: 'action', actionId: 'sync' }).receipt.stored, true);
+  const first = store.offer({ partition: 'app-log', actionId: 'async-1' });
+  const second = store.offer({ partition: 'app-log', actionId: 'async-2' });
+  const overflow = store.offer({ partition: 'app-log', actionId: 'async-3' });
+  assert.equal(first.accepted, true);
+  assert.equal(second.accepted, true);
+  assert.equal(overflow.accepted, false);
+  assert.equal(overflow.reason, 'queue_full');
+  assert.equal(store.status().writer.dropped, 1);
+  release();
+  await Promise.all([first.completion, second.completion]);
+  assert.deepEqual(written, ['sync', 'async-1', 'async-2']);
+  assert.equal(store.status().writer.queueLength, 0);
   await legacyStillWorks();
 });
 
@@ -113,6 +117,43 @@ test('G2 Script and Intent EvidenceStores persist, read back, and verify checksu
   const other = await intent.persist('observation', observation('intent-op-1'));
   assert.equal(script.read(other.evidenceId).error, 'not_found');
   assert.equal(intent.read(written.evidenceId).error, 'not_found');
+});
+
+test('G2 EvidenceStore exposes the same schema through durable commit and async offer', async () => {
+  const facts = [];
+  const factStore = new FactStore({
+    record(fact, options) {
+      facts.push({ fact, options });
+      return { ok: true, stored: true, globalSeq: facts.length, durability: options.durability };
+    },
+    read(query) {
+      const matches = facts
+        .map((item, index) => ({ ...item.fact, globalSeq: index + 1 }))
+        .filter((fact) => !query.actionId || fact.actionId === query.actionId);
+      return { ok: true, items: matches.slice(0, query.limit), count: matches.length, hasMore: false };
+    },
+    status() { return { ok: true, adapter: 'memory' }; },
+    close() {},
+  });
+  const script = createScriptEvidenceStore({ adapter: createSegmentedEvidenceAdapter(factStore) });
+
+  const offered = script.offer('observation', observation('script-async'));
+  assert.equal(offered.accepted, true);
+  assert.equal((await offered.completion).persisted, true);
+  assert.equal(script.read(offered.evidenceId).ok, true);
+  assert.equal(facts[0].options.durability, 'sync');
+
+  const unavailable = createIntentEvidenceStore({
+    adapter: createMemoryEvidenceAdapter({ fault: 'enospc' }),
+  });
+  const failed = unavailable.offer('observation', observation('intent-async-failed'));
+  assert.equal(failed.accepted, true);
+  assert.deepEqual(await failed.completion, {
+    ok: false,
+    persisted: false,
+    error: 'ENOSPC',
+    detail: undefined,
+  });
 });
 
 test('G2 namespace and operation state stay isolated, and missing gates block new actions', async () => {
@@ -188,12 +229,111 @@ test('G2 segmented production adapter persists and reads an evidence id', async 
   assert.equal(read.record.checksum, written.checksum);
 });
 
-test('G2 isolated modules keep HistorySink, Script, and Intent imports separate', () => {
-  const history = fs.readFileSync(path.join(__dirname, '../bin/legacy/history-sink.js'), 'utf8');
+test('G2 segmented evidence adapter paginates beyond 1000 records and does not close a shared store', () => {
+  const records = Array.from({ length: 1_005 }, (_, index) => ({
+    payload: {
+      namespace: 'script',
+      operationId: 'many-records',
+      evidenceId: `script:checkpoint:many-records:${index}`,
+    },
+  }));
+  let closeCount = 0;
+  const factStore = {
+    record() { return { ok: true, receipt: { ok: true, stored: true, globalSeq: 1 } }; },
+    read({ cursor, limit }) {
+      const offset = cursor ? Number(cursor) : 0;
+      const items = records.slice(offset, offset + limit);
+      const next = offset + items.length;
+      return {
+        ok: true,
+        items,
+        count: items.length,
+        cursor: String(next),
+        hasMore: next < records.length,
+      };
+    },
+    status() { return { ok: true }; },
+    close() { closeCount += 1; },
+  };
+
+  const shared = createSegmentedEvidenceAdapter(factStore);
+  assert.equal(shared.list({ namespace: 'script', operationId: 'many-records' }).length, 1_005);
+  shared.close();
+  assert.equal(closeCount, 0);
+
+  createSegmentedEvidenceAdapter(factStore, { ownsStore: true }).close();
+  assert.equal(closeCount, 1);
+});
+
+test('G2 one segmented FactStore persists Legacy, Script, and Intent together across reopen', async (t) => {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'g2-unified-evidence-')));
+  const options = {
+    directory,
+    profile: '64mb',
+    budgetBytes: 4096 * 24,
+    segmentSize: 4096,
+    partitionQuotas: Array(8).fill(4096 * 2),
+  };
+  let store = createFactStore(options);
+  t.after(() => {
+    store?.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  const legacy = new FactRecorder({
+    cache: createLegacyFactStoreAdapter(store),
+    now: () => 1_700_000_000_000,
+  });
+  const script = createScriptEvidenceStore({ adapter: createSegmentedEvidenceAdapter(store) });
+  const intent = createIntentEvidenceStore({ adapter: createSegmentedEvidenceAdapter(store) });
+
+  const legacyReceipt = legacy.recordExecution({
+    command: 'tap',
+    args: {
+      serial: 'device-1',
+      packageName: 'com.example.legacy',
+      requestId: 'legacy-action-1',
+    },
+    result: { ok: true },
+    actionId: 'legacy-action-1',
+  });
+  const legacyDuplicate = legacy.recordExecution({
+    command: 'tap',
+    args: {
+      serial: 'device-1',
+      packageName: 'com.example.legacy',
+      requestId: 'legacy-action-1',
+    },
+    result: { ok: true },
+  });
+  const scriptReceipt = await script.persist('observation', observation('script-unified'));
+  const intentReceipt = await intent.persist('observation', observation('intent-unified'));
+  assert.equal(legacyReceipt.stored, true);
+  assert.equal(legacyDuplicate.deduplicated, true);
+  assert.equal(scriptReceipt.persisted, true);
+  assert.equal(intentReceipt.persisted, true);
+  const legacyHistory = legacy.readHistory('events', {
+    serial: 'device-1',
+    packageName: 'com.example.legacy',
+    includeActions: true,
+    limit: 100,
+  });
+  assert.equal(legacyHistory.ok, true);
+  assert.equal(legacyHistory.items.some((item) => item.command === 'tap'), true);
+
+  store.close();
+  store = createFactStore(options);
+  const all = store.read({ limit: 100 });
+  assert.equal(all.ok, true);
+  assert.equal(all.items.some((item) => item.actionId === 'legacy-action-1'), true);
+  assert.equal(all.items.some((item) => item.payload?.namespace === 'script'), true);
+  assert.equal(all.items.some((item) => item.payload?.namespace === 'intent'), true);
+});
+
+test('G2 isolated modules share only the EvidenceStore and segmented FactStore seam', () => {
   const script = fs.readFileSync(path.join(__dirname, '../bin/script/script-evidence-store.js'), 'utf8');
   const intent = fs.readFileSync(path.join(__dirname, '../bin/intent/intent-evidence-store.js'), 'utf8');
   const schema = fs.readFileSync(path.join(__dirname, '../bin/shared-kernel/evidence-schema.js'), 'utf8');
-  assert.equal(/script|intent/.test(history), false);
   assert.equal(/intent|legacy|history-sink|mcp-server|runBatch/.test(script), false);
   assert.equal(/script|legacy|history-sink|mcp-server|runBatch/.test(intent), false);
   assert.equal(/script-evidence|intent-evidence|history-sink|legacy-dispatcher/.test(schema), false);

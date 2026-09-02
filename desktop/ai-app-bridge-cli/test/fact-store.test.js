@@ -11,6 +11,7 @@ const {
   createFactStore,
   createSegmentedFactStore,
 } = require('../bin/fact-store');
+const packageInfo = require('../package.json');
 
 function fact(sequence = 1) {
   return {
@@ -43,7 +44,7 @@ function memoryAdapter({ throwOnRecord = false, stored = true } = {}) {
   };
 }
 
-test('FactStore exposes only record/read/status semantics', () => {
+test('FactStore exposes record/read/status plus bounded asynchronous writes', () => {
   const adapter = memoryAdapter();
   const store = new FactStore(adapter);
 
@@ -57,12 +58,34 @@ test('FactStore exposes only record/read/status semantics', () => {
   assert.equal(store.read({}).count, 4);
   assert.equal(store.read({ partitions: ['ui'], targetKey: 'android:device:com.example' }).count, 4);
   assert.equal(store.status().adapter, 'memory');
+  assert.equal(store.status().writer.available, true);
 });
 
 test('FactStore rejects shallow adapters before runtime work starts', () => {
   assert.throws(
     () => new FactStore({ record() {}, read() {} }),
     /record\/read\/status/,
+  );
+});
+
+test('published CLI bundles the complete segmented store runtime and native source', () => {
+  for (const file of [
+    'bin/android-uia-xml.js',
+    'bin/fact-codec.js',
+    'bin/fact-store.js',
+    'bin/mmap-scan-index.js',
+    'bin/segment-index.js',
+    'bin/segmented-fact-store.js',
+  ]) {
+    assert.equal(packageInfo.files.includes(file), true, `${file} must be packed`);
+  }
+  assert.equal(
+    packageInfo.dependencies['@mobileaidev/segmented-fact-store-native'],
+    'file:../../native/segmented-fact-store',
+  );
+  assert.equal(
+    packageInfo.bundleDependencies.includes('@mobileaidev/segmented-fact-store-native'),
+    true,
   );
 });
 
@@ -94,6 +117,27 @@ test('production factory rejects alternate authoritative payload backends', () =
       /backend selection is not supported/,
     );
   }
+});
+
+test('production factory rejects a second writer immediately and reopens after the owner closes', (t) => {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'fact-store-lock-')));
+  const options = {
+    directory,
+    profile: '64mb',
+    budgetBytes: 4_096 * 24,
+    segmentSize: 4_096,
+    partitionQuotas: Array(8).fill(4_096 * 2),
+  };
+  const first = createFactStore(options);
+  t.after(() => {
+    first.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  assert.throws(() => createFactStore(options), (error) => error.code === 'sfs_busy');
+  first.close();
+  const reopened = createFactStore(options);
+  reopened.close();
 });
 
 test('automatic segmented profile disables persistence instead of consuming the disk reserve', (t) => {

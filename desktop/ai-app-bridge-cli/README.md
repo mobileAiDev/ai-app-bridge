@@ -86,23 +86,35 @@ The observer keeps at most 32 targets and retires a target after 30 minutes
 without an explicit operation. Its limit, expirations, evictions, failures, and
 dropped-log counters are visible in `_feedback.observer`.
 
-Facts are stored in a local SQLite WAL database with `mmap` enabled. The MCP
-default `auto` profile selects 512 MB when total disk capacity is at least 16 GiB and at
+Facts are stored once in an authoritative segmented mmap store. A bounded
+SQLite WAL index is only a rebuildable query projection; it is not a second
+fact-payload store. Legacy history, Script evidence, and Intent evidence use
+the same process-level FactStore with isolated adapters and namespaces. The MCP
+default `auto` profile selects 1 GB when total disk capacity is at least 32 GiB and at
+least 8 GiB is available, 512 MB when total disk capacity is at least 16 GiB and at
 least 4 GiB is available, 256 MB when total capacity is at least 4 GiB and at
 least 2 GiB is available, and 64 MB otherwise. Explicitly select a profile with
-`AI_APP_BRIDGE_FACT_CACHE_PROFILE=512mb`, `256mb`, or `64mb`, disable persistence
-with `AI_APP_BRIDGE_FACT_CACHE=off`, or override the location with
-`AI_APP_BRIDGE_FACT_CACHE_PATH`. The default macOS path is
-`~/Library/Caches/ai-app-bridge/fact-cache/facts.sqlite`.
+`AI_APP_BRIDGE_FACT_CACHE_PROFILE=1gb`, `512mb`, `256mb`, or `64mb`. Override
+the store directory with `AI_APP_BRIDGE_FACT_STORE_DIR`. The legacy
+`AI_APP_BRIDGE_FACT_CACHE_PATH` setting remains accepted and places the new
+`fact-store-v1` directory beside that path. `AI_APP_BRIDGE_FACT_CACHE=off`
+continues to disable Legacy fact recording without weakening Script/Intent
+evidence gates. The default macOS path is
+`~/Library/Caches/ai-app-bridge/fact-store-v1`.
 
-Partitions have independent shares of the total budget: network 30%, UI 20%,
-App logs 12%, device logs 8%, state/events 10%, actions 10%, notes 5%, and index
-metadata 5%. Quotas include the database, WAL, and shared-memory sidecar. The
-feedback reports the selected profile, disk selection inputs, and requested and
-effective mmap sizes. Persistent mode requires a Node runtime with
-`node:sqlite`; if it is unavailable, foreground commands still run and report
-the explicit fact-cache failure, but history is unavailable. The server does
-not silently claim an in-memory buffer is persistent.
+Partitions have independent shares of the mmap budget: network 25%, UI 18%,
+App logs 10%, device logs 7%, state/events 10%, actions 13%, notes 5%, and index
+metadata 2%; 10% remains reserved for manifests and recovery. The SQLite
+projection has a separate bounded budget and cannot evict mmap facts. The
+feedback reports the selected profile, disk selection inputs, mmap usage, and
+projection health. The npm package bundles the native source and builds its
+Node-API binding during installation. If the native store or query projection
+cannot initialize, existing foreground commands still run and report degraded
+history; Script/Intent fail their own evidence gate. The server never silently
+claims an in-memory buffer is persistent.
+
+Existing SQLite fact-cache files are left intact and are not silently imported;
+opaque `fc1` cursors cannot be reused as segmented-store `fs1` cursors.
 
 The automatic collector persists network metadata and redacted headers. It
 stores raw body byte counts plus omission flags, not request or response body

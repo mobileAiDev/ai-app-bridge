@@ -201,27 +201,31 @@ Script 和 Intent 各自定义独立 DevicePort 与测试 Adapter。生产 Adapt
 
 ## 5. 落盘与执行证据
 
-必须区分两种 Interface。
+Legacy、Script、Intent 使用同一个权威 segmented FactStore；流程隔离由薄 Adapter、namespace 和失败策略保证，不再维护第二套历史存储。
 
-### 5.1 HistorySink
+### 5.1 FactStore 写入模式
 
-用于现有日志和历史：
+同一个 FactStore 提供两种写入语义：
 
 ~~~text
+record/commit(fact)     // 当前调用内完成持久提交
 offer(fact)
+drain()
 status()
 ~~~
 
 不变量：
 
-- 异步、有界、可降级
-- 不改变 Legacy 结果
-- 不成为旧命令执行前提
+- `record/commit` 用于必须立刻可读的 Legacy action/history，以及 Script/Intent 门闩证据
+- `offer` 只用于允许脱离当前响应的被动、高频历史；队列有界且保持顺序
+- Legacy 存储异常只进入反馈状态，不改变旧命令结果
+- Script/Intent 必需证据提交失败时各自停止推进
 - 不调用 ADB、Provider、截图或 UIA
+- 所有 Adapter 非拥有式共享同一个进程级 FactStore，由 MCP shutdown 统一 drain/close
 
-保留当前 segmented store 内核，不整体重做。
+保留当前 segmented mmap 内核；SQLite 只作为可重建查询投影，不是第二份事实载荷。
 
-### 5.2 EvidenceStore
+### 5.2 ScriptEvidenceStore / IntentEvidenceStore
 
 用于新 Script/Intent：
 
@@ -239,11 +243,13 @@ status()
 - 持久化失败时不能执行后续动作
 - 不影响 Legacy
 - Script 与 Intent 使用独立 Interface 和 namespace
-- 可以共享同一底层 segmented store Implementation
+- 共享同一底层 segmented FactStore Implementation
+- 必需证据统一强制 `durability=sync`
+- Adapter 分页读取，不能以超过 FactStore 上限的单次查询冒充完整读取
 
 正确原则：
 
-> 被动历史落盘不能阻塞 Legacy；Script/Intent 的决策证据、plan/decision、dispatch marker 和 action receipt 必须成功持久化，才能推进各自的新执行链。
+> Legacy 的结果不依赖存储成功；Script/Intent 的决策证据、plan/decision、dispatch marker 和 action receipt 必须成功持久化，才能推进各自的新执行链。三者只共享存储内核，不共享执行流程。
 
 ### 5.3 Evidence 数据
 
@@ -795,16 +801,18 @@ Gate G1：
 - capabilities除新增两个定义外无变化。
 - full/legacy顶层工具不新增新工具。
 
-### Phase 2：落盘 Interface 分离
+### Phase 2：统一存储内核与隔离 Adapter
 
-实现 HistorySink、ScriptEvidenceStore、IntentEvidenceStore、namespace/checksum/revision，以及内存测试 Adapter 和 segmented-store 生产 Adapter。暂不接设备动作。
+实现一个支持同步提交和有界异步写入的 FactStore，以及 Legacy Adapter、ScriptEvidenceStore、IntentEvidenceStore、namespace/checksum/revision 和 segmented-store 生产 Adapter。暂不接设备动作。
 
 Gate G2：
 
-- HistorySink初始化失败、ENOSPC、队列满、writer阻塞/崩溃不影响Legacy。
+- FactStore 初始化失败、ENOSPC、异步队列满、writer阻塞/崩溃不改变 Legacy 命令结果。
 - Script/Intent EvidenceStore故障可以阻止各自新动作。
 - evidence ID可读回并验证checksum。
 - namespace和operation state隔离。
+- Legacy、Script、Intent 写入同一 storeId，关闭重开后均可读回。
+- 共享 Adapter 不得提前关闭进程级 FactStore，超过1000条时必须分页读全。
 - 超大tree、序列化失败和损坏manifest有明确结果。
 
 ### Phase 3：SummaryTransformer
@@ -892,7 +900,7 @@ Gate G8：
 - 同serial maxActive=1。
 - 无后台ADB和自动恢复命令。
 - Legacy全量回归通过。
-- Script、Intent、HistorySink/EvidenceStore故障域符合设计。
+- Script、Intent、Legacy Adapter/EvidenceStore故障域符合设计。
 
 任一Gate失败时停止，不进入下一Phase，也不通过削弱证据门闩或旧测试来换取通过。
 

@@ -20,8 +20,14 @@
     "bin/artifact-paths.js",
     "bin/connection-cache.js",
     "bin/fact-cache.js",
+    "bin/fact-codec.js",
     "bin/fact-recorder.js",
+    "bin/fact-store.js",
     "bin/feedback-probe.js",
+    "bin/android-uia-xml.js",
+    "bin/mmap-scan-index.js",
+    "bin/segment-index.js",
+    "bin/segmented-fact-store.js",
     "bin/mcp-server.js",
     "bin/command-router.js",
     "bin/script",
@@ -41,9 +47,13 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "@mobileaidev/segmented-fact-store-native": "file:../../native/segmented-fact-store",
     "appium-webdriveragent": "^14.1.1",
     "ws": "^8.18.0"
   },
+  "bundleDependencies": [
+    "@mobileaidev/segmented-fact-store-native"
+  ],
   "publishConfig": {
     "access": "public"
   }

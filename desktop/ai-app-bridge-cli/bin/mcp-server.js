@@ -5,7 +5,7 @@ const path = require('path');
 
 const packageInfo = require('../package.json');
 const { executeCommand } = require('./ai-app-bridge');
-const { createFactCache } = require('./fact-cache');
+const { createFactStore } = require('./fact-store');
 const { FactRecorder, historyDescriptor } = require('./fact-recorder');
 const { runWithFeedbackProbe } = require('./feedback-probe');
 const { IOSBridgeProvider } = require('./ios-provider');
@@ -15,7 +15,10 @@ const { TargetExecution } = require('./target-execution');
 const { defaultArtifactDirectory } = require('./artifact-paths');
 const { createCommandRouter, isolatedCommandDefinitions } = require('./command-router');
 const { createLegacyDispatcher } = require('./legacy/legacy-dispatcher');
-const { createHistorySink } = require('./legacy/history-sink');
+const {
+  createLegacyFactStoreAdapter,
+  createSegmentedEvidenceAdapter,
+} = require('./shared-kernel/evidence-adapters');
 const bridgeDir = __dirname;
 const cliScript = path.join(bridgeDir, 'ai-app-bridge.js');
 const nodeBinary = process.env.AI_APP_BRIDGE_NODE || process.execPath;
@@ -94,11 +97,10 @@ const mutationCommands = new Set([
   'web-session-start', 'web-command', 'web-click', 'web-input', 'web-scroll',
   'forward', 'remove-forward', 'smoke',
 ]);
-let sharedFactCache = null;
+let sharedFactStore = null;
 let sharedFactRecorder = null;
-let sharedHistorySink = null;
 let sharedObservationCollector = null;
-let factCacheCloseInstalled = false;
+let factStoreCloseInstalled = false;
 let internalActionSequence = 0;
 
 let buffer = Buffer.alloc(0);
@@ -168,11 +170,12 @@ async function shutdownSharedResources() {
     }
     sharedObservationCollector = null;
     try {
-      sharedFactCache?.close();
+      await sharedFactStore?.drain?.();
+      sharedFactStore?.close();
     } catch (_) {
-      // Best-effort close during EOF/signal teardown.
+      // Best-effort drain and close during EOF/signal teardown.
     }
-    sharedFactCache = null;
+    sharedFactStore = null;
     sharedFactRecorder = null;
   })();
   return shutdownPromise;
@@ -724,14 +727,11 @@ function wrapIsolatedEntry(entry, namespace) {
       const next = { ...args };
       if (!next.adapter) next.adapter = 'production';
       if (!next.store) {
-        const { createFileEvidenceAdapter } = require('./shared-kernel/evidence-adapters');
         const storeFactory = namespace === 'script'
           ? require('./script/script-evidence-store').createScriptEvidenceStore
           : require('./intent/intent-evidence-store').createIntentEvidenceStore;
         next.store = storeFactory({
-          adapter: createFileEvidenceAdapter({
-            dir: path.join(defaultArtifactDirectory(), `${namespace}-evidence`),
-          }),
+          adapter: createSegmentedEvidenceAdapter(getSharedFactStore()),
         });
       }
       if (next.isolatedTimeoutMs == null) next.isolatedTimeoutMs = 120000;
@@ -1012,10 +1012,9 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
       };
       try {
         attachRecordedFacts(recorded);
-      } catch (error) {
-        getSharedHistorySink().offer({ command, actionId, error: error.message || String(error) });
+      } catch (_) {
+        // Legacy command results remain independent from auxiliary history writes.
       }
-      getSharedHistorySink().offer({ command, actionId, stored: true });
     }
     if (result && typeof result === 'object' && result._feedback) {
       if (factCacheInitializationError) result._feedback.factCache = factCacheInitializationError;
@@ -1039,14 +1038,9 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
           error._feedback.evidence.push(actionReference);
           error._feedback.factCache = compactFactCacheStatus(factRecorder);
         }
-      } catch (recordError) {
-        getSharedHistorySink().offer({
-          command,
-          actionId,
-          error: recordError.message || String(recordError),
-        });
+      } catch (_) {
+        // Legacy command errors remain independent from auxiliary history writes.
       }
-      getSharedHistorySink().offer({ command, actionId, stored: true });
     }
     if (error._feedback) {
       if (factCacheInitializationError) error._feedback.factCache = factCacheInitializationError;
@@ -1244,6 +1238,13 @@ function safeRecordExecution(factRecorder, input) {
 function compactFactCacheStatus(factRecorder) {
   try {
     const status = factRecorder.status();
+    const mmap = status.sqlite?.mmap || (status.adapter === 'segmented-mmap'
+      ? {
+          enabled: true,
+          requestedBytes: status.budgetBytes,
+          effectiveBytes: status.storage?.mmapBytes,
+        }
+      : undefined);
     return {
       adapter: status.adapter,
       persistence: status.persistence,
@@ -1253,34 +1254,36 @@ function compactFactCacheStatus(factRecorder) {
       budgetBytes: status.budgetBytes,
       totalBytes: status.storage?.totalBytes,
       overQuota: status.storage?.overQuota,
-      mmap: status.sqlite?.mmap,
+      mmap,
     };
   } catch (error) {
     return { degraded: true, persistence: false, error: error.message };
   }
 }
 
-function getSharedHistorySink() {
-  if (sharedHistorySink) return sharedHistorySink;
-  sharedHistorySink = createHistorySink({
-    adapter: {
-      record() {
-        return { ok: true };
-      },
-    },
+function getSharedFactStore() {
+  if (sharedFactStore) return sharedFactStore;
+  const explicitDirectory = process.env.AI_APP_BRIDGE_FACT_STORE_DIR;
+  const legacyPath = process.env.AI_APP_BRIDGE_FACT_CACHE_PATH;
+  const directory = explicitDirectory
+    ? path.resolve(explicitDirectory)
+    : (legacyPath ? path.join(path.dirname(path.resolve(legacyPath)), 'fact-store-v1') : null);
+  sharedFactStore = createFactStore({
+    profile: process.env.AI_APP_BRIDGE_FACT_CACHE_PROFILE || 'auto',
+    ...(directory ? { directory } : {}),
   });
-  return sharedHistorySink;
+  return sharedFactStore;
 }
 
 function getSharedFactRecorder() {
   if (String(process.env.AI_APP_BRIDGE_FACT_CACHE || '').toLowerCase() === 'off') return null;
   if (sharedFactRecorder) return sharedFactRecorder;
-  sharedFactCache = createFactCache({
-    profile: process.env.AI_APP_BRIDGE_FACT_CACHE_PROFILE || 'auto',
+  getSharedFactStore();
+  sharedFactRecorder = new FactRecorder({
+    cache: createLegacyFactStoreAdapter(sharedFactStore),
   });
-  sharedFactRecorder = new FactRecorder({ cache: sharedFactCache });
-  if (!factCacheCloseInstalled) {
-    factCacheCloseInstalled = true;
+  if (!factStoreCloseInstalled) {
+    factStoreCloseInstalled = true;
     process.once('exit', () => {
       try {
         const stopping = sharedObservationCollector?.stop();
@@ -1289,9 +1292,9 @@ function getSharedFactRecorder() {
         // Process shutdown must not be blocked by observer cleanup.
       }
       try {
-        sharedFactCache?.close();
+        sharedFactStore?.close();
       } catch (_) {
-        // Process shutdown must not be blocked by cache cleanup.
+        // Process shutdown must not be blocked by FactStore cleanup.
       }
     });
   }

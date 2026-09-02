@@ -402,7 +402,7 @@ class SegmentedFactStoreAdapter {
       actionId: normalized.actionId,
       sizeBytes: payload.length,
       evictedCount,
-      durability: critical ? 'sync' : 'memory',
+      durability,
       segmentId: location.segmentId,
       frameOffset: location.frameOffset,
       ...(projectionDegraded ? {

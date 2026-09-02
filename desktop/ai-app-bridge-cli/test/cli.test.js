@@ -59,6 +59,7 @@ const {
 const cliPath = path.join(__dirname, '..', 'bin', 'ai-app-bridge.js');
 const mcpPath = path.join(__dirname, '..', 'bin', 'mcp-server.js');
 const { buildBridgeCliArgs, defaultArtifactDirFor, runBatch } = require('../bin/mcp-server.js');
+const { createFactStore } = require('../bin/fact-store.js');
 const {
   IOSBridgeProvider,
   formatHostForUrl,
@@ -510,7 +511,7 @@ test('MCP accepts single-line JSON and responds with single-line JSON', async ()
   assert.equal(sawFramedOutput, false);
 });
 
-test('MCP EOF drains observation timers and closes the fact cache', async () => {
+test('MCP production wiring persists Legacy, Script, and Intent together, then closes on EOF', async () => {
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-mcp-shutdown-'));
   const client = createLineJsonMcpClient({
     env: {
@@ -536,6 +537,56 @@ test('MCP EOF drains observation timers and closes the fact cache', async () => 
     });
     assert.equal(status.result.isError, true);
 
+    const script = await client.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'script',
+        arguments: {
+          operation: 'start',
+          operationId: 'cli-unified-script',
+          script: {
+            name: 'persistence-only',
+            steps: [{ id: 'persist', type: 'checkpoint' }],
+          },
+        },
+      },
+    });
+    const scriptPayload = JSON.parse(script.result.content[0].text);
+    assert.equal(scriptPayload.ok, true);
+    assert.equal(scriptPayload.status, 'completed');
+
+    const intent = await client.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'intent',
+        arguments: {
+          operation: 'start',
+          operationId: 'cli-unified-intent',
+          goal: 'confirm persistence without a device',
+          target: { serial: 'fixture-device', packageName: 'com.example.fixture' },
+          adapter: 'fake',
+        },
+      },
+    });
+    const intentPayload = JSON.parse(intent.result.content[0].text);
+    assert.equal(intentPayload.ok, true);
+    assert.equal(intentPayload.status, 'waiting_for_decision');
+
+    const decision = await client.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'intent',
+        arguments: {
+          operation: 'decide',
+          operationId: 'cli-unified-intent',
+          decision: { decisionId: 'complete-1', agentDecision: 'complete' },
+        },
+      },
+    });
+    const decisionPayload = JSON.parse(decision.result.content[0].text);
+    assert.equal(decisionPayload.ok, true);
+    assert.equal(decisionPayload.status, 'completed');
+
     const closed = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         client.child.kill();
@@ -548,6 +599,18 @@ test('MCP EOF drains observation timers and closes the fact cache', async () => 
     });
     client.child.stdin.end();
     assert.deepEqual(await closed, { code: 0, signal: null });
+
+    const store = createFactStore({
+      directory: path.join(cacheDir, 'fact-store-v1'),
+      profile: '64mb',
+    });
+    const page = store.read({ limit: 1_000 });
+    store.close();
+    assert.equal(page.items.some((item) => item.payload?.namespace === 'script'), true);
+    assert.equal(page.items.some((item) => item.payload?.namespace === 'intent'), true);
+    assert.equal(page.items.some((item) => (
+      item.payload?.kind === 'execution' && item.payload?.command === 'web-status'
+    )), true);
   } finally {
     if (client.child.exitCode === null && client.child.signalCode === null) client.close();
     fs.rmSync(cacheDir, { recursive: true, force: true });

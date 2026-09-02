@@ -49,7 +49,12 @@ async function invokeIsolated(name, loader, args, loads) {
   if (!entry || typeof entry.handle !== 'function') {
     return isolatedError(name, 'isolated_module_unavailable', 'entry handle is missing');
   }
-  const handlePromise = Promise.resolve(entry.handle(args));
+  let handlePromise;
+  try {
+    handlePromise = Promise.resolve(entry.handle(args));
+  } catch (error) {
+    return isolatedHandleError(name, error);
+  }
   const timeoutMs = args.isolatedTimeoutMs;
   const result = timeoutMs == null
     ? await handlePromise
@@ -62,7 +67,7 @@ async function invokeIsolated(name, loader, args, loads) {
         },
         (error) => {
           clearTimeout(timer);
-          resolve(isolatedError(name, 'isolated_module_unavailable', error.message || String(error)));
+          resolve(isolatedHandleError(name, error));
         },
       );
     });
@@ -71,6 +76,14 @@ async function invokeIsolated(name, loader, args, loads) {
     content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     isError: result?.ok === false,
   };
+}
+
+function isolatedHandleError(name, error) {
+  return isolatedError(
+    name,
+    error?.code === 'sfs_busy' ? 'fact_store_writer_busy' : 'isolated_module_unavailable',
+    error?.message || String(error),
+  );
 }
 
 function isolatedError(command, error, detail) {
