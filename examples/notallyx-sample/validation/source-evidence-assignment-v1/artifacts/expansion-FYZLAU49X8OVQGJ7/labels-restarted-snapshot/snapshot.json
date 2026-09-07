@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "aab.notallyx-snapshot/v1",
+  "snapshotId": "24b4a187-9058-441d-a565-266192e4efb1",
+  "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+  "target": {
+    "serial": "FYZLAU49X8OVQGJ7",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "identity": {
+    "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+  },
+  "capturedAfterSequence": 140,
+  "acquisition": {
+    "method": "run-as-force-stop",
+    "packageName": "io.github.mobileaidev.notallyx.sample",
+    "forceStopCompletedAtMs": 1788754835872,
+    "pidof": {
+      "checkedAtMs": 1788754835931,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pidofAfter": {
+      "checkedAtMs": 1788754836798,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pullStartedAtMs": 1788754835931,
+    "pullCompletedAtMs": 1788754836729,
+    "transcript": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/acquisition.json",
+      "sha256": "30e06e7f9cb41a4eac1bbc1541aa7cbd97e2902b760fbdb75e9d93eec22e8f46"
+    }
+  },
+  "files": {
+    "database": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "remotePath": "databases/NotallyDatabase",
+      "bytes": 4096
+    },
+    "wal": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/NotallyDatabase-wal",
+      "sha256": "ce9b30f3e6d3816c6c64c96fd66f0359df71da6488bffa1c1e2595720cbc0c88",
+      "remotePath": "databases/NotallyDatabase-wal",
+      "bytes": 206032
+    },
+    "shm": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/NotallyDatabase-shm",
+      "sha256": "36e5e8d2bd4777838cc5346fadad84d28781c828c7da6e25bde46de002a1337b",
+      "remotePath": "databases/NotallyDatabase-shm",
+      "bytes": 32768
+    },
+    "preferences": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/preferences.xml",
+      "sha256": "f64cff3558d9812cb1233c5915d4f8ee3ecfb62b92355641d5a896288cd5e196",
+      "remotePath": "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml",
+      "bytes": 156
+    }
+  },
+  "attachments": [],
+  "attachmentScope": "private-files-attachments"
+}

@@ -1,0 +1,537 @@
+{
+  "schemaVersion": "aab.notallyx.source-evidence-bundle/v1",
+  "pathBase": "repository-root",
+  "originalIndex": {
+    "originalPath": "examples/notallyx-sample/validation/labels-evidence-source-index-v1.json",
+    "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/index-original.json",
+    "sha256": "b36cecb0f69e2d9e104844ecd78d2f77cb5fd513a4e6154060a61e4e6357be43",
+    "bytes": 8529
+  },
+  "sourceIntentExecutionIds": [
+    "intent-1788751052004-2",
+    "intent-1788752668874-1"
+  ],
+  "sourceEvidenceRefs": [
+    "intent:observation:intent-1788751052004-2:1:1",
+    "intent:observation:intent-1788751052004-2:2:6",
+    "intent:observation:intent-1788751052004-2:3:11",
+    "intent:observation:intent-1788751052004-2:4:13",
+    "intent:observation:intent-1788751052004-2:5:18",
+    "intent:observation:intent-1788751052004-2:6:20",
+    "intent:observation:intent-1788751052004-2:7:25",
+    "intent:observation:intent-1788751052004-2:8:30",
+    "intent:observation:intent-1788752668874-1:1:1",
+    "intent:observation:intent-1788752668874-1:2:6",
+    "intent:observation:intent-1788752668874-1:3:8",
+    "intent:observation:intent-1788752668874-1:4:13",
+    "intent:observation:intent-1788752668874-1:5:15",
+    "intent:observation:intent-1788752668874-1:6:20",
+    "intent:observation:intent-1788752668874-1:7:22",
+    "intent:observation:intent-1788752668874-1:8:27",
+    "intent:observation:intent-1788752668874-1:9:32",
+    "intent:observation:intent-1788752668874-1:10:34"
+  ],
+  "scenarioMappings": [
+    {
+      "scenarioId": "labels.manage.negative",
+      "scriptPhases": [
+        "planned-label-duplicate-rejection"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2",
+        "intent-1788752668874-1"
+      ],
+      "coverage": "partial",
+      "reason": "One exact duplicate-create rejection has a fresh surviving UI, visible toast and independent canonical equality. Rename conflict and cancellation remain pending; no label Script has been implemented."
+    }
+  ],
+  "unmapped": "This separate increment is authoring provenance only. It does not alter the frozen text/list suite, add executed coverage slots, or complete labels.manage.negative.",
+  "selection": {
+    "indexedArtifactCount": 27,
+    "referencedDependencyCount": 10,
+    "sourceArtifactCount": 37,
+    "originalIndexCopies": 1,
+    "originalBytes": 3608856,
+    "indexedArtifactBytes": 3233193,
+    "dependencyBytes": 367134
+  },
+  "artifacts": [
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/8-start.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/8-start.json",
+      "sha256": "4b93cabb14135fe13002502203bc1fd89d492b708ffb4ed1f905d072c2fb509c",
+      "bytes": 105366,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/9-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/9-act.json",
+      "sha256": "de0edda0fee8d62501465d9497f2fff62b6ddf22012b1f6c037416ab14b2342a",
+      "bytes": 107238,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/10-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/10-act.json",
+      "sha256": "ddf8dc4d1bd2ceaeda097f69b5bc562c61c5b62d94e285642a8dfd86151d9497",
+      "bytes": 98051,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/11-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/11-observe.json",
+      "sha256": "cd2961e1555298da29756b8426a4fa137769fcecd56f55d0f226f2a84cdfdf3e",
+      "bytes": 105559,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/12-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/12-act.json",
+      "sha256": "54e50082fa618290cd8c991b2f1961f6bc6c1217917d1b0ddcf2226fc70b6b61",
+      "bytes": 113334,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/13-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/13-observe.json",
+      "sha256": "4cf0d1782557ee153a489226b3db6ea9ef6c1797e6be6597c274293a6be3554b",
+      "bytes": 116554,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/14-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/14-act.json",
+      "sha256": "c2d3dc7f2162dbcd7e31fe4b0c2c970a04d21a2a983e3c71e46656acdaa47a77",
+      "bytes": 127822,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/15-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/15-act.json",
+      "sha256": "86d3c299648b5f43f06cbe48dd2cf721e48057f54bef24ecc2e5e31413d368af",
+      "bytes": 109952,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/16-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788750907051/16-observe.json",
+      "sha256": "187c56cc16bec07c0101fbf35b6a2f6a56c78c2f41ed96c20de2b5c092412b23",
+      "bytes": 110165,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-failed-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": ".tools/business-app-migration-2026-09-07/label-duplicate-device-red-crash.log",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/retained-failure/label-duplicate-device-red-crash.log",
+      "sha256": "f1d01a802894f4ef4438f33951ba3bfb19c60b91e2ad96b8c7e6db52a56c23b6",
+      "bytes": 13525,
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2"
+      ],
+      "role": "retained-device-crash-log",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/1-start.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/1-start.json",
+      "sha256": "d9b372c845881d0ec86f3a9cb9f83d431c337d294e6f9797023f3d2a5621fe99",
+      "bytes": 97897,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/2-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/2-act.json",
+      "sha256": "ddf0ced2138260c3e78eb0e5d4e717297e65ad1a33b58e60c6020bf9a2191aed",
+      "bytes": 104908,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/3-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/3-observe.json",
+      "sha256": "51c741a9ba7427a1311c4e1267e199cc8cceef8ddfb9082e69a0a73fff935151",
+      "bytes": 97778,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/4-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/4-act.json",
+      "sha256": "96839599e939b64c02f1eac89a4966601b40e3012a336471567038f327dd1214",
+      "bytes": 105676,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/5-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/5-observe.json",
+      "sha256": "3053853f428329524238d35505d3e871cd05c735117dbef59d910f7230442b61",
+      "bytes": 75244,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/6-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/6-act.json",
+      "sha256": "40ced52b5db8892e71c11b698386ef4c2f8b963a8fb9289206fde8b4ff225444",
+      "bytes": 93303,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/7-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/7-observe.json",
+      "sha256": "4ea30f96be116115f7775cbc5a712d53dfe7bac4e088557cc8c780fdc2722759",
+      "bytes": 86262,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/8-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/8-act.json",
+      "sha256": "22de0fcdb61ba3238008cc0d678ea25806eee314fd9ee11716f22bedc4758b16",
+      "bytes": 88848,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/9-act.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/9-act.json",
+      "sha256": "24ef41a588954939a29ceb2583256f7332841f2fd7fd747f1112bca6760d1e56",
+      "bytes": 79625,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/10-screenshot.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/10-screenshot.json",
+      "sha256": "2067616c707aa5fbaf8e9a9140fdb815851b63a669dd1b635b703e36704ddb41",
+      "bytes": 1594,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/11-observe.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/11-observe.json",
+      "sha256": "c974b206c408b6b35ebebb0ff858dc30cb2976bf42e2ec54939a3fc1e46e53f2",
+      "bytes": 76955,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/12-complete.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/12-complete.json",
+      "sha256": "facd23410641d8b6b0bfd28e7f2ffeb8cba020cf5d02fa60392da338c8d1ac43",
+      "bytes": 77285,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/13-history.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/intent-exploration/1788752615378/13-history.json",
+      "sha256": "bc69e5be90deb5bdd30d3f216ce0c3f322bc3b8c009abdd6a9c70e59ce880d34",
+      "bytes": 1171177,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-intent-response",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected.png",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected.png",
+      "sha256": "8541c5109accacb566d2549e1220d39997cdc0d83960813d3c843ec1976182bf",
+      "bytes": 62726,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "duplicate-rejection-toast-screenshot",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejection-oracle.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejection-oracle.json",
+      "sha256": "b48761238fcbc844a859f8a5bd1f5dcd55649f434e23cd54f814bd6e042625e7",
+      "bytes": 795,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "historical-independent-canonical-oracle",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/script-oppo-r8/list-restarted-db/snapshot.json",
+      "sha256": "a067659a7109295d159ae7dd17d77d53bae205148c493e2a562b7389b0e28ece",
+      "bytes": 2712,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "database-snapshot-manifest",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+      "sha256": "2c1c1e55788bfc70f66f81cdc88aa389e8fbef32bfca851949bd05893fec5b59",
+      "bytes": 2842,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "database-snapshot-manifest",
+      "references": []
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/acquisition.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/script-oppo-r8/list-restarted-db/acquisition.json",
+      "sha256": "31f549de1f3091ab64dd6df4b40c0619124201c4e44b2b85db626afffb61481d",
+      "bytes": 6479,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+          "jsonPointer": "/acquisition/transcript",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/acquisition.json",
+          "sha256": "31f549de1f3091ab64dd6df4b40c0619124201c4e44b2b85db626afffb61481d"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/script-oppo-r8/list-restarted-db/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "bytes": 4096,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+          "jsonPointer": "/files/database",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase",
+          "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase-wal",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/script-oppo-r8/list-restarted-db/NotallyDatabase-wal",
+      "sha256": "0c2eb6479d72e43df6e6f700ffcde7315a1ab11314c8307c2e307284c23a47f7",
+      "bytes": 140112,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+          "jsonPointer": "/files/wal",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase-wal",
+          "sha256": "0c2eb6479d72e43df6e6f700ffcde7315a1ab11314c8307c2e307284c23a47f7"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase-shm",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/script-oppo-r8/list-restarted-db/NotallyDatabase-shm",
+      "sha256": "6eda22c4c47ec4c192a65282744253d53cb22af528d8bf8347a5fa7b25c5c313",
+      "bytes": 32768,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+          "jsonPointer": "/files/shm",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase-shm",
+          "sha256": "6eda22c4c47ec4c192a65282744253d53cb22af528d8bf8347a5fa7b25c5c313"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/preferences.xml",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/script-oppo-r8/list-restarted-db/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "bytes": 112,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+          "jsonPointer": "/files/preferences",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/preferences.xml",
+          "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/acquisition.json",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/acquisition.json",
+      "sha256": "0b775af1ca6e7a55f01b4677c13b0d0217106945db413dd5d975243597aef765",
+      "bytes": 6479,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+          "jsonPointer": "/acquisition/transcript",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/acquisition.json",
+          "sha256": "0b775af1ca6e7a55f01b4677c13b0d0217106945db413dd5d975243597aef765"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "bytes": 4096,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+          "jsonPointer": "/files/database",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase",
+          "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase-wal",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase-wal",
+      "sha256": "0c2eb6479d72e43df6e6f700ffcde7315a1ab11314c8307c2e307284c23a47f7",
+      "bytes": 140112,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+          "jsonPointer": "/files/wal",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase-wal",
+          "sha256": "0c2eb6479d72e43df6e6f700ffcde7315a1ab11314c8307c2e307284c23a47f7"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase-shm",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase-shm",
+      "sha256": "6eda22c4c47ec4c192a65282744253d53cb22af528d8bf8347a5fa7b25c5c313",
+      "bytes": 32768,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+          "jsonPointer": "/files/shm",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/NotallyDatabase-shm",
+          "sha256": "6eda22c4c47ec4c192a65282744253d53cb22af528d8bf8347a5fa7b25c5c313"
+        }
+      ]
+    },
+    {
+      "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/preferences.xml",
+      "bundlePath": "examples/notallyx-sample/validation/source-evidence-labels-v1/artifacts/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "bytes": 112,
+      "sourceIntentExecutionIds": [
+        "intent-1788752668874-1"
+      ],
+      "role": "snapshot-required-dependency",
+      "references": [
+        {
+          "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+          "jsonPointer": "/files/preferences",
+          "originalReference": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/preferences.xml",
+          "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72"
+        }
+      ]
+    }
+  ]
+}

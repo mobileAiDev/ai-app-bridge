@@ -1,0 +1,24 @@
+{
+  "id": "delete-cancel-no-business-change",
+  "verdict": "passed",
+  "ok": true,
+  "source": "independent-host-business-oracle",
+  "before": {
+    "snapshotId": "ef35f3c8-5f9e-4449-8539-57103831ac78",
+    "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+    "identity": {
+      "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+      "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+    }
+  },
+  "after": {
+    "snapshotId": "66c2bf1f-69da-4360-bb4c-110d26870f1d",
+    "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+    "identity": {
+      "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+      "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+    }
+  },
+  "ignoreFields": [],
+  "differences": []
+}

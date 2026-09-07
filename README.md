@@ -22,9 +22,23 @@ Supported targets:
 - iOS native apps through `AiAppBridgeIOS` for UIKit/WKWebView/logs/network/state/events plus WebDriverAgent/XCUITest for screenshots, UI tree, tap, input, swipe, and system UI
 - Desktop Web Bridge sessions through the browser SDK for DOM, logs, network, state, events, whitelisted commands, click/input/wait, and scroll
 
+Phone-side `logs` / `network` / `state` / `events` live in `MobileCaptureStore`. Host live commands read the phone; they do not keep a copied payload history for those streams.
+
 MCP command domains: `core` (`status`, `tree`, `uia-tree`, `screenshot`, `logs`, `network`, `state`, `events`), `app` (install, clear data, launch, freeze/thaw, permissions, appops), `action` (tap, input, swipe, keyevent, wait, keyboard), `flutter`, `webview`, `ios`, `web`, `diagnostics`, and `advanced` (`batch`, port forwarding).
 
 The default MCP surface is compact: call `capabilities` to discover domains, commands, and options, then call `run` with the chosen command.
+
+Isolated MCP commands `script` and `intent` live under `advanced`. They are generic runtimes, not product workflow verbs such as explore, export-to-script, or assemble-report.
+
+- `script` runs trusted-local-code JavaScript or Python. `permissions` only gate Bridge SDK calls; this is not an OS sandbox. The default allowlist excludes clear-data, install, permission changes, eval, raw shell, and ADB management. `page-summary` stays internal to Script/Intent.
+- `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
+- Phone `logs` / `network` / `state` / `events` stay in `MobileCaptureStore`. On the updated Android runtime, MCP `history:true` reads retained phone facts while connected; the Host does not keep a copied mobile payload history. The current iOS strong-query backend reports `persistence_unavailable`; its Legacy reads remain available.
+
+This working tree is preparing a local `0.3.0-rc.1` CLI candidate, not an npm
+release. Script is optional. Execution completion, code assertions and
+device-backed outcomes are separate. See the [candidate contracts and
+migration notes](desktop/ai-app-bridge-cli/README.md#optional-script-and-evidence-contracts-in-this-candidate)
+for single-page evidence, retention, recovery and platform limits.
 
 ## What It Solves
 
@@ -47,6 +61,7 @@ flutter/ai_app_bridge_flutter         Flutter plugin
 web/ai-app-bridge-web                 Browser SDK for desktop Web Bridge sessions
 desktop/ai-app-bridge-cli             Node CLI and MCP stdio server
 examples/android-native-sample        Clean Android sample app
+examples/notallyx-sample              GPL-3.0 real business app, architecture migration and Intent-to-Script validation
 examples/ios-native-sample            Clean iOS sample app for runtime install validation
 docs                                  Design, integration, and test notes
 ```

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "aab.labels-source-v2-build-result/v1",
+  "state": "frozen",
+  "indexPath": "examples/notallyx-sample/validation/labels-evidence-source-index-v2.json",
+  "manifestPath": "examples/notallyx-sample/validation/source-evidence-labels-v2/bundle-manifest.json",
+  "indexSha256": "7c5637fb49581ad4d47a8972ccbb783e4e0ba59744912b129348bba817f7b0f8",
+  "manifestSha256": "2923a75c71dbe6116634a184aec166399dff90acb87ceb3ff0576f9ad6cb3371",
+  "counts": {
+    "indexedArtifacts": 172,
+    "dependencies": 53,
+    "artifacts": 225,
+    "artifactBytes": 29032861
+  },
+  "integrity": "verified",
+  "scope": "historical-source-only",
+  "currentRunAcceptance": false,
+  "protectedV1Files": 40,
+  "authorizedRanges": [
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 14,
+      "through": 49,
+      "intentId": "intent-1788752991946-2"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 50,
+      "through": 62,
+      "intentId": "intent-1788753529249-3"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 63,
+      "through": 88,
+      "intentId": "intent-1788753729297-4"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 89,
+      "through": 99,
+      "intentId": "intent-1788754163691-5"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 100,
+      "through": 102,
+      "intentId": "intent-1788754600061-6"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 103,
+      "through": 118,
+      "intentId": "intent-1788754627577-7"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 119,
+      "through": 130,
+      "intentId": "intent-1788754681926-8"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378",
+      "from": 131,
+      "through": 140,
+      "intentId": "intent-1788754805340-9"
+    }
+  ]
+}

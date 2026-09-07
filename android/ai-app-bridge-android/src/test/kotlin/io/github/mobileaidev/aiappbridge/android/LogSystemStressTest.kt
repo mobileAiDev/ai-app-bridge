@@ -88,9 +88,11 @@ class LogSystemStressTest {
         var previousDisk = 0L
         for (index in 0 until results.length()) {
             val row = results.getJSONObject(index)
-            assertEquals(row.getInt("offered"), row.getInt("written"))
-            assertEquals(0, row.getInt("dropped"))
-            assertEquals(0, row.getInt("queueFull"))
+            // Burst load may exceed the payload-byte budget even when the count limit is large.
+            assertEquals(row.getInt("offered"), row.getInt("accepted") + row.getInt("queueFull"))
+            assertEquals(row.getInt("accepted"), row.getInt("written"))
+            assertEquals(row.getInt("queueFull"), row.getInt("dropped"))
+            assertEquals(0, row.getLong("queuedPayloadBytes"))
             val disk = row.getLong("diskDeltaBytes")
             assertTrue("${row.getString("tier")} disk=$disk", disk > previousDisk)
             previousDisk = disk
@@ -121,11 +123,12 @@ class LogSystemStressTest {
             val status = awaitStatus(store, writtenAtLeast = accepted)
             val elapsedMs = elapsedMs(startedAt)
 
-            assertEquals(PIPELINE_COUNT, accepted)
-            assertEquals(0, queueFull)
-            assertEquals(PIPELINE_COUNT.toLong(), status.acceptedRecords)
-            assertEquals(PIPELINE_COUNT.toLong(), status.writtenRecords)
-            assertEquals(0L, status.droppedRecords)
+            assertTrue(accepted > 0)
+            assertEquals(PIPELINE_COUNT, accepted + queueFull)
+            assertEquals(accepted.toLong(), status.acceptedRecords)
+            assertEquals(accepted.toLong(), status.writtenRecords)
+            assertEquals(queueFull.toLong(), status.droppedRecords)
+            assertEquals(0L, status.queuedPayloadBytes)
             report(
                 "persist-pipeline",
                 mapOf(
@@ -231,7 +234,7 @@ class LogSystemStressTest {
 
             assertEquals(offered, accepted.get() + queueFull.get())
             assertEquals(accepted.get().toLong(), status.writtenRecords)
-            assertEquals(0, queueFull.get())
+            assertEquals(queueFull.get().toLong(), status.droppedRecords)
             report(
                 "concurrent-persist",
                 mapOf(
@@ -290,6 +293,7 @@ class LogSystemStressTest {
                 .put("written", status.writtenRecords)
                 .put("dropped", status.droppedRecords)
                 .put("queueFull", queueFull.get())
+                .put("queuedPayloadBytes", status.queuedPayloadBytes)
                 .put("elapsedMs", TimeUnit.NANOSECONDS.toMillis(elapsedNs))
                 .put("factsPerSec", if (elapsedNs == 0L) 0.0 else accepted.get() * 1_000_000_000.0 / elapsedNs)
                 .put("cpuDeltaMs", TimeUnit.NANOSECONDS.toMillis((after.cpuNs - before.cpuNs).coerceAtLeast(0L)))

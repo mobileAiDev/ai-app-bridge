@@ -1,0 +1,32 @@
+{
+  "request": {
+    "command": "screenshot",
+    "args": {
+      "outFile": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-text-editor.png"
+    }
+  },
+  "result": {
+    "ok": true,
+    "transport": "adb",
+    "mimeType": "image/png",
+    "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-text-editor.png",
+    "width": 1080,
+    "height": 2414,
+    "artifact": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-text-editor.png",
+      "sha256": "10030900624f8fb6ba1aa003a06492ec1efcb93d675c003798e92fc0dec9ce45",
+      "generatedDefault": false,
+      "directory": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7"
+    },
+    "foreground": {
+      "ok": true,
+      "source": "mCurrentFocus",
+      "packageName": "io.github.mobileaidev.notallyx.sample",
+      "activity": "com.philkes.notallyx.presentation.activity.note.EditNoteActivity",
+      "component": "io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.note.EditNoteActivity",
+      "raw": "mCurrentFocus=Window{90625f4 u0 io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.note.EditNoteActivity}"
+    },
+    "targetPackageName": "io.github.mobileaidev.notallyx.sample",
+    "foregroundMatchesPackage": true
+  }
+}

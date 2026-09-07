@@ -8,7 +8,8 @@ const test = require('node:test');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { createFakeIntentDeviceAdapter } = require('../bin/intent/intent-device-adapter');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
-const { handle } = require('../bin/intent/intent-entry');
+const { handle, resetIntentOperations } = require('./helpers/intent-entry');
+const { createIntentRuntime } = require('../bin/intent/intent-runtime');
 const { handle: scriptHandle } = require('../bin/script/script-entry');
 const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
 
@@ -33,6 +34,52 @@ test('G5 Intent does not import Script or Legacy', () => {
     const source = fs.readFileSync(path.join(__dirname, '../bin/intent', file), 'utf8');
     assert.equal(/script\/|legacy\/|runBatch|runBridgeChecked|LegacyDispatcher|mcp-server/.test(source), false, file);
   }
+});
+
+test('G5 Intent runtime events stay count- and byte-bounded', () => {
+  const runtime = createIntentRuntime({
+    operationId: 'bounded-events',
+    maxEvents: 8,
+    maxEventBytes: 512,
+    now: () => 1,
+  });
+  for (let i = 0; i < 100; i += 1) {
+    runtime.emit('progress', { message: `${i}:${'x'.repeat(160)}` });
+  }
+  const snapshot = runtime.snapshot();
+  assert.equal(snapshot.eventSequence, 100);
+  assert.equal(snapshot.eventGap, true);
+  assert.equal(snapshot.droppedEvents > 0, true);
+  assert.equal(snapshot.events.length <= 8, true);
+  assert.equal(runtime.eventBytes <= 512, true);
+});
+
+test('G5 Intent live operation registry fails closed at its bound', async () => {
+  resetIntentOperations();
+  const adapter = createFakeIntentDeviceAdapter({ trees: { native: tree } });
+  for (let i = 0; i < 256; i += 1) {
+    const started = await handle({
+      operation: 'start',
+      operationId: `bounded-live-${i}`,
+      goal: 'wait',
+      target: { serial: `serial-${i}`, packageName: 'com.example.app' },
+      store: store(),
+      adapter,
+    });
+    assert.equal(started.status, 'waiting_for_decision');
+  }
+  const full = await handle({
+    operation: 'start',
+    operationId: 'bounded-live-overflow',
+    goal: 'wait',
+    target: { serial: 'overflow', packageName: 'com.example.app' },
+    store: store(),
+    adapter,
+  });
+  assert.equal(full.ok, false);
+  assert.equal(full.error, 'registry_full');
+  assert.equal(handle({ operation: 'status', operationId: 'bounded-live-0' }).status, 'waiting_for_decision');
+  resetIntentOperations();
 });
 
 test('G5 start without persisted evidence cannot enter waiting_for_decision', async () => {
@@ -167,13 +214,33 @@ test('G5 completes three observe-decide-action-observe rounds; Script and Legacy
 
   const script = await scriptHandle({
     operation: 'start',
+    actions: async () => { throw new Error('unexpected_device_call'); },
     script: {
+      schemaVersion: 'aab.code-script/v1',
       name: 'g5-reg',
+      language: 'javascript',
+      source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
       target: { serial: 'android-1', packageName: 'com.example.app' },
-      steps: [{ id: 'o1', type: 'observe', provider: 'native' }],
     },
   });
-  assert.equal(script.status, 'completed');
+  const deadline = Date.now() + 5000;
+  let snapshot = script;
+  let afterSequence = script.eventSequence || 0;
+  while (
+    snapshot.status !== 'completed'
+    && snapshot.status !== 'failed'
+    && snapshot.status !== 'cancelled'
+    && Date.now() < deadline
+  ) {
+    snapshot = await scriptHandle({
+      operation: 'wait',
+      operationId: script.operationId,
+      waitMs: Math.max(1, Math.min(200, deadline - Date.now())),
+      afterSequence,
+    });
+    afterSequence = snapshot.eventSequence || afterSequence;
+  }
+  assert.equal(snapshot.status, 'completed');
   const legacy = await runBridgeChecked('status', { serial: 'android-1' }, {
     rawRunner: async () => { throw new Error('no runner'); },
   });

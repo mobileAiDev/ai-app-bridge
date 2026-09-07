@@ -1,0 +1,138 @@
+{
+  "ok": true,
+  "verdict": "observed",
+  "snapshotId": "ef35f3c8-5f9e-4449-8539-57103831ac78",
+  "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+  "target": {
+    "serial": "FYZLAU49X8OVQGJ7",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "identity": {
+    "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+  },
+  "capturedAfterSequence": 88,
+  "capturedAtMs": 1788754092805,
+  "files": {
+    "database": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-snapshot/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "remotePath": "databases/NotallyDatabase",
+      "bytes": 4096
+    },
+    "wal": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-snapshot/NotallyDatabase-wal",
+      "sha256": "5839a86ddd61d57f1a25a71a6cf81046cb1964b7fd257d6d74a4ed43acc696e0",
+      "remotePath": "databases/NotallyDatabase-wal",
+      "bytes": 189552
+    },
+    "shm": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-snapshot/NotallyDatabase-shm",
+      "sha256": "ea362076a89ed6861232a712ab736d9b3452e0ef37c228a0de98cbf8b7a16da8",
+      "remotePath": "databases/NotallyDatabase-shm",
+      "bytes": 32768
+    },
+    "preferences": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-snapshot/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "remotePath": "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml",
+      "bytes": 112
+    }
+  },
+  "data": {
+    "schemaVersion": 11,
+    "roomIdentity": "80a04d33cf13bc8ca45396f5a5d85e61",
+    "notes": [
+      {
+        "id": 1,
+        "type": "NOTE",
+        "folder": "NOTES",
+        "color": "#AFCCDC",
+        "title": "AAB-TEXT-script-1788752487009-10e9d2",
+        "pinned": true,
+        "timestamp": 1788752495340,
+        "modifiedTimestamp": 1788753172848,
+        "labels": [
+          "AAB项目-script-1788752487009-10e9d2",
+          "AAB-label-renamed"
+        ],
+        "body": "第一行中文\nsecond line & <tag>-edited",
+        "spans": [],
+        "items": [],
+        "images": [],
+        "files": [],
+        "audios": [],
+        "reminders": [],
+        "viewMode": "EDIT",
+        "isPinnedToStatus": false
+      },
+      {
+        "id": 2,
+        "type": "LIST",
+        "folder": "NOTES",
+        "color": "DEFAULT",
+        "title": "AAB-LIST-script-1788752487009-10e9d2",
+        "pinned": false,
+        "timestamp": 1788752532207,
+        "modifiedTimestamp": 1788753415431,
+        "labels": [
+          "AAB-label-ab"
+        ],
+        "body": "",
+        "spans": [],
+        "items": [
+          {
+            "body": "Parent-A",
+            "checked": false,
+            "isChild": false,
+            "order": 0
+          },
+          {
+            "body": "Child-A1",
+            "checked": false,
+            "isChild": true,
+            "order": 1
+          },
+          {
+            "body": "Child-A2-edited",
+            "checked": false,
+            "isChild": true,
+            "order": 2
+          },
+          {
+            "body": "Parent-B",
+            "checked": true,
+            "isChild": false,
+            "order": 3,
+            "checkedTimestamp": 1788752541063
+          }
+        ],
+        "images": [],
+        "files": [],
+        "audios": [],
+        "reminders": [],
+        "viewMode": "EDIT",
+        "isPinnedToStatus": false
+      }
+    ],
+    "labels": [
+      {
+        "value": "AAB-label-ab",
+        "order": 2
+      },
+      {
+        "value": "AAB-label-renamed",
+        "order": 1
+      },
+      {
+        "value": "AAB项目-script-1788752487009-10e9d2",
+        "order": 0
+      }
+    ],
+    "preferences": {
+      "dataSchemaId": 2
+    }
+  },
+  "attachments": [],
+  "provenance": "Host collector transcript and hashes; not a cryptographic device attestation"
+}

@@ -186,7 +186,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-test('registers one background observer per Android target and pulls each evidence stream incrementally', async () => {
+test('registers one background observer per Android target and does not idle-pull four streams', async () => {
   const timers = new ManualTimers();
   const calls = [];
   const recorded = [];
@@ -230,24 +230,15 @@ test('registers one background observer per Android target and pulls each eviden
   await timers.advanceBy(0);
   assert.deepEqual(calls.map((call) => call.command), [
     'status',
-    'logs',
-    'network',
-    'state',
-    'events',
   ]);
-  assert.equal(recorded.length, 5);
-  assert.equal(recorded[1].context.runtimeEpoch, 'android-run-1');
-  assert.equal(recorded[1].context.target.serial, 'android-1');
+  assert.equal(recorded.length, 1);
+  assert.equal(recorded[0].command, 'status');
+  assert.equal(recorded[0].context.runtimeEpoch, 'android-run-1');
+  assert.equal(recorded[0].context.target.serial, 'android-1');
 
   calls.length = 0;
   await timers.advanceBy(100);
-  assert.deepEqual(calls.map((call) => call.command), [
-    'logs',
-    'network',
-    'state',
-    'events',
-  ]);
-  assert.deepEqual(calls.map((call) => call.args.sinceId), [10, 20, 30, 40]);
+  assert.deepEqual(calls.map((call) => call.command), []);
 
   await collector.stop();
 });
@@ -281,7 +272,7 @@ test('collects Android app streams by default without attributing device-wide lo
   await timers.advanceBy(0);
 
   assert.equal(spawnCount, 0);
-  assert.deepEqual(calls, ['status', 'logs', 'network', 'state', 'events']);
+  assert.deepEqual(calls, ['status']);
   assert.deepEqual(collector.status().targets[0].deviceLog, {
     enabled: false,
     reason: 'device_scope_opt_in_required',
@@ -671,18 +662,18 @@ test('stop drains final complete and partial logcat lines and leaves no timer or
   assert.equal(collector.status().deviceLogs[0].queuedLines, 0);
 });
 
-test('waits for every in-flight evidence pull before backing off so failed cycles cannot overlap', async () => {
+test('waits for every in-flight Web evidence pull before backing off so failed cycles cannot overlap', async () => {
   const timers = new ManualTimers();
   const slowLogs = deferred();
   let logPulls = 0;
   const collector = new ObservationCollector({
     rawRunner: async (command) => {
-      if (command === 'status') return { ok: true, debugBridge: { runtimeEpoch: 'run-no-overlap' } };
-      if (command === 'logs') {
+      if (command === 'web-status') return { ok: true, session: { connectedAtMs: 10_000 } };
+      if (command === 'web-logs') {
         logPulls += 1;
         return slowLogs.promise;
       }
-      if (command === 'network') throw new Error('network failed');
+      if (command === 'web-network') throw new Error('network failed');
       return { ok: true, items: [] };
     },
     recordEvidence: async () => {},
@@ -695,7 +686,7 @@ test('waits for every in-flight evidence pull before backing off so failed cycle
     initialBackoffMs: 50,
   });
 
-  collector.register('status', { serial: 'android-overlap', packageName: 'com.example.overlap' });
+  collector.register('web-click', { sessionId: 'web-overlap', targetId: 'main' });
   collector.start();
   await timers.advanceBy(0);
   assert.equal(logPulls, 1);

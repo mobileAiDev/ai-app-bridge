@@ -1015,6 +1015,12 @@ function captureQuery(args = {}) {
     sinceId: args.sinceId,
     sinceMs: args.sinceMs,
     limit: args.limit,
+    view: args.view ?? (args.history === true || args.history === 'true' ? 'connected-history' : undefined),
+    runtimeEpoch: args.runtimeEpoch,
+    afterActionId: args.afterActionId,
+    factCursor: args.factCursor,
+    mobileFactId: args.mobileFactId,
+    targetKey: args.targetKey,
   };
 }
 

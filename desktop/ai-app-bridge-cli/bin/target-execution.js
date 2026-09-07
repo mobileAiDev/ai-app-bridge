@@ -241,5 +241,6 @@ function appendFeedback(legacyResult, feedback) {
 
 module.exports = {
   TargetExecution,
+  normalizeArgs,
   targetFor,
 };

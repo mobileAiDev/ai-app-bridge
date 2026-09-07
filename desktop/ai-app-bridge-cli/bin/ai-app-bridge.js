@@ -2,12 +2,14 @@
 
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
+const { createHash } = require('node:crypto');
 const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
 const { IOSBridgeProvider } = require('./ios-provider');
 const { ConnectionCache } = require('./connection-cache');
+const { decodeXmlAttribute, parseXmlAttributes } = require('./shared-kernel/xml-attributes');
 const {
   artifactTimestamp,
   defaultArtifactDirectory,
@@ -40,6 +42,11 @@ Supports:
 MCP discovery:
   ai-app-bridge-mcp exposes a compact capability index by default.
   Call capabilities, then run a command from core/app/action/flutter/webview/ios/web/diagnostics/advanced.
+  Isolated advanced runtimes: script (trusted-local-code JavaScript or Python) and intent.
+  Script permissions gate Bridge SDK calls only; source is not an OS sandbox.
+  MCP run history:true on mobile logs/network/state/events reads the phone FactStore
+  while connected; disconnected returns target_disconnected and does not read Host copies.
+  That flag is not a CLI verb. iOS state over 200 keys uses a byte-bounded keyed LRU.
 
 Commands:
   status                 Read bridge status and app/device metadata.
@@ -172,6 +179,7 @@ Options:
   --artifact-dir <path>  Directory for generated screenshot/artifact defaults.
   --apk-path <path>      APK path used by install-apk.
   --activity <name>      Activity class for launch-activity or launch-app override.
+  --clear-task           Pass --activity-clear-task so launch-app does not restore the last task.
   --component <pkg/act>  Explicit Android component for launch-activity.
   --action <name>        Intent action for launch-activity.
   --category <name>      Intent category for launch-activity; may be repeated.
@@ -1265,6 +1273,12 @@ function captureQuery(options) {
     sinceId: options.sinceId,
     sinceMs: options.sinceMs,
     limit: options.limit,
+    view: options.view ?? (booleanOption(options.history) ? 'connected-history' : undefined),
+    runtimeEpoch: options.runtimeEpoch,
+    afterActionId: options.afterActionId,
+    factCursor: options.factCursor,
+    mobileFactId: options.mobileFactId,
+    targetKey: options.targetKey,
   };
 }
 
@@ -1287,6 +1301,10 @@ function shapeNetworkCapture(capture, options = {}) {
   };
   if (filteredItems.length !== sourceItems.length) {
     result.sourceCount = sourceItems.length;
+    if (Array.isArray(capture.refs) && capture.refs.length === sourceItems.length) {
+      const retained = new Set(filteredItems);
+      result.refs = capture.refs.filter((_ref, index) => retained.has(sourceItems[index]));
+    }
   }
   const filters = networkResultOptions(options);
   if (Object.keys(filters).length > 0) {
@@ -2086,14 +2104,7 @@ function truncateString(value, maxBytes) {
 }
 
 async function uiaTree(ctx) {
-  const remotePath = '/sdcard/ai_app_window.xml';
-  return withFileLock(uiautomatorLockPath(ctx), async () => retry(async () => {
-    await adb(ctx, ['shell', 'uiautomator', 'dump', remotePath]);
-    return (await adb(ctx, ['exec-out', 'cat', remotePath])).stdout;
-  }, 4, 500), {
-    timeoutMs: Number(process.env.AI_APP_BRIDGE_UIA_LOCK_TIMEOUT_MS || 30000),
-    staleMs: Number(process.env.AI_APP_BRIDGE_UIA_LOCK_STALE_MS || 120000),
-  });
+  return retry(() => uiaTreeOnce(ctx), 4, 500);
 }
 
 async function uiaTreeOnce(ctx) {
@@ -2354,25 +2365,6 @@ function compactTreeResultOptions(options) {
   };
 }
 
-function parseXmlAttributes(tag) {
-  const attrs = {};
-  const attrRegex = /([A-Za-z0-9_:-]+)="([^"]*)"/g;
-  let match;
-  while ((match = attrRegex.exec(String(tag || ''))) !== null) {
-    attrs[match[1]] = decodeXmlAttribute(match[2]);
-  }
-  return attrs;
-}
-
-function decodeXmlAttribute(value) {
-  return String(value || '')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
 function parseUiaBounds(value) {
   const match = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(String(value || ''));
   if (!match) return null;
@@ -2444,6 +2436,7 @@ async function screenshot(ctx, outFile, options = {}) {
     height: size.height,
     artifact: {
       path: resolvedPath,
+      sha256: createHash('sha256').update(fs.readFileSync(resolvedPath)).digest('hex'),
       generatedDefault: !options.outFile,
       directory: path.dirname(resolvedPath),
     },
@@ -2460,12 +2453,14 @@ async function screenshot(ctx, outFile, options = {}) {
   if (ctx.packageName) {
     result.targetPackageName = ctx.packageName;
   }
-  if (ctx.explicitPackageName && foreground.packageName) {
+  if (ctx.explicitPackageName) {
     result.foregroundMatchesPackage = foreground.packageName === ctx.packageName;
-    if (!result.foregroundMatchesPackage) {
+    if (!foreground.ok || !result.foregroundMatchesPackage) {
       result.ok = false;
-      result.error = 'foreground_package_mismatch';
-      result.warning = `screenshot captured foreground package ${foreground.packageName}, not requested package ${ctx.packageName}`;
+      result.error = foreground.ok ? 'foreground_package_mismatch' : (foreground.error || 'foreground_probe_failed');
+      result.warning = foreground.ok
+        ? `screenshot captured foreground package ${foreground.packageName}, not requested package ${ctx.packageName}`
+        : 'screenshot could not verify the foreground package';
     }
   }
   return result;
@@ -2799,6 +2794,9 @@ function nodeTapState(node, viewport) {
   if (node.visible === false || node.effectiveVisible === false) {
     return { ok: false, reason: 'not_effectively_visible' };
   }
+  if (node.enabled === false) {
+    return { ok: false, reason: 'not_enabled' };
+  }
   const width = Number(bounds.width ?? bounds.right - bounds.left);
   const height = Number(bounds.height ?? bounds.bottom - bounds.top);
   if (width <= 0 || height <= 0) {
@@ -2904,10 +2902,10 @@ function findUiaNodeByAny(xml, options) {
   while ((match = nodeRegex.exec(xml)) !== null) {
     const nodeXml = match[0];
     const attrs = {
-      text: xmlUnescape(readXmlAttribute(nodeXml, 'text')),
-      contentDescription: xmlUnescape(readXmlAttribute(nodeXml, 'content-desc')),
-      resourceId: xmlUnescape(readXmlAttribute(nodeXml, 'resource-id')),
-      className: xmlUnescape(readXmlAttribute(nodeXml, 'class')),
+      text: decodeXmlAttribute(readXmlAttribute(nodeXml, 'text')),
+      contentDescription: decodeXmlAttribute(readXmlAttribute(nodeXml, 'content-desc')),
+      resourceId: decodeXmlAttribute(readXmlAttribute(nodeXml, 'resource-id')),
+      className: decodeXmlAttribute(readXmlAttribute(nodeXml, 'class')),
       clickable: readXmlAttribute(nodeXml, 'clickable') === 'true',
       enabled: readXmlAttribute(nodeXml, 'enabled') !== 'false',
     };
@@ -2946,15 +2944,6 @@ function readXmlAttribute(xml, name) {
   return match ? match[1] : '';
 }
 
-function xmlUnescape(value) {
-  return String(value || '')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
 function defaultPermissionAllowTexts() {
   return [
     'Allow',
@@ -2984,6 +2973,7 @@ function escapeRegExp(value) {
 
 async function waitText(ctx, targetText, options = {}) {
   const timeoutSec = Number(options.timeoutSec || 10);
+  const intervalMs = Number(options.intervalMs || 500);
   const conditions = {
     requireTexts: splitCsv(options.requireText || options.requireTexts),
     absentTexts: splitCsv(options.absentText || options.absentTexts),
@@ -2995,11 +2985,11 @@ async function waitText(ctx, targetText, options = {}) {
     const snapshot = await textSnapshot(ctx);
     lastCheck = waitTextConditionsMet(snapshot, targetText, conditions);
     if (lastCheck.ok) {
-      return { ok: true, targetText, timeoutSec, conditions, matched: lastCheck };
+      return { ok: true, targetText, timeoutSec, intervalMs, conditions, matched: lastCheck };
     }
-    await sleep(500);
+    await sleep(intervalMs);
   }
-  return { ok: false, error: 'text_not_found', targetText, timeoutSec, conditions, lastCheck };
+  return { ok: false, error: 'text_not_found', targetText, timeoutSec, intervalMs, conditions, lastCheck };
 }
 
 async function flutterNodes(ctx) {
@@ -3504,7 +3494,8 @@ async function textSnapshot(ctx) {
       return statusSearchText(status);
     },
     async () => JSON.stringify(await bridgeGet(ctx, '/v1/view/tree')),
-    async () => await uiaTree(ctx),
+    // The wait loop owns retries; each iteration must use one fresh dump attempt.
+    async () => await uiaTreeOnce(ctx),
   ]) {
     try {
       const text = await loader();
@@ -3778,6 +3769,11 @@ async function inputText(ctx, text, options = {}) {
     bridgeAttempt = buildBridgeFailureResult(ctx, 'input-text', '/v1/action/input-text', error);
   }
 
+  if (booleanOption(options.appLocalAction)) {
+    return { ...bridgeAttempt, ok: false, ambiguous: !bridgeAttempt?.result,
+      error: bridgeAttempt?.error || 'bridge_input_failed', source: 'native-view' };
+  }
+
   if (!isAdbInputTextSafe(text)) {
     return {
       ok: false,
@@ -3805,12 +3801,25 @@ async function inputText(ctx, text, options = {}) {
 
 function inputTextBridgePayload(text, options = {}) {
   const payload = { text };
-  const x = Number(options.tapX);
-  const y = Number(options.tapY);
-  if (Number.isFinite(x) && Number.isFinite(y)) {
-    payload.x = x;
-    payload.y = y;
+  const actionId = options.runtimeActionId ?? options.requestId;
+  if (actionId != null) payload.actionId = String(actionId);
+  const hasX = Object.prototype.hasOwnProperty.call(options, 'tapX');
+  const hasY = Object.prototype.hasOwnProperty.call(options, 'tapY');
+  if (!hasX && !hasY) return payload;
+  if (hasX !== hasY) throw Object.assign(new Error('x_y_must_be_provided_together'), { code: 'x_y_must_be_provided_together' });
+  const coordinate = (value) => {
+    if ((typeof value !== 'number' && typeof value !== 'string')
+      || (typeof value === 'string' && !value.trim())) return NaN;
+    return Number(value);
+  };
+  const x = coordinate(options.tapX);
+  const y = coordinate(options.tapY);
+  // Android validates the coordinates after conversion to Float.
+  if (!Number.isFinite(Math.fround(x)) || !Number.isFinite(Math.fround(y))) {
+    throw Object.assign(new Error('invalid_input_coordinates'), { code: 'invalid_input_coordinates' });
   }
+  payload.x = x;
+  payload.y = y;
   return payload;
 }
 
@@ -3821,6 +3830,20 @@ function isAdbInputTextSafe(text) {
 async function swipe(ctx, startX, startY, endX, endY, durationMs) {
   await adb(ctx, ['shell', 'input', 'swipe', String(startX), String(startY), String(endX), String(endY), String(durationMs)]);
   return { ok: true, transport: 'adb', startX, startY, endX, endY, durationMs };
+}
+
+async function longPress(ctx, x, y, durationMs, dependencies = {}) {
+  if (!Number.isSafeInteger(durationMs) || durationMs < 500 || durationMs > 10000) {
+    return { ok: false, error: 'invalid_long_press_duration', dispatched: false };
+  }
+  if (![x, y].every(value => Number.isSafeInteger(value) && value >= 0)) {
+    return { ok: false, error: 'invalid_long_press_coordinates', dispatched: false };
+  }
+  const runAdb = dependencies.adb || adb;
+  // Android's shell input holds a pointer with identical swipe endpoints.
+  // This is an explicit mechanical longPress port; no SDK action ID is injected.
+  await runAdb(ctx, ['shell', 'input', 'swipe', String(x), String(y), String(x), String(y), String(durationMs)]);
+  return { ok: true, transport: 'adb', action: 'longPress', x, y, durationMs };
 }
 
 async function keyevent(ctx, keyCode) {
@@ -4174,10 +4197,13 @@ function normalizeActivityComponent(packageName, activityOrComponent) {
   return `${packageName}/${value}`;
 }
 
-async function startActivity(ctx, component, options = {}, extraResult = {}) {
+async function startActivity(ctx, component, options = {}, extraResult = {}, dependencies = {}) {
+  const runAdb = dependencies.adb || adb;
+  const readForeground = dependencies.foregroundWindow || foregroundWindow;
+  const wait = dependencies.sleep || sleep;
   const args = buildAmStartArgs(component, options);
-  const result = await adb(ctx, args);
-  return {
+  const result = await runAdb(ctx, args);
+  const launched = {
     ok: true,
     transport: 'adb',
     component,
@@ -4185,10 +4211,27 @@ async function startActivity(ctx, component, options = {}, extraResult = {}) {
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
   };
+  if (!ctx.packageName) return launched;
+  const deadline = Date.now() + Number(options.foregroundTimeoutMs || 8000);
+  let foreground = null;
+  while (Date.now() < deadline) {
+    foreground = await readForeground(ctx);
+    if (foreground && foreground.ok && foreground.packageName === ctx.packageName) {
+      return { ...launched, foreground };
+    }
+    await wait(200);
+  }
+  return {
+    ...launched,
+    ok: false,
+    error: 'foreground_package_mismatch',
+    foreground,
+  };
 }
 
 function buildAmStartArgs(component, options = {}) {
-  const args = ['shell', 'am', 'start'];
+  const args = ['shell', 'am', 'start', '-W'];
+  if (booleanOption(options.clearTask)) args.push('--activity-clear-task');
   if (options.action) args.push('-a', options.action);
   for (const category of optionList(options.category)) {
     args.push('-c', category);
@@ -4586,12 +4629,17 @@ module.exports = {
   createBridgeContext,
   flutterAction,
   flutterNodes,
+  foregroundWindow,
   tapText,
   tapUiaText,
   launchApp,
+  startActivity,
   launchFlutter,
   launchNativeTest,
+  inputText,
+  inputTextBridgePayload,
   keyevent,
+  longPress,
   uiaTree,
   uiaTreeOnce,
   findUiaNodeByAny,

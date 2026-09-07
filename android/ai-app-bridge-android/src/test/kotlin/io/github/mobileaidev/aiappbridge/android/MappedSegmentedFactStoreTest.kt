@@ -10,6 +10,50 @@ import java.io.RandomAccessFile
 
 class MappedSegmentedFactStoreTest {
     @Test
+    fun sealedShortZeroPaddingIsValidButNonzeroShortTailIsRejected() {
+        val directory = java.nio.file.Files.createTempDirectory("mapped-short-zero-tail-").toFile()
+        val quotas = longArrayOf(1024)
+        val store = MappedSegmentedFactStore()
+        try {
+            val opened = store.open(directory.absolutePath, 256, 1, quotas)
+            assertTrue(opened.operation.isSuccess)
+            repeat(2) { assertTrue(store.append(opened.handle, 0, ByteArray(144) { 7 }, 1).operation.isSuccess) }
+            assertTrue(store.close(opened.handle).isSuccess)
+            val sealed = directory.resolve("partition-0/segment-00000000000000000001.sfs")
+            val valid = sealed.readBytes()
+            assertTrue(valid.copyOfRange(240, 256).all { it == 0.toByte() })
+            val reopened = store.open(directory.absolutePath, 256, 1, quotas)
+            assertTrue("valid 16-byte zero padding: ${reopened.operation}", reopened.operation.isSuccess)
+            assertTrue(sealed.readBytes().contentEquals(valid))
+            assertTrue(store.close(reopened.handle).isSuccess)
+            java.io.RandomAccessFile(sealed, "rw").use { it.seek(240); it.write(1) }
+            val damaged = sealed.readBytes()
+            val refused = store.open(directory.absolutePath, 256, 1, quotas)
+            assertEquals(SegmentedFactStoreResultCode.CORRUPT, refused.operation.code)
+            assertEquals("sealed segment 1 has a torn tail", refused.operation.message)
+            assertTrue(sealed.readBytes().contentEquals(damaged))
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
+    fun partitionCursorHonorsTheGlobalSequenceBoundary() {
+        val directory = java.nio.file.Files.createTempDirectory("mapped-partition-sequence-").toFile()
+        val store = MappedSegmentedFactStore()
+        val opened = store.open(directory.absolutePath, 256, 1, longArrayOf(1024, 1024))
+        try {
+            assertTrue(opened.operation.isSuccess)
+            val first = store.append(opened.handle, 0, byteArrayOf(1), 1)
+            val boundary = store.append(opened.handle, 1, byteArrayOf(2), 1)
+            val next = store.append(opened.handle, 0, byteArrayOf(3), 1)
+            assertTrue(first.sequence < boundary.sequence)
+            val page = store.scan(opened.handle, SegmentedFactStoreCursor(partitionId = 0, afterSequence = boundary.sequence), 64)
+            assertEquals(next.sequence, page.record?.sequence)
+            val empty = store.scan(opened.handle, SegmentedFactStoreCursor(partitionId = 1, afterSequence = next.sequence), 64)
+            assertTrue(empty.isEnd)
+        } finally { store.close(opened.handle); directory.deleteRecursively() }
+    }
+
+    @Test
     fun crc32cMatchesPortableGoldenVector() {
         assertEquals(0xE3069283.toInt(), Crc32c.compute("123456789".toByteArray()))
     }

@@ -256,7 +256,8 @@
           "action",
           "category",
           "data",
-          "extra"
+          "extra",
+          "clearTask"
         ]
       },
       {
@@ -402,6 +403,7 @@
           "packageName",
           "targetText",
           "timeoutSec",
+          "intervalMs",
           "requireText",
           "absentText",
           "requireActivity"
@@ -883,7 +885,7 @@
       },
       {
         "command": "ios-state",
-        "summary": "Read in-app iOS state records.",
+        "summary": "Read in-app iOS state records. More than 200 keys use a byte-bounded keyed LRU; the normal range stays equivalent.",
         "targetApp": false,
         "targetKind": "ios-app",
         "options": [
@@ -1293,10 +1295,6 @@
       }
     ]
   },
-  "compactTools": [
-    "capabilities",
-    "run"
-  ],
   "fullTools": [
     "status",
     "tree",

@@ -4,14 +4,14 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const packageInfo = require('../package.json');
-const { executeCommand } = require('./ai-app-bridge');
+const { executeCommand, inputTextBridgePayload } = require('./ai-app-bridge');
 const { createFactStore } = require('./fact-store');
-const { FactRecorder, historyDescriptor } = require('./fact-recorder');
+const { FactRecorder, historyDescriptor, isMobileCaptureCommand } = require('./fact-recorder');
 const { runWithFeedbackProbe } = require('./feedback-probe');
 const { IOSBridgeProvider } = require('./ios-provider');
 const { ObservationCollector } = require('./observation-collector');
 const { WebBridgeProvider } = require('./web-provider');
-const { TargetExecution } = require('./target-execution');
+const { TargetExecution, normalizeArgs } = require('./target-execution');
 const { defaultArtifactDirectory } = require('./artifact-paths');
 const { createCommandRouter, isolatedCommandDefinitions } = require('./command-router');
 const { createLegacyDispatcher } = require('./legacy/legacy-dispatcher');
@@ -343,8 +343,8 @@ function compactToolDefinitions() {
       elementId: { type: 'string', description: 'Existing WDA element id for element input.' },
       requestId: { type: 'string', description: 'Optional idempotency key. Reusing it for the same target reuses the original result for a bounded time.' },
       feedback: { type: 'string', description: 'Execution feedback mode: auto (default), full, or off.' },
-      history: { type: 'boolean', description: 'Read persisted facts through this existing evidence command instead of polling the live target.' },
-      includeActions: { type: 'boolean', description: 'For persisted events history, also return correlated execution records.' },
+      history: { type: 'boolean', description: 'For mobile logs/network/state/events (and ios-*), read the phone FactStore while connected; unavailable targets return explicit errors without Host-copied payload fallback. Web evidence history still pages Host-owned facts.' },
+      includeActions: { type: 'boolean', description: 'For Host-owned web events history, also return correlated execution records. Mobile history does not merge Host actions.' },
       factCursor: { type: 'string', description: 'Opaque cursor returned by a prior persisted history read.' },
       deviceLogScope: { type: 'string', enum: ['device'], description: 'Explicitly opt in to bounded device-wide Android logcat collection. App logs remain collected from the in-app bridge by default.' },
       deviceLogBuffers: { type: 'array', items: { type: 'string' }, description: 'Device logcat buffers. main/system/crash are defaults; radio/security/kernel require explicit names.' },
@@ -590,9 +590,14 @@ function baseSchema(extraProperties = {}, extraRequired = []) {
       limit: { type: 'number', description: 'Maximum capture records to return.' },
       requestId: { type: 'string', description: 'Optional bounded idempotency key for this target operation.' },
       feedback: { type: 'string', description: 'Execution feedback mode: auto (default), full, or off.' },
-      history: { type: 'boolean', description: 'Read host-persisted facts instead of the live target for evidence commands.' },
-      includeActions: { type: 'boolean', description: 'For persisted events history, also return correlated execution records.' },
+      history: { type: 'boolean', description: 'For mobile logs/network/state/events (and ios-*), read the phone FactStore while connected; unavailable targets return explicit errors without Host-copied payload fallback. Web evidence history still pages Host-owned facts.' },
+      includeActions: { type: 'boolean', description: 'For Host-owned web events history, also return correlated execution records. Mobile history does not merge Host actions.' },
       factCursor: { type: 'string', description: 'Opaque persisted-fact cursor from the previous page.' },
+      view: { type: 'string', enum: ['legacy-live', 'decision-window', 'connected-history'], description: 'Mobile capture projection; decision/history return mobile-issued coverage, refs and cursors. Older runtimes may not support strong queries.' },
+      runtimeEpoch: { type: 'string', description: 'Mobile runtime epoch from a previous capture read.' },
+      afterActionId: { type: 'string', description: 'Filter mobile facts associated with this action. This is not a business-success assertion.' },
+      mobileFactId: { type: 'string', description: 'Re-read an exact mobile fact while the target is connected.' },
+      targetKey: { type: 'string', description: 'Capture target key issued by the mobile runtime.' },
       cursor: { type: 'string', description: 'Alias for factCursor when history is enabled.' },
       deviceLogScope: { type: 'string', enum: ['device'], description: 'Explicitly opt in to bounded device-wide Android logcat collection. App logs remain collected from the in-app bridge by default.' },
       deviceLogBuffers: { type: 'array', items: { type: 'string' }, description: 'Device logcat buffers. main/system/crash are defaults; radio/security/kernel require explicit names.' },
@@ -625,7 +630,7 @@ const commandDefinitions = [
   { command: 'clear-app-data', domain: 'app', summary: 'Clear target app local data through the bridge runtime.', targetApp: true, options: ['serial', 'packageName'] },
   { command: 'freeze-app', domain: 'app', summary: 'Optionally stop target app processes with SIGSTOP when dynamic UI needs stable evidence.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
   { command: 'thaw-app', domain: 'app', summary: 'Resume target app processes with SIGCONT before reads, waits, captures, actions, or final handoff.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
-  { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
+  { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra', 'clearTask'] },
   { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
   { command: 'launch-native-test', domain: 'app', summary: 'Launch the debug native bridge test Activity.', targetApp: true, options: ['serial', 'packageName'] },
   { command: 'launch-flutter', domain: 'app', summary: 'Launch the Flutter Activity, optionally with an initial route.', targetApp: true, options: ['serial', 'packageName', 'initialRoute'] },
@@ -637,7 +642,7 @@ const commandDefinitions = [
   { command: 'tap', domain: 'action', summary: 'Tap device coordinates through ADB.', options: ['serial', 'tapX', 'tapY'] },
   { command: 'tap-text', domain: 'action', summary: 'Tap a visible Android View node by text/contentDescription through the bridge tree.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'noAutoHideKeyboard'] },
   { command: 'tap-uia-text', domain: 'action', summary: 'Tap a UIAutomator node by text without relying on the in-app tree.', options: ['serial', 'targetText', 'exact'] },
-  { command: 'wait-text', domain: 'action', summary: 'Wait until text appears in bridge status/tree or UIAutomator output.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'timeoutSec', 'requireText', 'absentText', 'requireActivity'] },
+  { command: 'wait-text', domain: 'action', summary: 'Wait until text appears in bridge status/tree or UIAutomator output.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'timeoutSec', 'intervalMs', 'requireText', 'absentText', 'requireActivity'] },
   { command: 'input-text', domain: 'action', summary: 'Set native Android text through the in-app bridge; use this for Chinese/Unicode.', targetApp: true, options: ['serial', 'packageName', 'text', 'tapX', 'tapY', 'hideKeyboard'] },
   { command: 'keyboard-state', domain: 'action', summary: 'Read Android soft keyboard visibility.', options: ['serial'] },
   { command: 'hide-keyboard', domain: 'action', summary: 'Hide the Android soft keyboard.', options: ['serial', 'force', 'intervalMs'] },
@@ -673,7 +678,7 @@ const commandDefinitions = [
   { command: 'ios-tree', domain: 'ios', summary: 'Read UIKit tree from the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
   { command: 'ios-logs', domain: 'ios', summary: 'Read in-app iOS log records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'ios-network', domain: 'ios', summary: 'Read in-app iOS network records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
-  { command: 'ios-state', domain: 'ios', summary: 'Read in-app iOS state records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
+  { command: 'ios-state', domain: 'ios', summary: 'Read in-app iOS state records. More than 200 keys use a byte-bounded keyed LRU; the normal range stays equivalent.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'ios-events', domain: 'ios', summary: 'Read in-app iOS event records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit', 'includeActions'] },
   { command: 'ios-h5-dom', domain: 'ios', summary: 'Read WKWebView DOM from the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
   { command: 'ios-h5-eval', domain: 'ios', summary: 'Execute JavaScript in WKWebView through the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'script'] },
@@ -721,21 +726,68 @@ const commandRouter = createCommandRouter({
   legacyDispatch: (command, args) => legacyDispatcher.dispatch(command, args),
 });
 
+function createIsolatedScriptActions(dispatch, target) {
+  return require('./script/script-mcp-actions').createIsolatedScriptActions(dispatch, target);
+}
+
+function resolveScriptWaitMs(value) {
+  if (value == null || value === '') return { ok: true, waitMs: 30_000 };
+  const waitMs = Number(value);
+  if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > 60_000) {
+    return { ok: false };
+  }
+  return { ok: true, waitMs };
+}
+
 function wrapIsolatedEntry(entry, namespace) {
   return {
     handle(args) {
-      const next = { ...args };
-      if (!next.adapter) next.adapter = 'production';
-      if (!next.store) {
+      if (namespace === 'script' && args.operation === 'wait') {
+        if (Object.prototype.hasOwnProperty.call(args, 'isolatedTimeoutMs')) {
+          return require('./script/script-errors').scriptError('unsupported_argument', {
+            field: 'isolatedTimeoutMs',
+          });
+        }
+        const resolved = resolveScriptWaitMs(args.waitMs);
+        if (!resolved.ok) {
+          return require('./script/script-errors').scriptError('invalid_argument', {
+            field: 'waitMs',
+          });
+        }
+        args.isolatedTimeoutMs = resolved.waitMs + 5000;
+        args._scriptWaitHostTimeout = true;
+      } else if (args.isolatedTimeoutMs == null) {
+        args.isolatedTimeoutMs = 120000;
+      }
+      if (!args.adapter) args.adapter = 'production';
+      if (!args.store) {
         const storeFactory = namespace === 'script'
           ? require('./script/script-evidence-store').createScriptEvidenceStore
           : require('./intent/intent-evidence-store').createIntentEvidenceStore;
-        next.store = storeFactory({
+        args.store = storeFactory({
           adapter: createSegmentedEvidenceAdapter(getSharedFactStore()),
         });
       }
-      if (next.isolatedTimeoutMs == null) next.isolatedTimeoutMs = 120000;
-      return entry.handle(next);
+      if (namespace === 'script' && !args.host && typeof args.actions !== 'function') {
+        const target = (args.script && args.script.target) || args.target || {};
+        args.actions = createIsolatedScriptActions((command, callArgs) => (
+          legacyDispatcher.dispatch(command, callArgs)
+        ), target);
+        if (typeof args.runner !== 'function') {
+          args.runner = args.actions;
+        }
+      }
+      if (namespace === 'intent' && !args.capturePort) {
+        const { createLiveCaptureQuery } = require('./shared-kernel/live-capture-query');
+        const { createIntentCapturePort } = require('./intent/intent-capture-port');
+        args.capturePort = createIntentCapturePort({
+          query: createLiveCaptureQuery({ runner: async (command, callArgs) => {
+            const response = await legacyDispatcher.dispatch(command, callArgs);
+            return JSON.parse(response.content[0].text);
+          } }),
+        });
+      }
+      return entry.handle(args);
     },
   };
 }
@@ -835,13 +887,25 @@ function shapeCommandDefinition(definition, includeOptions) {
     if (!options.includes('history')) options.push('history');
     if (!options.includes('factCursor')) options.push('factCursor');
   }
-  return {
+  if (isMobileCaptureCommand(definition.command)) {
+    for (const option of ['view', 'runtimeEpoch', 'afterActionId', 'mobileFactId', 'targetKey']) {
+      if (!options.includes(option)) options.push(option);
+    }
+  }
+  const shaped = {
     command: definition.command,
     summary: definition.summary,
     targetApp: Boolean(definition.targetApp),
     targetKind: definition.targetKind || (definition.targetApp ? 'android-app' : 'none'),
     ...(includeOptions ? { options } : {}),
   };
+  if (definition.command === 'script') {
+    const { catalogPayload } = require('./script/script-catalog');
+    shaped.runtime = 'trusted-local-code';
+    shaped.warning = 'Script source is trusted-local-code, not an OS sandbox.';
+    shaped.catalog = catalogPayload();
+  }
+  return shaped;
 }
 
 async function runGeneric(args = {}) {
@@ -911,6 +975,13 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
   if (definition?.targetApp && !args.packageName && !args.port) {
     return toolText(`${command}: packageName or explicit port is required in MCP mode so the command cannot fall back to a default package.`, true);
   }
+  if (command === 'input-text') {
+    try {
+      inputTextBridgePayload(args.text, normalizeArgs(args));
+    } catch (error) {
+      return toolJson({ ok: false, error: error.code || error.message }, true);
+    }
+  }
   const execution = dependencies.targetExecution || targetExecution;
   const rawRunner = dependencies.rawRunner || runRawCommand;
   let factRecorder = null;
@@ -958,10 +1029,10 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
       if (tracksMutation) {
         noteObservationAction(observation, actionId, { startedAtMs: Date.now() });
       }
-      if (historyRead && factRecorder) {
-        return factRecorder.readHistory(normalizedCommand, normalizedArgs);
-      }
-      if (historyRead) {
+      if (historyRead && !isMobileCaptureCommand(normalizedCommand)) {
+        if (factRecorder) {
+          return factRecorder.readHistory(normalizedCommand, normalizedArgs);
+        }
         return {
           ok: false,
           error: factCacheInitializationError ? 'fact_cache_unavailable' : 'fact_cache_disabled',
@@ -1573,6 +1644,7 @@ function generatedBatchId() {
 }
 
 function buildBridgeCliArgs(command, args = {}) {
+  if (command === 'input-text') inputTextBridgePayload(args.text, args);
   const cliArgs = [cliScript, command];
   addCommonArgs(cliArgs, args);
   addArg(cliArgs, 'device-id', args.deviceId);
@@ -1596,6 +1668,7 @@ function buildBridgeCliArgs(command, args = {}) {
   addArg(cliArgs, 'terminate-existing', args.terminateExisting);
   addArg(cliArgs, 'initial-route', args.initialRoute);
   addArg(cliArgs, 'activity', args.activity);
+  addArg(cliArgs, 'clear-task', args.clearTask);
   addArg(cliArgs, 'component', args.component);
   addArg(cliArgs, 'action', args.action);
   addRepeatedArg(cliArgs, 'category', args.category);
@@ -1666,6 +1739,13 @@ function buildBridgeCliArgs(command, args = {}) {
   addArg(cliArgs, 'since-id', args.sinceId);
   addArg(cliArgs, 'since-ms', args.sinceMs);
   addArg(cliArgs, 'limit', args.limit);
+  addArg(cliArgs, 'view', args.view);
+  addArg(cliArgs, 'history', args.history);
+  addArg(cliArgs, 'runtime-epoch', args.runtimeEpoch);
+  addArg(cliArgs, 'after-action-id', args.afterActionId);
+  addArg(cliArgs, 'fact-cursor', args.factCursor);
+  addArg(cliArgs, 'mobile-fact-id', args.mobileFactId);
+  addArg(cliArgs, 'target-key', args.targetKey);
   addArg(cliArgs, 'pid', args.pid);
   addArg(cliArgs, 'app-pid', args.appPid);
   addArg(cliArgs, 'tag', args.tag);

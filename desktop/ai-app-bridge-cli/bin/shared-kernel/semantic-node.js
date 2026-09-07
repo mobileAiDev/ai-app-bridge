@@ -13,6 +13,10 @@ function semanticNode({
   checked = null,
   selected = null,
   clickable = false,
+  resourceName,
+  editable,
+  visible,
+  effectiveVisible,
 }) {
   return {
     nodeId: String(nodeId),
@@ -27,6 +31,10 @@ function semanticNode({
     checked,
     selected,
     clickable,
+    ...(typeof resourceName === 'string' ? { resourceName } : {}),
+    ...(typeof editable === 'boolean' ? { editable } : {}),
+    ...(typeof visible === 'boolean' ? { visible } : {}),
+    ...(typeof effectiveVisible === 'boolean' ? { effectiveVisible } : {}),
   };
 }
 

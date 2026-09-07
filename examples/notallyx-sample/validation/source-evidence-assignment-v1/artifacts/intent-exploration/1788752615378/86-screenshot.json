@@ -1,0 +1,32 @@
+{
+  "request": {
+    "command": "screenshot",
+    "args": {
+      "outFile": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-list-editor.png"
+    }
+  },
+  "result": {
+    "ok": true,
+    "transport": "adb",
+    "mimeType": "image/png",
+    "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-list-editor.png",
+    "width": 1080,
+    "height": 2414,
+    "artifact": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/renamed-list-editor.png",
+      "sha256": "03a192e79ea8ff1c375da5ad0951bc0ed1a0bde2877aeb8f471ee9f9d95ac6e0",
+      "generatedDefault": false,
+      "directory": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7"
+    },
+    "foreground": {
+      "ok": true,
+      "source": "mCurrentFocus",
+      "packageName": "io.github.mobileaidev.notallyx.sample",
+      "activity": "com.philkes.notallyx.presentation.activity.note.EditListActivity",
+      "component": "io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.note.EditListActivity",
+      "raw": "mCurrentFocus=Window{a485103 u0 io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.note.EditListActivity}"
+    },
+    "targetPackageName": "io.github.mobileaidev.notallyx.sample",
+    "foregroundMatchesPackage": true
+  }
+}

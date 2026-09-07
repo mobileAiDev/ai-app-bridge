@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { sanitizePersistentValue } = require('../fact-codec');
 
 const NAMESPACES = Object.freeze(['script', 'intent']);
 const PROVIDERS = Object.freeze(['native', 'uia', 'flutter', 'h5']);
@@ -124,14 +125,19 @@ function buildEnvelope(namespace, kind, record, { now, sequence } = {}) {
   };
   const serialized = serializeRecord(body);
   if (!serialized.ok) return serialized;
+  // Hash the detached JSON representation that the FactStore will persist.
+  // Otherwise absent values or write-side redaction change the body after hashing.
+  const durableBody = sanitizePersistentValue(JSON.parse(serialized.json));
+  const durableSerialized = serializeRecord(durableBody);
+  if (!durableSerialized.ok) return durableSerialized;
   return {
     ok: true,
     envelope: {
-      ...body,
-      checksum: checksumOf(body),
+      ...durableBody,
+      checksum: checksumOf(durableBody),
       persisted: true,
     },
-    bytes: serialized.bytes,
+    bytes: durableSerialized.bytes,
   };
 }
 

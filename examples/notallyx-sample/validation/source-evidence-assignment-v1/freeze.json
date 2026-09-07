@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "aab.labels-source-v2-build-result/v1",
+  "state": "frozen",
+  "indexPath": "examples/notallyx-sample/validation/assignment-evidence-source-index-v1.json",
+  "manifestPath": "examples/notallyx-sample/validation/source-evidence-assignment-v1/bundle-manifest.json",
+  "indexSha256": "48a5b5ab453e1fb75c3532411e076db302431da850feec55769965dc90053033",
+  "manifestSha256": "0effce9836b69716711fb2b381683a946aa8e2368b9f110771de1f1765dbf776",
+  "counts": {
+    "indexedArtifacts": 248,
+    "dependencies": 91,
+    "artifacts": 339,
+    "artifactBytes": 48408516
+  },
+  "integrity": "verified",
+  "scope": "historical-source-only",
+  "currentRunAcceptance": false,
+  "protectedV1Files": 228,
+  "authorizedRanges": [
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788757912714",
+      "from": 1,
+      "through": 18,
+      "intentId": "intent-1788757913912-1"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788757912714",
+      "from": 19,
+      "through": 25,
+      "intentId": "intent-1788758820738-2"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788757912714",
+      "from": 26,
+      "through": 34,
+      "intentId": "intent-1788758898091-3"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788757912714",
+      "from": 35,
+      "through": 45,
+      "intentId": "intent-1788759029725-4"
+    },
+    {
+      "directory": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788757912714",
+      "from": 46,
+      "through": 70,
+      "intentId": "intent-1788759188211-5"
+    }
+  ]
+}

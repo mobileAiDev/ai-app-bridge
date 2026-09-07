@@ -1,0 +1,32 @@
+{
+  "request": {
+    "command": "screenshot",
+    "args": {
+      "outFile": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/v3-batch-saved.png"
+    }
+  },
+  "result": {
+    "ok": true,
+    "transport": "adb",
+    "mimeType": "image/png",
+    "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/v3-batch-saved.png",
+    "width": 1080,
+    "height": 2414,
+    "artifact": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/v3-batch-saved.png",
+      "sha256": "0dc1b6259056ed623dd86c5cde3e63b4f2d2d794714866e21516a316041cd5d1",
+      "generatedDefault": false,
+      "directory": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1"
+    },
+    "foreground": {
+      "ok": true,
+      "source": "mCurrentFocus",
+      "packageName": "io.github.mobileaidev.notallyx.sample",
+      "activity": "com.philkes.notallyx.presentation.activity.main.MainActivity",
+      "component": "io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.main.MainActivity",
+      "raw": "mCurrentFocus=Window{e02374f u0 io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.main.MainActivity}"
+    },
+    "targetPackageName": "io.github.mobileaidev.notallyx.sample",
+    "foregroundMatchesPackage": true
+  }
+}

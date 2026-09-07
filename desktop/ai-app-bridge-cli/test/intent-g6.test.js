@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const { createAutonomousAgentAdapter, createIntentBudget } = require('../bin/intent/intent-autonomous-adapter');
 const { createFakeIntentDeviceAdapter } = require('../bin/intent/intent-device-adapter');
-const { handle } = require('../bin/intent/intent-entry');
+const { handle } = require('./helpers/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { handle: scriptHandle } = require('../bin/script/script-entry');
@@ -262,13 +262,33 @@ test('G6 Agent adapter crash does not corrupt Intent, Script, or Legacy', async 
 
   const script = await scriptHandle({
     operation: 'start',
+    actions: async () => { throw new Error('unexpected_device_call'); },
     script: {
+      schemaVersion: 'aab.code-script/v1',
       name: 'g6-reg',
+      language: 'javascript',
+      source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
       target: { serial: 'android-1', packageName: 'com.example.app' },
-      steps: [{ id: 'o1', type: 'observe', provider: 'native' }],
     },
   });
-  assert.equal(script.status, 'completed');
+  const deadline = Date.now() + 5000;
+  let snapshot = script;
+  let afterSequence = script.eventSequence || 0;
+  while (
+    snapshot.status !== 'completed'
+    && snapshot.status !== 'failed'
+    && snapshot.status !== 'cancelled'
+    && Date.now() < deadline
+  ) {
+    snapshot = await scriptHandle({
+      operation: 'wait',
+      operationId: script.operationId,
+      waitMs: Math.max(1, Math.min(200, deadline - Date.now())),
+      afterSequence,
+    });
+    afterSequence = snapshot.eventSequence || afterSequence;
+  }
+  assert.equal(snapshot.status, 'completed');
   const legacy = await runBridgeChecked('status', { serial: 'android-1' }, {
     rawRunner: async () => { throw new Error('no runner'); },
   });

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "aab.notallyx-snapshot/v1",
+  "snapshotId": "017c9233-0907-40a8-914a-ad741110ad9e",
+  "runId": "intent-1788743599316-1",
+  "target": {
+    "serial": "b46093e6",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "identity": {
+    "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "apkSha256": "4e4122353e3c821bf4a5622ded960a4ed5dab9ed563e25f962574b8baf7b0afb"
+  },
+  "capturedAfterSequence": 26,
+  "acquisition": {
+    "method": "run-as-force-stop",
+    "packageName": "io.github.mobileaidev.notallyx.sample",
+    "forceStopCompletedAtMs": 1788743827026,
+    "pidof": {
+      "checkedAtMs": 1788743827068,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pidofAfter": {
+      "checkedAtMs": 1788743827693,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pullStartedAtMs": 1788743827068,
+    "pullCompletedAtMs": 1788743827648,
+    "transcript": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/acquisition.json",
+      "sha256": "34c1cb889220dc67a98ce578da5fb7587c08b901c307ea74f6c2cea823f341bf"
+    }
+  },
+  "files": {
+    "database": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/NotallyDatabase",
+      "sha256": "94772575633b6f43be37fdc3bc98e81d25f0b53e7098b5f21d547a0f415a894c",
+      "remotePath": "databases/NotallyDatabase",
+      "bytes": 4096
+    },
+    "wal": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/NotallyDatabase-wal",
+      "sha256": "49ed677a41e1c7732d0d3d1cea04cd1723e6744f1daf3614dfc49dd45f0d205f",
+      "remotePath": "databases/NotallyDatabase-wal",
+      "bytes": 144232
+    },
+    "shm": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/NotallyDatabase-shm",
+      "sha256": "3a6b6fb7e14700f52ba89618ce3736b12f6b73785ba27c5f308b80b7856a2246",
+      "remotePath": "databases/NotallyDatabase-shm",
+      "bytes": 32768
+    },
+    "preferences": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "remotePath": "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml",
+      "bytes": 112
+    }
+  },
+  "attachments": [],
+  "attachmentScope": "private-files-attachments"
+}

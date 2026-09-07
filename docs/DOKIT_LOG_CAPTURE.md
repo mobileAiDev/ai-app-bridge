@@ -37,6 +37,8 @@ https://github.com/didi/DoKit/blob/master/Flutter/lib/dokit.dart
 
 Optional iOS Weex (`WithWeex`) registers an external Weex logger at install. Web Console plugin replaces `window.console.*` when that plugin loads.
 
+Live GET `/v1/logs`, `/v1/network`, `/v1/state`, and `/v1/events` read `MobileCaptureStore` on the phone. Host does not copy those payloads into live history. MCP `history:true` on those streams reads the phone FactStore while connected; disconnect returns `target_disconnected` and does not fall back to a Host-copied payload.
+
 ## AI App Bridge today
 
 | Path | What it is | Default |

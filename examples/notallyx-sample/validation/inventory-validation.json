@@ -1,0 +1,39 @@
+{
+  "sourceCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+  "featureCount": 51,
+  "scenarioTemplateCount": 143,
+  "variantSlotCount": 311,
+  "nonParameterizedScenarioCount": 85,
+  "plannedAtomicCoverageSlots": 396,
+  "byLayer": {
+    "normal": 51,
+    "negative": 46,
+    "restart": 46
+  },
+  "byExecutionClass": {
+    "script": 63,
+    "system_ui": 16,
+    "fixture": 51,
+    "manual": 13
+  },
+  "deviceExecutions": 0,
+  "checks": [
+    "JSON parse",
+    "unique feature/scenario/variant IDs",
+    "feature-to-scenario references",
+    "required oracle IDs",
+    "independent non-UI oracle per scenario",
+    "fixed-source exact symbol/line",
+    "44 settings/9 nav/15 edit/3 list enum mapped",
+    "ListItem durable fields match pinned Room converter",
+    "scenario and oracle IDs unchanged after persistence-contract correction"
+  ],
+  "listItemDurableFields": [
+    "body",
+    "checked",
+    "isChild",
+    "order",
+    "checkedTimestamp"
+  ],
+  "listItemHasDurableId": false
+}

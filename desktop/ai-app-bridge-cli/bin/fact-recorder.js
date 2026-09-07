@@ -111,6 +111,7 @@ class FactRecorder {
 
   recordEvidence(command, args = {}, result, context = {}) {
     if (!result || typeof result !== 'object' || Buffer.isBuffer(result)) return [];
+    if (isMobileCaptureCommand(command)) return [];
     const target = targetFor(command, args);
     const runtimeEpoch = this.observeRuntimeEpoch(
       target.key,
@@ -314,6 +315,18 @@ function captureStream(command) {
   if (command === 'state' || command === 'ios-state' || command === 'web-state') return 'state';
   if (command === 'events' || command === 'ios-events' || command === 'web-events') return 'events';
   return null;
+}
+
+function isMobileCaptureCommand(command) {
+  const normalized = String(command || '').toLowerCase();
+  return normalized === 'logs'
+    || normalized === 'ios-logs'
+    || normalized === 'network'
+    || normalized === 'ios-network'
+    || normalized === 'state'
+    || normalized === 'ios-state'
+    || normalized === 'events'
+    || normalized === 'ios-events';
 }
 
 function partitionForStream(stream, record) {
@@ -668,6 +681,7 @@ module.exports = {
   FactRecorder,
   captureStream,
   historyDescriptor,
+  isMobileCaptureCommand,
   isUiRecord,
   summarizeArgs,
 };

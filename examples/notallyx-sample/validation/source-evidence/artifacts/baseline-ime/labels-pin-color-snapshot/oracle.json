@@ -1,0 +1,56 @@
+{
+  "id": "intent.labels-pin-color",
+  "verdict": "passed",
+  "ok": true,
+  "snapshotId": "017c9233-0907-40a8-914a-ad741110ad9e",
+  "runId": "intent-1788743599316-1",
+  "source": "independent-host-business-oracle",
+  "checks": [
+    {
+      "field": "noteCount",
+      "verdict": "passed",
+      "expected": 3,
+      "actual": 3
+    },
+    {
+      "field": "notes[0].count",
+      "verdict": "passed",
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "field": "notes[0].title",
+      "verdict": "passed",
+      "expected": "AAB-TEXT-01",
+      "actual": "AAB-TEXT-01"
+    },
+    {
+      "field": "notes[0].body",
+      "verdict": "passed",
+      "expected": "第一行中文\nsecond line & <tag>-edited",
+      "actual": "第一行中文\nsecond line & <tag>-edited"
+    },
+    {
+      "field": "notes[0].labels",
+      "verdict": "passed",
+      "expected": [
+        "AAB项目"
+      ],
+      "actual": [
+        "AAB项目"
+      ]
+    },
+    {
+      "field": "notes[0].pinned",
+      "verdict": "passed",
+      "expected": true,
+      "actual": true
+    },
+    {
+      "field": "notes[0].color",
+      "verdict": "passed",
+      "expected": "#AFCCDC",
+      "actual": "#AFCCDC"
+    }
+  ]
+}

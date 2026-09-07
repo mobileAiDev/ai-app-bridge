@@ -1,19 +1,20 @@
 'use strict';
 
+const { createFakeHostPort } = require('../bin/script/fake-host-port');
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
-const { androidAppTargetKey, createTargetLease } = require('../bin/shared-kernel/target-lease-protocol');
-const { createFakeScriptDeviceAdapter } = require('../bin/script/script-device-adapter');
 const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
 const { handle: scriptHandle, resetScriptOperations } = require('../bin/script/script-entry');
+const { createTestScriptSupervisor: createScriptSupervisor } = require('./helpers/script-supervisor');
 const { createFakeIntentDeviceAdapter } = require('../bin/intent/intent-device-adapter');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createAutonomousAgentAdapter, createIntentBudget } = require('../bin/intent/intent-autonomous-adapter');
-const { handle: intentHandle, resetIntentOperations } = require('../bin/intent/intent-entry');
+const { handle: intentHandle, resetIntentOperations } = require('./helpers/intent-entry');
 const { createCommandRouter } = require('../bin/command-router');
 const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
 
@@ -54,6 +55,34 @@ function eightStepScript() {
   };
 }
 
+function codeScript(name) {
+  return {
+    schemaVersion: 'aab.code-script/v1',
+    name,
+    language: 'javascript',
+    source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
+    target: TARGET,
+  };
+}
+
+async function waitDone(supervisor, operationId, waitMs = 5000) {
+  const deadline = Date.now() + waitMs;
+  let afterSequence = 0;
+  while (Date.now() < deadline) {
+    const snapshot = await supervisor.handle({
+      operation: 'wait',
+      operationId,
+      waitMs: Math.max(1, Math.min(200, deadline - Date.now())),
+      afterSequence,
+    });
+    if (snapshot.status === 'completed' || snapshot.status === 'failed' || snapshot.status === 'cancelled') {
+      return snapshot;
+    }
+    afterSequence = snapshot.eventSequence;
+  }
+  return supervisor.handle({ operation: 'status', operationId, afterSequence: 0 });
+}
+
 function percentile(values, p) {
   const sorted = values.slice().sort((a, b) => a - b);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
@@ -85,58 +114,21 @@ test('G8 isolation and no UiA2 or ADB recovery remain in Script/Intent', () => {
   }
 });
 
-test('G8 Script 100x start, cancel, and timeout; maxActive stays 1', async () => {
+test('G8 Script 100x old steps start is script_format_removed', async () => {
   resetScriptOperations();
-  const lease = createTargetLease();
-  const adapter = createFakeScriptDeviceAdapter({ trees: { native: TREE }, lease });
-  let completed = 0;
-  let cancelled = 0;
-  let timedOut = 0;
+  let removed = 0;
   for (let i = 0; i < ROUNDS; i += 1) {
     const started = await scriptHandle({
       operation: 'start',
       operationId: `g8-script-start-${i}`,
       script: eightStepScript(),
       store: scriptStore(),
-      adapter,
     });
-    assert.equal(started.status, 'completed');
-    assert.equal(started.ok, true);
-    completed += 1;
+    assert.equal(started.ok, false);
+    assert.equal(started.error, 'script_format_removed');
+    removed += 1;
   }
-  for (let i = 0; i < ROUNDS; i += 1) {
-    const operationId = `g8-script-cancel-${i}`;
-    await scriptHandle({
-      operation: 'start',
-      operationId,
-      script: eightStepScript(),
-      store: scriptStore(),
-      adapter,
-    });
-    const result = scriptHandle({ operation: 'cancel', operationId });
-    assert.equal(result.status, 'cancelled');
-    cancelled += 1;
-  }
-  for (let i = 0; i < ROUNDS; i += 1) {
-    const result = await scriptHandle({
-      operation: 'start',
-      operationId: `g8-script-timeout-${i}`,
-      timeoutMs: 0,
-      script: eightStepScript(),
-      store: scriptStore(),
-      adapter,
-    });
-    assert.equal(result.error, 'timeout');
-    assert.equal(result.status, 'paused_failure');
-    timedOut += 1;
-  }
-  assert.equal(completed, ROUNDS);
-  assert.equal(cancelled, ROUNDS);
-  assert.equal(timedOut, ROUNDS);
-  assert.equal(adapter.maxActive, 1);
-  const targetKey = androidAppTargetKey(TARGET.serial, TARGET.packageName);
-  assert.equal(lease.status(targetKey).maxActive, 1);
-  assert.equal(lease.status(targetKey).active, 0);
+  assert.equal(removed, ROUNDS);
 });
 
 test('G8 Intent supervised and autonomous 100x start, decide, cancel, timeout', async () => {
@@ -233,29 +225,21 @@ test('G8 EvidenceStore fault, provider timeout, stale/duplicate decision, and MC
     store: createScriptEvidenceStore({
       adapter: createMemoryEvidenceAdapter({ fault: 'enospc' }),
     }),
-    adapter: createFakeScriptDeviceAdapter({ trees: { native: TREE } }),
   });
   assert.equal(blocked.ok, false);
-  assert.equal(blocked.error, 'ENOSPC');
+  assert.equal(blocked.error, 'script_format_removed');
 
-  const provider = await scriptHandle({
+  const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
+  const storeFault = await supervisor.handle({
     operation: 'start',
-    operationId: 'g8-provider-timeout',
-    script: eightStepScript(),
-    store: scriptStore(),
-    adapter: {
-      maxActive: 1,
-      calls: [],
-      async observe() {
-        return { ok: false, error: 'provider_timeout' };
-      },
-      async action() {
-        return { ok: false, error: 'should_not_dispatch' };
-      },
-    },
+    operationId: 'g8-code-store-fault',
+    script: codeScript('g8-store-fault'),
+    store: createScriptEvidenceStore({
+      adapter: createMemoryEvidenceAdapter({ fault: 'enospc' }),
+    }),
   });
-  assert.equal(provider.error, 'provider_timeout');
-  assert.equal(provider.status, 'paused_failure');
+  assert.equal(storeFault.ok, false);
+  assert.equal(storeFault.error, 'ENOSPC');
 
   const intentAdapter = createFakeIntentDeviceAdapter({ trees: { native: TREE } });
   const started = await intentHandle({
@@ -304,25 +288,17 @@ test('G8 EvidenceStore fault, provider timeout, stale/duplicate decision, and MC
   assert.equal(typeof dup.timings.summaryMs, 'number');
   assert.equal(dup.timings.totalMs >= first.timings.totalMs, true);
 
-  await scriptHandle({
-    operation: 'start',
-    operationId: 'g8-before-restart',
-    script: eightStepScript(),
-    store: scriptStore(),
-    adapter: createFakeScriptDeviceAdapter({ trees: { native: TREE } }),
-  });
   resetScriptOperations();
   resetIntentOperations();
-  const missing = scriptHandle({ operation: 'status', operationId: 'g8-before-restart' });
+  const missing = await scriptHandle({ operation: 'status', operationId: 'g8-before-restart' });
   assert.equal(missing.error, 'unknown_operation');
   const recovered = await scriptHandle({
     operation: 'start',
     operationId: 'g8-after-restart',
     script: eightStepScript(),
     store: scriptStore(),
-    adapter: createFakeScriptDeviceAdapter({ trees: { native: TREE } }),
   });
-  assert.equal(recovered.status, 'completed');
+  assert.equal(recovered.error, 'script_format_removed');
 });
 
 test('G8 Script continuous vs stepwise trips and leftover IO', async () => {
@@ -330,48 +306,33 @@ test('G8 Script continuous vs stepwise trips and leftover IO', async () => {
   const beforeIo = activeIoCount();
   const continuous = [];
   const stepwise = [];
-  const adapter = createFakeScriptDeviceAdapter({
-    trees: { native: TREE },
-    lease: createTargetLease(),
-    delayMs: 2,
-  });
+  const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
   function elapsedMs(started) {
     return Number(process.hrtime.bigint() - started) / 1e6;
   }
   for (let i = 0; i < 12; i += 1) {
     const startedAt = process.hrtime.bigint();
-    const result = await scriptHandle({
+    const started = await supervisor.handle({
       operation: 'start',
       operationId: `g8-speed-cont-${i}`,
-      script: eightStepScript(),
-      store: scriptStore(),
-      adapter,
+      script: codeScript(`g8-speed-cont-${i}`),
     });
+    const result = await waitDone(supervisor, started.operationId);
     const totalMs = elapsedMs(startedAt);
     assert.equal(result.status, 'completed');
-    assert.equal(result.evidenceId != null, true);
     if (i >= 2) continuous.push({ trips: 1, totalMs, ok: result.ok });
   }
-  const oneAgentTrip = {
-    name: 'g8-stepwise-trip',
-    target: TARGET,
-    steps: [
-      { id: 'o1', type: 'observe', provider: 'native' },
-      { id: 'a1', type: 'action', action: 'tap', text: 'About' },
-    ],
-  };
   for (let i = 0; i < 12; i += 1) {
     const startedAt = process.hrtime.bigint();
     let trips = 0;
     for (let trip = 0; trip < 8; trip += 1) {
       trips += 1;
-      const result = await scriptHandle({
+      const started = await supervisor.handle({
         operation: 'start',
         operationId: `g8-speed-step-${i}-${trip}`,
-        script: oneAgentTrip,
-        store: scriptStore(),
-        adapter,
+        script: codeScript(`g8-speed-step-${i}-${trip}`),
       });
+      const result = await waitDone(supervisor, started.operationId);
       assert.equal(result.status, 'completed');
     }
     const totalMs = elapsedMs(startedAt);
@@ -388,7 +349,6 @@ test('G8 Script continuous vs stepwise trips and leftover IO', async () => {
   assert.ok(contP50 <= stepP50 * 0.7, `p50 ${contP50} vs ${stepP50}`);
   assert.ok(contP95 <= stepP95 * 0.8, `p95 ${contP95} vs ${stepP95}`);
   assert.ok(afterIo - beforeIo <= 8, `io growth ${afterIo - beforeIo}`);
-  assert.equal(adapter.maxActive, 1);
   const speedArtifact = path.join(
     __dirname,
     '../../../build/ai_app_bridge_artifacts/script-intent-rebuild/g8-speed.json',
@@ -418,9 +378,9 @@ test('G8 Script/Intent faults leave Legacy usable; Batch still rejects isolated 
     store: createScriptEvidenceStore({
       adapter: createMemoryEvidenceAdapter({ fault: 'throw' }),
     }),
-    adapter: createFakeScriptDeviceAdapter({ trees: { native: TREE } }),
   });
   assert.equal(crashed.ok, false);
+  assert.equal(crashed.error, 'script_format_removed');
   const intentBlocked = await intentHandle({
     operation: 'start',
     operationId: 'g8-legacy-intent',

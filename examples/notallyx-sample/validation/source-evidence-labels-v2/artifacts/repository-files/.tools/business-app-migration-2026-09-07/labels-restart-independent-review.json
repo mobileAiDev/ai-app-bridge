@@ -1,0 +1,697 @@
+{
+  "schemaVersion": "aab.notallyx.independent-source-review/v1",
+  "target": {
+    "serial": "FYZLAU49X8OVQGJ7",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233",
+  "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+  "readMode": "readSnapshot(manifest object, explicit target/APK/run/sequence and terminal-time context); real SQLite/WAL/SHM readback. No device commands.",
+  "inputFilesUnchanged": true,
+  "inputs": [
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/delete-cancel-snapshot/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "bytes": 4096
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/delete-cancel-snapshot/NotallyDatabase-shm",
+      "sha256": "7a91a5b2e2fc06fcfa90adf5533febb0fa9a70ef3cb7d3ddde97cdd62962b559",
+      "bytes": 32768
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/delete-cancel-snapshot/NotallyDatabase-wal",
+      "sha256": "5839a86ddd61d57f1a25a71a6cf81046cb1964b7fd257d6d74a4ed43acc696e0",
+      "bytes": 189552
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/delete-cancel-snapshot/acquisition.json",
+      "sha256": "e0a919ea2709a53c1afcf62259a62dd3b22cfae727a0a1db9313d9d028df83d3",
+      "bytes": 6479
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/delete-cancel-snapshot/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "bytes": 112
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/delete-cancel-snapshot/snapshot.json",
+      "sha256": "fc2b0225a2451e6efac252734db7c70ea50cc904b66c922aa6e13edf044f0505",
+      "bytes": 2817
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-list-editor.png",
+      "sha256": "71b2883061cb60959b8d857cb3fd3ee6797247fed0be20d9542ac17c6dd32e66",
+      "bytes": 95240
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-manager.png",
+      "sha256": "e6f3935747197e23a898eda0763f9c929bb04bd8b4a32784c43611782c3c66ae",
+      "bytes": 57716
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-navigation.png",
+      "sha256": "0f422b5f8c12424f85c1b0f1745e6d7ad5c922b5c499ba4f4d6047698d1200c0",
+      "bytes": 84073
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-label-text-editor.png",
+      "sha256": "10030900624f8fb6ba1aa003a06492ec1efcb93d675c003798e92fc0dec9ce45",
+      "bytes": 93880
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-snapshot/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "bytes": 4096
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-snapshot/NotallyDatabase-shm",
+      "sha256": "b9aa15c9cced15b70f03c46a0c7850bd0ed41bc7a81ff62ceaf000b0393c0e64",
+      "bytes": 32768
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-snapshot/NotallyDatabase-wal",
+      "sha256": "ce9b30f3e6d3816c6c64c96fd66f0359df71da6488bffa1c1e2595720cbc0c88",
+      "bytes": 206032
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-snapshot/acquisition.json",
+      "sha256": "86077cc75737f515655c3eec1fb29e2ed8de0358ffb890035f075475a4e61671",
+      "bytes": 6479
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-snapshot/preferences.xml",
+      "sha256": "f64cff3558d9812cb1233c5915d4f8ee3ecfb62b92355641d5a896288cd5e196",
+      "bytes": 156
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/deleted-snapshot/snapshot.json",
+      "sha256": "80729912f9a4b47faac9a33346271492b181ee1991918f17867a2e008f5533b2",
+      "bytes": 2788
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-manager.png",
+      "sha256": "4ec0f44d9c65f9b743edb58b614062daedafe26f921d7e8deab6cec073ae04fa",
+      "bytes": 58117
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-overview.png",
+      "sha256": "b991f4bbdaabd81fd082d02c0baa3eb6d089aa5bc29fa4d1075ddf52dbe2d7c9",
+      "bytes": 147162
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "bytes": 4096
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/NotallyDatabase-shm",
+      "sha256": "36e5e8d2bd4777838cc5346fadad84d28781c828c7da6e25bde46de002a1337b",
+      "bytes": 32768
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/NotallyDatabase-wal",
+      "sha256": "ce9b30f3e6d3816c6c64c96fd66f0359df71da6488bffa1c1e2595720cbc0c88",
+      "bytes": 206032
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/acquisition.json",
+      "sha256": "30e06e7f9cb41a4eac1bbc1541aa7cbd97e2902b760fbdb75e9d93eec22e8f46",
+      "bytes": 6479
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/preferences.xml",
+      "sha256": "f64cff3558d9812cb1233c5915d4f8ee3ecfb62b92355641d5a896288cd5e196",
+      "bytes": 156
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-snapshot/snapshot.json",
+      "sha256": "a493a8d6a4a41359335cc720ee4f3b7639da118fdd92c164cc6ca8ea2a96b0c1",
+      "bytes": 2833
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/103-start.json",
+      "sha256": "a599795925429c6c7a124614f63bf3fc054d64e3eeaf75511f836a42c2fcd881",
+      "bytes": 106532
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/104-act.json",
+      "sha256": "1f446b9d00095dff84866a38a19e935119269229d05979f404557c4651057ff8",
+      "bytes": 113459
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/105-observe.json",
+      "sha256": "426633ccae03a6274a0427dd0ef44b745a3c5f67d62b32b45519fc7537fd4b57",
+      "bytes": 106303
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/106-act.json",
+      "sha256": "6514ecbf0d9d094c6097cb22b850bc59886481e9953f22f58e9193295e839cbb",
+      "bytes": 114228
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/107-observe.json",
+      "sha256": "39d125d6221c7d0798221d33de14b73c6f5d21f252cce10157d78ad683d068d8",
+      "bytes": 95819
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/108-act.json",
+      "sha256": "c3f4b19aa569d048bb6469b0655ed16f0ef18b24155e24c8e8ea31278957d7c7",
+      "bytes": 104558
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/109-act.json",
+      "sha256": "1fd7d54746013f7f31aef4e22f409640333b6bce1fca9c91d58552549e264d29",
+      "bytes": 103867
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/110-observe.json",
+      "sha256": "81a8fda880e7e7ae51a1ba0a20ed4ca71fbf772c304f9db987a016b34011aa5f",
+      "bytes": 86479
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/111-screenshot.json",
+      "sha256": "0cd72d39720f431e47a07b42449661743a61bc39bbb97f8ce10c15d2524b34eb",
+      "bytes": 1603
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/112-act.json",
+      "sha256": "9188a667798dc32e434e6b836608d8e216d3985df7e6cff8fca2c119102182eb",
+      "bytes": 94196
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/113-observe.json",
+      "sha256": "c7c816ff1c1f19452a502b55db60cb0e77fdb24e4e294c38c94b34c97360f8c0",
+      "bytes": 87160
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/114-screenshot.json",
+      "sha256": "512a0a7ef3ef0a3495bd23de47b19423f5335dbb4b5d8e13266c14aec4ca4e26",
+      "bytes": 1612
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/115-act.json",
+      "sha256": "8cf0941bda71a61126f55880a585a8c69e865ec918e08590044042b34d748209",
+      "bytes": 95097
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/116-observe.json",
+      "sha256": "502d808040dad7dc706fb59af0ef41b3e69af5c28c3df1c48ac5dc98df6650a4",
+      "bytes": 119603
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/117-act.json",
+      "sha256": "f681424143605ffb04153897dcf7390b038498de6f5c900970778f08e672800f",
+      "bytes": 120011
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/118-observe.json",
+      "sha256": "0036494f8355b9df045097d83d19b7df095866d059c1fb522d5f14ad0fa6f199",
+      "bytes": 119821
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/119-start.json",
+      "sha256": "cd526d9af4c93c6284b5150e8914e16ed561869044da3df146a7eea64f70b5b2",
+      "bytes": 102228
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/120-observe.json",
+      "sha256": "bfc8c9e95c177fcd436b3eb4e07192a9df9b25d2c7cb6afeb630c43b22855f4f",
+      "bytes": 102564
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/121-act.json",
+      "sha256": "3a499888364c90d319122aa2a9abe41ea8f7c6fd9cdbc4b7fc69568ea9426d1d",
+      "bytes": 109751
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/122-observe.json",
+      "sha256": "f546e3de31605eda94cc80c7a0e6516af91cdf07273dead5c3efaeeaac10096a",
+      "bytes": 84345
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/123-screenshot.json",
+      "sha256": "0fb895fc9d29514f4ce50dd4884a97a8cfd3d89170b55d96d7e90ff2df95418a",
+      "bytes": 1627
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/124-act.json",
+      "sha256": "fac0d186c6f13c79cb1a674fb42662fadce319c0bff5a16d1948658ea7c4f7b3",
+      "bytes": 84670
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/125-observe.json",
+      "sha256": "92284613458e3f2a9d70b8f02b266956f3580c3691e9462b82776be0a418c755",
+      "bytes": 103350
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/126-act.json",
+      "sha256": "3b399041c7a6f243944d0fad4b39c59b9c09e8a6291166ceb2096f55aabd67d3",
+      "bytes": 111126
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/127-observe.json",
+      "sha256": "07ee554ad0ad28ef1567fbe932432606fc58dfd4c18ae31a18c915164ec6dcd7",
+      "bytes": 122117
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/128-screenshot.json",
+      "sha256": "8fcb786e136697fa9d657137b9a3047588d55a20fe0b1ec61e57f644bbe2b857",
+      "bytes": 1627
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/129-complete.json",
+      "sha256": "5b88ee27b45d99202b77e949bc28f0cd23cd5e03d395095afc66d1386f757371",
+      "bytes": 122449
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/130-history.json",
+      "sha256": "42d12d63f6ae890f386cc21367428dedd857a0c2e200c2727c71b2a8ae2aab74",
+      "bytes": 1124651
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/131-start.json",
+      "sha256": "2c014c0bd1e1df803e5f7aad2f79ab301a4f718fb7e153f8afdee3893f2add3c",
+      "bytes": 102179
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/132-observe.json",
+      "sha256": "555b34ef70667bb9715b132a473679cb9e266feee1704ef7d30edae0a7e4362a",
+      "bytes": 102559
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/133-screenshot.json",
+      "sha256": "203b3a9040c89c8d7f9fada445df73b52532f38356c93f1d1ab46b110f14aadc",
+      "bytes": 1615
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/134-act.json",
+      "sha256": "8a078d292cb50414d0bee7dc45bf49b8b1bdab8e24b4660623e93ac9be5ef2d9",
+      "bytes": 109621
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/135-observe.json",
+      "sha256": "076be8d30c0ab6a9e10a0194dfa4e76f4c77dd91ded1b9cdb4c2b9c020ef5c99",
+      "bytes": 102488
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/136-act.json",
+      "sha256": "9bdb880d5ba04158130257acd60319edad03632b7e3a94cf5c85b0588cbf0434",
+      "bytes": 110412
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/137-observe.json",
+      "sha256": "f1a9864de364e52cb1a614c4af4847b716c7a34be06de3d79b8c34ff63dbf0d7",
+      "bytes": 85984
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/138-screenshot.json",
+      "sha256": "3a19f06a637d6c2cd9736f510882975dbf6e48fdcea8067b8ba0689c57f068db",
+      "bytes": 1612
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/139-complete.json",
+      "sha256": "c5889cfb7ddb3bb7151f951ea468281a2264a8eb37d5ee7127a44e08453c334a",
+      "bytes": 86308
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/140-history.json",
+      "sha256": "6ad83d65874e84f03d985a7d4f928a090cdfd57e1c7d9e1fbf8ada84d57efde6",
+      "bytes": 832991
+    },
+    {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/99-history.json",
+      "sha256": "e585ecc2ccba18c86c78e13cc45d380565c13b29409f1d89a030bea44074fd3e",
+      "bytes": 1119362
+    }
+  ],
+  "limitations": [
+    "These saved controller responses/history summaries were reviewed; no native FactStore envelope checksum claim is made by this review.",
+    "The failed operation starting at 103 remains failed; successful deletion data and later completion do not rewrite that status.",
+    "Only the actual two NOTES-folder notes were present. This device run does not cover archive/trash references, attachment-bearing notes, or duplicate imported label arrays.",
+    "Screenshots were visually inspected and hashed against their controller results. This manual trace is not a new automated tree-screenshot-tree checkpoint certification."
+  ],
+  "scope": "complete canonical equality after collector force-stop and subsequent relaunched observation",
+  "verdict": "passed",
+  "oracle": {
+    "id": "actual-label-delete-survives-restart",
+    "verdict": "passed",
+    "ok": true,
+    "source": "independent-host-business-oracle",
+    "before": {
+      "snapshotId": "bc2dc0d2-a5a5-4a06-a064-aafb0b12562f",
+      "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+      "identity": {
+        "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+        "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+      }
+    },
+    "after": {
+      "snapshotId": "24b4a187-9058-441d-a565-266192e4efb1",
+      "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+      "identity": {
+        "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+        "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+      }
+    },
+    "ignoreFields": [],
+    "differences": []
+  },
+  "beforeContext": {
+    "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+    "afterSequence": 130,
+    "expectedTarget": {
+      "serial": "FYZLAU49X8OVQGJ7",
+      "packageName": "io.github.mobileaidev.notallyx.sample"
+    },
+    "expectedApkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233",
+    "minCapturedAtMs": 1788754748018
+  },
+  "afterContext": {
+    "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+    "afterSequence": 140,
+    "expectedTarget": {
+      "serial": "FYZLAU49X8OVQGJ7",
+      "packageName": "io.github.mobileaidev.notallyx.sample"
+    },
+    "expectedApkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233",
+    "minCapturedAtMs": 1788754829883
+  },
+  "noteCount": 2,
+  "labels": [
+    {
+      "value": "AAB-label-ab",
+      "order": 2
+    },
+    {
+      "value": "AAB项目-script-1788752487009-10e9d2",
+      "order": 0
+    }
+  ],
+  "preferences": {
+    "dataSchemaId": 2,
+    "labelsHiddenInNavigation": []
+  },
+  "attachments": [],
+  "screenshots": [
+    {
+      "traceIndex": 133,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-overview.png",
+      "sha256": "b991f4bbdaabd81fd082d02c0baa3eb6d089aa5bc29fa4d1075ddf52dbe2d7c9",
+      "width": 1080,
+      "height": 2414,
+      "foreground": {
+        "ok": true,
+        "source": "mCurrentFocus",
+        "packageName": "io.github.mobileaidev.notallyx.sample",
+        "activity": "com.philkes.notallyx.presentation.activity.main.MainActivity",
+        "component": "io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.main.MainActivity",
+        "raw": "mCurrentFocus=Window{99f0fdf u0 io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.main.MainActivity}"
+      },
+      "visuallyInspected": true,
+      "visualFinding": "Both note cards retain their respective body/list and project/ab chips; renamed absent."
+    },
+    {
+      "traceIndex": 138,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-manager.png",
+      "sha256": "4ec0f44d9c65f9b743edb58b614062daedafe26f921d7e8deab6cec073ae04fa",
+      "width": 1080,
+      "height": 2414,
+      "foreground": {
+        "ok": true,
+        "source": "mCurrentFocus",
+        "packageName": "io.github.mobileaidev.notallyx.sample",
+        "activity": "com.philkes.notallyx.presentation.activity.main.MainActivity",
+        "component": "io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.main.MainActivity",
+        "raw": "mCurrentFocus=Window{99f0fdf u0 io.github.mobileaidev.notallyx.sample/com.philkes.notallyx.presentation.activity.main.MainActivity}"
+      },
+      "visuallyInspected": true,
+      "visualFinding": "After restart only ab and original project remain in manager."
+    }
+  ],
+  "executionStatus": {
+    "operationId": "intent-1788754805340-9",
+    "status": "completed",
+    "traceRange": [
+      131,
+      140
+    ]
+  },
+  "trace": [
+    {
+      "index": 131,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/131-start.json",
+      "request": {
+        "op": "start",
+        "goal": "冷启动后验证标签删除持久化，检查标签管理与两笔记完整状态"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "waiting_for_decision",
+      "revision": 1,
+      "error": null,
+      "lastEvent": {
+        "sequence": 2,
+        "type": "waiting_for_decision",
+        "atMs": 1788754806449,
+        "status": "waiting_for_decision",
+        "revision": 1,
+        "evidenceId": "intent:observation:intent-1788754805340-9:1:1"
+      },
+      "latestReceiptId": null
+    },
+    {
+      "index": 132,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/132-observe.json",
+      "request": {
+        "op": "observe"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "waiting_for_decision",
+      "revision": 2,
+      "error": null,
+      "lastEvent": {
+        "sequence": 4,
+        "type": "waiting_for_decision",
+        "atMs": 1788754807500,
+        "status": "waiting_for_decision",
+        "revision": 2,
+        "evidenceId": "intent:observation:intent-1788754805340-9:2:3",
+        "reason": "explicit_reobserve"
+      },
+      "latestReceiptId": null
+    },
+    {
+      "index": 133,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/133-screenshot.json",
+      "request": {
+        "command": "screenshot",
+        "args": {
+          "outFile": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-overview.png"
+        }
+      },
+      "operationId": null,
+      "status": null,
+      "revision": null,
+      "error": null,
+      "lastEvent": null,
+      "latestReceiptId": null
+    },
+    {
+      "index": 134,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/134-act.json",
+      "request": {
+        "op": "act",
+        "action": {
+          "action": "tap",
+          "selector": {
+            "contentDescription": "打开抽屉式导航栏"
+          }
+        },
+        "reason": "重启后核对导航标签"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "waiting_for_decision",
+      "revision": 3,
+      "error": null,
+      "lastEvent": {
+        "sequence": 5,
+        "type": "waiting_for_decision",
+        "atMs": 1788754808780,
+        "status": "waiting_for_decision",
+        "revision": 3,
+        "decisionId": "decision-134"
+      },
+      "latestReceiptId": "intent:action-receipt:intent-1788754805340-9:2:7"
+    },
+    {
+      "index": 135,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/135-observe.json",
+      "request": {
+        "op": "observe"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "waiting_for_decision",
+      "revision": 4,
+      "error": null,
+      "lastEvent": {
+        "sequence": 7,
+        "type": "waiting_for_decision",
+        "atMs": 1788754809778,
+        "status": "waiting_for_decision",
+        "revision": 4,
+        "evidenceId": "intent:observation:intent-1788754805340-9:4:10",
+        "reason": "explicit_reobserve"
+      },
+      "latestReceiptId": "intent:action-receipt:intent-1788754805340-9:2:7"
+    },
+    {
+      "index": 136,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/136-act.json",
+      "request": {
+        "op": "act",
+        "action": {
+          "action": "tap",
+          "selector": {
+            "text": "标签"
+          }
+        },
+        "reason": "重启后核对标签实体"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "waiting_for_decision",
+      "revision": 5,
+      "error": null,
+      "lastEvent": {
+        "sequence": 8,
+        "type": "waiting_for_decision",
+        "atMs": 1788754826871,
+        "status": "waiting_for_decision",
+        "revision": 5,
+        "decisionId": "decision-136"
+      },
+      "latestReceiptId": "intent:action-receipt:intent-1788754805340-9:4:14"
+    },
+    {
+      "index": 137,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/137-observe.json",
+      "request": {
+        "op": "observe"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "waiting_for_decision",
+      "revision": 6,
+      "error": null,
+      "lastEvent": {
+        "sequence": 10,
+        "type": "waiting_for_decision",
+        "atMs": 1788754827790,
+        "status": "waiting_for_decision",
+        "revision": 6,
+        "evidenceId": "intent:observation:intent-1788754805340-9:6:17",
+        "reason": "explicit_reobserve"
+      },
+      "latestReceiptId": "intent:action-receipt:intent-1788754805340-9:4:14"
+    },
+    {
+      "index": 138,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/138-screenshot.json",
+      "request": {
+        "command": "screenshot",
+        "args": {
+          "outFile": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/labels-restarted-manager.png"
+        }
+      },
+      "operationId": null,
+      "status": null,
+      "revision": null,
+      "error": null,
+      "lastEvent": null,
+      "latestReceiptId": null
+    },
+    {
+      "index": 139,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/139-complete.json",
+      "request": {
+        "op": "complete",
+        "reason": "重启后概览、抽屉和标签管理仍无已删标签，ab/project和两笔记可见；另核完整停机DB"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "completed",
+      "revision": 6,
+      "error": null,
+      "lastEvent": {
+        "sequence": 11,
+        "type": "terminal",
+        "atMs": 1788754829883,
+        "status": "completed",
+        "agentDecision": "complete",
+        "decisionId": "decision-139"
+      },
+      "latestReceiptId": "intent:action-receipt:intent-1788754805340-9:4:14"
+    },
+    {
+      "index": 140,
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/140-history.json",
+      "request": {
+        "op": "history"
+      },
+      "operationId": "intent-1788754805340-9",
+      "status": "completed",
+      "revision": 6,
+      "error": null,
+      "lastEvent": {
+        "sequence": 11,
+        "type": "terminal",
+        "atMs": 1788754829883,
+        "status": "completed",
+        "agentDecision": "complete",
+        "decisionId": "decision-139"
+      },
+      "latestReceiptId": "intent:action-receipt:intent-1788754805340-9:4:14"
+    }
+  ],
+  "history": [
+    {
+      "index": 140,
+      "itemCount": 19,
+      "receipts": [
+        {
+          "sequence": 7,
+          "revision": 2,
+          "timestampMs": 1788754808656,
+          "mechanicalStatus": "ok",
+          "error": null,
+          "ambiguous": false,
+          "action": {
+            "action": "tap",
+            "selector": {
+              "contentDescription": "打开抽屉式导航栏"
+            }
+          },
+          "rawTreeId": "intent-1788754805340-9:2",
+          "basedOnEvidenceIds": [
+            "intent:observation:intent-1788754805340-9:2:3"
+          ]
+        },
+        {
+          "sequence": 14,
+          "revision": 4,
+          "timestampMs": 1788754826732,
+          "mechanicalStatus": "ok",
+          "error": null,
+          "ambiguous": false,
+          "action": {
+            "action": "tap",
+            "selector": {
+              "text": "标签"
+            }
+          },
+          "rawTreeId": "intent-1788754805340-9:4",
+          "basedOnEvidenceIds": [
+            "intent:observation:intent-1788754805340-9:4:10"
+          ]
+        }
+      ]
+    }
+  ]
+}

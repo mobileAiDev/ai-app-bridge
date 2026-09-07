@@ -1,0 +1,163 @@
+{
+  "schemaVersion": "aab.notallyx.evidence-source-index/v1",
+  "sourceIntentExecutionIds": [
+    "intent-1788751052004-2",
+    "intent-1788752668874-1"
+  ],
+  "sourceArtifacts": [
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/8-start.json",
+      "sha256": "4b93cabb14135fe13002502203bc1fd89d492b708ffb4ed1f905d072c2fb509c"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/9-act.json",
+      "sha256": "de0edda0fee8d62501465d9497f2fff62b6ddf22012b1f6c037416ab14b2342a"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/10-act.json",
+      "sha256": "ddf8dc4d1bd2ceaeda097f69b5bc562c61c5b62d94e285642a8dfd86151d9497"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/11-observe.json",
+      "sha256": "cd2961e1555298da29756b8426a4fa137769fcecd56f55d0f226f2a84cdfdf3e"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/12-act.json",
+      "sha256": "54e50082fa618290cd8c991b2f1961f6bc6c1217917d1b0ddcf2226fc70b6b61"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/13-observe.json",
+      "sha256": "4cf0d1782557ee153a489226b3db6ea9ef6c1797e6be6597c274293a6be3554b"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/14-act.json",
+      "sha256": "c2d3dc7f2162dbcd7e31fe4b0c2c970a04d21a2a983e3c71e46656acdaa47a77"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/15-act.json",
+      "sha256": "86d3c299648b5f43f06cbe48dd2cf721e48057f54bef24ecc2e5e31413d368af"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788750907051/16-observe.json",
+      "sha256": "187c56cc16bec07c0101fbf35b6a2f6a56c78c2f41ed96c20de2b5c092412b23"
+    },
+    {
+      "path": ".tools/business-app-migration-2026-09-07/label-duplicate-device-red-crash.log",
+      "sha256": "f1d01a802894f4ef4438f33951ba3bfb19c60b91e2ad96b8c7e6db52a56c23b6"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/1-start.json",
+      "sha256": "d9b372c845881d0ec86f3a9cb9f83d431c337d294e6f9797023f3d2a5621fe99"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/2-act.json",
+      "sha256": "ddf0ced2138260c3e78eb0e5d4e717297e65ad1a33b58e60c6020bf9a2191aed"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/3-observe.json",
+      "sha256": "51c741a9ba7427a1311c4e1267e199cc8cceef8ddfb9082e69a0a73fff935151"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/4-act.json",
+      "sha256": "96839599e939b64c02f1eac89a4966601b40e3012a336471567038f327dd1214"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/5-observe.json",
+      "sha256": "3053853f428329524238d35505d3e871cd05c735117dbef59d910f7230442b61"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/6-act.json",
+      "sha256": "40ced52b5db8892e71c11b698386ef4c2f8b963a8fb9289206fde8b4ff225444"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/7-observe.json",
+      "sha256": "4ea30f96be116115f7775cbc5a712d53dfe7bac4e088557cc8c780fdc2722759"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/8-act.json",
+      "sha256": "22de0fcdb61ba3238008cc0d678ea25806eee314fd9ee11716f22bedc4758b16"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/9-act.json",
+      "sha256": "24ef41a588954939a29ceb2583256f7332841f2fd7fd747f1112bca6760d1e56"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/10-screenshot.json",
+      "sha256": "2067616c707aa5fbaf8e9a9140fdb815851b63a669dd1b635b703e36704ddb41"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/11-observe.json",
+      "sha256": "c974b206c408b6b35ebebb0ff858dc30cb2976bf42e2ec54939a3fc1e46e53f2"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/12-complete.json",
+      "sha256": "facd23410641d8b6b0bfd28e7f2ffeb8cba020cf5d02fa60392da338c8d1ac43"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788752615378/13-history.json",
+      "sha256": "bc69e5be90deb5bdd30d3f216ce0c3f322bc3b8c009abdd6a9c70e59ce880d34"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected.png",
+      "sha256": "8541c5109accacb566d2549e1220d39997cdc0d83960813d3c843ec1976182bf"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejection-oracle.json",
+      "sha256": "b48761238fcbc844a859f8a5bd1f5dcd55649f434e23cd54f814bd6e042625e7"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/snapshot.json",
+      "sha256": "a067659a7109295d159ae7dd17d77d53bae205148c493e2a562b7389b0e28ece"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/expansion-FYZLAU49X8OVQGJ7/duplicate-rejected-snapshot/snapshot.json",
+      "sha256": "2c1c1e55788bfc70f66f81cdc88aa389e8fbef32bfca851949bd05893fec5b59"
+    }
+  ],
+  "sourceEvidenceRefs": [
+    "intent:observation:intent-1788751052004-2:1:1",
+    "intent:observation:intent-1788751052004-2:2:6",
+    "intent:observation:intent-1788751052004-2:3:11",
+    "intent:observation:intent-1788751052004-2:4:13",
+    "intent:observation:intent-1788751052004-2:5:18",
+    "intent:observation:intent-1788751052004-2:6:20",
+    "intent:observation:intent-1788751052004-2:7:25",
+    "intent:observation:intent-1788751052004-2:8:30",
+    "intent:observation:intent-1788752668874-1:1:1",
+    "intent:observation:intent-1788752668874-1:2:6",
+    "intent:observation:intent-1788752668874-1:3:8",
+    "intent:observation:intent-1788752668874-1:4:13",
+    "intent:observation:intent-1788752668874-1:5:15",
+    "intent:observation:intent-1788752668874-1:6:20",
+    "intent:observation:intent-1788752668874-1:7:22",
+    "intent:observation:intent-1788752668874-1:8:27",
+    "intent:observation:intent-1788752668874-1:9:32",
+    "intent:observation:intent-1788752668874-1:10:34"
+  ],
+  "mappings": [
+    {
+      "scenarioId": "labels.manage.negative",
+      "scriptPhases": [
+        "planned-label-duplicate-rejection"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788751052004-2",
+        "intent-1788752668874-1"
+      ],
+      "coverage": "partial",
+      "reason": "One exact duplicate-create rejection has a fresh surviving UI, visible toast and independent canonical equality. Rename conflict and cancellation remain pending; no label Script has been implemented."
+    }
+  ],
+  "unmapped": "This separate increment is authoring provenance only. It does not alter the frozen text/list suite, add executed coverage slots, or complete labels.manage.negative.",
+  "sourceExecutionStatus": {
+    "intent-1788751052004-2": {
+      "status": "failed",
+      "reason": "Retained crash: action dispatch succeeded, the following observation was blocked with socket hang up; device log identifies IllegalStateException in addLabel. No successful acceptance is inferred."
+    },
+    "intent-1788752668874-1": {
+      "status": "completed",
+      "reason": "Intent completed only its duplicate rejection goal. Independent before/after SQLite+WAL and preferences compare with no ignored business fields; full negative template remains partial."
+    }
+  },
+  "historicalReceiptLimitation": "Bundle SHA values prove original response/file bytes and required snapshot dependencies. This increment does not independently reopen or verify every durable Intent envelope checksum; completed is not the business oracle. The R8 precondition snapshot was produced by Script, not by the new Intent; its association identifies the baseline used by that rejection comparison."
+}

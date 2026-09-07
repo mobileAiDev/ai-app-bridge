@@ -15,10 +15,6 @@ public final class AiAppBridge {
     private let runtimeEpoch = UUID().uuidString
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")
     private let serverQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.server")
-    private let maxLogEntries = 300
-    private let maxNetworkEntries = 200
-    private let maxEventEntries = 300
-    private let maxStateEntries = 200
     private let maxCapturedBodyChars = 20_000
     private let redactedValue = "[redacted]"
 
@@ -30,10 +26,9 @@ public final class AiAppBridge {
     private var flutterSnapshot: [String: Any] = [:]
     private var flutterActionHandler: AiAppBridgeFlutterActionHandler?
     private var captureSequence: Int64 = 0
-    private var logEntries: [[String: Any]] = []
-    private var networkEntries: [[String: Any]] = []
-    private var eventEntries: [[String: Any]] = []
-    private var stateEntries: [String: [String: Any]] = [:]
+    let captureStore = MobileCaptureStore(
+        caps: CountCaps(logs: 300, network: 200, events: 300, state: 200)
+    )
     #if DEBUG
     private var uiObserver: AiAppBridgeUiObserver?
     #endif
@@ -239,13 +234,13 @@ public final class AiAppBridge {
         case ("GET", "/v1/screenshot"):
             runOnMain { completion(200, self.buildScreenshot()) }
         case ("GET", "/v1/logs"):
-            completion(200, buildCaptureResponse(type: "logs", query: request.query, source: logEntries))
+            completion(200, liveCapture("logs", query: request.query))
         case ("GET", "/v1/network"):
-            completion(200, buildCaptureResponse(type: "network", query: request.query, source: networkEntries))
+            completion(200, liveCapture("network", query: request.query))
         case ("GET", "/v1/state"):
-            completion(200, buildStateResponse(query: request.query))
+            completion(200, liveCapture("state", query: request.query))
         case ("GET", "/v1/events"):
-            completion(200, buildCaptureResponse(type: "events", query: request.query, source: eventEntries))
+            completion(200, liveCapture("events", query: request.query))
         case ("GET", "/v1/h5/dom"):
             runOnMain { self.buildH5Dom(completion: { completion(200, $0) }) }
         case ("POST", "/v1/h5/eval"):
@@ -529,7 +524,13 @@ public final class AiAppBridge {
         ]
         let event = captureQueue.sync {
             let event = captureEvent(source: source).merging(details) { _, new in new }
-            boundedAppend(&logEntries, event, maxSize: maxLogEntries)
+            CaptureAppend.appendSanitized(
+                store: captureStore,
+                event: event,
+                stream: "logs",
+                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
+                runtimeEpoch: runtimeEpoch
+            )
             return event
         }
         persistMobileFact(event) { context in
@@ -559,7 +560,13 @@ public final class AiAppBridge {
         }
         let event = captureQueue.sync {
             let event = captureEvent(source: source).merging(details) { _, new in new }
-            boundedAppend(&networkEntries, event, maxSize: maxNetworkEntries)
+            CaptureAppend.appendSanitized(
+                store: captureStore,
+                event: event,
+                stream: "network",
+                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
+                runtimeEpoch: runtimeEpoch
+            )
             return event
         }
         persistMobileFact(event) { context in
@@ -580,7 +587,13 @@ public final class AiAppBridge {
         ]
         let event = captureQueue.sync {
             let event = captureEvent(source: source).merging(details) { _, new in new }
-            stateEntries[stateKey] = event
+            CaptureAppend.appendSanitized(
+                store: captureStore,
+                event: event,
+                stream: "state",
+                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
+                runtimeEpoch: runtimeEpoch
+            )
             return event
         }
         persistMobileFact(event) { context in
@@ -597,7 +610,13 @@ public final class AiAppBridge {
         ]
         let event = captureQueue.sync {
             let event = captureEvent(source: source).merging(details) { _, new in new }
-            boundedAppend(&eventEntries, event, maxSize: maxEventEntries)
+            CaptureAppend.appendSanitized(
+                store: captureStore,
+                event: event,
+                stream: "events",
+                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
+                runtimeEpoch: runtimeEpoch
+            )
             return event
         }
         persistMobileFact(event) { context in
@@ -676,62 +695,25 @@ public final class AiAppBridge {
 
     private func captureCounts() -> [String: Any] {
         captureQueue.sync {
-            [
-                "logs": logEntries.count,
-                "network": networkEntries.count,
-                "state": stateEntries.count,
-                "events": eventEntries.count
+            let streams = captureStore.status().streams
+            return [
+                "logs": streams["logs"]!.count,
+                "network": streams["network"]!.count,
+                "state": streams["state"]!.count,
+                "events": streams["events"]!.count
             ]
         }
     }
 
-    private func buildCaptureResponse(type: String, query: [String: String], source: [[String: Any]]) -> [String: Any] {
-        let filter = CaptureFilter(query: query)
-        let items = captureQueue.sync {
-            source.filter { filter.matches($0) }.suffix(filter.limit).map { $0 }
+    private func liveCapture(_ stream: String, query: [String: String]) -> [String: Any] {
+        captureQueue.sync {
+            LegacyLiveView.fromHttp(store: captureStore, stream: stream, http: query, nowMs: Self.nowMs())
         }
-        return [
-            "ok": true,
-            "type": type,
-            "items": items,
-            "count": items.count,
-            "sinceId": filter.sinceId ?? NSNull(),
-            "sinceMs": filter.sinceMs ?? NSNull(),
-            "limit": filter.limit,
-            "updatedAtMs": Self.nowMs()
-        ]
-    }
-
-    private func buildStateResponse(query: [String: String]) -> [String: Any] {
-        let filter = CaptureFilter(query: query)
-        let items = captureQueue.sync {
-            stateEntries.values.filter { filter.matches($0) }.suffix(filter.limit).map { $0 }
-        }
-        var values: [String: Any] = [:]
-        for item in items {
-            if let stateKey = item["stateKey"] as? String {
-                values[stateKey] = item["value"] ?? NSNull()
-            }
-        }
-        return [
-            "ok": true,
-            "type": "state",
-            "values": values,
-            "items": items,
-            "count": items.count,
-            "sinceId": filter.sinceId ?? NSNull(),
-            "sinceMs": filter.sinceMs ?? NSNull(),
-            "limit": filter.limit,
-            "updatedAtMs": Self.nowMs()
-        ]
     }
 
     private func clearRuntimeData() -> [String: Any] {
         captureQueue.sync {
-            logEntries.removeAll()
-            networkEntries.removeAll()
-            eventEntries.removeAll()
-            stateEntries.removeAll()
+            _ = captureStore.clear()
         }
         writePortState(ok: true, port: activePort, error: nil)
         return [
@@ -741,13 +723,6 @@ public final class AiAppBridge {
             "failures": [],
             "updatedAtMs": Self.nowMs()
         ]
-    }
-
-    private func boundedAppend(_ entries: inout [[String: Any]], _ value: [String: Any], maxSize: Int) {
-        entries.append(value)
-        if entries.count > maxSize {
-            entries.removeFirst(entries.count - maxSize)
-        }
     }
 
     private func writeJson(connection: NWConnection, status: Int, body: [String: Any]) {
@@ -1066,35 +1041,6 @@ private struct HttpRequest {
             }
         }
         return result
-    }
-}
-
-private struct CaptureFilter {
-    let sinceId: Int64?
-    let sinceMs: Int64?
-    let limit: Int
-
-    init(query: [String: String]) {
-        sinceId = query["sinceId"].flatMap(Int64.init) ?? query["since-id"].flatMap(Int64.init)
-        sinceMs = query["sinceMs"].flatMap(Int64.init) ?? query["since-ms"].flatMap(Int64.init)
-        let rawLimit = query["limit"].flatMap(Int.init) ?? 200
-        limit = min(max(rawLimit, 1), 1_000)
-    }
-
-    func matches(_ item: [String: Any]) -> Bool {
-        if let sinceId, let id = item["id"] as? Int64, id <= sinceId {
-            return false
-        }
-        if let sinceId, let id = item["id"] as? NSNumber, id.int64Value <= sinceId {
-            return false
-        }
-        if let sinceMs, let timestamp = item["timestampMs"] as? Int64, timestamp < sinceMs {
-            return false
-        }
-        if let sinceMs, let timestamp = item["timestampMs"] as? NSNumber, timestamp.int64Value < sinceMs {
-            return false
-        }
-        return true
     }
 }
 

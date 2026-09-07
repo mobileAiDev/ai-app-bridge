@@ -1,0 +1,151 @@
+{
+  "schemaVersion": "aab.p9-scenario/v1",
+  "login": false,
+  "moodle": false,
+  "frozen": false,
+  "freezeRule": "Freeze app version, language, page labels, fixture hash, and initial state with Intent when P9 starts. Do not delete a failed step at runtime.",
+  "apps": [
+    {
+      "id": "localsend-flutter",
+      "kind": "flutter",
+      "packageName": "org.localsend.localsend_app.debug",
+      "coreId": "localsend-core-v1",
+      "acceptanceId": "localsend-acceptance-v1",
+      "coreMaxMs": 300000,
+      "acceptanceMaxMs": 600000
+    },
+    {
+      "id": "wikipedia-android",
+      "kind": "native",
+      "packageName": "org.wikipedia.dev",
+      "coreId": "wikipedia-core-v1",
+      "acceptanceId": "wikipedia-acceptance-v1",
+      "coreMaxMs": 300000,
+      "acceptanceMaxMs": 600000
+    },
+    {
+      "id": "vlc-android",
+      "kind": "native",
+      "packageName": "org.videolan.vlc",
+      "coreId": "vlc-core-v1",
+      "acceptanceId": "vlc-acceptance-v1",
+      "coreMaxMs": 300000,
+      "acceptanceMaxMs": 600000
+    },
+    {
+      "id": "organic-maps-android",
+      "kind": "native",
+      "packageName": "app.organicmaps.web",
+      "coreId": "organic-maps-core-v1",
+      "acceptanceId": "organic-maps-acceptance-v1",
+      "coreMaxMs": 300000,
+      "acceptanceMaxMs": 600000
+    }
+  ],
+  "scenarios": {
+    "localsend-core-v1": {
+      "appId": "localsend-flutter",
+      "kind": "core",
+      "maxMs": 300000,
+      "sideEffects": "none",
+      "steps": [
+        { "id": "onboarding", "optional": true, "expectPage": "leave-onboarding", "evidence": ["tree", "summary"] },
+        { "id": "receive", "expectPage": "Receive", "evidence": ["tree", "summary"] },
+        { "id": "settings", "expectPage": "Settings", "evidence": ["tree", "summary"] },
+        { "id": "about-license", "expectPage": "About/License", "evidence": ["tree", "summary"] },
+        { "id": "back-to-home", "expectPage": "home-after-back", "evidence": ["tree", "summary"] }
+      ]
+    },
+    "localsend-acceptance-v1": {
+      "appId": "localsend-flutter",
+      "kind": "acceptance",
+      "maxMs": 600000,
+      "includes": "localsend-core-v1",
+      "sideEffects": "cancel-only",
+      "steps": [
+        { "id": "empty-discovery", "expectPage": "no-peer", "evidence": ["tree", "summary", "state"] },
+        { "id": "file-select-cancel", "expectPage": "cancel-without-send", "evidence": ["tree", "events"] },
+        { "id": "theme-language-restore", "expectPage": "settings-restored", "evidence": ["tree", "state"] },
+        { "id": "repeat-forward-back", "expectPage": "home-stable", "evidence": ["tree", "summary"] }
+      ]
+    },
+    "wikipedia-core-v1": {
+      "appId": "wikipedia-android",
+      "kind": "core",
+      "maxMs": 300000,
+      "sideEffects": "none",
+      "steps": [
+        { "id": "onboarding", "optional": true, "expectPage": "leave-onboarding", "evidence": ["tree", "summary"] },
+        { "id": "search-fixed-article", "expectPage": "article", "evidence": ["tree", "network"] },
+        { "id": "open-toc", "expectPage": "toc-or-section", "evidence": ["tree", "summary"] },
+        { "id": "back-to-search", "expectPage": "search", "evidence": ["tree", "summary"] },
+        { "id": "settings", "expectPage": "Settings", "evidence": ["tree", "summary"] }
+      ]
+    },
+    "wikipedia-acceptance-v1": {
+      "appId": "wikipedia-android",
+      "kind": "acceptance",
+      "maxMs": 600000,
+      "includes": "wikipedia-core-v1",
+      "sideEffects": "test-list-only",
+      "steps": [
+        { "id": "no-result", "expectPage": "no-result", "evidence": ["tree", "network"] },
+        { "id": "reading-list-save-cancel", "expectPage": "test-list", "evidence": ["tree", "state"] },
+        { "id": "language-theme-restore", "expectPage": "settings-restored", "evidence": ["tree", "state"] },
+        { "id": "repeat-article-back", "expectPage": "search-stable", "evidence": ["tree", "summary"] }
+      ]
+    },
+    "vlc-core-v1": {
+      "appId": "vlc-android",
+      "kind": "core",
+      "maxMs": 300000,
+      "sideEffects": "local-media-fixture",
+      "steps": [
+        { "id": "permission-onboarding", "optional": true, "expectPage": "leave-onboarding", "evidence": ["tree", "summary"] },
+        { "id": "scan-fixture", "expectPage": "media-list", "evidence": ["tree", "state"] },
+        { "id": "open-media", "expectPage": "player", "evidence": ["tree", "state"] },
+        { "id": "play-pause-seek", "expectPage": "player-progress", "evidence": ["tree", "state", "events"] },
+        { "id": "back-to-list", "expectPage": "media-list", "evidence": ["tree", "summary"] }
+      ]
+    },
+    "vlc-acceptance-v1": {
+      "appId": "vlc-android",
+      "kind": "acceptance",
+      "maxMs": 600000,
+      "includes": "vlc-core-v1",
+      "sideEffects": "local-media-fixture",
+      "steps": [
+        { "id": "empty-directory", "expectPage": "empty-or-no-result", "evidence": ["tree", "state"] },
+        { "id": "playback-restore", "expectPage": "player-restored", "evidence": ["tree", "state"] },
+        { "id": "play-back-repeat", "expectPage": "media-list-stable", "evidence": ["tree", "events"] },
+        { "id": "settings-restore", "expectPage": "settings-restored", "evidence": ["tree", "state"] }
+      ]
+    },
+    "organic-maps-core-v1": {
+      "appId": "organic-maps-android",
+      "kind": "core",
+      "maxMs": 300000,
+      "sideEffects": "offline-map-fixture",
+      "steps": [
+        { "id": "onboarding", "optional": true, "expectPage": "leave-onboarding", "evidence": ["tree", "summary"] },
+        { "id": "open-offline-map", "expectPage": "map", "evidence": ["tree", "state"] },
+        { "id": "search-fixed-poi", "expectPage": "poi-detail", "evidence": ["tree", "state"] },
+        { "id": "add-bookmark", "expectPage": "bookmark-added", "evidence": ["tree", "state"] },
+        { "id": "route-preview-cancel", "expectPage": "map-after-cancel", "evidence": ["tree", "state"] }
+      ]
+    },
+    "organic-maps-acceptance-v1": {
+      "appId": "organic-maps-android",
+      "kind": "acceptance",
+      "maxMs": 600000,
+      "includes": "organic-maps-core-v1",
+      "sideEffects": "offline-map-fixture",
+      "steps": [
+        { "id": "no-result-search", "expectPage": "no-result", "evidence": ["tree", "state"] },
+        { "id": "bookmark-delete-restore", "expectPage": "bookmark-restored", "evidence": ["tree", "state"] },
+        { "id": "route-cancel-back", "expectPage": "map-owned", "evidence": ["tree", "summary"] },
+        { "id": "settings-restore", "expectPage": "settings-restored", "evidence": ["tree", "state"] }
+      ]
+    }
+  }
+}

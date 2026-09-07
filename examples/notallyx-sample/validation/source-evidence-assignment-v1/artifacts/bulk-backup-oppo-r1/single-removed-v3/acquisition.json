@@ -1,0 +1,309 @@
+[
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "shell",
+      "am",
+      "force-stop",
+      "io.github.mobileaidev.notallyx.sample"
+    ],
+    "startedAtMs": 1788759428873,
+    "finishedAtMs": 1788759429028,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "shell",
+      "pidof",
+      "io.github.mobileaidev.notallyx.sample"
+    ],
+    "startedAtMs": 1788759429029,
+    "finishedAtMs": 1788759429120,
+    "exitCode": 1,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-f",
+      "databases/NotallyDatabase"
+    ],
+    "startedAtMs": 1788759429121,
+    "finishedAtMs": 1788759429177,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "cat",
+      "databases/NotallyDatabase"
+    ],
+    "startedAtMs": 1788759429177,
+    "finishedAtMs": 1788759429242,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 4096,
+    "stdoutSha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-f",
+      "databases/NotallyDatabase-wal"
+    ],
+    "startedAtMs": 1788759429242,
+    "finishedAtMs": 1788759429306,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "cat",
+      "databases/NotallyDatabase-wal"
+    ],
+    "startedAtMs": 1788759429306,
+    "finishedAtMs": 1788759429396,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 379072,
+    "stdoutSha256": "5f0cc5b5f2a26d0ae6795e94274407c3b959b7d04f8a142980599386e21cc633"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-f",
+      "databases/NotallyDatabase-shm"
+    ],
+    "startedAtMs": 1788759429397,
+    "finishedAtMs": 1788759429461,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "cat",
+      "databases/NotallyDatabase-shm"
+    ],
+    "startedAtMs": 1788759429461,
+    "finishedAtMs": 1788759429522,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 32768,
+    "stdoutSha256": "09797d18eb80b8d0b3fdef6ba4b5fc2e391a6387972c2cc36744c5bf09d9103e"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-f",
+      "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml"
+    ],
+    "startedAtMs": 1788759429523,
+    "finishedAtMs": 1788759429572,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "cat",
+      "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml"
+    ],
+    "startedAtMs": 1788759429573,
+    "finishedAtMs": 1788759429634,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 156,
+    "stdoutSha256": "f64cff3558d9812cb1233c5915d4f8ee3ecfb62b92355641d5a896288cd5e196"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-d",
+      "files/attachments/Images"
+    ],
+    "startedAtMs": 1788759429635,
+    "finishedAtMs": 1788759429688,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "find",
+      "files/attachments/Images",
+      "-type",
+      "f",
+      "-print0"
+    ],
+    "startedAtMs": 1788759429689,
+    "finishedAtMs": 1788759429740,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 0,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-d",
+      "files/attachments/Files"
+    ],
+    "startedAtMs": 1788759429741,
+    "finishedAtMs": 1788759429793,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "find",
+      "files/attachments/Files",
+      "-type",
+      "f",
+      "-print0"
+    ],
+    "startedAtMs": 1788759429793,
+    "finishedAtMs": 1788759429846,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 0,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "test",
+      "-d",
+      "files/attachments/Audios"
+    ],
+    "startedAtMs": 1788759429847,
+    "finishedAtMs": 1788759429904,
+    "exitCode": 0,
+    "stderr": "",
+    "stdout": ""
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "exec-out",
+      "run-as",
+      "io.github.mobileaidev.notallyx.sample",
+      "find",
+      "files/attachments/Audios",
+      "-type",
+      "f",
+      "-print0"
+    ],
+    "startedAtMs": 1788759429904,
+    "finishedAtMs": 1788759429957,
+    "exitCode": 0,
+    "stderr": "",
+    "stdoutBytes": 0,
+    "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "argv": [
+      "adb",
+      "-s",
+      "FYZLAU49X8OVQGJ7",
+      "shell",
+      "pidof",
+      "io.github.mobileaidev.notallyx.sample"
+    ],
+    "startedAtMs": 1788759429957,
+    "finishedAtMs": 1788759430009,
+    "exitCode": 1,
+    "stderr": "",
+    "stdout": ""
+  }
+]

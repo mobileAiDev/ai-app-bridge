@@ -47,6 +47,37 @@ test('G3 identical input is deterministic and each node maps back', () => {
   }
 });
 
+test('G3 Native blank custom inputs retain SDK locators and exact visibility facts', () => {
+  const summary = summarizeTree({ provider: 'native', rawTreeId: 'current-tree', rawTree: {
+    activity: 'com.philkes.notallyx.presentation.activity.EditNoteActivity',
+    root: { children: [
+      { id: 1, className: 'StylableEditTextWithHistory', text: '', resourceName: 'sample:id/EnterTitle', editable: true, visible: true, effectiveVisible: true },
+      { id: 2, className: 'StylableEditTextWithHistory', text: 'old background', resourceName: 'sample:id/EnterBody', editable: false, visible: true, effectiveVisible: false },
+      { id: 3, className: 'EditText', text: '', resourceName: 'sample:id/Legacy' },
+      { id: 4, className: 'EditText', text: '', editable: 'true', visible: 'true', effectiveVisible: 'false' },
+    ] },
+  } });
+  assert.equal(summary.activity, 'com.philkes.notallyx.presentation.activity.EditNoteActivity');
+  const input = summary.nodes[0];
+  assert.equal(input.resourceName, 'sample:id/EnterTitle');
+  assert.equal(input.editable, true);
+  assert.equal(input.visible, true);
+  assert.equal(input.effectiveVisible, true);
+  assert.equal(input.text, null);
+  assert.equal(input.role, 'input');
+  assert.equal(input.rawTreeId, 'current-tree');
+  assert.equal(summary.nodes[1].editable, false);
+  assert.equal(summary.nodes[1].effectiveVisible, false);
+  for (const node of summary.nodes.slice(2)) {
+    assert.equal(Object.hasOwn(node, 'editable'), false, 'unknown is not an SDK editing fact');
+    assert.equal(Object.hasOwn(node, 'visible'), false);
+    assert.equal(Object.hasOwn(node, 'effectiveVisible'), false);
+  }
+  const flutter = summarizeTree(flutterFixture);
+  assert.equal(Object.hasOwn(flutter, 'activity'), false);
+  assert.equal(flutter.nodes.some((node) => Object.hasOwn(node, 'resourceName')), false);
+});
+
 test('G3 5k and 10k node p95 stays under 20ms and output stays bounded', () => {
   const five = benchmark(5_000);
   const ten = benchmark(10_000);

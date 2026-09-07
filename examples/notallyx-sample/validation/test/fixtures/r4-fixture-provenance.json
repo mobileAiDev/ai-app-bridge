@@ -1,0 +1,7 @@
+{
+  "scope": "Actual failure tree response.result reserialized without changing fields; Host-issued wrapper in tests is explicitly new simulated evidence, not the historical observation.",
+  "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-migrated-r4/list-create/calls.jsonl",
+  "originalSha256": "aeb2755d0f00faf5bd8686ff2515e7556f0e619d8edda9b168ede552ac75f7b4",
+  "line": 159,
+  "fixtureSha256": "7ca4bbaeb9943f3bdc5b5577b100320f92a6b7f5af42bf19a1064ec8032a18b6"
+}

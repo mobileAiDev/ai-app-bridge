@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "aab.notallyx-snapshot/v1",
+  "snapshotId": "11b16f1e-0e3c-49b2-b099-60516ac25eaa",
+  "runId": "notallyx-bulk-backup-20260907-FYZLAU49X8OVQGJ7",
+  "target": {
+    "serial": "FYZLAU49X8OVQGJ7",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "identity": {
+    "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+  },
+  "capturedAfterSequence": 18,
+  "acquisition": {
+    "method": "run-as-force-stop",
+    "packageName": "io.github.mobileaidev.notallyx.sample",
+    "forceStopCompletedAtMs": 1788758036862,
+    "pidof": {
+      "checkedAtMs": 1788758036930,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pidofAfter": {
+      "checkedAtMs": 1788758037853,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pullStartedAtMs": 1788758036930,
+    "pullCompletedAtMs": 1788758037786,
+    "transcript": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/cancelled-v2/acquisition.json",
+      "sha256": "e67cd744aa521d4ee7d2b7cfd22e7064857a4e65a9668594e723f83ef782f5af"
+    }
+  },
+  "files": {
+    "database": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/cancelled-v2/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "remotePath": "databases/NotallyDatabase",
+      "bytes": 4096
+    },
+    "wal": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/cancelled-v2/NotallyDatabase-wal",
+      "sha256": "ad97471d5eb57d8f4f0e28cbc3e4ebafa9db2fdf8bc8e16661af997d6e6395e3",
+      "remotePath": "databases/NotallyDatabase-wal",
+      "bytes": 362592
+    },
+    "shm": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/cancelled-v2/NotallyDatabase-shm",
+      "sha256": "0b3225a2bfe0e12e19b38e9cb1f8b4b40fa3a371a855d4b27faf6f56459291ae",
+      "remotePath": "databases/NotallyDatabase-shm",
+      "bytes": 32768
+    },
+    "preferences": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/bulk-backup-oppo-r1/cancelled-v2/preferences.xml",
+      "sha256": "f64cff3558d9812cb1233c5915d4f8ee3ecfb62b92355641d5a896288cd5e196",
+      "remotePath": "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml",
+      "bytes": 156
+    }
+  },
+  "attachments": [],
+  "attachmentScope": "private-files-attachments"
+}

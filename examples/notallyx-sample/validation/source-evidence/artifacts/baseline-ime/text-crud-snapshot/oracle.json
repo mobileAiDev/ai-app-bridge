@@ -1,0 +1,34 @@
+{
+  "id": "note.text_crud.normal:oracle:1",
+  "verdict": "passed",
+  "ok": true,
+  "snapshotId": "a38bf4d3-d50b-4920-8440-dcada341bbcf",
+  "runId": "intent-1788742528691-1",
+  "source": "independent-host-business-oracle",
+  "checks": [
+    {
+      "field": "notes[0].count",
+      "verdict": "passed",
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "field": "notes[0].body",
+      "verdict": "passed",
+      "expected": "第一行中文\nsecond line & <tag>-edited",
+      "actual": "第一行中文\nsecond line & <tag>-edited"
+    },
+    {
+      "field": "notes[0].type",
+      "verdict": "passed",
+      "expected": "NOTE",
+      "actual": "NOTE"
+    },
+    {
+      "field": "notes[0].folder",
+      "verdict": "passed",
+      "expected": "NOTES",
+      "actual": "NOTES"
+    }
+  ]
+}

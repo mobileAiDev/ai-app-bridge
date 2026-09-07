@@ -1,0 +1,167 @@
+{
+  "ok": true,
+  "verdict": "observed",
+  "snapshotId": "fe1c292f-7f6d-424e-b429-851bbafc0ba5",
+  "runId": "intent-1788744265456-1",
+  "target": {
+    "serial": "b46093e6",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "identity": {
+    "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "apkSha256": "8252b6c0a4d36ce1a38c4056ba2bb5becfa63ca18803e7dde42de3116cb80836"
+  },
+  "capturedAfterSequence": 20,
+  "capturedAtMs": 1788744423395,
+  "files": {
+    "database": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/NotallyDatabase",
+      "sha256": "94772575633b6f43be37fdc3bc98e81d25f0b53e7098b5f21d547a0f415a894c",
+      "remotePath": "databases/NotallyDatabase",
+      "bytes": 4096
+    },
+    "wal": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/NotallyDatabase-wal",
+      "sha256": "ea1d76398a1f92ea086244525e2fce0dcf3f927e99efcf562c62ff08882c8ba6",
+      "remotePath": "databases/NotallyDatabase-wal",
+      "bytes": 214272
+    },
+    "shm": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/NotallyDatabase-shm",
+      "sha256": "494b6c6b04269f708f2346fc6a7f68247c447335b3dc20818dbd6d5667d328d1",
+      "remotePath": "databases/NotallyDatabase-shm",
+      "bytes": 32768
+    },
+    "preferences": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "remotePath": "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml",
+      "bytes": 112
+    }
+  },
+  "data": {
+    "schemaVersion": 11,
+    "roomIdentity": "80a04d33cf13bc8ca45396f5a5d85e61",
+    "notes": [
+      {
+        "id": 1,
+        "type": "NOTE",
+        "folder": "NOTES",
+        "color": "DEFAULT",
+        "title": "",
+        "pinned": true,
+        "timestamp": 1788741332275,
+        "modifiedTimestamp": 1788741595239,
+        "labels": [],
+        "body": "",
+        "spans": [],
+        "items": [],
+        "images": [],
+        "files": [],
+        "audios": [],
+        "reminders": [],
+        "viewMode": "EDIT",
+        "isPinnedToStatus": false
+      },
+      {
+        "id": 2,
+        "type": "NOTE",
+        "folder": "NOTES",
+        "color": "DEFAULT",
+        "title": "",
+        "pinned": false,
+        "timestamp": 1788742167199,
+        "modifiedTimestamp": 1788742167199,
+        "labels": [],
+        "body": "",
+        "spans": [],
+        "items": [],
+        "images": [],
+        "files": [],
+        "audios": [],
+        "reminders": [],
+        "viewMode": "EDIT",
+        "isPinnedToStatus": false
+      },
+      {
+        "id": 3,
+        "type": "NOTE",
+        "folder": "NOTES",
+        "color": "#AFCCDC",
+        "title": "AAB-TEXT-01",
+        "pinned": true,
+        "timestamp": 1788742536905,
+        "modifiedTimestamp": 1788743779822,
+        "labels": [
+          "AAB项目"
+        ],
+        "body": "第一行中文\nsecond line & <tag>-edited",
+        "spans": [],
+        "items": [],
+        "images": [],
+        "files": [],
+        "audios": [],
+        "reminders": [],
+        "viewMode": "EDIT",
+        "isPinnedToStatus": false
+      },
+      {
+        "id": 4,
+        "type": "LIST",
+        "folder": "NOTES",
+        "color": "DEFAULT",
+        "title": "AAB-LIST-01",
+        "pinned": false,
+        "timestamp": 1788743881753,
+        "modifiedTimestamp": 1788744328880,
+        "labels": [],
+        "body": "",
+        "spans": [],
+        "items": [
+          {
+            "body": "Parent-A",
+            "checked": false,
+            "isChild": false,
+            "order": 0
+          },
+          {
+            "body": "Child-A1",
+            "checked": false,
+            "isChild": true,
+            "order": 1
+          },
+          {
+            "body": "Child-A2-edited",
+            "checked": false,
+            "isChild": true,
+            "order": 2
+          },
+          {
+            "body": "Parent-B",
+            "checked": true,
+            "isChild": false,
+            "order": 3,
+            "checkedTimestamp": 1788744091387
+          }
+        ],
+        "images": [],
+        "files": [],
+        "audios": [],
+        "reminders": [],
+        "viewMode": "EDIT",
+        "isPinnedToStatus": false
+      }
+    ],
+    "labels": [
+      {
+        "value": "AAB项目",
+        "order": 0
+      }
+    ],
+    "preferences": {
+      "dataSchemaId": 2
+    }
+  },
+  "attachments": [],
+  "provenance": "Host collector transcript and hashes; not a cryptographic device attestation"
+}

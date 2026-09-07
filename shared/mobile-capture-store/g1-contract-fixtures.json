@@ -1,0 +1,178 @@
+{
+  "schemaVersion": "aab.capture-store-g1/v1",
+  "defaults": {
+    "budgetBytes": {
+      "logs": 180,
+      "network": 220,
+      "events": 180,
+      "state": 140
+    },
+    "countCaps": {
+      "logs": 8,
+      "network": 8,
+      "events": 8,
+      "state": 4
+    },
+    "targetKey": "android:[\"serial-1\",\"com.example.app\"]",
+    "runtimeEpoch": "epoch-1"
+  },
+  "cases": [
+    {
+      "name": "fifo-keeps-newest-logs",
+      "appends": [
+        { "stream": "logs", "captureId": 1, "timestampMs": 1000, "record": { "id": 1, "message": "one" } },
+        { "stream": "logs", "captureId": 2, "timestampMs": 1001, "record": { "id": 2, "message": "two" } },
+        { "stream": "logs", "captureId": 3, "timestampMs": 1002, "record": { "id": 3, "message": "three" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "logs", "limit": 10 },
+      "expect": {
+        "ids": [1, 2, 3],
+        "coverageStatus": "complete",
+        "gap": false,
+        "committed": true,
+        "persistent": false
+      }
+    },
+    {
+      "name": "sinceId-is-strictly-greater",
+      "appends": [
+        { "stream": "logs", "captureId": 10, "timestampMs": 2000, "record": { "id": 10, "message": "a" } },
+        { "stream": "logs", "captureId": 11, "timestampMs": 2001, "record": { "id": 11, "message": "b" } },
+        { "stream": "logs", "captureId": 12, "timestampMs": 2002, "record": { "id": 12, "message": "c" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "logs", "sinceId": 10, "limit": 10 },
+      "expect": {
+        "ids": [11, 12],
+        "coverageStatus": "complete",
+        "gap": false
+      }
+    },
+    {
+      "name": "sinceMs-includes-equal-timestamp",
+      "appends": [
+        { "stream": "events", "captureId": 1, "timestampMs": 5000, "record": { "id": 1, "name": "early" } },
+        { "stream": "events", "captureId": 2, "timestampMs": 6000, "record": { "id": 2, "name": "edge" } },
+        { "stream": "events", "captureId": 3, "timestampMs": 7000, "record": { "id": 3, "name": "late" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "events", "sinceMs": 6000, "limit": 10 },
+      "expect": {
+        "ids": [2, 3],
+        "coverageStatus": "complete"
+      }
+    },
+    {
+      "name": "filter-then-takeLast-limit",
+      "appends": [
+        { "stream": "network", "captureId": 1, "timestampMs": 1, "record": { "id": 1, "url": "/a" } },
+        { "stream": "network", "captureId": 2, "timestampMs": 2, "record": { "id": 2, "url": "/b" } },
+        { "stream": "network", "captureId": 3, "timestampMs": 3, "record": { "id": 3, "url": "/c" } },
+        { "stream": "network", "captureId": 4, "timestampMs": 4, "record": { "id": 4, "url": "/d" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "network", "sinceId": 1, "limit": 2 },
+      "expect": {
+        "ids": [3, 4]
+      }
+    },
+    {
+      "name": "state-overwrite-keeps-latest-by-key",
+      "appends": [
+        { "stream": "state", "captureId": 1, "timestampMs": 1, "stateKey": "app.ready", "record": { "id": 1, "stateKey": "app.ready", "value": "old" } },
+        { "stream": "state", "captureId": 2, "timestampMs": 2, "stateKey": "app.ready", "record": { "id": 2, "stateKey": "app.ready", "value": "new" } },
+        { "stream": "state", "captureId": 3, "timestampMs": 3, "stateKey": "app.other", "record": { "id": 3, "stateKey": "app.other", "value": "keep" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "state", "limit": 10 },
+      "expect": {
+        "ids": [2, 3],
+        "stateValues": { "app.ready": "new", "app.other": "keep" }
+      }
+    },
+    {
+      "name": "state-lru-evicts-least-recently-used",
+      "budgetBytes": { "logs": 4096, "network": 4096, "events": 4096, "state": 4096 },
+      "countCaps": { "logs": 8, "network": 8, "events": 8, "state": 2 },
+      "appends": [
+        { "stream": "state", "captureId": 1, "timestampMs": 1, "stateKey": "a", "record": { "id": 1, "stateKey": "a", "value": "A1" } },
+        { "stream": "state", "captureId": 2, "timestampMs": 2, "stateKey": "b", "record": { "id": 2, "stateKey": "b", "value": "B" } },
+        { "stream": "state", "captureId": 3, "timestampMs": 3, "stateKey": "a", "record": { "id": 3, "stateKey": "a", "value": "A2" } },
+        { "stream": "state", "captureId": 4, "timestampMs": 4, "stateKey": "c", "record": { "id": 4, "stateKey": "c", "value": "C" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "state", "limit": 10 },
+      "expect": {
+        "ids": [3, 4],
+        "stateValues": { "a": "A2", "c": "C" }
+      }
+    },
+    {
+      "name": "dedupe-same-runtime-identity",
+      "appends": [
+        { "stream": "logs", "captureId": 7, "timestampMs": 1, "record": { "id": 7, "message": "first" } },
+        { "stream": "logs", "captureId": 7, "timestampMs": 2, "record": { "id": 7, "message": "dup" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "logs", "limit": 10 },
+      "expect": {
+        "ids": [7],
+        "messages": ["first"],
+        "secondAppend": "deduplicated"
+      }
+    },
+    {
+      "name": "count-cap-fifo-evicts-oldest",
+      "budgetBytes": { "logs": 4096, "network": 4096, "events": 4096, "state": 4096 },
+      "countCaps": { "logs": 2, "network": 8, "events": 8, "state": 4 },
+      "appends": [
+        { "stream": "logs", "captureId": 1, "timestampMs": 1, "record": { "id": 1, "message": "drop-me" } },
+        { "stream": "logs", "captureId": 2, "timestampMs": 2, "record": { "id": 2, "message": "keep-a" } },
+        { "stream": "logs", "captureId": 3, "timestampMs": 3, "record": { "id": 3, "message": "keep-b" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "logs", "limit": 10 },
+      "expect": {
+        "ids": [2, 3],
+        "coverageStatus": "complete",
+        "gap": false
+      }
+    },
+    {
+      "name": "oversized-append-is-dropped-and-query-reports-gap",
+      "budgetBytes": { "logs": 32, "network": 32, "events": 32, "state": 32 },
+      "appends": [
+        { "stream": "logs", "captureId": 1, "timestampMs": 1, "record": { "id": 1, "message": "tiny" } },
+        { "stream": "logs", "captureId": 2, "timestampMs": 2, "record": { "id": 2, "message": "this-record-is-intentionally-larger-than-the-stream-budget" } }
+      ],
+      "query": { "view": "legacy-live", "stream": "logs", "limit": 10 },
+      "expect": {
+        "ids": [1],
+        "secondAppend": "dropped",
+        "coverageStatus": "partial",
+        "gap": true
+      }
+    },
+    {
+      "name": "clear-rotates-generation-and-hides-old-facts",
+      "appends": [
+        { "stream": "logs", "captureId": 1, "timestampMs": 1, "record": { "id": 1, "message": "gone" } }
+      ],
+      "clear": "all",
+      "query": { "view": "legacy-live", "stream": "logs", "limit": 10 },
+      "expect": {
+        "ids": [],
+        "generationChanged": true
+      }
+    },
+    {
+      "name": "decision-window-uses-mark-and-actionId",
+      "appends": [
+        { "stream": "network", "captureId": 1, "timestampMs": 1, "record": { "id": 1, "url": "/before" } }
+      ],
+      "mark": ["network"],
+      "moreAppends": [
+        { "stream": "network", "captureId": 2, "timestampMs": 2, "actionId": "action-9", "record": { "id": 2, "url": "/after" } }
+      ],
+      "query": { "view": "decision-window", "stream": "network", "afterActionId": "action-9", "limit": 10 },
+      "expect": {
+        "ids": [2],
+        "coverageStatus": "complete",
+        "hasRefs": true
+      }
+    }
+  ]
+}

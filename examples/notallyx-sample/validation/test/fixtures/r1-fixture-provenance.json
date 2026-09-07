@@ -1,0 +1,7 @@
+{
+  "scope": "historical failure fixture only; the file stores the exact parsed response.result without field projection or redaction, reserialized as JSON",
+  "originalPath": "build/ai_app_bridge_artifacts/notallyx-migration/script-migrated-r1/edit/calls.jsonl",
+  "originalSha256": "725cf52ada4ee611ce13c71c512e4376f9240f8f2ecf9cc255da7c79f399b1bd",
+  "line": 103,
+  "fixtureSha256": "ee43148baa9f056ce59e554db063de3d4248a562729c86c415d2fee89939a9d9"
+}

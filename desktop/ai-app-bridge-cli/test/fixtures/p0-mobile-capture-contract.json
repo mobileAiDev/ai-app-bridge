@@ -1,0 +1,112 @@
+{
+  "android": {
+    "sdkVersion": "0.2.8",
+    "source": "android/ai-app-bridge-android/src/main/kotlin/io/github/mobileaidev/aiappbridge/android/AiAppBridge.kt",
+    "liveView": "android/ai-app-bridge-android/src/main/kotlin/io/github/mobileaidev/aiappbridge/android/capture/LegacyLiveView.kt",
+    "storeBackend": "android/ai-app-bridge-android/src/main/kotlin/io/github/mobileaidev/aiappbridge/android/capture/BoundedMemoryCaptureBackend.kt",
+    "windows": {
+      "logs": 300,
+      "network": 200,
+      "events": 300,
+      "state": 200
+    },
+    "stateKey": "namespace.key",
+    "stateOverflow": "evict-first-key-when-new-key-and-size-at-cap",
+    "query": {
+      "defaultLimit": 200,
+      "maxLimit": 500,
+      "sinceId": "id > sinceId",
+      "sinceMs": "timestampMs >= sinceMs",
+      "order": "takeLast(limit)",
+      "sinceAliases": []
+    },
+    "getPaths": [
+      "/v1/logs",
+      "/v1/network",
+      "/v1/state",
+      "/v1/events"
+    ],
+    "postPaths": [
+      "/v1/logs",
+      "/v1/network",
+      "/v1/state",
+      "/v1/events"
+    ],
+    "clearPath": "/v1/app/clear-data",
+    "getFields": ["ok", "type", "items", "count", "sinceId", "sinceMs", "limit", "updatedAtMs"],
+    "stateExtraFields": ["values"],
+    "postEnvelope": "ok+event",
+    "redaction": {
+      "network": true,
+      "logsData": false,
+      "stateValue": false,
+      "eventData": false,
+      "marker": "[redacted]"
+    }
+  },
+  "ios": {
+    "sdkVersion": "0.2.11",
+    "source": "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/AiAppBridge.swift",
+    "liveView": "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/Capture/LegacyLiveView.swift",
+    "storeBackend": "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/Capture/BoundedMemoryCaptureBackend.swift",
+    "windows": {
+      "logs": 300,
+      "network": 200,
+      "events": 300,
+      "state": 200
+    },
+    "stateKey": "namespace:key",
+    "stateOverflow": "declared-200-not-enforced-on-write",
+    "query": {
+      "defaultLimit": 200,
+      "maxLimit": 1000,
+      "sinceId": "id > sinceId",
+      "sinceMs": "timestampMs >= sinceMs",
+      "order": "suffix(limit)",
+      "sinceAliases": ["since-id", "since-ms"]
+    },
+    "getPaths": [
+      "/v1/logs",
+      "/v1/network",
+      "/v1/state",
+      "/v1/events"
+    ],
+    "postPaths": [
+      "/v1/logs",
+      "/v1/network",
+      "/v1/state",
+      "/v1/events"
+    ],
+    "clearPath": "/v1/app/clear-data",
+    "getFields": ["ok", "type", "items", "count", "sinceId", "sinceMs", "limit", "updatedAtMs"],
+    "stateExtraFields": ["values"],
+    "postEnvelope": "ok+record",
+    "redaction": {
+      "network": true,
+      "logsData": false,
+      "stateValue": true,
+      "eventData": true,
+      "marker": "[redacted]"
+    }
+  },
+  "flutter": {
+    "sdkVersion": "0.2.4",
+    "source": "flutter/ai_app_bridge_flutter/lib/ai_app_bridge_flutter.dart",
+    "channel": "ai_app_bridge",
+    "httpFallback": "http://127.0.0.1:18080",
+    "methods": {
+      "recordLog": "/v1/logs",
+      "recordNetwork": "/v1/network",
+      "recordState": "/v1/state",
+      "recordEvent": "/v1/events"
+    },
+    "errorsSwallowed": true
+  },
+  "hostCopy": {
+    "pollIntervalMs": 1000,
+    "inactiveTargetTtlMs": 1800000,
+    "streams": ["logs", "network", "state", "events"],
+    "feedbackOffStopsCopy": true,
+    "historyTrueReadsHostOnDisconnect": false
+  }
+}

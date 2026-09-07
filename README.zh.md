@@ -22,9 +22,22 @@ AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS
 - iOS native app：`AiAppBridgeIOS` 提供 UIKit/WKWebView/logs/network/state/events，WebDriverAgent/XCUITest 提供截图、UI tree、tap、input、swipe 和系统 UI
 - 桌面 Web Bridge session：浏览器 SDK 提供 DOM、logs、network、state、events、白名单 command、click/input/wait 和 scroll
 
+手机侧 `logs` / `network` / `state` / `events` 只存在 `MobileCaptureStore` 中。Host 连接态命令直读手机，不保存这些 payload 的复制历史。
+
 MCP 命令域：`core`（`status`、`tree`、`uia-tree`、`screenshot`、`logs`、`network`、`state`、`events`）、`app`（安装、清数据、启动、freeze/thaw、权限、appops）、`action`（tap、input、swipe、keyevent、wait、keyboard）、`flutter`、`webview`、`ios`、`web`、`diagnostics`、`advanced`（`batch`、端口转发）。
 
 默认 MCP surface 是 compact：先调用 `capabilities` 发现 domain、command 和 options，再调用 `run` 执行选定命令。
+
+隔离的 MCP 命令 `script` 和 `intent` 在 `advanced` 域。它们是通用运行时，不是 explore / export-to-script / assemble-report 这类产品工作流命令。
+
+- `script` 运行 trusted-local-code 的 JavaScript 或 Python。`permissions` 只门闩 Bridge SDK 调用，不是 OS 沙箱。默认 allowlist 不含清数据、安装、权限变更、eval、raw shell 或 ADB 管理。`page-summary` 只留在 Script/Intent 内部。
+- `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。
+- 手机 `logs` / `network` / `state` / `events` 由 `MobileCaptureStore` 管理。更新后的 Android runtime 在连接状态下支持 MCP `history:true` 持久查询；Host 不保存手机 payload 的复制历史。当前 iOS 强查询明确返回 `persistence_unavailable`，原有 Legacy 读取仍可使用。
+
+当前工作区准备的是本地 CLI `0.3.0-rc.1`，尚未发布到 npm。Script 为可选能力；
+执行结束、纯代码断言和有设备证据的结果分别统计。当前设备强断言仅支持完整单页，
+多页查询可以取数，但尚不支持合并为一个完整窗口断言。恢复仅适用于显式可重入
+checkpoint 模板，不确定副作用不会自动重放。参见 [候选版本合同与迁移说明](desktop/ai-app-bridge-cli/README.md#optional-script-and-evidence-contracts-in-this-candidate)。
 
 ## 解决的问题
 
@@ -47,6 +60,7 @@ flutter/ai_app_bridge_flutter         Flutter 插件
 web/ai-app-bridge-web                 桌面 Web Bridge session 的浏览器 SDK
 desktop/ai-app-bridge-cli             Node CLI 和 MCP stdio server
 examples/android-native-sample        干净的 Android 示例应用
+examples/notallyx-sample              GPL-3.0 真实业务 App、架构迁移与 Intent 到 Script 验证
 examples/ios-native-sample            用于 runtime 安装验证的干净 iOS 示例应用
 docs                                  设计、集成和测试文档
 ```

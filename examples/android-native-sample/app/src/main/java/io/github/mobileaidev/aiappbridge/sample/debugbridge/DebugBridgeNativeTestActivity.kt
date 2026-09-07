@@ -22,6 +22,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.File
 import java.net.Proxy
 
 class DebugBridgeNativeTestActivity : Activity() {
@@ -310,7 +311,7 @@ class DebugBridgeNativeTestActivity : Activity() {
         Thread {
             val result = try {
                 val request = Request.Builder()
-                    .url("http://127.0.0.1:18080/v1/logs?limit=1")
+                    .url("${ownBridgeUrl()}/v1/logs?limit=1")
                     .get()
                     .build()
                 okHttpClient().newCall(request).execute().use { response ->
@@ -335,7 +336,7 @@ class DebugBridgeNativeTestActivity : Activity() {
                     .put("data", JSONObject().put("input", inputView.text.toString()))
                     .toString()
                 val request = Request.Builder()
-                    .url("http://127.0.0.1:18080/v1/events")
+                    .url("${ownBridgeUrl()}/v1/events")
                     .post(payload.toRequestBody())
                     .build()
                 okHttpClient().newCall(request).execute().use { response ->
@@ -368,6 +369,14 @@ class DebugBridgeNativeTestActivity : Activity() {
                 statusView.text = result
             }
         }.start()
+    }
+
+    private fun ownBridgeUrl(): String {
+        val state = JSONObject(File(filesDir, "ai_app_bridge_port.json").readText())
+        check(state.getBoolean("ok") && state.getString("packageName") == packageName)
+        val port = state.getInt("port")
+        check(port in 1..65535)
+        return "http://127.0.0.1:$port"
     }
 
     private fun okHttpClient(): OkHttpClient {
@@ -433,4 +442,3 @@ class DebugBridgeNativeTestActivity : Activity() {
         """
     }
 }
-

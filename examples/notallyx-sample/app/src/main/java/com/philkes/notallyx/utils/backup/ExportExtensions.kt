@@ -1,0 +1,1042 @@
+package com.philkes.notallyx.utils.backup
+
+import android.Manifest
+import android.app.Application
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
+import android.net.Uri
+import android.os.Build
+import android.print.PdfPrintListener
+import android.print.printPdf
+import android.provider.OpenableColumns
+import android.util.Log
+import androidx.activity.result.ActivityResultLauncher
+import androidx.core.app.NotificationCompat
+import androidx.core.content.getSystemService
+import androidx.core.net.toUri
+import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.lifecycleScope
+import androidx.work.Data
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ListenableWorker.Result
+import androidx.work.PeriodicWorkRequest
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.philkes.notallyx.R
+import com.philkes.notallyx.application.NoteApplicationService
+import com.philkes.notallyx.application.DatabaseSnapshot
+import com.philkes.notallyx.application.StorageMaintenance.Companion.DATABASE_NAME
+import com.philkes.notallyx.data.model.BaseNote
+import com.philkes.notallyx.data.model.Converters
+import com.philkes.notallyx.data.model.FileAttachment
+import com.philkes.notallyx.data.model.toHtml
+import com.philkes.notallyx.data.model.toJson
+import com.philkes.notallyx.data.model.toMarkdown
+import com.philkes.notallyx.data.model.toTxt
+import com.philkes.notallyx.presentation.activity.LockedActivity
+import com.philkes.notallyx.presentation.activity.main.MainActivity
+import com.philkes.notallyx.presentation.activity.main.fragment.settings.SettingsFragment
+import com.philkes.notallyx.presentation.getQuantityString
+import com.philkes.notallyx.presentation.view.misc.Progress
+import com.philkes.notallyx.presentation.viewmodel.BackupFile
+import com.philkes.notallyx.presentation.viewmodel.ExportMimeType
+import com.philkes.notallyx.presentation.viewmodel.preference.Constants.PASSWORD_EMPTY
+import com.philkes.notallyx.presentation.viewmodel.preference.NotallyXPreferences
+import com.philkes.notallyx.presentation.viewmodel.preference.NotallyXPreferences.Companion.EMPTY_PATH
+import com.philkes.notallyx.presentation.viewmodel.progress.BackupProgress
+import com.philkes.notallyx.utils.MIME_TYPE_ZIP
+import com.philkes.notallyx.utils.SUBFOLDER_AUDIOS
+import com.philkes.notallyx.utils.SUBFOLDER_FILES
+import com.philkes.notallyx.utils.SUBFOLDER_IMAGES
+import com.philkes.notallyx.utils.ZipVerificationException
+import com.philkes.notallyx.utils.copyToLarge
+import com.philkes.notallyx.utils.createChannelIfNotExists
+import com.philkes.notallyx.utils.createFileSafe
+import com.philkes.notallyx.utils.createReportBugIntent
+import com.philkes.notallyx.utils.getCurrentAudioDirectory
+import com.philkes.notallyx.utils.getCurrentFilesDirectory
+import com.philkes.notallyx.utils.getCurrentImagesDirectory
+import com.philkes.notallyx.utils.getCurrentMediaRoot
+import com.philkes.notallyx.utils.getExportedPath
+import com.philkes.notallyx.utils.getLogFileUri
+import com.philkes.notallyx.utils.listZipFiles
+import com.philkes.notallyx.utils.log
+import com.philkes.notallyx.utils.md5Hash
+import com.philkes.notallyx.utils.recreateDir
+import com.philkes.notallyx.utils.resolveAttachmentFile
+import com.philkes.notallyx.utils.security.decryptDatabase
+import com.philkes.notallyx.utils.security.getInitializedCipherForDecryption
+import com.philkes.notallyx.utils.verify
+import com.philkes.notallyx.utils.wrapWithChooser
+import java.io.File
+import java.io.File.createTempFile
+import java.io.FileInputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStreamWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import net.lingala.zip4j.ZipFile
+import net.lingala.zip4j.exception.ZipException
+import net.lingala.zip4j.model.ZipParameters
+import net.lingala.zip4j.model.enums.CompressionLevel
+import net.lingala.zip4j.model.enums.EncryptionMethod
+
+private const val TAG = "ExportExtensions"
+private const val NOTIFICATION_CHANNEL_ID = "AutoBackups"
+private const val NOTIFICATION_ID = 123412
+private const val OUTPUT_DATA_BACKUP_URI = "backupUri"
+
+const val AUTO_BACKUP_WORK_NAME = "com.philkes.notallyx.AutoBackupWork"
+const val OUTPUT_DATA_EXCEPTION = "exception"
+
+val BACKUP_TIMESTAMP_FORMATTER = SimpleDateFormat("yyyyMMdd-HHmmssSSS", Locale.ENGLISH)
+private const val ON_SAVE_BACKUP_FILE = "NotallyX_AutoBackup"
+private const val PERIODIC_BACKUP_FILE_PREFIX = "NotallyX_Backup_"
+
+private val periodicBackupMutex = Mutex()
+
+suspend fun ContextWrapper.createBackup(): Result {
+    return periodicBackupMutex.withLock {
+        val app = applicationContext as Application
+        val preferences = NotallyXPreferences.getInstance(app)
+        val (_, maxBackups) = preferences.periodicBackups.value
+        val path = preferences.backupsFolder.value
+
+        if (path != EMPTY_PATH) {
+            val uri = path.toUri()
+            val folder =
+                requireBackupFolder(
+                    path,
+                    "Periodic Backup failed, because auto-backup path '$path' is invalid",
+                ) ?: return@withLock Result.success()
+            try {
+                val backupFilePrefix = PERIODIC_BACKUP_FILE_PREFIX
+                val name =
+                    "$backupFilePrefix${BACKUP_TIMESTAMP_FORMATTER.format(System.currentTimeMillis())}"
+                log(TAG, msg = "Creating '$uri/$name.zip'...")
+                val zipUri = folder.createFileSafe(MIME_TYPE_ZIP, name, ".zip").uri
+                val exportedNotes =
+                    app.exportAsZip(zipUri, password = preferences.backupPassword.value)
+                log(TAG, msg = "Exported $exportedNotes notes")
+                val backupFiles = folder.listZipFiles(backupFilePrefix)
+                log(TAG, msg = "Found ${backupFiles.size} backups")
+                val backupsToBeDeleted = backupFiles.drop(maxBackups)
+                if (backupsToBeDeleted.isNotEmpty()) {
+                    log(
+                        TAG,
+                        msg =
+                            "Deleting ${backupsToBeDeleted.size} oldest backups (maxBackups: $maxBackups): ${backupsToBeDeleted.joinToString { "'${it.name.toString()}'" }}",
+                    )
+                }
+                backupsToBeDeleted.forEach {
+                    if (it.exists()) {
+                        it.delete()
+                    }
+                }
+                log(TAG, msg = "Finished backup to '$zipUri'")
+                preferences.periodicBackupLastExecution.save(Date().time)
+                return@withLock Result.success(
+                    Data.Builder().putString(OUTPUT_DATA_BACKUP_URI, zipUri.path!!).build()
+                )
+            } catch (e: Exception) {
+                log(TAG, msg = "Failed creating backup to '$path'", throwable = e)
+                tryPostErrorNotification(e)
+                return Result.success(
+                    Data.Builder().putString(OUTPUT_DATA_EXCEPTION, e.message).build()
+                )
+            }
+        }
+        return@withLock Result.success()
+    }
+}
+
+fun ContextWrapper.autoBackupOnSaveFileExists(backupPath: String): Boolean {
+    val backupFolderFile = DocumentFile.fromTreeUri(this, backupPath.toUri())
+    return backupFolderFile?.let {
+        val autoBackupFile = it.findFile("$ON_SAVE_BACKUP_FILE.zip")
+        autoBackupFile != null && autoBackupFile.exists()
+    } ?: false
+}
+
+private val autoBackupOnSaveMutex = Mutex()
+
+suspend fun ContextWrapper.autoBackupOnSave(backupPath: String, password: String, savedNote: BaseNote?) =
+    NoteApplicationService.get(this).backupOnSave(backupPath, password, savedNote)
+
+internal suspend fun ContextWrapper.autoBackupOnSaveStored(
+    backupPath: String,
+    password: String,
+    savedNote: BaseNote?,
+) {
+    return autoBackupOnSaveMutex.withLock {
+        Log.d(
+            TAG,
+            "Starting Auto Backup${savedNote?.let { " for Note id: ${it.id} title: ${it.title}" } ?: ""}...",
+        )
+        val folder =
+            requireBackupFolder(
+                backupPath,
+                "Auto backup on note save (${savedNote?.let { "id: '${savedNote.id}, title: '${savedNote.title}'" }}) failed, because auto-backup path '$backupPath' is invalid",
+            ) ?: return@withLock
+        try {
+            var changedNote = savedNote
+            var backupFile = folder.findFile("$ON_SAVE_BACKUP_FILE.zip")
+            backupFile =
+                if (backupFile == null || !backupFile.exists()) {
+                    if (savedNote != null) {
+                        log(
+                            "Re-creating full backup since auto backup ZIP unexpectedly does not exist"
+                        )
+                        changedNote = null
+                    }
+                    folder.createFileSafe(MIME_TYPE_ZIP, ON_SAVE_BACKUP_FILE, ".zip")
+                } else backupFile
+            if (changedNote == null) {
+                // Export all notes
+                Log.d(TAG, "Creating full backup ${backupFile.uri}")
+                exportAsZip(backupFile.uri, password = password)
+                Log.d(TAG, "Finished full backup ${backupFile.uri}")
+            } else {
+                Log.d(TAG, "Creating partial backup for Note ${changedNote.id}")
+                // Only add changed note to existing backup ZIP
+                val (_, databaseFile) = copyDatabase()
+                val files =
+                    with(changedNote) {
+                        images.map {
+                            BackupFile(
+                                SUBFOLDER_IMAGES,
+                                File(getCurrentImagesDirectory(), it.localName),
+                            )
+                        } +
+                            files.map {
+                                BackupFile(
+                                    SUBFOLDER_FILES,
+                                    File(getCurrentFilesDirectory(), it.localName),
+                                )
+                            } +
+                            audios.map {
+                                BackupFile(
+                                    SUBFOLDER_AUDIOS,
+                                    File(getCurrentAudioDirectory(), it.name),
+                                )
+                            } +
+                            BackupFile(null, databaseFile)
+                    }
+                suspend fun handleZipException(e: Throwable, backupFile: DocumentFile) {
+                    log(
+                        TAG,
+                        msg =
+                            "Re-creating full backup since existing auto backup ZIP is corrupt: ${e.message}",
+                    )
+                    backupFile.delete()
+                    val replacement = folder.createFileSafe(MIME_TYPE_ZIP, ON_SAVE_BACKUP_FILE, ".zip")
+                    exportAsZip(replacement.uri, password = password)
+                }
+                try {
+                    exportToZip(backupFile.uri, files, password)
+                    Log.d(TAG, "Finished partial backup for Note ${changedNote.id}")
+                } catch (e: ZipException) {
+                    handleZipException(e, backupFile)
+                } catch (e: ZipVerificationException) {
+                    handleZipException(e, backupFile)
+                }
+            }
+        } catch (e: Exception) {
+            try {
+                log(
+                    TAG,
+                    "Auto backup on note save (${savedNote?.let { "id: '${savedNote.id}, title: '${savedNote.title}'" }}) failed",
+                    e,
+                )
+            } catch (logException: Exception) {
+                tryPostErrorNotification(logException)
+                return@withLock
+            }
+            tryPostErrorNotification(e)
+        }
+    }
+}
+
+private fun ContextWrapper.requireBackupFolder(path: String, msg: String): DocumentFile? {
+    return try {
+        val folder = DocumentFile.fromTreeUri(this, path.toUri())!!
+        if (!folder.exists()) {
+            log(TAG, msg = msg)
+            tryPostErrorNotification(BackupFolderNotExistsException(path))
+            return null
+        }
+        folder
+    } catch (e: Exception) {
+        log(TAG, msg = msg, throwable = e)
+        tryPostErrorNotification(BackupFolderNotExistsException(path, e))
+        return null
+    }
+}
+
+suspend fun ContextWrapper.checkBackupOnSave(
+    preferences: NotallyXPreferences,
+    note: BaseNote? = null,
+    forceFullBackup: Boolean = false,
+) = NoteApplicationService.get(this).checkBackupOnSave(note, forceFullBackup)
+
+fun ContextWrapper.deleteModifiedNoteBackup(backupPath: String) {
+    DocumentFile.fromTreeUri(this, backupPath.toUri())
+        ?.findFile("$ON_SAVE_BACKUP_FILE.zip")
+        ?.delete()
+}
+
+fun ContextWrapper.modifiedNoteBackupExists(backupPath: String): Boolean {
+    return DocumentFile.fromTreeUri(this, backupPath.toUri())
+        ?.findFile("$ON_SAVE_BACKUP_FILE.zip")
+        ?.exists() ?: false
+}
+
+typealias NotesAndAttachments = Pair<Int, Int>
+
+fun ContextWrapper.exportRawDatabase(fileUri: Uri) = NoteApplicationService.get(this).exportDatabase(fileUri)
+
+internal fun ContextWrapper.exportRawDatabaseStored(fileUri: Uri) {
+    val (_, databaseCopy) = copyDatabase()
+    val database =
+        SQLiteDatabase.openDatabase(databaseCopy.path, null, SQLiteDatabase.OPEN_READONLY)
+    database
+        .rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            arrayOf("BaseNote"),
+        )
+        .use { cursor ->
+            if (cursor.count < 1) {
+                throw IOException("Database does not contain 'BaseNote' table!")
+            }
+        }
+    val outputStream =
+        contentResolver.openOutputStream(fileUri)
+            ?: throw IOException("Failed to open output stream for $fileUri")
+    outputStream.use { outputStream ->
+        FileInputStream(databaseCopy).use { inputStream ->
+            inputStream.copyToLarge(outputStream)
+            outputStream.flush()
+        }
+    }
+    contentResolver.query(fileUri, null, null, null, null)?.use { cursor ->
+        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (cursor.moveToFirst()) {
+            if (cursor.getLong(sizeIndex) <= 0) {
+                throw IOException("Exported Raw Database file is empty!")
+            }
+        }
+    }
+}
+
+fun ContextWrapper.exportAsZip(
+    fileUri: Uri,
+    compress: Boolean = false,
+    password: String = PASSWORD_EMPTY,
+    backupProgress: MutableLiveData<Progress>? = null,
+    retryOnFail: Boolean = true,
+): NotesAndAttachments = NoteApplicationService.get(this).exportArchive(fileUri, compress, password, backupProgress, retryOnFail)
+
+internal fun ContextWrapper.exportAsZipStored(
+    fileUri: Uri,
+    compress: Boolean = false,
+    password: String = PASSWORD_EMPTY,
+    backupProgress: MutableLiveData<Progress>? = null,
+    retryOnFail: Boolean = true,
+): NotesAndAttachments {
+    backupProgress?.postValue(BackupProgress(indeterminate = true))
+    val tempFile = createTempFile("export", "tmp", cacheDir)
+    try {
+        val zipFile =
+            ZipFile(tempFile, if (password != PASSWORD_EMPTY) password.toCharArray() else null)
+        val zipParameters =
+            ZipParameters().apply {
+                isEncryptFiles = password != PASSWORD_EMPTY
+                if (!compress) {
+                    compressionLevel = CompressionLevel.NO_COMPRESSION
+                }
+                if (isEncryptFiles) {
+                    encryptionMethod = EncryptionMethod.AES
+                }
+            }
+
+        val (databaseOriginal, databaseCopy) = copyDatabase()
+        zipFile.addFile(databaseCopy, zipParameters.copy(DATABASE_NAME))
+
+        val totalNotes = databaseOriginal.noteCount
+        val images = databaseOriginal.images.toFileAttachments()
+        val files = databaseOriginal.files.toFileAttachments()
+        val audios = databaseOriginal.audios.flatMap { Converters.jsonToAudios(it) }
+        val totalAttachments = images.count() + files.count() + audios.size
+        backupProgress?.postValue(
+            BackupProgress(
+                0,
+                totalAttachments,
+                countSuffix = getQuantityString(R.plurals.attachments, totalAttachments),
+            )
+        )
+
+        val counter = AtomicInteger(0)
+        val missingAttachments = ArrayList<String>()
+        images.export(
+            zipFile,
+            zipParameters,
+            SUBFOLDER_IMAGES,
+            this,
+            backupProgress,
+            totalAttachments,
+            counter,
+            missingAttachments,
+        )
+        files.export(
+            zipFile,
+            zipParameters,
+            SUBFOLDER_FILES,
+            this,
+            backupProgress,
+            totalAttachments,
+            counter,
+            missingAttachments,
+        )
+        audios.forEach { audio ->
+                try {
+                    if (
+                        !backupAttachmentFile(
+                            this,
+                            zipFile,
+                            zipParameters,
+                            SUBFOLDER_AUDIOS,
+                            audio.name,
+                        )
+                    ) {
+                        missingAttachments.add("Audio: ${audio.name}")
+                    }
+                } catch (exception: Exception) {
+                    log(TAG, throwable = exception)
+                } finally {
+                    backupProgress?.postValue(
+                        BackupProgress(
+                            counter.incrementAndGet(),
+                            totalAttachments,
+                            countSuffix = getQuantityString(R.plurals.attachments, totalAttachments),
+                        )
+                    )
+                }
+            }
+        try {
+            zipFile.verify(databaseCopy)
+        } catch (e: ZipVerificationException) {
+            log(TAG, throwable = e)
+            if (retryOnFail) {
+                zipFile.file.delete()
+                log(TAG, stackTrace = "Retrying to export ZIP to $fileUri...")
+                return exportAsZip(fileUri, compress, password, backupProgress, false)
+            } else {
+                throw IOException(
+                    "exportAsZip failed because created '${zipFile.file}' is not a valid ZIP!"
+                )
+            }
+        }
+        contentResolver.openOutputStream(fileUri)?.use { outputStream ->
+            FileInputStream(zipFile.file).use { inputStream ->
+                inputStream.copyToLarge(outputStream)
+                outputStream.flush()
+            }
+        }
+        // Guard against null/IO issues when immediately reopening fileUri via SAF
+        val sourceMd5 = runCatching { zipFile.file.md5Hash() }.getOrNull()
+        val targetMd5 = runCatching { md5Hash(fileUri) }.getOrNull()
+        if (sourceMd5 == null || targetMd5 == null || !targetMd5.contentEquals(sourceMd5)) {
+            log(TAG, stackTrace = "Exported zipFile '$fileUri' has wrong MD5 hash!")
+            if (retryOnFail) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        contentResolver.delete(fileUri, null)
+                    } catch (e: Exception) {
+                        log(TAG, msg = "Deleting $fileUri failed", throwable = e)
+                    }
+                }
+                zipFile.file.delete()
+                log(TAG, stackTrace = "Retrying to export ZIP to $fileUri...")
+                return exportAsZip(fileUri, compress, password, backupProgress, false)
+            } else {
+                throw IOException(
+                    "exportAsZip failed because created '$fileUri' has wrong or unverifiable MD5 hash!"
+                )
+            }
+        }
+        zipFile.file.delete()
+        databaseCopy.delete()
+        backupProgress?.postValue(BackupProgress(inProgress = false))
+        // Post skipped attachments notification if any were missing
+        if (missingAttachments.isNotEmpty()) {
+            postSkippedAttachmentsNotification(missingAttachments)
+        }
+        return Pair(totalNotes, totalAttachments)
+    } finally {
+        tempFile.delete()
+    }
+}
+
+fun Context.exportToZip(
+    zipUri: Uri,
+    files: List<BackupFile>,
+    password: String = PASSWORD_EMPTY,
+): Boolean {
+    val tempDir = File(cacheDir, "export").recreateDir()
+    try {
+        val zipInputStream = contentResolver.openInputStream(zipUri) ?: return false
+        extractZipToDirectory(zipInputStream, tempDir, password)
+        files
+            .filter { it.second.exists() }
+            .forEach { file ->
+                val targetFile =
+                    File(tempDir, "${file.first?.let { "$it/" } ?: ""}${file.second.name}")
+                file.second.copyToLarge(targetFile, overwrite = true)
+            }
+        val zipOutputStream = contentResolver.openOutputStream(zipUri, "w") ?: return false
+        val tempZipFile = createTempFile("tempZip", ".zip")
+        try {
+            tempZipFile.deleteOnExit()
+            val zipFile =
+                ZipFile(
+                    tempZipFile,
+                    if (password != PASSWORD_EMPTY) password.toCharArray() else null,
+                )
+            val zipParameters =
+                ZipParameters().apply {
+                    this.isEncryptFiles = password != PASSWORD_EMPTY
+                    this.compressionLevel = CompressionLevel.NO_COMPRESSION
+                    if (isEncryptFiles) {
+                        this.encryptionMethod = EncryptionMethod.AES
+                    }
+                    this.isIncludeRootFolder = false
+                }
+            zipFile.addFolder(tempDir, zipParameters)
+            if (!zipFile.isValidZipFile) {
+                throw IOException("ZipFile '${zipFile.file}' is not a valid ZIP!")
+            }
+            val databaseFile = files.find { it.second.name == DATABASE_NAME }
+            databaseFile?.let { zipFile.verify(it.second) }
+            tempZipFile.inputStream().use { inputStream ->
+                inputStream.copyToLarge(zipOutputStream)
+            }
+        } finally {
+            tempZipFile.delete()
+        }
+    } finally {
+        tempDir.deleteRecursively()
+    }
+    return true
+}
+
+private fun extractZipToDirectory(zipInputStream: InputStream, outputDir: File, password: String) {
+    val tempZipFile = createTempFile("extractedZip", null, outputDir)
+    try {
+        tempZipFile.outputStream().use { zipOutputStream ->
+            zipInputStream.copyToLarge(zipOutputStream)
+        }
+        val zipFile =
+            ZipFile(tempZipFile, if (password != PASSWORD_EMPTY) password.toCharArray() else null)
+        zipFile.extractAll(outputDir.absolutePath)
+    } finally {
+        tempZipFile.delete()
+    }
+}
+
+fun ContextWrapper.copyDatabase(
+    decrypt: Boolean = true,
+    suffix: String = "",
+): Pair<DatabaseSnapshot, File> = NoteApplicationService.get(this).maintenance.copyDatabase(decrypt, suffix)
+
+private fun List<String>.toFileAttachments(): Sequence<FileAttachment> {
+    return asSequence().flatMap { string -> Converters.jsonToFiles(string) }
+}
+
+private fun Sequence<FileAttachment>.export(
+    zipFile: ZipFile,
+    zipParameters: ZipParameters,
+    subfolder: String,
+    context: ContextWrapper,
+    backupProgress: MutableLiveData<Progress>?,
+    total: Int,
+    counter: AtomicInteger,
+    missingDisplayNames: MutableList<String>,
+) {
+    forEach { file ->
+        try {
+            if (!backupAttachmentFile(context, zipFile, zipParameters, subfolder, file.localName)) {
+                val typePrefix =
+                    when (subfolder) {
+                        SUBFOLDER_IMAGES -> "Image"
+                        SUBFOLDER_FILES -> "File"
+                        else -> subfolder
+                    }
+                val display = file.originalName.ifBlank { file.localName }
+                missingDisplayNames.add("$typePrefix: $display")
+            }
+        } catch (exception: Exception) {
+            context.log(TAG, throwable = exception)
+        } finally {
+            backupProgress?.postValue(
+                BackupProgress(
+                    counter.incrementAndGet(),
+                    total,
+                    countSuffix = context.getQuantityString(R.plurals.attachments, total),
+                )
+            )
+        }
+    }
+}
+
+fun WorkInfo.PeriodicityInfo.isEqualTo(value: Long, unit: TimeUnit): Boolean {
+    return repeatIntervalMillis == unit.toMillis(value)
+}
+
+fun List<WorkInfo>.containsNonCancelled(): Boolean = any { it.state != WorkInfo.State.CANCELLED }
+
+fun WorkManager.cancelAutoBackup() {
+    Log.d(TAG, "Cancelling auto backup work")
+    cancelUniqueWork(AUTO_BACKUP_WORK_NAME)
+}
+
+fun WorkManager.updateAutoBackup(workInfos: List<WorkInfo>, autoBackPeriodInDays: Long) {
+    Log.d(TAG, "Updating auto backup schedule for period: $autoBackPeriodInDays days")
+    val workInfoId = workInfos.first().id
+    val updatedWorkRequest =
+        PeriodicWorkRequest.Builder(
+                AutoBackupWorker::class.java,
+                autoBackPeriodInDays.toLong(),
+                TimeUnit.DAYS,
+            )
+            .setId(workInfoId)
+            .build()
+    updateWork(updatedWorkRequest)
+}
+
+fun WorkManager.scheduleAutoBackup(context: ContextWrapper, periodInDays: Long) {
+    Log.d(TAG, "Scheduling auto backup for period: $periodInDays days")
+    val request =
+        PeriodicWorkRequest.Builder(AutoBackupWorker::class.java, periodInDays, TimeUnit.DAYS)
+            .build()
+    try {
+        enqueueUniquePeriodicWork(AUTO_BACKUP_WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+    } catch (e: IllegalStateException) {
+        // only happens in Unit-Tests
+        context.log(TAG, "Scheduling auto backup failed", throwable = e)
+    }
+}
+
+// Try to backup attachment by resolving it according to current/private/public directories.
+// Returns true if the file was found and added to the zip, false if missing.
+private fun backupAttachmentFile(
+    context: ContextWrapper,
+    zipFile: ZipFile,
+    zipParameters: ZipParameters,
+    folder: String,
+    name: String,
+): Boolean {
+    val file = context.resolveAttachmentFile(folder, name)
+    return if (file != null && file.exists()) {
+        zipFile.addFile(file, zipParameters.copy("$folder/$name"))
+        true
+    } else {
+        false
+    }
+}
+
+private fun ContextWrapper.postSkippedAttachmentsNotification(missingAttachments: List<String>) {
+    getSystemService<NotificationManager>()?.let { manager ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createChannelIfNotExists(NOTIFICATION_CHANNEL_ID)
+        }
+        val maxToShow = 10
+        val lines = missingAttachments.take(maxToShow)
+        val more = missingAttachments.size - lines.size
+        val bigText = buildString {
+            append(getString(R.string.auto_backup_skipped_files, missingAttachments.size))
+            append(" (${getCurrentMediaRoot()})")
+            append('\n')
+            lines.forEachIndexed { idx, name ->
+                if (idx > 0) append('\n')
+                append("• ")
+                append(name)
+            }
+            if (more > 0) {
+                append('\n')
+                append("+")
+                append(more)
+                append(" …")
+            }
+        }
+
+        val cleanupIntent =
+            Intent(this, CleanupMissingAttachmentsReceiver::class.java).apply {
+                action = CleanupMissingAttachmentsReceiver.ACTION_CLEANUP_MISSING_ATTACHMENTS
+            }
+        val cleanupPendingIntent =
+            PendingIntent.getBroadcast(
+                this,
+                0,
+                cleanupIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+
+        val notification =
+            NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.drawable.export)
+                .setContentTitle(getString(R.string.backup))
+                .setContentText(
+                    getString(R.string.auto_backup_skipped_files, missingAttachments.size) +
+                        " (${getCurrentMediaRoot()})"
+                )
+                .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .addAction(R.drawable.delete, getString(R.string.clean_up), cleanupPendingIntent)
+                .build()
+        manager.notify(NOTIFICATION_ID + 1, notification)
+    }
+}
+
+private fun ZipParameters.copy(fileNameInZip: String? = this.fileNameInZip): ZipParameters {
+    return ZipParameters(this).apply { this@apply.fileNameInZip = fileNameInZip }
+}
+
+fun exportPdfFileFolder(
+    app: ContextWrapper,
+    note: BaseNote,
+    folder: DocumentFile,
+    fileName: String = note.title,
+    pdfPrintListener: PdfPrintListener? = null,
+    progress: MutableLiveData<Progress>? = null,
+    counter: AtomicInteger? = null,
+    total: Int? = null,
+    duplicateFileCount: Int = 1,
+) {
+    val validFileName = fileName.ifBlank { app.getString(R.string.note) }
+    val filePath = "$validFileName.${ExportMimeType.PDF.fileExtension}"
+    if (folder.findFile(filePath)?.exists() == true) {
+        val duplicateFileName =
+            findFreeDuplicateFileName(folder, validFileName, ExportMimeType.PDF.fileExtension)
+        return exportPdfFileFolder(
+            app,
+            note,
+            folder,
+            duplicateFileName,
+            pdfPrintListener,
+            progress,
+            counter,
+            total,
+            duplicateFileCount + 1,
+        )
+    }
+    folder
+        .createFileSafe(
+            ExportMimeType.PDF.mimeType,
+            validFileName,
+            ".${ExportMimeType.PDF.fileExtension}",
+        )
+        .let { exportPdfFile(app, note, it, progress, counter, total, pdfPrintListener) }
+}
+
+fun exportPdfFile(
+    app: ContextWrapper,
+    note: BaseNote,
+    outputFile: DocumentFile,
+    progress: MutableLiveData<Progress>? = null,
+    counter: AtomicInteger? = null,
+    total: Int? = null,
+    pdfPrintListener: PdfPrintListener? = null,
+) {
+    val tempFile = DocumentFile.fromFile(File(app.getExportedPath(), "temp.pdf"))
+    val html =
+        note.toHtml(
+            NotallyXPreferences.getInstance(app).showDateCreated(),
+            app.getCurrentImagesDirectory(),
+        )
+    app.printPdf(
+        tempFile,
+        html,
+        object : PdfPrintListener {
+            override fun onSuccess(file: DocumentFile) {
+                app.contentResolver.openOutputStream(outputFile.uri)?.use { outStream ->
+                    app.contentResolver.openInputStream(file.uri)?.copyTo(outStream)
+                }
+                if (progress != null) {
+                    progress.postValue(
+                        BackupProgress(current = counter!!.incrementAndGet(), total = total!!)
+                    )
+                    if (counter.get() == total) {
+                        pdfPrintListener?.onSuccess(file)
+                    }
+                } else {
+                    pdfPrintListener?.onSuccess(file)
+                }
+            }
+
+            override fun onFailure(message: CharSequence?) {
+                pdfPrintListener?.onFailure(message)
+            }
+        },
+    )
+}
+
+suspend fun exportPlainTextFileFolder(
+    app: ContextWrapper,
+    note: BaseNote,
+    exportType: ExportMimeType,
+    folder: DocumentFile,
+    fileName: String = note.title,
+    progress: MutableLiveData<Progress>? = null,
+    counter: AtomicInteger? = null,
+    total: Int? = null,
+    duplicateFileCount: Int = 1,
+): DocumentFile? {
+    val validFileName = fileName.ifBlank { app.getString(R.string.note) }
+    if (folder.findFile("$validFileName.${exportType.fileExtension}")?.exists() == true) {
+        val duplicateFileName =
+            findFreeDuplicateFileName(folder, validFileName, exportType.fileExtension)
+        return exportPlainTextFileFolder(
+            app,
+            note,
+            exportType,
+            folder,
+            duplicateFileName,
+            progress,
+            counter,
+            total,
+            duplicateFileCount + 1,
+        )
+    }
+    return withContext(Dispatchers.IO) {
+        val file =
+            folder
+                .createFileSafe(exportType.mimeType, validFileName, ".${exportType.fileExtension}")
+                .let {
+                    exportPlainTextFile(app, note, it, exportType)
+                    it
+                }
+        progress?.postValue(BackupProgress(current = counter!!.incrementAndGet(), total = total!!))
+        return@withContext file
+    }
+}
+
+fun exportPlainTextFile(
+    app: ContextWrapper,
+    note: BaseNote,
+    outputFile: DocumentFile,
+    exportType: ExportMimeType,
+) {
+    app.contentResolver.openOutputStream(outputFile.uri)?.use { stream ->
+        OutputStreamWriter(stream).use { writer ->
+            writer.write(
+                when (exportType) {
+                    ExportMimeType.TXT ->
+                        note.toTxt(includeTitle = false, includeCreationDate = false)
+
+                    ExportMimeType.JSON -> note.toJson()
+                    ExportMimeType.HTML ->
+                        note.toHtml(
+                            NotallyXPreferences.getInstance(app).showDateCreated(),
+                            app.getCurrentImagesDirectory(),
+                        )
+
+                    ExportMimeType.MD -> note.toMarkdown()
+                    else -> TODO("Unsupported MimeType for Export: $exportType")
+                }
+            )
+        }
+    }
+}
+
+private fun findFreeDuplicateFileName(
+    folder: DocumentFile,
+    fileName: String,
+    fileExtension: String,
+): String {
+    val existingNames = folder.listFiles().mapNotNull { it.name }.toSet()
+    if ("$fileName.$fileExtension" !in existingNames) return fileName
+
+    var index = 0
+    var newName: String
+
+    do {
+        index++
+        newName = "$fileName ($index).$fileExtension"
+    } while (newName in existingNames)
+
+    return "$fileName ($index)"
+}
+
+fun Context.exportPreferences(preferences: NotallyXPreferences, uri: Uri): Boolean {
+    try {
+        contentResolver.openOutputStream(uri)?.use {
+            it.write(preferences.toJsonString().toByteArray())
+        } ?: return false
+        return true
+    } catch (e: IOException) {
+        if (this is ContextWrapper) {
+            log(TAG, throwable = e)
+        } else {
+            Log.e(TAG, "Export preferences failed", e)
+        }
+        return false
+    }
+}
+
+private fun ContextWrapper.tryPostErrorNotification(e: Throwable) {
+    fun postErrorNotification(e: Throwable) {
+        getSystemService<NotificationManager>()?.let { manager ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                manager.createChannelIfNotExists(NOTIFICATION_CHANNEL_ID)
+            }
+            val bugIntent =
+                try {
+                    createReportBugIntent(
+                        e.stackTraceToString(),
+                        title = "Auto Backup failed",
+                        body = "Error occurred during auto backup, see logs below",
+                    )
+                } catch (e: IllegalArgumentException) {
+                    createReportBugIntent(
+                        stackTrace =
+                            "PLEASE PASTE YOUR NOTALLYX LOGS FILE CONTENT HERE (Error Notification -> 'View Logs')",
+                        title = "Auto Backup failed",
+                        body = "Error occurred during auto backup, see logs below.",
+                    )
+                }
+            val notificationBuilder =
+                NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.error)
+                    .setContentTitle(getString(R.string.auto_backup_failed))
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .bigText(
+                                getString(
+                                    R.string.auto_backup_error_message,
+                                    "${e.javaClass.simpleName}: ${e.localizedMessage}",
+                                )
+                            )
+                    )
+                    .addAction(
+                        R.drawable.settings,
+                        getString(R.string.settings),
+                        PendingIntent.getActivity(
+                            this,
+                            0,
+                            Intent(this, MainActivity::class.java).apply {
+                                putExtra(MainActivity.EXTRA_FRAGMENT_TO_OPEN, R.id.Settings)
+                            },
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    )
+                    .addAction(
+                        R.drawable.error,
+                        getString(R.string.report_bug),
+                        PendingIntent.getActivity(
+                            this,
+                            0,
+                            bugIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    )
+                    .addAction(
+                        R.drawable.text_file,
+                        getString(R.string.view_logs),
+                        PendingIntent.getActivity(
+                            this,
+                            0,
+                            Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(getLogFileUri(), "text/plain")
+                                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            },
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        ),
+                    )
+
+            // Add a "Select Folder" button if the error is about a missing folder
+            if (e is BackupFolderNotExistsException) {
+                notificationBuilder.addAction(
+                    R.drawable.settings,
+                    getString(R.string.choose_folder),
+                    PendingIntent.getActivity(
+                        this,
+                        0,
+                        Intent(this, MainActivity::class.java).apply {
+                            putExtra(MainActivity.EXTRA_FRAGMENT_TO_OPEN, R.id.Settings)
+                            putExtra(SettingsFragment.EXTRA_SHOW_IMPORT_BACKUPS_FOLDER, true)
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    ),
+                )
+            }
+
+            manager.notify(NOTIFICATION_ID, notificationBuilder.build())
+        }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        ) {
+            postErrorNotification(e)
+        }
+    } else {
+        postErrorNotification(e)
+    }
+}
+
+fun LockedActivity<*>.exportNotes(
+    notes: Collection<BaseNote>,
+    mimeType: ExportMimeType,
+    exportToFileResultLauncher: ActivityResultLauncher<Intent>,
+    exportToFolderResultLauncher: ActivityResultLauncher<Intent>,
+) {
+    baseModel.selectedExportMimeType = mimeType
+    if (notes.size == 1) {
+        exportNote(notes.first(), mimeType, exportToFileResultLauncher)
+    } else {
+        lifecycleScope.launch {
+            val intent =
+                Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                    .apply { addCategory(Intent.CATEGORY_DEFAULT) }
+                    .wrapWithChooser(this@exportNotes)
+            exportToFolderResultLauncher.launch(intent)
+        }
+    }
+}
+
+fun LockedActivity<*>.exportNote(
+    note: BaseNote,
+    mimeType: ExportMimeType,
+    exportToFileResultLauncher: ActivityResultLauncher<Intent>,
+) {
+    baseModel.selectedExportMimeType = mimeType
+    val suggestedName =
+        (note.title.ifBlank { getString(R.string.note) }) + "." + mimeType.fileExtension
+    val intent =
+        Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .apply {
+                type = mimeType.mimeType
+                addCategory(Intent.CATEGORY_OPENABLE)
+                putExtra(Intent.EXTRA_TITLE, suggestedName)
+            }
+            .wrapWithChooser(this)
+    exportToFileResultLauncher.launch(intent)
+}

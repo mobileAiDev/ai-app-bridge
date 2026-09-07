@@ -50,6 +50,7 @@ const {
   screenshotOutputPath,
   statusSearchText,
   tap,
+  startActivity,
   uiautomatorLockPath,
   verifyBridgeTargetPackage,
   waitTextConditionsMet,
@@ -153,6 +154,71 @@ test('cached-forward recovery never replays a mutating bridge request', async ()
   assert.equal(getAttempts, 2);
   assert.deepEqual(ensures, [false, false, true]);
   assert.deepEqual(invalidated, ['post-cache-key', 'get-cache-key']);
+});
+
+test('launch-app waits until the launched package is the foreground window', async () => {
+  const seen = [];
+  let startArgs = null;
+  const result = await startActivity(
+    { packageName: 'org.videolan.vlc' },
+    'org.videolan.vlc/.StartActivity',
+    { foregroundTimeoutMs: 1000 },
+    {},
+    {
+      adb: async (_ctx, args) => {
+        startArgs = args;
+        return { stdout: 'Starting: Intent { cmp=org.videolan.vlc/.StartActivity }\n', stderr: '' };
+      },
+      foregroundWindow: async () => {
+        seen.push(seen.length);
+        if (seen.length < 2) {
+          return { ok: true, packageName: 'org.wikipedia.dev' };
+        }
+        return { ok: true, packageName: 'org.videolan.vlc' };
+      },
+      sleep: async () => {},
+    },
+  );
+  assert.equal(result.ok, true);
+  assert.equal(result.foreground.packageName, 'org.videolan.vlc');
+  assert.equal(seen.length, 2);
+  assert.deepEqual(startArgs.slice(0, 4), ['shell', 'am', 'start', '-W']);
+});
+
+test('launch-app clearTask adds activity-clear-task before the component', async () => {
+  let startArgs = null;
+  await startActivity(
+    { packageName: 'org.wikipedia.dev' },
+    'org.wikipedia.dev/org.wikipedia.DefaultIcon',
+    { clearTask: true, foregroundTimeoutMs: 1000 },
+    {},
+    {
+      adb: async (_ctx, args) => {
+        startArgs = args;
+        return { stdout: 'Starting: Intent { cmp=org.wikipedia.dev/org.wikipedia.DefaultIcon }\n', stderr: '' };
+      },
+      foregroundWindow: async () => ({ ok: true, packageName: 'org.wikipedia.dev' }),
+      sleep: async () => {},
+    },
+  );
+  assert.deepEqual(startArgs.slice(0, 5), ['shell', 'am', 'start', '-W', '--activity-clear-task']);
+});
+
+test('launch-app fails when the launched package never becomes foreground', async () => {
+  const result = await startActivity(
+    { packageName: 'org.videolan.vlc' },
+    'org.videolan.vlc/.StartActivity',
+    { foregroundTimeoutMs: 1 },
+    {},
+    {
+      adb: async () => ({ stdout: 'Starting: Intent { cmp=org.videolan.vlc/.StartActivity }\n', stderr: '' }),
+      foregroundWindow: async () => ({ ok: true, packageName: 'org.wikipedia.dev' }),
+      sleep: async () => {},
+    },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'foreground_package_mismatch');
+  assert.equal(result.foreground.packageName, 'org.wikipedia.dev');
 });
 
 test('coordinate tap uses one app-local bridge action to return the actual component', async () => {
@@ -513,6 +579,13 @@ test('MCP accepts single-line JSON and responds with single-line JSON', async ()
 
 test('MCP production wiring persists Legacy, Script, and Intent together, then closes on EOF', async () => {
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-mcp-shutdown-'));
+  const treeServer = require('node:http').createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: true, root: {
+      id: 'fixture-home', className: 'TextView', text: 'Fixture Home', children: [],
+    } }));
+  });
+  await new Promise((resolve) => treeServer.listen(0, '127.0.0.1', resolve));
   const client = createLineJsonMcpClient({
     env: {
       AI_APP_BRIDGE_FACT_CACHE_PATH: path.join(cacheDir, 'facts.sqlite'),
@@ -545,13 +618,40 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then c
           operation: 'start',
           operationId: 'cli-unified-script',
           script: {
+            schemaVersion: 'aab.code-script/v1',
             name: 'persistence-only',
-            steps: [{ id: 'persist', type: 'checkpoint' }],
+            language: 'javascript',
+            source: 'function main() { return { persisted: true }; }\nmodule.exports = { main };',
           },
         },
       },
     });
-    const scriptPayload = JSON.parse(script.result.content[0].text);
+    const startedPayload = JSON.parse(script.result.content[0].text);
+    assert.equal(startedPayload.ok, true);
+    let scriptPayload = startedPayload;
+    const deadline = Date.now() + 5000;
+    let afterSequence = startedPayload.eventSequence || 0;
+    while (
+      scriptPayload.status !== 'completed'
+      && scriptPayload.status !== 'failed'
+      && scriptPayload.status !== 'cancelled'
+      && Date.now() < deadline
+    ) {
+      const waited = await client.request('tools/call', {
+        name: 'run',
+        arguments: {
+          command: 'script',
+          arguments: {
+            operation: 'wait',
+            operationId: 'cli-unified-script',
+            waitMs: Math.max(1, Math.min(200, deadline - Date.now())),
+            afterSequence,
+          },
+        },
+      });
+      scriptPayload = JSON.parse(waited.result.content[0].text);
+      afterSequence = scriptPayload.eventSequence || afterSequence;
+    }
     assert.equal(scriptPayload.ok, true);
     assert.equal(scriptPayload.status, 'completed');
 
@@ -563,13 +663,12 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then c
           operation: 'start',
           operationId: 'cli-unified-intent',
           goal: 'confirm persistence without a device',
-          target: { serial: 'fixture-device', packageName: 'com.example.fixture' },
-          adapter: 'fake',
+          target: { serial: 'fixture-device', packageName: 'com.example.fixture', adb: '/usr/bin/true', port: treeServer.address().port },
         },
       },
     });
     const intentPayload = JSON.parse(intent.result.content[0].text);
-    assert.equal(intentPayload.ok, true);
+    assert.equal(intentPayload.ok, true, JSON.stringify(intentPayload));
     assert.equal(intentPayload.status, 'waiting_for_decision');
 
     const decision = await client.request('tools/call', {
@@ -613,6 +712,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then c
     )), true);
   } finally {
     if (client.child.exitCode === null && client.child.signalCode === null) client.close();
+    await new Promise((resolve) => treeServer.close(resolve));
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 });
@@ -1771,6 +1871,27 @@ test('tap-text candidate selection skips offscreen bridge nodes', () => {
       bounds: match.node.bounds,
     },
   );
+});
+
+test('tap-text candidate selection skips disabled bridge nodes', () => {
+  const tree = {
+    root: {
+      bounds: { left: 0, top: 0, right: 100, bottom: 200, width: 100, height: 200 },
+      children: [
+        {
+          text: 'Language',
+          enabled: false,
+          visible: true,
+          effectiveVisible: true,
+          bounds: { left: 0, top: 20, right: 100, bottom: 60, width: 100, height: 40 },
+        },
+      ],
+    },
+  };
+
+  const match = findTappableNodeByText(tree, 'Language');
+  assert.equal(match.node, null);
+  assert.equal(match.rejected.reason, 'not_enabled');
 });
 
 test('tap-text candidate selection reports offscreen-only bridge match', () => {

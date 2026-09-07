@@ -43,10 +43,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.util.ArrayDeque
 import java.util.Collections
 import java.util.IdentityHashMap
-import java.util.LinkedHashMap
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -55,18 +53,18 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import io.github.mobileaidev.aiappbridge.android.capture.CaptureAppend
+import io.github.mobileaidev.aiappbridge.android.capture.CountCaps
+import io.github.mobileaidev.aiappbridge.android.capture.LegacyLiveView
+import io.github.mobileaidev.aiappbridge.android.capture.MobileCaptureStore
 
 object AiAppBridge {
     private const val tag = "AiAppBridge"
     private const val defaultPort = 18080
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
-    private const val maxLogEntries = 300
-    private const val maxNetworkEntries = 200
-    private const val maxEventEntries = 300
-    private const val maxStateEntries = 200
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.2.8"
+    private const val bridgeVersion = "0.3.0-rc.1"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     @Volatile
@@ -161,7 +159,11 @@ object AiAppBridge {
     @Volatile
     private var factApplicationContext: Context? = null
 
-    private val observationFactStoreLifecycle = ObservationFactStoreLifecycle(SegmentedFactStore.shared)
+    internal val observationFactStoreLifecycle by lazy {
+        ObservationFactStoreLifecycle(SegmentedFactStore.shared, ::onObservationFactStoreOpened)
+    }
+    @Volatile private var captureAttachmentState = "not_started"
+    @Volatile private var captureAttachmentError: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val processLogcatCollector = ProcessLogcatCollector(
         openSource = {
@@ -183,12 +185,10 @@ object AiAppBridge {
         },
         persist = { line -> persistH5ConsoleLine(line) },
     )
-    private val captureLock = Any()
     private val captureSequence = AtomicLong(0)
-    private val logEntries = ArrayDeque<JSONObject>()
-    private val networkEntries = ArrayDeque<JSONObject>()
-    private val eventEntries = ArrayDeque<JSONObject>()
-    private val stateEntries = LinkedHashMap<String, JSONObject>()
+    internal val captureStore = MobileCaptureStore(
+        caps = CountCaps(logs = 300, network = 200, events = 300, state = 200),
+    )
     @Volatile
     private var uiObserver: AndroidUiObserver? = null
     private val webViewAdapters = CopyOnWriteArrayList<WebViewAdapter>(
@@ -420,8 +420,12 @@ object AiAppBridge {
         if (payload.has("data")) {
             event.put("data", payload.opt("data"))
         }
-        appendBounded(logEntries, event, maxLogEntries)
-        persistMobileFact(event) { SanitizedFactPayload.log(it, event) }
+        CaptureAppend.appendSanitized(
+            captureStore,
+            event,
+            targetKey = captureTargetKey(),
+            runtimeEpoch = runtimeEpoch,
+        )
         return event
     }
 
@@ -443,8 +447,12 @@ object AiAppBridge {
         if (payload.has("error")) {
             event.put("error", payload.opt("error"))
         }
-        appendBounded(networkEntries, event, maxNetworkEntries)
-        persistMobileFact(event) { SanitizedFactPayload.network(it, event) }
+        CaptureAppend.appendSanitized(
+            captureStore,
+            event,
+            targetKey = captureTargetKey(),
+            runtimeEpoch = runtimeEpoch,
+        )
         return event
     }
 
@@ -455,16 +463,12 @@ object AiAppBridge {
             .put("namespace", namespace)
             .put("key", key)
             .put("value", if (payload.has("value")) payload.opt("value") else JSONObject.NULL)
-        synchronized(captureLock) {
-            if (!stateEntries.containsKey("$namespace.$key") && stateEntries.size >= maxStateEntries) {
-                val firstKey = stateEntries.keys.firstOrNull()
-                if (firstKey != null) {
-                    stateEntries.remove(firstKey)
-                }
-            }
-            stateEntries["$namespace.$key"] = event
-        }
-        persistMobileFact(event) { SanitizedFactPayload.state(it, event) }
+        CaptureAppend.appendSanitized(
+            captureStore,
+            event,
+            targetKey = captureTargetKey(),
+            runtimeEpoch = runtimeEpoch,
+        )
         return event
     }
 
@@ -475,18 +479,72 @@ object AiAppBridge {
         if (payload.has("data")) {
             event.put("data", payload.opt("data"))
         }
-        appendBounded(eventEntries, event, maxEventEntries)
-        persistMobileFact(event) { SanitizedFactPayload.event(it, event) }
+        CaptureAppend.appendSanitized(
+            captureStore,
+            event,
+            targetKey = captureTargetKey(),
+            runtimeEpoch = runtimeEpoch,
+        )
         return event
     }
 
     private fun startObservationFactStore(context: Context?) {
         val target = context ?: factApplicationContext ?: currentActivity?.get() ?: return
         try {
-            observationFactStoreLifecycle.start(MobileFactStoreProfiles.forContext(target))
+            val configuration = MobileFactStoreProfiles.forContext(target)
+            if (!captureStore.status().persistent) captureAttachmentState = "opening"
+            observationFactStoreLifecycle.start(configuration)
         } catch (error: Throwable) {
+            captureAttachmentState = "failed"
+            captureAttachmentError = error.message ?: error.javaClass.name
             Log.w(tag, "failed to configure observation fact store", error)
         }
+    }
+
+    private fun onObservationFactStoreOpened(
+        configuration: MobileFactStoreConfiguration,
+        operation: SegmentedFactStoreOperationResult,
+    ) {
+        if (!operation.isSuccess || !configuration.options.enabled) {
+            captureAttachmentState = if (configuration.options.enabled) "failed" else "disabled"
+            captureAttachmentError = if (configuration.options.enabled) operation.message else configuration.disabledReason
+            Log.w(tag, "capture persistence open ${operation.code}: ${captureAttachmentError}")
+            return
+        }
+        // This callback is emitted for every actual open, including a reopen after maintenance.
+        // The status/attachment task stays on the writer, after the store becomes readable.
+        SegmentedFactStore.shared.status { status ->
+            if (status.state != SegmentedFactStoreState.OPEN || !status.operation.isSuccess) {
+                captureAttachmentState = "failed"
+                captureAttachmentError = "capture store state ${status.state}: ${status.operation.message}"
+                return@status
+            }
+            try {
+                captureStore.usePersistentStore(SegmentedFactStore.shared, configuration.options.directory,
+                    captureTargetKey(), runtimeEpoch, epochStartSequence = status.nextSequence - 1,
+                    existingRecords = status.recordCount)
+                captureAttachmentState = "attached"
+                captureAttachmentError = null
+            } catch (error: Throwable) {
+                captureAttachmentState = "failed"
+                captureAttachmentError = error.message ?: error.javaClass.name
+                Log.w(tag, "failed to attach persistent capture store", error)
+            }
+        }
+    }
+
+    internal fun capturePersistenceStatus(): JSONObject {
+        val lifecycle = observationFactStoreLifecycle.snapshot()
+        return JSONObject()
+            .put("persistent", captureStore.status().persistent)
+            .put("attachmentState", captureAttachmentState)
+            .put("attachmentError", captureAttachmentError ?: JSONObject.NULL)
+            .put("lifecycleState", lifecycle.lifecycleState.name)
+            .put("profile", lifecycle.profile ?: JSONObject.NULL)
+            .put("directory", lifecycle.directory ?: JSONObject.NULL)
+            .put("disabledReason", lifecycle.disabledReason ?: JSONObject.NULL)
+            .put("operation", JSONObject().put("code", lifecycle.store.operation.code)
+                .put("systemCode", lifecycle.store.operation.systemCode).put("message", lifecycle.store.operation.message))
     }
 
     private fun stopObservationFactStoreForMaintenance(timeoutMs: Long = 2_000L): Boolean {
@@ -582,6 +640,11 @@ object AiAppBridge {
         }
     }
 
+    private fun captureTargetKey(): String {
+        val context = factApplicationContext ?: currentActivity?.get()?.applicationContext
+        return context?.packageName ?: "unknown"
+    }
+
     private fun mobileFactContext(event: JSONObject? = null): MobileFactEnvelopeContext {
         val context = factApplicationContext ?: currentActivity?.get()?.applicationContext
         val packageName = context?.packageName ?: "unknown"
@@ -624,106 +687,29 @@ object AiAppBridge {
             }
     }
 
-    private fun appendBounded(target: ArrayDeque<JSONObject>, event: JSONObject, maxSize: Int) {
-        synchronized(captureLock) {
-            while (target.size >= maxSize) {
-                target.removeFirst()
-            }
-            target.addLast(event)
-        }
-    }
-
     private fun captureCounts(): JSONObject {
-        synchronized(captureLock) {
-            return JSONObject()
-                .put("logs", logEntries.size)
-                .put("network", networkEntries.size)
-                .put("state", stateEntries.size)
-                .put("events", eventEntries.size)
-        }
-    }
-
-    private fun buildCaptureResponse(
-        type: String,
-        items: JSONArray,
-        filter: CaptureQuery = CaptureQuery(),
-    ): JSONObject {
+        val streams = captureStore.status().streams
         return JSONObject()
-            .put("ok", true)
-            .put("type", type)
-            .put("items", items)
-            .put("count", items.length())
-            .put("sinceId", filter.sinceId ?: JSONObject.NULL)
-            .put("sinceMs", filter.sinceMs ?: JSONObject.NULL)
-            .put("limit", filter.limit)
-            .put("updatedAtMs", System.currentTimeMillis())
+            .put("logs", streams.getValue("logs").count)
+            .put("network", streams.getValue("network").count)
+            .put("state", streams.getValue("state").count)
+            .put("events", streams.getValue("events").count)
     }
 
     private fun buildLogs(query: Map<String, String> = emptyMap()): JSONObject {
-        val filter = CaptureQuery.from(query)
-        synchronized(captureLock) {
-            return buildCaptureResponse("logs", copyArray(logEntries, filter), filter)
-        }
+        return LegacyLiveView.fromHttp(captureStore, "logs", query, System.currentTimeMillis())
     }
 
     private fun buildNetwork(query: Map<String, String> = emptyMap()): JSONObject {
-        val filter = CaptureQuery.from(query)
-        synchronized(captureLock) {
-            return buildCaptureResponse("network", copyArray(networkEntries, filter), filter)
-        }
+        return LegacyLiveView.fromHttp(captureStore, "network", query, System.currentTimeMillis())
     }
 
     private fun buildEvents(query: Map<String, String> = emptyMap()): JSONObject {
-        val filter = CaptureQuery.from(query)
-        synchronized(captureLock) {
-            return buildCaptureResponse("events", copyArray(eventEntries, filter), filter)
-        }
+        return LegacyLiveView.fromHttp(captureStore, "events", query, System.currentTimeMillis())
     }
 
     private fun buildState(query: Map<String, String> = emptyMap()): JSONObject {
-        val filter = CaptureQuery.from(query)
-        synchronized(captureLock) {
-            val values = JSONObject()
-            val items = JSONArray()
-            val filtered = stateEntries.entries.filter { (_, entry) -> filter.matches(entry) }
-            val limited = if (filtered.size > filter.limit) {
-                filtered.takeLast(filter.limit)
-            } else {
-                filtered
-            }
-            limited.forEach { (stateKey, entry) ->
-                if (!filter.matches(entry)) {
-                    return@forEach
-                }
-                val copy = JSONObject(entry.toString())
-                values.put(stateKey, copy.opt("value"))
-                items.put(copy)
-            }
-            return JSONObject()
-                .put("ok", true)
-                .put("type", "state")
-                .put("values", values)
-                .put("items", items)
-                .put("count", items.length())
-                .put("sinceId", filter.sinceId ?: JSONObject.NULL)
-                .put("sinceMs", filter.sinceMs ?: JSONObject.NULL)
-                .put("limit", filter.limit)
-                .put("updatedAtMs", System.currentTimeMillis())
-        }
-    }
-
-    private fun copyArray(values: ArrayDeque<JSONObject>, filter: CaptureQuery = CaptureQuery()): JSONArray {
-        val array = JSONArray()
-        val filtered = values.filter { filter.matches(it) }
-        val limited = if (filtered.size > filter.limit) {
-            filtered.takeLast(filter.limit)
-        } else {
-            filtered
-        }
-        limited.forEach { value ->
-            array.put(JSONObject(value.toString()))
-        }
-        return array
+        return LegacyLiveView.fromHttp(captureStore, "state", query, System.currentTimeMillis())
     }
 
     private fun requestJson(body: String): JSONObject {
@@ -898,41 +884,6 @@ object AiAppBridge {
             return null
         }
         return json.optString(key)
-    }
-
-    private data class CaptureQuery(
-        val sinceId: Long? = null,
-        val sinceMs: Long? = null,
-        val limit: Int = defaultLimit,
-    ) {
-        fun matches(item: JSONObject): Boolean {
-            val id = item.optLong("id", Long.MIN_VALUE)
-            val timestampMs = item.optLong("timestampMs", Long.MIN_VALUE)
-            if (sinceId != null && id <= sinceId) {
-                return false
-            }
-            if (sinceMs != null && timestampMs < sinceMs) {
-                return false
-            }
-            return true
-        }
-
-        companion object {
-            private const val defaultLimit = 200
-            private const val maxLimit = 500
-
-            fun from(query: Map<String, String>): CaptureQuery {
-                val limit = query["limit"]
-                    ?.toIntOrNull()
-                    ?.coerceIn(1, maxLimit)
-                    ?: defaultLimit
-                return CaptureQuery(
-                    sinceId = query["sinceId"]?.toLongOrNull(),
-                    sinceMs = query["sinceMs"]?.toLongOrNull(),
-                    limit = limit,
-                )
-            }
-        }
     }
 
     private data class WebViewTarget(
@@ -1235,13 +1186,13 @@ object AiAppBridge {
         private fun clearAppData(): JSONObject {
             val cleared = JSONArray()
             val failures = JSONArray()
-            stopObservationFactStoreForMaintenance()
-            synchronized(captureLock) {
-                logEntries.clear()
-                networkEntries.clear()
-                eventEntries.clear()
-                stateEntries.clear()
+            if (!stopObservationFactStoreForMaintenance()) {
+                return JSONObject().put("ok", false).put("error", "capture_store_close_timeout")
             }
+            if (!captureStore.clear().ok) {
+                return JSONObject().put("ok", false).put("error", "capture_store_clear_failed")
+            }
+            captureStore.detachPersistentStore()
             cleared.put("runtime-captures")
 
             context.databaseList().forEach { databaseName ->
@@ -1323,6 +1274,7 @@ object AiAppBridge {
                         .put("version", bridgeVersion)
                         .put("transport", "http")
                         .put("runtimeEpoch", runtimeEpoch)
+                        .put("captureTargetKey", captureTargetKey())
                         .put("host", "127.0.0.1")
                         .put("port", activePort.get()),
                 )
@@ -1347,6 +1299,7 @@ object AiAppBridge {
                         .put("current", activity()?.javaClass?.name ?: JSONObject.NULL),
                 )
                 .put("capture", captureCounts())
+                .put("capturePersistence", capturePersistenceStatus())
                 .put("flutter", JSONObject(AiAppBridge.flutterSnapshot))
                 .put("updatedAtMs", System.currentTimeMillis())
         }
@@ -1804,6 +1757,10 @@ object AiAppBridge {
 
         private fun dispatchInputText(body: String): JSONObject {
             val request = requestJson(body)
+            val actionId = request.optString("actionId", "").takeIf { it.isNotBlank() }
+            if (request.has("x") != request.has("y")) {
+                return JSONObject().put("ok", false).put("error", "x_y_must_be_provided_together")
+            }
             val rawText = request.opt("text")
             if (!request.has("text") || rawText == null || rawText == JSONObject.NULL) {
                 return JSONObject()
@@ -1813,6 +1770,9 @@ object AiAppBridge {
             val text = rawText.toString()
             val x = request.optDouble("x", Double.NaN).toFloat()
             val y = request.optDouble("y", Double.NaN).toFloat()
+            if (request.has("x") && (!x.isFinite() || !y.isFinite())) {
+                return JSONObject().put("ok", false).put("error", "invalid_input_coordinates")
+            }
             return runOnMainThread {
                 val activity = activity()
                     ?: return@runOnMainThread JSONObject()
@@ -1825,26 +1785,48 @@ object AiAppBridge {
                         .put("error", "input_target_not_found")
                         .put("message", "No enabled visible EditText was focused or matched by the requested coordinates.")
 
-                val requestedFocus = target.view.requestFocus()
-                target.view.setText(text)
-                target.view.setSelection(target.view.text?.length ?: 0)
-                uiObserver?.noteInput(
-                    inputLength = text.length,
-                    windowType = target.root.type,
-                    targetClassName = target.view.javaClass.name,
-                    targetResourceName = resourceName(activity, target.view.id).toString(),
-                )
-                JSONObject()
-                    .put("ok", true)
-                    .put("transport", "bridge")
-                    .put("source", "native-view")
-                    .put("text", text)
-                    .put("textLength", text.length)
-                    .put("requestedFocus", requestedFocus)
-                    .put("focused", target.view.isFocused)
-                    .put("windowType", target.root.type)
-                    .put("target", editTextToJson(activity, target.view))
-                    .put("updatedAtMs", System.currentTimeMillis())
+                val response = CaptureActionContext.withActionId(actionId) {
+                    val requestedFocus = target.view.requestFocus()
+                    val connection = target.view.onCreateInputConnection(android.view.inputmethod.EditorInfo())
+                        ?: return@withActionId JSONObject()
+                            .put("ok", false)
+                            .put("error", "input_connection_unavailable")
+                    // Use the editor's IME contract. Custom EditText.setText overrides
+                    // can deliberately suppress the listeners that update app state.
+                    connection.beginBatchEdit()
+                    val committed = try {
+                        connection.setSelection(0, target.view.text?.length ?: 0) &&
+                            connection.commitText(text, 1)
+                    } finally {
+                        connection.endBatchEdit()
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) connection.closeConnection()
+                    }
+                    if (!committed) {
+                        return@withActionId JSONObject()
+                            .put("ok", false)
+                            .put("error", "input_connection_rejected")
+                    }
+                    uiObserver?.noteInput(
+                        inputLength = text.length,
+                        windowType = target.root.type,
+                        targetClassName = target.view.javaClass.name,
+                        targetResourceName = resourceName(activity, target.view.id).toString(),
+                    )
+                    JSONObject()
+                        .put("ok", true)
+                        .put("transport", "bridge")
+                        .put("source", "native-view")
+                        .put("text", text)
+                        .put("textLength", text.length)
+                        .put("requestedFocus", requestedFocus)
+                        .put("focused", target.view.isFocused)
+                        .put("windowType", target.root.type)
+                        .put("target", editTextToJson(activity, target.view))
+                        .put("actionId", actionId ?: JSONObject.NULL)
+                        .put("updatedAtMs", System.currentTimeMillis())
+                }
+                CaptureActionContext.deferActionId(actionId) { clear -> mainHandler.post(clear) }
+                response
             }
         }
 
@@ -1890,6 +1872,7 @@ object AiAppBridge {
                 .put("effectiveVisible", effectiveVisible)
                 .put("visible", effectiveVisible)
                 .put("enabled", view.isEnabled)
+                .put("editable", view is EditText && view.keyListener != null && view.isFocusable)
                 .put("clickable", view.isClickable)
                 .put("longClickable", view.isLongClickable)
                 .put("focusable", view.isFocusable)
@@ -1940,25 +1923,14 @@ object AiAppBridge {
             if (!x.isNaN() && !y.isNaN()) {
                 val screenX = x.toInt()
                 val screenY = y.toInt()
-                roots.asReversed().forEach { root ->
-                    if (root.bounds.contains(screenX, screenY) && root.root.isShown) {
-                        findEditTextAtPoint(root.root, screenX, screenY)?.let {
-                            return TextInputTarget(root, it)
-                        }
-                    }
-                }
+                val root = roots.asReversed().firstOrNull { it.root.isShown } ?: return null
+                if (!root.bounds.contains(screenX, screenY)) return null
+                // An explicit target must never turn into input on another field.
+                return findEditTextAtPoint(root.root, screenX, screenY)?.let { TextInputTarget(root, it) }
             }
-            roots.asReversed().forEach { root ->
-                findFocusedEditText(root.root)?.let {
-                    return TextInputTarget(root, it)
-                }
-            }
-            roots.asReversed().forEach { root ->
-                findFirstUsableEditText(root.root)?.let {
-                    return TextInputTarget(root, it)
-                }
-            }
-            return null
+            val root = roots.asReversed().firstOrNull { it.root.isShown } ?: return null
+            val view = findFocusedEditText(root.root) ?: findFirstUsableEditText(root.root)
+            return view?.let { TextInputTarget(root, it) }
         }
 
         private fun findEditTextAtPoint(view: View, x: Int, y: Int): EditText? {
@@ -2028,7 +2000,13 @@ object AiAppBridge {
         }
 
         private fun isUsableEditText(view: EditText): Boolean {
-            return view.isShown && view.isEnabled && view.width > 0 && view.height > 0
+            var ancestor: View? = view
+            while (ancestor != null) {
+                if (ancestor.alpha <= 0f) return false
+                ancestor = ancestor.parent as? View
+            }
+            return view.isShown && view.isEnabled && view.isFocusable && view.keyListener != null &&
+                view.width > 0 && view.height > 0
         }
 
         private fun editTextToJson(activity: Activity, view: EditText): JSONObject {

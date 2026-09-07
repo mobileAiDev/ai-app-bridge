@@ -56,19 +56,42 @@ test('records an execution without persisting input, script, or payload contents
   assert.equal(facts[0].actionId, 'action-1');
 });
 
-test('ingests live evidence into bounded semantic partitions', (t) => {
+test('does not ingest mobile four-stream payloads into Host FactStore', (t) => {
   const { cache, recorder } = createRecorder(t);
-  const base = { serial: 'device-1', packageName: 'com.example.app' };
+  const android = { serial: 'device-1', packageName: 'com.example.app' };
+  const ios = { deviceId: 'iphone-1', bundleId: 'com.example.app' };
+  const commands = [
+    ['logs', android, { id: 1, timestampMs: 9000, message: 'ready' }],
+    ['network', android, { id: 2, timestampMs: 9001, method: 'GET', url: 'https://example.test' }],
+    ['state', android, { id: 3, timestampMs: 9002, key: 'session', value: 'open' }],
+    ['events', android, { id: 4, timestampMs: 9003, category: 'ui', name: 'ui.changed' }],
+    ['ios-logs', ios, { id: 5, timestampMs: 9004, message: 'ios-ready' }],
+    ['ios-network', ios, { id: 6, timestampMs: 9005, method: 'POST', url: 'https://ios.example.test' }],
+    ['ios-state', ios, { id: 7, timestampMs: 9006, key: 'route', value: 'home' }],
+    ['ios-events', ios, { id: 8, timestampMs: 9007, category: 'app', name: 'opened' }],
+  ];
+  for (const [command, args, item] of commands) {
+    assert.deepEqual(recorder.recordEvidence(command, args, { ok: true, items: [item] }), []);
+  }
+  assert.equal(cache.query({ partition: 'network' }).count, 0);
+  assert.equal(cache.query({ partition: 'app-log' }).count, 0);
+  assert.equal(cache.query({ partition: 'ui' }).count, 0);
+  assert.equal(cache.query({ partition: 'state-event' }).count, 0);
+});
 
-  recorder.recordEvidence('network', base, {
+test('ingests Host-owned Web evidence into bounded semantic partitions', (t) => {
+  const { cache, recorder } = createRecorder(t);
+  const base = { sessionId: 'web-1' };
+
+  recorder.recordEvidence('web-network', base, {
     ok: true,
     items: [{ id: 1, timestampMs: 9000, method: 'GET', url: 'https://example.test' }],
   });
-  recorder.recordEvidence('logs', base, {
+  recorder.recordEvidence('web-logs', base, {
     ok: true,
     items: [{ id: 2, timestampMs: 9001, level: 'info', message: 'ready' }],
   });
-  recorder.recordEvidence('events', base, {
+  recorder.recordEvidence('web-events', base, {
     ok: true,
     items: [
       { id: 3, timestampMs: 9002, category: 'ui', name: 'ui.changed' },
@@ -84,7 +107,7 @@ test('ingests live evidence into bounded semantic partitions', (t) => {
 
 test('canonical target identity cannot be overwritten by provider metadata', (t) => {
   const { cache, recorder } = createRecorder(t);
-  recorder.recordEvidence('logs', {
+  recorder.recordEvidence('tree', {
     serial: 'device-locked',
     packageName: 'com.example.locked',
   }, {
@@ -94,19 +117,35 @@ test('canonical target identity cannot be overwritten by provider metadata', (t)
       serial: 'wrong-device',
       model: 'provider-model',
     },
-    items: [{ id: 1, level: 'info', message: 'identity check' }],
+    root: { text: 'identity check' },
   });
 
-  const fact = cache.query({ partition: 'app-log' }).items[0];
+  const fact = cache.query({ partition: 'ui' }).items[0];
   assert.equal(fact.app.packageName, 'com.example.locked');
   assert.equal(fact.app.serial, 'device-locked');
   assert.equal(fact.app.model, 'provider-model');
 });
 
+test('reads persisted device-log history through logcat', (t) => {
+  const { recorder } = createRecorder(t);
+  recorder.recordDeviceLog({ serial: 'device-1' }, {
+    lines: ['1700000000.000 device evidence'],
+    count: 1,
+    buffers: ['main'],
+    observedAtMs: 9000,
+  });
+  const history = recorder.readHistory('logcat', { serial: 'device-1' });
+  assert.equal(history.ok, true);
+  assert.equal(history.type, 'logcat');
+  assert.equal(history.items.length, 1);
+  assert.equal(history.items[0].lines[0], '1700000000.000 device evidence');
+  assert.equal(history._factCache.history, true);
+});
+
 test('reads persisted history through existing evidence command shapes and opaque cursors', (t) => {
   const { recorder } = createRecorder(t);
-  const args = { serial: 'device-1', packageName: 'com.example.app' };
-  recorder.recordEvidence('events', args, {
+  const args = { sessionId: 'web-1' };
+  recorder.recordEvidence('web-events', args, {
     ok: true,
     items: [
       { id: 1, category: 'ui', name: 'dialog.opened' },
@@ -114,14 +153,14 @@ test('reads persisted history through existing evidence command shapes and opaqu
     ],
   });
 
-  const first = recorder.readHistory('events', { ...args, limit: 1 });
+  const first = recorder.readHistory('web-events', { ...args, limit: 1 });
   assert.equal(first.ok, true);
   assert.equal(first.type, 'events');
   assert.equal(first.items.length, 1);
   assert.equal(first._factCache.history, true);
   assert.equal(typeof first._factCache.cursor, 'string');
 
-  const second = recorder.readHistory('events', {
+  const second = recorder.readHistory('web-events', {
     ...args,
     limit: 10,
     factCursor: first._factCache.cursor,
@@ -168,24 +207,24 @@ test('deduplicates request ids and capture ids within a target runtime', (t) => 
   assert.equal(duplicateAction.globalSeq, firstAction.globalSeq);
 
   const capture = { ok: true, items: [{ id: 7, category: 'ui', name: 'ui.changed' }] };
-  assert.equal(recorder.recordEvidence('events', args, capture).length, 1);
-  assert.equal(recorder.recordEvidence('events', args, capture).length, 0);
+  assert.equal(recorder.recordEvidence('web-events', { sessionId: 'web-1' }, capture).length, 1);
+  assert.equal(recorder.recordEvidence('web-events', { sessionId: 'web-1' }, capture).length, 0);
   assert.equal(cache.query({ partition: 'ui' }).count, 1);
 });
 
 test('delegates capture-id deduplication to the cache across recorder restarts', (t) => {
   const cache = createCache(t);
-  const args = { serial: 'device-1', packageName: 'com.example.app' };
+  const args = { sessionId: 'web-1' };
   const capture = {
     ok: true,
-    debugBridge: { runtimeEpoch: 'runtime-1' },
+    session: { connectedAtMs: 10_000 },
     items: [{ id: 11, level: 'info', message: 'same runtime record' }],
   };
 
   const firstRecorder = new FactRecorder({ cache, now: () => 10_000 });
-  const first = firstRecorder.recordEvidence('logs', args, capture);
+  const first = firstRecorder.recordEvidence('web-logs', args, capture);
   const restartedRecorder = new FactRecorder({ cache, now: () => 11_000 });
-  const duplicate = restartedRecorder.recordEvidence('logs', args, capture);
+  const duplicate = restartedRecorder.recordEvidence('web-logs', args, capture);
 
   assert.equal(first.length, 1);
   assert.equal(duplicate.length, 1);
@@ -201,7 +240,7 @@ test('attributes timestamped evidence to the matching action interval instead of
     now: () => 2_000,
     actionCompletionGraceMs: 25,
   });
-  const args = { serial: 'device-1', packageName: 'com.example.app' };
+  const args = { sessionId: 'web-1' };
   const actionTimeline = [
     {
       actionId: 'action-first',
@@ -217,7 +256,7 @@ test('attributes timestamped evidence to the matching action interval instead of
     },
   ];
 
-  recorder.recordEvidence('events', args, {
+  recorder.recordEvidence('web-events', args, {
     ok: true,
     items: [
       { id: 21, timestampMs: 1_015, category: 'ui', name: 'first.dialog.opened' },
@@ -243,9 +282,9 @@ test('attributes timestamped evidence to the matching action interval instead of
 test('does not let a later requested-but-not-started action steal evidence from the running action', (t) => {
   const cache = createCache(t);
   const recorder = new FactRecorder({ cache, now: () => 2_000 });
-  const args = { serial: 'device-1', packageName: 'com.example.app' };
+  const args = { sessionId: 'web-1' };
 
-  recorder.recordEvidence('events', args, {
+  recorder.recordEvidence('web-events', args, {
     ok: true,
     items: [{ id: 31, timestampMs: 1_015, category: 'ui', name: 'running.action.changed' }],
   }, {
@@ -272,9 +311,8 @@ test('does not let a later requested-but-not-started action steal evidence from 
 
 test('uses an explicit runtime action id instead of guessing from overlapping action times', (t) => {
   const { cache, recorder } = createRecorder(t);
-  recorder.recordEvidence('logs', {
-    serial: 'device-1',
-    packageName: 'com.example.app',
+  recorder.recordEvidence('web-logs', {
+    sessionId: 'web-1',
   }, {
     ok: true,
     debugBridge: { runtimeEpoch: 'runtime-explicit-action' },
@@ -486,9 +524,8 @@ test('applies the same secure-input projection to persisted status evidence', (t
 
 test('does not apply UI privacy projection semantics to network evidence', (t) => {
   const { cache, recorder } = createRecorder(t);
-  recorder.recordEvidence('network', {
-    serial: 'device-1',
-    packageName: 'com.example.app',
+  recorder.recordEvidence('web-network', {
+    sessionId: 'web-1',
   }, {
     ok: true,
     items: [{
@@ -515,9 +552,8 @@ test('automatic observation persists original network bodies', (t) => {
     responseBody: Buffer.from('binary-response'),
   };
 
-  recorder.recordEvidence('network', {
-    serial: 'device-1',
-    packageName: 'com.example.app',
+  recorder.recordEvidence('web-network', {
+    sessionId: 'web-1',
   }, {
     ok: true,
     items: [liveRecord],

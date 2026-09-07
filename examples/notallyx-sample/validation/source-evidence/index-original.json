@@ -1,0 +1,562 @@
+{
+  "schemaVersion": "aab.notallyx.evidence-source-index/v1",
+  "sourceIntentExecutionIds": [
+    "intent-1788742528691-1",
+    "intent-1788743599316-1",
+    "intent-1788743880896-2",
+    "intent-1788744265456-1"
+  ],
+  "sourceArtifacts": [
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/1-start.json",
+      "sha256": "5ee840188ef795d6cf19d29bd3dea9e4220792ecc9306b978e462615335edf12"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/2-act.json",
+      "sha256": "50e003ab48df1a95e7bf8222428365c63d1b6414e81867ceb1b530cf364b5677"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/3-observe.json",
+      "sha256": "5422a81d260a340209fcab6654fb33d2b6a066610148749064dbe075eeb6c9dc"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/4-act.json",
+      "sha256": "88c4cf3d637e2f8cd5c7f8cb1e16c9e9a970a5fb620fb109881c55b6c48a0e6d"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/5-act.json",
+      "sha256": "431f8022860c43ee46448097143c090aaeeb60f048972072fd88e1ede53ff88c"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/6-act.json",
+      "sha256": "b84a6efc499976149aa9dd1202e19b5115aab53d19949228e29746500b821ef9"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/7-act.json",
+      "sha256": "595ebb7340d2816e04c469c9ec8c0dcfbd5d8f2afea508c2e92ad5070c15c0f0"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/8-observe.json",
+      "sha256": "d4e067a4cdf4d9522e2bfb54765ef73d354059c82cc1af049ed0228abccd51f0"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/9-act.json",
+      "sha256": "940af9f5de70a7bf5e2be1d6ccec24577437d1053639d9ea16fdcbc6a480f80b"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/10-observe.json",
+      "sha256": "0d56ecc78e8ae1a042a21ab931dedb03e0446699c9d1ef89f09504d5522a8093"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/11-act.json",
+      "sha256": "9904c05f687b67c27a4581be0bfa0feeda51f385856c2a50f2b36b2980390b9d"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/12-act.json",
+      "sha256": "43c2d750fa3a6ebf64b0b09007cbfaf703f81c6bdb17d5471ce9afcfb523100e"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/13-complete.json",
+      "sha256": "113b94399d9b9ae8fd2d2a7ff3d93491f216f37bbd316cc1c249cfb6644f23ba"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788742516843/14-history.json",
+      "sha256": "fc333409cb7e8f3a5c9f179bcdaab03b14eeee0a789a38500e88b803d6492098"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/text-crud-snapshot/snapshot.json",
+      "sha256": "0bf9670c43fef0a5fc3ce741007195ad3dd4102a088dd7bb9fb1b73182bec774"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/text-crud-snapshot/oracle.json",
+      "sha256": "525e392289768b86ea9b275db86846d0d391eed86adfc3d887febd4bd8702333"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/1-start.json",
+      "sha256": "77dccf0c650032fd342739156a6ae5fa1c1a3bf43ed139fea6f02233c3bd0031"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/10-act.json",
+      "sha256": "da2094dc2d3bbee0c0e72dd2961b0e4aea25cfce16a1596235ab5f6060d13ce4"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/11-act.json",
+      "sha256": "cca85df50aa7732740c9b2601365308495cf6deae2376c87a758fd6469d32bbe"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/12-observe.json",
+      "sha256": "a34fa827fc4c86c566b95ad23305f6c47448768d8d8104454b076812fb3515cb"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/13-act.json",
+      "sha256": "0ab324c48e102468f4151c573ee7ec6d0bf371a3ff7a7150034f382a667c14ab"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/14-act.json",
+      "sha256": "67c2594e2189afb29eafab5e6bb4bf0db33d2fd2457399621a70a45d56072fd3"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/15-observe.json",
+      "sha256": "3fd7c620bab275390c786d04bbfe689cc71ad0f46f295319b5bc6223d433e1a3"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/16-act.json",
+      "sha256": "c2df47284e3933bde99bb7e5bca609c8ff051f703c9e162109a896a289a29856"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/17-observe.json",
+      "sha256": "799de6e89bf5ce3c3ea225f84ed9045b5a29159c8cd45a3b0f4b9b2adb58b566"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/18-act.json",
+      "sha256": "6d989c9c8d298f9cef89c0b2271e09fae919204747baf0af4f7b90f560f959e4"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/19-observe.json",
+      "sha256": "a4d191d601352817032791796f898cb1823de28a6ad475378f3b58ee3c81fbe2"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/2-act.json",
+      "sha256": "90acc855726d14c2370745afa7a62196d0196e0c3f420e6a0afa43b08a5ba087"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/20-act.json",
+      "sha256": "aada830da19cadb55c295b1b5a60478997b025637b1ed6c56dd6ada3465f61b6"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/21-observe.json",
+      "sha256": "c9c75ed60339b7f67cd7e61ab589a7a42ade1d05982646744d6410c665676f0f"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/22-act.json",
+      "sha256": "2c5eada96929a5295ab0ac37b39bb3e5cb10da13e7c72620273f9b48b19cf00b"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/23-act.json",
+      "sha256": "ca4c5a35d4cd0592297f4d737abac10a682feb7be44fa8b17497967b400edd42"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/24-observe.json",
+      "sha256": "7a4aea26c9bed4f03e6270fc35fbd20ff34929a2ed24c364fbfedb8142efc1ce"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/25-act.json",
+      "sha256": "1c39b7dcb3d10fc0158f78945688ad4ecab2b437ebe9ad4f69d9693e6a8de2ac"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/26-observe.json",
+      "sha256": "1118aa178971767093b727702d7464f115d647ac37c4328572c50b4e0dbf8615"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/27-complete.json",
+      "sha256": "a850e2be53ad068787e5bc9ee6b471a05a8fba478a009236606ee5a9c9ba20de"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/28-history.json",
+      "sha256": "33b13d43a7778205ff5d1477007b4352eb6680f42cbb4c3278bc7b6f484a15ed"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/3-observe.json",
+      "sha256": "6c196bbf00d4abfd7aa1caf1ea336e8f71d99ef53a185955dfdedf5c9cfdf8a7"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/4-act.json",
+      "sha256": "e15b0c29dfcb2c27f4e2a27c23143b2183ad3dc2e2f7341de5ca8553167d3305"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/5-observe.json",
+      "sha256": "af56d5f8a3ce4cde232ff4a97ff9856f1539944178f8e6a263cef29b3920b307"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/6-act.json",
+      "sha256": "d870fc8bdf051aec2fbe191783d18587147c72cece2bb2a8a71f7714239b69f6"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/7-observe.json",
+      "sha256": "d1c1e76b4def827f4a257d763039b14a6338a3ce0abd0821e31c9403f6a82b85"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/8-act.json",
+      "sha256": "1e80b624c29fade13b89228bb3b19778c196ae35ea97eb83833e1e4ddb579233"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/9-observe.json",
+      "sha256": "752e809a7a26d54d85d1799921d13b1f007e65ffb255b58026519e619c0a06a3"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/snapshot.json",
+      "sha256": "4c694b525a85cdb7b6bb9924a6bb78d90690d360a38ea064e07e4a3fffc6242a"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/baseline-ime/labels-pin-color-snapshot/oracle.json",
+      "sha256": "ca5c1f9e20c927c49439fe3145f851294856dc223da34556e3ef0816db2ce907"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/29-start.json",
+      "sha256": "32bd9d08d5fa5e65ed39a8db46ee2f3c87baa4427304a8d307073fd1d0200f92"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/30-act.json",
+      "sha256": "e2e9c1924f933e7fc7c51202e8422df10663b22ca9e9b55f421eefb38c3d75e4"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/31-observe.json",
+      "sha256": "44785d1a32c694be9497962724e130f2522bd50567d6143edb5b7e16927fdfa2"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/32-act.json",
+      "sha256": "f10729c8bf48303025e315ffbeda1b3dfd2060a2bdf09728132a448f4d3968bc"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/33-act.json",
+      "sha256": "a01aaa323ad29deb659961f60c662a890d31f99314d92dab183092d2089b9ac5"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/34-act.json",
+      "sha256": "c088eb6c4603e02d2b96a4f9c7cf35f983db3401975c5d263d5fa4fa52c8a5b0"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/35-observe.json",
+      "sha256": "d9e5f58a4e1b44a52c350d8dfe5d5616552a9b2730770adb0a7e8238ad376f19"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/36-act.json",
+      "sha256": "fe6b3640d00cfdfc5fb72ab44dda5a1b81662872e5d633406ea5b2950bcdd49b"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/37-act.json",
+      "sha256": "27d9bb5c2f72b1ccc8a43c941d721715ea21e9b8a05982724a931ec5f88f517e"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/38-observe.json",
+      "sha256": "035720fd37179bd1f8ee32096acfa86ecde79a8f8df9a17db17bd7eb3c5cddf8"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/39-act.json",
+      "sha256": "afdbfcaee22ba729cb6c6ca1ce4b9cc188d04ed139838893b0b67da4a835290e"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/40-act.json",
+      "sha256": "57645784255d6540beb2c0b564c02be7095a2d5e26b119a20e15694630a82216"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/41-observe.json",
+      "sha256": "73461d1cce3622f2e1b5394d5186c79b5d42c3ef3caead8780f73e143f0ce658"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/42-act.json",
+      "sha256": "0531a447a8b5b3d41e8da5dd850a66c289ecb21fbd0e0a23a808386978c8a79b"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/43-observe.json",
+      "sha256": "ee01de0658d5b4ac013e63d4c791ed3ee0fb4971b53be80996ebab436873dca9"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/44-act.json",
+      "sha256": "a3474229a09541f00aaaf91d6b52aa7f74e588b51f8e4e0dad96dd9cf522c8aa"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/45-act.json",
+      "sha256": "1090ed76376ea9fab5d087b0ca51dd29f90455b9fd347c9b026d6bf0538ee7c2"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/46-act.json",
+      "sha256": "41f65e9596880d8c6b0d6878ade65c2eb66ce7eaba1018fdd495966ea203cf41"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/47-observe.json",
+      "sha256": "f58a90f407f619412ae1481b50f05c63542a723dc035d3017a76bf97055a5fbc"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/48-act.json",
+      "sha256": "ca3f20f51905ae74839bdb2353b19840abdc8af6d4355c0a6c97fca3780b21de"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/49-observe.json",
+      "sha256": "0a73d27df04b8a1d3395870672d7ada4be657f0670eb12e134f887b2ab9894cf"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/50-act.json",
+      "sha256": "283ccbf4e4e17efbde88511f250d89b64f36da1768e810a999fdd66e20092d0c"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/51-observe.json",
+      "sha256": "7b252bf2aae5f0209c4ee6ff2ff0c18003bf5eecac3340ddb75a21e63527ef80"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/52-act.json",
+      "sha256": "9b18dcf4908c08179b0ca4ec74ef174a19f27238c574d5fde4841e52b3201704"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/53-observe.json",
+      "sha256": "3685472d2058b44e2012f87874eb452a0f2022502477dd4570e6dcbb29497a11"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/54-inconclusive.json",
+      "sha256": "ce787791a701e8460e91bc3116aa30d1cdcc548c872cbc45096f1b55269a7984"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788743587416/55-history.json",
+      "sha256": "f5b60be88e4c24134a4524173a11b1f2272a1cac268485a960a738f17f850a7c"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/1-start.json",
+      "sha256": "93c61617b7d0e9e0523dfa32e068066070ffbfcb7269d1b49afac49de5c0541f"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/2-act.json",
+      "sha256": "6f9941ba4059a3c8e8a102e2b2a500ca6886a64dbeb40ce37f3d2d5318dab42f"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/3-observe.json",
+      "sha256": "613ced29618d9a2dbe2876008966f2e6b632af4e0fe32c12668b274728a23942"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/4-act.json",
+      "sha256": "7fce561f47db50b2fd8203ac59bc8a01a1ae48fab2487459817988bc7912a25c"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/5-observe.json",
+      "sha256": "14542e407687406ad1692ae81260f9f3c6ea43bd1f8e9e6f21e3c7329daeb08f"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/6-act.json",
+      "sha256": "e54447aae00c3c86edcdc7f11daa6b9cdb3fcd30ac490fe81c3427da4c62c35c"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/7-observe.json",
+      "sha256": "ed95a8c41fa529c1369a76b860abc7a25dd699271aa83d924a351fd7f2195213"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/8-act.json",
+      "sha256": "b5546d15a1bd8b678f5731e12a5938c15b8af73b431804fda89ba5f0f05005b9"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/9-act.json",
+      "sha256": "4107bf22ad99466c528c6cdb78b91f4152cace4c69ad9a963a0a9d0d3e084105"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/10-observe.json",
+      "sha256": "8daf36cce7cf79ca86029029c93a156cc061cd05a9fd424054b7d34d40f87b2b"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/11-act.json",
+      "sha256": "ac677de308a712b42c1141235d37872957850ae037be8cb1ec80282c57857739"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/12-observe.json",
+      "sha256": "52add0378fdd606395842a153cc72098ba35d9f74aa5f3b4f0d34e036ecd93e4"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/13-act.json",
+      "sha256": "06f37a87227dcf8aeccbbda708cde46438c0f333d7d35600bc1a98ed897b92b2"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/14-observe.json",
+      "sha256": "89be74ceedc97bf8433df87c6318096414e8c899104abc7fc6bb0597e64fedba"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/15-act.json",
+      "sha256": "eec58b282b89bba2475392caee3b943f085fb5c2b6735ff45e2cdf08aadb5e2e"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/16-observe.json",
+      "sha256": "25e40522900f6c23ebf22ef9d6ae6fe37ce23de889f674aa1cd1efd86059c9b5"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/17-act.json",
+      "sha256": "4d20d3bd6bc68a66f916d4e0039c3d487274653508b736b310777be6a7892fd8"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/18-observe.json",
+      "sha256": "7df508c36bffa6c6926229e0b7c5a8dc79764a2532174bc1b3a7971ef02876db"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/19-act.json",
+      "sha256": "cd8465123c137ce40e4df145e0e614ae540e17df8012d36f6e6cf0322abe4b37"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/20-observe.json",
+      "sha256": "290c1dfe5d7e25ab8c4431b55ccaa1c54fca418151f0b0a3ca6bf397af0930f7"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/21-complete.json",
+      "sha256": "30d94731362503f9708bbed423c0c9813103d0f45eab51a9f1cfd90e05e3dc69"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/intent-exploration/1788744248146/22-history.json",
+      "sha256": "6566c6f3909470779236a587af9b28b0a786e5de6aabfe86e4bdbdda8f38b578"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/upgrade/before/snapshot.json",
+      "sha256": "8d21fc28158a669c2bc369b6057d467cd1d255d2f9ffd41dbf947264904a8bd0"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/upgrade/before/oracle.json",
+      "sha256": "70b9eb85a5c6c376853a26d6c4f0131795632acd0d745505cce8bbf2a0aadd6d"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/upgrade/before/observed.json",
+      "sha256": "49f2c8dcd5370890f5cc563bbb629741b5015422c5436aa5da9b1adc372a2b76"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/snapshot.json",
+      "sha256": "879c214a6ff792863ba119d1e4c12e3e79b1f7c4803fb1e9c743ca1456cc41e0"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/oracle.json",
+      "sha256": "11fa79bb1de5c25423cac8591f9589b627f013e51dc4e4f74d0e02232d4eff97"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/migrated/list-hierarchy-snapshot/observed.json",
+      "sha256": "37b82785eeb4c6b440571e51ccb8cbec7eb0dcdd2722df7d99fe9504074d5986"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/exploration/intent-flat-list-reopened.png",
+      "sha256": "5bd2ebe129dd0eb640ca85a20c65801eb4dd3050642e4946028f6420ed22fc42"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/exploration/intent-list-hierarchy-editor.png",
+      "sha256": "8220c27a9ece08cf0a0d5c5ed0f6e9f65d90ffcad70fc35f2150af2ffb5692ed"
+    },
+    {
+      "path": "build/ai_app_bridge_artifacts/notallyx-migration/exploration/intent-list-hierarchy-reopened.png",
+      "sha256": "074d1dd3ae20d7ffdffd5aaa54ea5648f8c23f9285c2e1213310f0f52416e742"
+    }
+  ],
+  "sourceEvidenceRefs": [
+    "intent:observation:intent-1788742528691-1:1:1",
+    "intent:observation:intent-1788742528691-1:3:8",
+    "intent:observation:intent-1788742528691-1:8:30",
+    "intent:observation:intent-1788742528691-1:10:37",
+    "intent:observation:intent-1788743599316-1:1:1",
+    "intent:observation:intent-1788743599316-1:3:8",
+    "intent:observation:intent-1788743599316-1:5:15",
+    "intent:observation:intent-1788743599316-1:7:22",
+    "intent:observation:intent-1788743599316-1:9:29",
+    "intent:observation:intent-1788743599316-1:12:41",
+    "intent:observation:intent-1788743599316-1:15:53",
+    "intent:observation:intent-1788743599316-1:17:60",
+    "intent:observation:intent-1788743599316-1:19:67",
+    "intent:observation:intent-1788743599316-1:21:74",
+    "intent:observation:intent-1788743599316-1:24:86",
+    "intent:observation:intent-1788743599316-1:26:93",
+    "intent:observation:intent-1788743880896-2:1:1",
+    "intent:observation:intent-1788743880896-2:3:8",
+    "intent:observation:intent-1788743880896-2:7:25",
+    "intent:observation:intent-1788743880896-2:10:37",
+    "intent:observation:intent-1788743880896-2:13:49",
+    "intent:observation:intent-1788743880896-2:15:56",
+    "intent:observation:intent-1788743880896-2:19:73",
+    "intent:observation:intent-1788743880896-2:21:80",
+    "intent:observation:intent-1788743880896-2:23:87",
+    "intent:observation:intent-1788743880896-2:25:94",
+    "intent:observation:intent-1788744265456-1:1:1",
+    "intent:observation:intent-1788744265456-1:3:8",
+    "intent:observation:intent-1788744265456-1:5:15",
+    "intent:observation:intent-1788744265456-1:7:22",
+    "intent:observation:intent-1788744265456-1:10:34",
+    "intent:observation:intent-1788744265456-1:12:41",
+    "intent:observation:intent-1788744265456-1:14:48",
+    "intent:observation:intent-1788744265456-1:16:55",
+    "intent:observation:intent-1788744265456-1:18:62",
+    "intent:observation:intent-1788744265456-1:20:69"
+  ],
+  "mappings": [
+    {
+      "scenarioId": "note.text_crud.normal",
+      "scriptPhases": [
+        "create",
+        "edit"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788742528691-1"
+      ],
+      "reason": "Actual Intent create, Unicode/multiline input, save, reopen and same-note edit; independent baseline SQLite oracle passed."
+    },
+    {
+      "scenarioId": "note.text_crud.restart",
+      "scriptPhases": [
+        "create",
+        "edit",
+        "restart"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788742528691-1"
+      ],
+      "reason": "Reuses proven text edit selectors. The additional launch and restart assertion is new regression work; no separate restart Intent run is claimed."
+    },
+    {
+      "scenarioId": "labels.manage.normal",
+      "scriptPhases": [
+        "organize"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788743599316-1"
+      ],
+      "coverage": "partial",
+      "reason": "Observed create/assign one label, pin one note and choose custom color; remaining frozen acceptance points are unexecuted and cannot pass the full template."
+    },
+    {
+      "scenarioId": "labels.assignment.normal",
+      "scriptPhases": [
+        "organize"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788743599316-1"
+      ],
+      "coverage": "partial",
+      "reason": "Observed create/assign one label, pin one note and choose custom color; remaining frozen acceptance points are unexecuted and cannot pass the full template."
+    },
+    {
+      "scenarioId": "note.pin_color.normal",
+      "scriptPhases": [
+        "organize"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788743599316-1"
+      ],
+      "coverage": "partial",
+      "reason": "Observed create/assign one label, pin one note and choose custom color; remaining frozen acceptance points are unexecuted and cannot pass the full template."
+    },
+    {
+      "scenarioId": "list.hierarchy.normal",
+      "scriptPhases": [
+        "list-create",
+        "list-hierarchy"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788743880896-2",
+        "intent-1788744265456-1"
+      ],
+      "coverage": "implemented-candidate",
+      "reason": "Uses observed creation/save/single-parent-check fragment from an inconclusive prior goal and completed later hierarchy/edit/reopen flow. Independent snapshots prove ordered persisted items without task IDs. Historical whole-goal statuses are retained separately."
+    },
+    {
+      "scenarioId": "list.hierarchy.restart",
+      "scriptPhases": [
+        "list-create",
+        "list-hierarchy",
+        "list-restart"
+      ],
+      "sourceIntentExecutionIds": [
+        "intent-1788743880896-2",
+        "intent-1788744265456-1"
+      ],
+      "coverage": "implemented-candidate",
+      "reason": "Uses observed creation/save/single-parent-check fragment from an inconclusive prior goal and completed later hierarchy/edit/reopen flow. Independent snapshots prove ordered persisted items without task IDs. Force-stop/launch regression assertions are newly executed, not a claimed historical restart Intent."
+    }
+  ],
+  "unmapped": "All other scenarios have no implemented or fabricated source mapping in this candidate.",
+  "sourceExecutionStatus": {
+    "intent-1788743880896-2": {
+      "status": "inconclusive",
+      "reason": "Creation/save/check fragment succeeded; original whole goal explicitly inconclusive because hierarchy gestures were unavailable. Do not rewrite it as completed."
+    },
+    "intent-1788744265456-1": {
+      "status": "completed",
+      "reason": "Separate later Intent verified indent, child edit, outdent/restoration and reopen, with independent SQLite items oracle."
+    }
+  },
+  "historicalReceiptLimitation": "File SHA-256 proves preserved bytes only. Historical Host envelopes predate the canonical-serialization checksum fix; this bundle does not assert all historical durable receipt checksums validate."
+}

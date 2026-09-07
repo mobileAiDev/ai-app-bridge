@@ -110,6 +110,30 @@ class ObservationFactStoreLifecycleTest {
     }
 
     @Test
+    fun failedProductionOpenRemainsDiagnosableWithoutRewritingTheExistingStore() {
+        val base = Files.createTempDirectory("capture-open-failure-").toFile()
+        val configuration = MobileFactStoreProfiles.configuration(base, 3L * GIB, 1L * GIB)
+        configuration.options.directory.mkdirs()
+        val manifest = File(configuration.options.directory, ".sfs-manifest")
+        val original = ByteArray(4096)
+        manifest.writeBytes(original)
+        val store = SegmentedFactStore(maxQueuedRecords = 4)
+        val lifecycle = ObservationFactStoreLifecycle(store)
+        try {
+            lifecycle.start(configuration)
+            val failed = awaitStatus(lifecycle) { it.lifecycleState == SegmentedFactStoreState.FAILED }
+            assertEquals(SegmentedFactStoreResultCode.CORRUPT, failed.store.operation.code)
+            // The same synchronous snapshot is what a production status endpoint can expose.
+            assertEquals(SegmentedFactStoreResultCode.CORRUPT, lifecycle.snapshot().store.operation.code)
+            assertTrue(lifecycle.snapshot().store.operation.message.contains("manifest"))
+            assertTrue(manifest.readBytes().contentEquals(original))
+        } finally {
+            lifecycle.stop()
+            base.deleteRecursively()
+        }
+    }
+
+    @Test
     fun lifecycleCoalescesOpenAndReopensOnlyAfterAnInFlightClose() {
         val store = FakeLifecycleStore()
         val lifecycle = ObservationFactStoreLifecycle(store)

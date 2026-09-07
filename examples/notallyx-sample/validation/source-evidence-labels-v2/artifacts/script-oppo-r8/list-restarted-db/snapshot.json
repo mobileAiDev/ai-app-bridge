@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "aab.notallyx-snapshot/v1",
+  "snapshotId": "efabebce-b713-45c9-a653-7bad28d42ba2",
+  "runId": "script-1788752487009-10e9d2",
+  "target": {
+    "serial": "FYZLAU49X8OVQGJ7",
+    "packageName": "io.github.mobileaidev.notallyx.sample"
+  },
+  "identity": {
+    "upstreamCommit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "apkSha256": "b4fe597c6154b5fdd119746226b235e7a207fa221cefde49cdb355053967c233"
+  },
+  "capturedAfterSequence": 61,
+  "acquisition": {
+    "method": "run-as-force-stop",
+    "packageName": "io.github.mobileaidev.notallyx.sample",
+    "forceStopCompletedAtMs": 1788752569025,
+    "pidof": {
+      "checkedAtMs": 1788752569077,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pidofAfter": {
+      "checkedAtMs": 1788752569979,
+      "exitCode": 1,
+      "stdout": ""
+    },
+    "pullStartedAtMs": 1788752569077,
+    "pullCompletedAtMs": 1788752569921,
+    "transcript": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/acquisition.json",
+      "sha256": "31f549de1f3091ab64dd6df4b40c0619124201c4e44b2b85db626afffb61481d"
+    }
+  },
+  "files": {
+    "database": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase",
+      "sha256": "bfaef8fac18709034d1b023086575733ab2f5ba0628478989b5e704180ca2513",
+      "remotePath": "databases/NotallyDatabase",
+      "bytes": 4096
+    },
+    "wal": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase-wal",
+      "sha256": "0c2eb6479d72e43df6e6f700ffcde7315a1ab11314c8307c2e307284c23a47f7",
+      "remotePath": "databases/NotallyDatabase-wal",
+      "bytes": 140112
+    },
+    "shm": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/NotallyDatabase-shm",
+      "sha256": "6eda22c4c47ec4c192a65282744253d53cb22af528d8bf8347a5fa7b25c5c313",
+      "remotePath": "databases/NotallyDatabase-shm",
+      "bytes": 32768
+    },
+    "preferences": {
+      "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/notallyx-migration/script-oppo-r8/list-restarted-db/preferences.xml",
+      "sha256": "60e01a1835d3d662c4630d77b5913872e3276365fc6a8c77a5ed4d1d73f89e72",
+      "remotePath": "shared_prefs/io.github.mobileaidev.notallyx.sample_preferences.xml",
+      "bytes": 112
+    }
+  },
+  "attachments": [],
+  "attachmentScope": "private-files-attachments"
+}

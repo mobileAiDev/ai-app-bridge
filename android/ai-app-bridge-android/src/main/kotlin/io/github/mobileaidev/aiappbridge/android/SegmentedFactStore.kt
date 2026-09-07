@@ -6,6 +6,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.OverlappingFileLockException
+import java.util.ArrayDeque
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -122,6 +123,7 @@ internal data class SegmentedFactStoreStatus(
     val cleanupPending: Boolean = false,
     val inactiveBytes: Long = 0,
     val cleanupError: String? = null,
+    val queuedPayloadBytes: Long = 0,
 )
 
 /**
@@ -138,6 +140,7 @@ internal class SegmentedFactStore internal constructor(
     private val flushScheduler: ScheduledExecutorService = newFlushScheduler(),
     private val flushIntervalMs: Long = GROUP_FLUSH_INTERVAL_MS,
     private val maxUnflushedRecords: Int = GROUP_FLUSH_RECORD_LIMIT,
+    private val maxQueuedPayloadBytes: Long = 1024L * 1024,
 ) {
     constructor(maxQueuedRecords: Int = 256) : this(
         nativeFactory = { MappedSegmentedFactStore() },
@@ -166,9 +169,11 @@ internal class SegmentedFactStore internal constructor(
 
     private val lock = Any()
     private val recordPermits = Semaphore(maxQueuedRecords)
+    private val queuedPayloadBytes = AtomicLong(0)
     private val acceptedRecords = AtomicLong(0)
     private val writtenRecords = AtomicLong(0)
     private val droppedRecords = AtomicLong(0)
+    private val receiptOutcomes = ArrayDeque<Boolean>()
     private var state = SegmentedFactStoreState.CLOSED
     private var native: SegmentedFactStoreNative? = null
     private var handle = 0L
@@ -185,6 +190,7 @@ internal class SegmentedFactStore internal constructor(
     private var configuredPartitionQuotas = LongArray(0)
 
     init {
+        require(maxQueuedPayloadBytes > 0) { "maxQueuedPayloadBytes must be positive" }
         require(maxQueuedRecords > 0) { "maxQueuedRecords must be positive" }
         require(flushIntervalMs > 0L) { "flushIntervalMs must be positive" }
         require(maxUnflushedRecords > 0) { "maxUnflushedRecords must be positive" }
@@ -335,6 +341,48 @@ internal class SegmentedFactStore internal constructor(
         partitionId: Int = 0,
         durability: SegmentedFactStoreDurability = SegmentedFactStoreDurability.MEMORY,
     ): SegmentedFactRecordEnqueueResult {
+        return enqueueRecord(payload, partitionId, durability, trackReceiptOutcome = false)
+    }
+
+    internal fun recordForReceipt(
+        payload: ByteArray,
+        partitionId: Int = 0,
+        durability: SegmentedFactStoreDurability = SegmentedFactStoreDurability.MEMORY,
+    ): SegmentedFactRecordEnqueueResult {
+        return enqueueRecord(payload, partitionId, durability, trackReceiptOutcome = true)
+    }
+
+    /** Completion contains the actual native append identity, on the writer after read visibility. */
+    internal fun appendWithReceipt(
+        payload: ByteArray,
+        partitionId: Int,
+        durability: SegmentedFactStoreDurability,
+        completion: (NativeAppendResult) -> Unit,
+    ): SegmentedFactRecordEnqueueResult = enqueueRecord(
+        payload, partitionId, durability, trackReceiptOutcome = false, completion = completion,
+    )
+
+    internal fun takeReceiptOutcomes(): List<Boolean> {
+        synchronized(lock) {
+            if (receiptOutcomes.isEmpty()) return emptyList()
+            val taken = receiptOutcomes.toList()
+            receiptOutcomes.clear()
+            return taken
+        }
+    }
+
+    private fun offerReceiptOutcome(track: Boolean, success: Boolean) {
+        if (!track) return
+        synchronized(lock) { receiptOutcomes.addLast(success) }
+    }
+
+    private fun enqueueRecord(
+        payload: ByteArray,
+        partitionId: Int,
+        durability: SegmentedFactStoreDurability,
+        trackReceiptOutcome: Boolean,
+        completion: ((NativeAppendResult) -> Unit)? = null,
+    ): SegmentedFactRecordEnqueueResult {
         val configuration = synchronized(lock) {
             RecordConfiguration(state, configuredSegmentSizeBytes, configuredPartitionQuotas.copyOf())
         }
@@ -364,6 +412,16 @@ internal class SegmentedFactStore internal constructor(
             droppedRecords.incrementAndGet()
             return SegmentedFactRecordEnqueueResult.QUEUE_FULL
         }
+        val ownedByteCount = payload.size.toLong()
+        while (true) {
+            val queued = queuedPayloadBytes.get()
+            if (ownedByteCount > maxQueuedPayloadBytes - queued) {
+                recordPermits.release()
+                droppedRecords.incrementAndGet()
+                return SegmentedFactRecordEnqueueResult.QUEUE_FULL
+            }
+            if (queuedPayloadBytes.compareAndSet(queued, queued + ownedByteCount)) break
+        }
         val ownedPayload = if (largePlan == null) payload.copyOf() else null
         acceptedRecords.incrementAndGet()
         writer.execute {
@@ -372,6 +430,8 @@ internal class SegmentedFactStore internal constructor(
                 val adapter = native
                 if (currentHandle == 0L || adapter == null) {
                     droppedRecords.incrementAndGet()
+                    offerReceiptOutcome(trackReceiptOutcome, false)
+                    completion?.invoke(NativeAppendResult(SegmentedFactStoreOperationResult(SegmentedFactStoreResultCode.CLOSED), 0))
                     return@execute
                 }
                 val result = if (largePlan == null) {
@@ -391,13 +451,19 @@ internal class SegmentedFactStore internal constructor(
                     if (unflushedRecords >= maxUnflushedRecords) {
                         flushPendingOnWriter(adapter, currentHandle)
                     }
+                    offerReceiptOutcome(trackReceiptOutcome, true)
                 } else {
                     droppedRecords.incrementAndGet()
+                    offerReceiptOutcome(trackReceiptOutcome, false)
                 }
+                completion?.invoke(result)
             } catch (error: Throwable) {
                 synchronized(lock) { lastOperation = nativeFailure(error) }
                 droppedRecords.incrementAndGet()
+                offerReceiptOutcome(trackReceiptOutcome, false)
+                completion?.invoke(NativeAppendResult(nativeFailure(error), 0))
             } finally {
+                queuedPayloadBytes.addAndGet(-ownedByteCount)
                 recordPermits.release()
             }
         }
@@ -419,6 +485,58 @@ internal class SegmentedFactStore internal constructor(
                 return@execute
             }
             completion(readLogical(adapter, currentHandle, cursor, bufferCapacity))
+        }
+    }
+
+    /** A bounded scan on the existing writer; no retained payload index or per-record thread hops. */
+    internal fun readPage(
+        cursor: SegmentedFactStoreCursor,
+        maxRecords: Int = 128,
+        maxBytes: Int = 256 * 1024,
+        completion: (List<SegmentedFactStoreRecord>, SegmentedFactStoreReadResult) -> Unit,
+    ) {
+        require(maxRecords > 0 && maxBytes > 0)
+        writer.execute {
+            val currentHandle = synchronized(lock) { handle }
+            val adapter = native
+            if (currentHandle == 0L || adapter == null) {
+                completion(emptyList(), closedRead(cursor))
+                return@execute
+            }
+            val records = ArrayList<SegmentedFactStoreRecord>()
+            var next = cursor
+            var bytes = 0
+            var result: SegmentedFactStoreReadResult
+            do {
+                result = readLogical(adapter, currentHandle, next, minOf(maxBytes, 64 * 1024))
+                if (result.operation.code == SegmentedFactStoreResultCode.BUFFER_TOO_SMALL &&
+                    result.requiredCapacity in 1..MAX_PERSISTED_PAYLOAD_BYTES) {
+                    result = readLogical(adapter, currentHandle, next, result.requiredCapacity)
+                }
+                val record = result.record
+                if (!result.operation.isSuccess || record == null) break
+                records.add(record)
+                bytes += record.payload.size
+                next = result.cursor
+            } while (records.size < maxRecords && bytes < maxBytes)
+            completion(records, result)
+        }
+    }
+
+    fun flush(completion: (SegmentedFactStoreOperationResult) -> Unit) {
+        writer.execute {
+            val currentHandle = synchronized(lock) { handle }
+            val adapter = native
+            if (currentHandle == 0L || adapter == null) {
+                completion(SegmentedFactStoreOperationResult(SegmentedFactStoreResultCode.CLOSED))
+                return@execute
+            }
+            if (unflushedRecords == 0) {
+                completion(SegmentedFactStoreOperationResult(SegmentedFactStoreResultCode.OK))
+                return@execute
+            }
+            flushPendingOnWriter(adapter, currentHandle)
+            completion(synchronized(lock) { lastOperation })
         }
     }
 
@@ -807,6 +925,7 @@ internal class SegmentedFactStore internal constructor(
             state = local.state,
             enabled = local.enabled,
             queuedRecords = maxQueuedRecords - recordPermits.availablePermits(),
+            queuedPayloadBytes = queuedPayloadBytes.get(),
             acceptedRecords = acceptedRecords.get(),
             writtenRecords = writtenRecords.get(),
             droppedRecords = droppedRecords.get(),
@@ -859,6 +978,7 @@ private fun SegmentedFactStoreStatus.withWrapper(wrapper: SegmentedFactStoreStat
     state = wrapper.state,
     enabled = wrapper.enabled,
     queuedRecords = wrapper.queuedRecords,
+    queuedPayloadBytes = wrapper.queuedPayloadBytes,
     acceptedRecords = wrapper.acceptedRecords,
     writtenRecords = wrapper.writtenRecords,
     droppedRecords = wrapper.droppedRecords,
@@ -1251,14 +1371,19 @@ internal data class ObservationFactStoreRuntimeStatus(
 
 internal class ObservationFactStoreLifecycle(
     private val store: ObservationFactStore,
+    private val onOpened: (MobileFactStoreConfiguration, SegmentedFactStoreOperationResult) -> Unit = { _, _ -> },
 ) {
-    constructor(store: SegmentedFactStore) : this(SegmentedObservationFactStore(store))
+    constructor(
+        store: SegmentedFactStore,
+        onOpened: (MobileFactStoreConfiguration, SegmentedFactStoreOperationResult) -> Unit = { _, _ -> },
+    ) : this(SegmentedObservationFactStore(store), onOpened)
 
     private val lock = Any()
     private var desiredRunning = false
     private var lifecycleState = SegmentedFactStoreState.CLOSED
     private var configuration: MobileFactStoreConfiguration? = null
     private var closeIssued = false
+    private var lifecycleOperation = SegmentedFactStoreOperationResult(SegmentedFactStoreResultCode.CLOSED)
 
     fun start(configuration: MobileFactStoreConfiguration) {
         val shouldOpen = synchronized(lock) {
@@ -1322,6 +1447,7 @@ internal class ObservationFactStoreLifecycle(
         store.open(configuration) { result ->
             var shouldClose = false
             synchronized(lock) {
+                lifecycleOperation = result
                 if (result.isSuccess) {
                     if (!configuration.options.enabled) {
                         lifecycleState = SegmentedFactStoreState.DISABLED
@@ -1337,12 +1463,14 @@ internal class ObservationFactStoreLifecycle(
                 }
             }
             if (shouldClose) requestClose()
+            else onOpened(configuration, result)
         }
     }
 
     private fun requestClose() {
-        store.close {
+        store.close { result ->
             val reopen = synchronized(lock) {
+                lifecycleOperation = result
                 closeIssued = false
                 lifecycleState = SegmentedFactStoreState.CLOSED
                 if (desiredRunning) configuration else null
@@ -1372,7 +1500,7 @@ internal class ObservationFactStoreLifecycle(
             directory = selected?.options?.directory?.absolutePath,
             partitionQuotas = selected?.options?.partitionQuotas?.copyOf() ?: longArrayOf(),
             store = SegmentedFactStoreStatus(
-                operation = SegmentedFactStoreOperationResult(SegmentedFactStoreResultCode.CLOSED),
+                operation = lifecycleOperation,
                 state = lifecycleState,
                 enabled = false,
                 queuedRecords = 0,

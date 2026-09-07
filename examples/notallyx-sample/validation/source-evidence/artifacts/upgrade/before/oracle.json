@@ -1,0 +1,34 @@
+{
+  "id": "migration.fixture",
+  "verdict": "passed",
+  "ok": true,
+  "snapshotId": "15d41990-4990-4305-b68e-d10bae919791",
+  "runId": "notallyx-architecture-upgrade-20260907",
+  "source": "independent-host-business-oracle",
+  "checks": [
+    {
+      "field": "noteCount",
+      "verdict": "passed",
+      "expected": 4,
+      "actual": 4
+    },
+    {
+      "field": "notes[0].count",
+      "verdict": "passed",
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "field": "notes[0].type",
+      "verdict": "passed",
+      "expected": "LIST",
+      "actual": "LIST"
+    },
+    {
+      "field": "notes[0].folder",
+      "verdict": "passed",
+      "expected": "NOTES",
+      "actual": "NOTES"
+    }
+  ]
+}

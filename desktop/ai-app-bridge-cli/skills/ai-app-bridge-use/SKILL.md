@@ -1,6 +1,6 @@
 ---
 name: ai-app-bridge-use
-description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android native、Android WebView/H5/CDP、Flutter、iOS native + WDA/XCUITest、WKWebView 和桌面 Web Bridge。能力域包括 core/status/tree/screenshot/logs/network/state/events，app/install/clear-data/launch/freeze/thaw/permissions/appops，action/tap/input/swipe/keyevent/wait/keyboard，flutter/widget/action，webview/H5/CDP，ios/devices/setup/runtime/WDA/H5/flutter，web/session/DOM/logs/network/events/command，diagnostics/logcat/smoke，advanced/batch/port-forward。
+description: 使用 AI App Bridge MCP 观察、操作、验证和调试 Android native、Android WebView/H5/CDP、Flutter、iOS native + WDA/XCUITest、WKWebView 和桌面 Web Bridge。能力域包括 core/status/tree/screenshot/logs/network/state/events，app/install/clear-data/launch/freeze/thaw/permissions/appops，action/tap/input/swipe/keyevent/wait/keyboard，flutter/widget/action，webview/H5/CDP，ios/devices/setup/runtime/WDA/H5/flutter，web/session/DOM/logs/network/events/command，diagnostics/logcat/smoke，advanced/batch/port-forward/script/intent。script 是 trusted-local-code 的 JS/Python，不是 OS 沙箱。
 ---
 
 # AI App Bridge Use
@@ -21,7 +21,7 @@ AI App Bridge 支持 Android native apps、Android WebView/H5/CDP、Flutter apps
 - `webview`: `h5-*`/`flutter-h5-*`/`webview-pages`/`webview-network`/`webview-console`
 - `ios`: `ios-devices`/`ios-doctor`/`ios-setup`/`ios-status`/`ios-tree`/`ios-uia-tree`/`ios-tap`/`ios-input`/`ios-swipe`/`ios-h5-*`/`ios-flutter-*`
 - `web`: `web-session-start`/`web-sessions`/`web-status`/`web-dom`/`web-logs`/`web-network`/`web-state`/`web-events`/`web-command`/`web-click`/`web-input`/`web-wait`/`web-scroll`
-- `diagnostics`/`advanced`: `logcat`/`smoke`/`batch`/`forward`/`remove-forward`
+- `diagnostics`/`advanced`: `logcat`/`smoke`/`batch`/`forward`/`remove-forward`/`script`/`intent`
 
 ## Agent 快速流程
 
@@ -83,6 +83,9 @@ AI App Bridge 支持 Android native apps、Android WebView/H5/CDP、Flutter apps
 | 自检 | `smoke` |
 | 多步骤串行执行 | `batch` |
 | 动态画面稳定 | `freeze-app`、`thaw-app`，只按需使用 |
+| 隔离 Script 运行时 | `script`（`operation=start|status|wait|progress|pause|resume|decide|cancel`）。trusted-local-code JS/Python；`permissions` 只门闩 Bridge 调用，不是 OS 沙箱。默认不含清数据、安装、权限变更、eval、raw shell。没有 explore / export-to-script / assemble-report。 |
+| 手机 history | `logs`/`network`/`state`/`events`（及 ios-*）传 `history:true` 时读手机 FactStore；断连返回 `target_disconnected`，不回退 Host 旧 payload。`ios-state` 超过 200 key 走 byte-bounded keyed LRU。 |
+| 隔离 Intent 运行时 | `intent`（`operation=start|status|decide|pause|resume|cancel`）。记录 observation/decision/action/refs；Agent 自行读历史写 Script。 |
 
 ## 常用模式
 

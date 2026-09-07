@@ -8,7 +8,7 @@ const test = require('node:test');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { createAutonomousAgentAdapter, createIntentBudget } = require('../bin/intent/intent-autonomous-adapter');
 const { createProductionIntentDeviceAdapter } = require('../bin/intent/intent-production-adapter');
-const { handle } = require('../bin/intent/intent-entry');
+const { handle } = require('./helpers/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createTargetLease } = require('../bin/shared-kernel/target-lease-protocol');
 
@@ -66,14 +66,8 @@ test('production Intent adapter allows different packages on the same serial in 
     gate.resolve();
     results = await Promise.all([first, second]);
   }
-  assert.deepEqual(
-    results[0].adbTimings.map((item) => item.packageName),
-    ['com.example.first', 'com.example.first'],
-  );
-  assert.deepEqual(
-    results[1].adbTimings.map((item) => item.packageName),
-    ['com.example.second', 'com.example.second'],
-  );
+  assert.deepEqual(results[0].adbTimings, []);
+  assert.deepEqual(results[1].adbTimings, []);
 });
 
 test('G7 production Intent adapter uses injected ports and never overlaps device I/O', async () => {
@@ -147,6 +141,8 @@ test('G7 production Intent adapter taps native text from the observed tree', asy
           id: 'more',
           className: 'Button',
           text: 'More',
+          visible: true,
+          effectiveVisible: true,
           clickable: true,
           bounds: { left: 10, top: 20, right: 30, bottom: 40 },
           children: [],
@@ -210,11 +206,11 @@ test('G7 production Intent adapter taps Flutter text from the observed tree', as
       flutterAcquires += 1;
       throw new Error('flutterNodes must not be re-acquired on tap');
     },
-    async tap(_ctx, x, y) {
-      taps.push({ x, y });
-      return { ok: true, x, y };
+    async tap() { throw new Error('Flutter intent actions must carry actionId to the runtime'); },
+    async flutterAction(_ctx, payload) {
+      taps.push(payload);
+      return { ok: true };
     },
-    async flutterAction() { throw new Error('flutterAction must not be used when bounds exist'); },
     async tapText() { throw new Error('tapText must not be used on the new path'); },
   };
   const adapter = createProductionIntentDeviceAdapter({
@@ -225,6 +221,7 @@ test('G7 production Intent adapter taps Flutter text from the observed tree', as
   const result = await adapter.action({
     serial: 'b46093e6',
     packageName: 'com.example.app',
+    actionId: 'intent:flutter-tap',
     spec: { action: 'tap', provider: 'flutter', text: '返回' },
     rawTree: {
       nodes: [{
@@ -236,7 +233,7 @@ test('G7 production Intent adapter taps Flutter text from the observed tree', as
   });
   assert.equal(result.ok, true);
   assert.equal(flutterAcquires, 0);
-  assert.deepEqual(taps, [{ x: 84, y: 204 }]);
+  assert.deepEqual(taps, [{ action: 'tapAt', x: 28, y: 68, actionId: 'intent:flutter-tap' }]);
 });
 
 test('G7 production Intent adapter scrolls UIA via host swipe', async () => {
@@ -274,4 +271,5 @@ test('G7 production Intent adapter scrolls UIA via host swipe', async () => {
 test('G7 production Intent adapter does not call Script, Batch, or runBridgeChecked', () => {
   const source = fs.readFileSync(path.join(__dirname, '../bin/intent/intent-production-adapter.js'), 'utf8');
   assert.equal(/script\/|legacy\/|runBridgeChecked|runBatch|LegacyDispatcher|executeCommand|\.tapText\(/.test(source), false);
+  assert.equal(/probeAdb|shell', 'true'|adb_probe/.test(source), false);
 });

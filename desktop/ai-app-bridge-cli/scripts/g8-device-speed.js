@@ -4,8 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 
-const { createProductionScriptDeviceAdapter } = require('../bin/script/script-production-adapter');
-
 const SERIAL = 'b46093e6';
 const PACKAGE = 'org.localsend.localsend_app.debug';
 const TARGET = { serial: SERIAL, packageName: PACKAGE };
@@ -16,48 +14,31 @@ const WARMUP = 2;
 const OFFICIAL = 10;
 const MCP_TIMEOUT_MS = 120_000;
 
-function eightStepScript() {
+const CONTINUOUS_SOURCE = fs.readFileSync(
+  path.join(__dirname, '../test/fixtures/p7-g8-localsend.js'),
+  'utf8',
+);
+
+function codeScript(name, source) {
   return {
-    name: 'g8-device-speed',
+    schemaVersion: 'aab.code-script/v1',
+    name,
+    language: 'javascript',
+    source,
     target: TARGET,
-    steps: [
-      { id: 'o1', type: 'observe', provider: 'flutter' },
-      { id: 'a1', type: 'action', action: 'tap', provider: 'flutter', text: '设置' },
-      { id: 'o2', type: 'observe', provider: 'flutter' },
-      { id: 'a2', type: 'action', action: 'tap', provider: 'flutter', text: '发送' },
-      { id: 'o3', type: 'observe', provider: 'flutter' },
-      { id: 'a3', type: 'action', action: 'tap', provider: 'flutter', text: '接收' },
-      { id: 's1', type: 'assert', text: '设置' },
-      { id: 'k1', type: 'checkpoint' },
-    ],
   };
 }
 
-function stepwiseScripts() {
+function stepwiseSources() {
   return [
-    [{ id: 'o1', type: 'observe', provider: 'flutter' }],
-    [
-      { id: 'o1', type: 'observe', provider: 'flutter' },
-      { id: 'a1', type: 'action', action: 'tap', provider: 'flutter', text: '设置' },
-    ],
-    [{ id: 'o2', type: 'observe', provider: 'flutter' }],
-    [
-      { id: 'o2', type: 'observe', provider: 'flutter' },
-      { id: 'a2', type: 'action', action: 'tap', provider: 'flutter', text: '发送' },
-    ],
-    [{ id: 'o3', type: 'observe', provider: 'flutter' }],
-    [
-      { id: 'o3', type: 'observe', provider: 'flutter' },
-      { id: 'a3', type: 'action', action: 'tap', provider: 'flutter', text: '接收' },
-    ],
-    [
-      { id: 'o4', type: 'observe', provider: 'flutter' },
-      { id: 's1', type: 'assert', text: '设置' },
-    ],
-    [
-      { id: 'o5', type: 'observe', provider: 'flutter' },
-      { id: 'k1', type: 'checkpoint' },
-    ],
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); await ctx.call("tap-flutter-text", { text: "设置" }); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); await ctx.call("tap-flutter-text", { text: "发送" }); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); await ctx.call("tap-flutter-text", { text: "接收" }); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { const after = await ctx.call("flutter-tree", {}); await ctx.assert({ name: "settings-visible", predicateSummary: "设置 is on the tree", condition: JSON.stringify(after.result).includes("设置"), requiredEvidence: [], requireCoverage: "complete", evidence: after.evidence }); return { ok: true }; }\nmodule.exports = { main };',
+    'async function main(ctx) { await ctx.call("flutter-tree", {}); await ctx.checkpoint("g8-step", { done: true }); return { ok: true }; }\nmodule.exports = { main };',
   ];
 }
 
@@ -100,39 +81,27 @@ function percentile(values, p) {
 }
 
 function evidenceComplete(result) {
-  return Boolean(
-    result?.latestEvidenceIds?.observation
-    && result?.latestEvidenceIds?.checkpoint
-    && result?.timings
-    && [
-      'workerOverheadMs',
-      'targetLeaseWaitMs',
-      'providerAcquireMs',
-      'evidenceCommitMs',
-      'summaryMs',
-      'decisionWaitMs',
-      'actionMs',
-      'receiptCommitMs',
-      'totalMs',
-    ].every((key) => typeof result.timings[key] === 'number'),
-  );
+  const items = result?.history?.items || [];
+  return items.some((item) => item.kind === 'checkpoint')
+    && items.some((item) => String(item.kind).startsWith('assertion_'));
 }
 
-async function waitForHome(adapter) {
+async function mcpRun(mcp, command, args) {
+  const response = await mcp.request('tools/call', {
+    name: 'run',
+    arguments: { command, arguments: args },
+  });
+  return payloadOf(response);
+}
+
+async function waitForHome(mcp) {
   const deadline = Date.now() + 15_000;
   let lastError = 'home_not_ready';
   while (Date.now() < deadline) {
-    const observation = await adapter.observe({
-      serial: SERIAL,
-      packageName: PACKAGE,
-      provider: 'flutter',
-      rawTreeId: 'g8-home',
-    });
-    const nodes = Array.isArray(observation?.rawTree?.nodes) ? observation.rawTree.nodes : [];
-    if (nodes.some((node) => node.text === '设置' && (node.tap?.bounds || node.bounds))) {
-      return;
-    }
-    lastError = observation?.error || 'settings_tab_missing';
+    const tree = await mcpRun(mcp, 'flutter-tree', TARGET);
+    const text = JSON.stringify(tree);
+    if (text.includes('设置')) return;
+    lastError = tree.error || 'settings_tab_missing';
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   throw new Error(`home not ready: ${lastError}`);
@@ -199,7 +168,43 @@ function payloadOf(mcpResponse) {
   return JSON.parse(text);
 }
 
-async function runScript(mcp, operationId, steps) {
+async function waitScript(mcp, operationId) {
+  const deadline = Date.now() + MCP_TIMEOUT_MS;
+  let afterSequence = 0;
+  while (Date.now() < deadline) {
+    const response = await mcp.request('tools/call', {
+      name: 'run',
+      arguments: {
+        command: 'script',
+        arguments: {
+          operation: 'wait',
+          operationId,
+          waitMs: Math.max(1, Math.min(1000, deadline - Date.now())),
+          afterSequence,
+        },
+      },
+    });
+    const payload = payloadOf(response);
+    if (payload.status === 'completed' || payload.status === 'failed' || payload.status === 'cancelled') {
+      const status = await mcp.request('tools/call', {
+        name: 'run',
+        arguments: {
+          command: 'script',
+          arguments: {
+            operation: 'status',
+            operationId,
+            afterSequence: 0,
+          },
+        },
+      });
+      return payloadOf(status);
+    }
+    afterSequence = payload.eventSequence || afterSequence;
+  }
+  throw new Error(`script wait timed out ${operationId}`);
+}
+
+async function runScript(mcp, operationId, source) {
   const response = await mcp.request('tools/call', {
     name: 'run',
     arguments: {
@@ -207,11 +212,15 @@ async function runScript(mcp, operationId, steps) {
       arguments: {
         operation: 'start',
         operationId,
-        script: { name: operationId, target: TARGET, steps },
+        script: codeScript(operationId, source),
       },
     },
   });
-  return payloadOf(response);
+  const started = payloadOf(response);
+  if (started.ok === false) {
+    throw new Error(started.error || 'script_start_failed');
+  }
+  return waitScript(mcp, operationId);
 }
 
 async function main() {
@@ -224,27 +233,30 @@ async function main() {
     process.exit(1);
   }
 
-  const launcher = createProductionScriptDeviceAdapter();
-  await launcher.launch({ serial: SERIAL, packageName: PACKAGE });
-  await waitForHome(launcher);
-
   const mcp = createMcpClient();
   await mcp.request('initialize', {
     protocolVersion: '2025-06-18',
     capabilities: {},
     clientInfo: { name: 'g8-device-speed', version: '0' },
   });
-
   const continuous = [];
   const stepwise = [];
   const total = WARMUP + OFFICIAL;
 
   try {
+    const launched = await mcpRun(mcp, 'launch-app', {
+      ...TARGET,
+      activity: 'org.localsend.localsend_app.MainActivity',
+    });
+    if (launched.ok === false) {
+      throw new Error(launched.error || 'launch_app_failed');
+    }
+    await waitForHome(mcp);
     for (let i = 0; i < total; i += 1) {
       const before = await probeAdb();
       if (!before.ok) throw new Error(`adb ${before.error} ${before.ms}ms before continuous ${i}`);
       const startedAt = process.hrtime.bigint();
-      const result = await runScript(mcp, `g8-cont-${i}`, eightStepScript().steps);
+      const result = await runScript(mcp, `g8-cont-${i}`, CONTINUOUS_SOURCE);
       const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
       if (result.status !== 'completed') {
         throw new Error(`continuous ${i} ${result.status} ${result.error} ${result.failedStepId}`);
@@ -268,15 +280,19 @@ async function main() {
       const startedAt = process.hrtime.bigint();
       let trips = 0;
       const tripTimings = [];
-      for (const steps of stepwiseScripts()) {
+      for (const source of stepwiseSources()) {
         trips += 1;
-        const result = await runScript(mcp, `g8-step-${i}-${trips}`, steps);
+        const result = await runScript(mcp, `g8-step-${i}-${trips}`, source);
         if (result.status !== 'completed') {
-          throw new Error(`stepwise ${i}/${trips} ${result.status} ${result.error} ${result.failedStepId}`);
+          throw new Error(`stepwise ${i}/${trips} ${result.status} ${result.error}`);
         }
-        tripTimings.push(result.timings || null);
-        if (!evidenceComplete(result) && !steps.some((step) => step.type === 'checkpoint' || step.type === 'assert')) {
-          throw new Error(`stepwise ${i}/${trips} incomplete evidence`);
+        tripTimings.push(result.history || null);
+        const kinds = (result.history?.items || []).map((item) => item.kind);
+        if (trips === 7 && !kinds.some((kind) => String(kind).startsWith('assertion_'))) {
+          throw new Error(`stepwise ${i}/${trips} missing assertion`);
+        }
+        if (trips === 8 && !kinds.includes('checkpoint')) {
+          throw new Error(`stepwise ${i}/${trips} missing checkpoint`);
         }
       }
       const totalMs = Number(process.hrtime.bigint() - startedAt) / 1e6;

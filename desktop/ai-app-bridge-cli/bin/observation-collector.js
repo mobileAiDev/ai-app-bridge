@@ -295,11 +295,13 @@ class ObservationCollector {
       if (target.lastStatusAtMs === null || this.clock() - target.lastStatusAtMs >= this.statusIntervalMs) {
         await this.pullStatus(target);
       }
-      const pulls = await Promise.allSettled(
-        evidenceStreams.map((stream) => this.pullEvidence(target, stream)),
-      );
-      const failedPull = pulls.find((pull) => pull.status === 'rejected');
-      if (failedPull) throw failedPull.reason;
+      if (target.kind === 'web') {
+        const pulls = await Promise.allSettled(
+          evidenceStreams.map((stream) => this.pullEvidence(target, stream)),
+        );
+        const failedPull = pulls.find((pull) => pull.status === 'rejected');
+        if (failedPull) throw failedPull.reason;
+      }
       target.failureCount = 0;
       target.lastError = null;
       target.lastSuccessAtMs = this.clock();

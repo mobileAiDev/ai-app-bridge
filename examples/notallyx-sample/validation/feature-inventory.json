@@ -1,0 +1,3411 @@
+{
+  "schemaVersion": "aab.notallyx.feature-inventory/v1",
+  "source": {
+    "repository": "https://github.com/Crustack/NotallyX",
+    "commit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "frozenSourceDirectory": "/tmp/aab-notallyx-validation/source-03ff809"
+  },
+  "status": "planned",
+  "features": [
+    {
+      "id": "navigation.folders",
+      "area": "navigation",
+      "name": "所有主导航与返回",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/MainActivity.kt",
+          "symbol": "private fun setupMenu()",
+          "line": 301,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/MainActivity.kt#L301"
+        }
+      ],
+      "expectedOutcome": "Notes、Labels、Unlabeled、Archived、Deleted、Reminders、Settings 与指定标签页显示各自数据集合，返回栈正确。",
+      "acceptancePoints": [
+        "Verify destination-specific title AND expected included/excluded unique note markers.",
+        "Folder/label filters are computed independently from BaseNote.folder and decoded labels; navigation does not alter rows."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "navigation.folders.normal",
+        "navigation.folders.negative"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "Notes",
+        "Labels",
+        "Unlabeled",
+        "Archived",
+        "Deleted",
+        "Reminders",
+        "Settings",
+        "DisplayLabel"
+      ]
+    },
+    {
+      "id": "note.text_crud",
+      "area": "editing",
+      "name": "文本笔记创建、修改与保存",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt",
+          "symbol": "suspend fun saveNote(",
+          "line": 294,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt#L294"
+        }
+      ],
+      "expectedOutcome": "标题与正文中文、多行、符号精确保留，同一笔记修改保持id，返回重开可读。",
+      "acceptancePoints": [
+        "Exactly one captured note ID has type NOTE, folder NOTES, exact title/body and sensible modifiedTimestamp.",
+        "Overview and editor display the same unique marker and full multi-line body."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.text_crud.normal",
+        "note.text_crud.negative",
+        "note.text_crud.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "list.hierarchy",
+      "area": "tasks",
+      "name": "清单父项、子项、编辑与层级",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun changeIsChild(",
+          "line": 335,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L335"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "expectedOutcome": "父项和子项关系、正文与顺序持久保存，缩进/取消缩进不丢任务。",
+      "acceptancePoints": [
+        "Decode the complete BaseNote.items array and compare exact body/checked/isChild/order/checkedTimestamp fields, serialized sequence and parent/child grouping against the fixture. Use distinct fixture body markers plus multiplicity to detect loss or duplication; ListItem.id is not persisted.",
+        "Expected indentation and four visible task markers; none duplicated or lost."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "list.hierarchy.normal",
+        "list.hierarchy.negative",
+        "list.hierarchy.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "list.checked",
+      "area": "tasks",
+      "name": "父子勾选与批量勾选",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun changeChecked(",
+          "line": 301,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L301"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "expectedOutcome": "父项勾选同步子项，子项变化按父子规则更新；check all/uncheck all反映每个任务状态。",
+      "acceptancePoints": [
+        "Verify checked and checkedTimestamp per item plus derived parent state, independently decoding items.",
+        "Checkbox state, checked-section placement and parent state match persisted items."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "list.checked.normal",
+        "list.checked.negative",
+        "list.checked.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "list.reorder",
+      "area": "tasks",
+      "name": "任务拖动和整组移动",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun move(",
+          "line": 211,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L211"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "expectedOutcome": "移动父项时子项保持所属；顺序保存，拖动撤销不丢任务。",
+      "acceptancePoints": [
+        "Compare the complete ordered sequence of body/checked/isChild/order/checkedTimestamp tuples and reconstructed parent groups against the planned move. Every fixture body occurrence must appear exactly once in its expected position/group; no durable item ID exists.",
+        "Task bodies and indentation match expected order."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "list.reorder.normal",
+        "list.reorder.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "list.delete_checked",
+      "area": "tasks",
+      "name": "删除勾选项与恢复编辑历史",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun deleteCheckedItems(",
+          "line": 370,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L370"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "expectedOutcome": "只删除勾选集合，未勾选任务保留；编辑会话内Undo/Redo得到预期集合。",
+      "acceptancePoints": [
+        "Remaining exact body/checked/isChild/order/checkedTimestamp tuples, serialized sequence and parent grouping equal the planned deletion result. Compare the full surviving task multiset, including duplicate-body multiplicity, rather than invented task IDs.",
+        "Count and markers agree after delete/undo/redo."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "list.delete_checked.normal",
+        "list.delete_checked.negative",
+        "list.delete_checked.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "labels.manage",
+      "area": "labels",
+      "name": "标签创建、改名、删除",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/LabelsFragment.kt",
+          "symbol": "private fun displayAddLabelDialog()",
+          "line": 173,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/LabelsFragment.kt#L173"
+        }
+      ],
+      "expectedOutcome": "Label实体与所有关联笔记同步，删除标签不删除笔记正文。",
+      "acceptancePoints": [
+        "Read Label table and decoded BaseNote.labels: rename propagates exactly, deletion removes association but preserves note IDs/body.",
+        "Label navigation shows matching set only; a must not match ab by substring."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "labels.manage.normal",
+        "labels.manage.negative",
+        "labels.manage.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "labels.assignment",
+      "area": "labels",
+      "name": "单篇和多选标签赋值",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun updateBaseNoteLabels(",
+          "line": 660,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L660"
+        }
+      ],
+      "expectedOutcome": "单篇选择及多选三态标签只影响预期笔记；未触及标签保持原状。",
+      "acceptancePoints": [
+        "Exact per-note label arrays match selected/unchecked/unchanged tri-state rules.",
+        "Label chips, DisplayLabel and Unlabeled membership agree."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "labels.assignment.normal",
+        "labels.assignment.negative",
+        "labels.assignment.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "search.scoped",
+      "area": "search",
+      "name": "标题、正文、任务、标签搜索与范围",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/dao/BaseNoteDao.kt",
+          "symbol": "fun getBaseNotesByKeyword(",
+          "line": 309,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/dao/BaseNoteDao.kt#L309"
+        }
+      ],
+      "expectedOutcome": "命中真实业务文字且限制当前folder/标签/无标签范围，不命中JSON字段名。",
+      "acceptancePoints": [
+        "Expected matching IDs computed from decoded business fields and folder/label predicate, not SQL LIKE output alone.",
+        "Actual visible result IDs/texts equal expected set."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "search.scoped.normal",
+        "search.scoped.negative",
+        "search.scoped.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "note.pin_color",
+      "area": "organization",
+      "name": "固定笔记与颜色",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun changeColor()",
+          "line": 295,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L295"
+        }
+      ],
+      "expectedOutcome": "固定/取消固定影响分组；颜色赋值、编辑和替换改变正确记录。",
+      "acceptancePoints": [
+        "BaseNote.pinned and color equal selected values; color replacement affects exactly matching original color rows.",
+        "Pinned group and color swatches match records."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.pin_color.normal",
+        "note.pin_color.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "note.duplicate",
+      "area": "organization",
+      "name": "复制笔记与副本隔离",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "suspend fun duplicateNote(",
+          "line": 718,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L718"
+        }
+      ],
+      "expectedOutcome": "复制建立新id且复制内容，副本编辑不污染原件。",
+      "acceptancePoints": [
+        "New distinct ID; title gains the localized copy suffix and timestamps reset per source; other initial business content equals source; subsequent edit changes only duplicate.",
+        "For attachment-bearing variant, compare shared attachment references and bytes, because duplicateNotes deep-copies metadata without copying files; source attachments must remain valid. For no-attachment variants, explicitly prove both reference sets empty.",
+        "Original and duplicate separately open with expected content."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.duplicate.normal",
+        "note.duplicate.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "text",
+        "checklist",
+        "with_attachment"
+      ]
+    },
+    {
+      "id": "note.archive_restore",
+      "area": "organization",
+      "name": "归档与取消归档",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun archive()",
+          "line": 356,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L356"
+        }
+      ],
+      "expectedOutcome": "同一id在NOTES/ARCHIVED移动，正文标签附件不变；离开Notes时相关通知被取消。",
+      "acceptancePoints": [
+        "Same ID; folder NOTES→ARCHIVED→NOTES and all content fields preserved.",
+        "Membership matches both folders.",
+        "If note has pinned notification/reminder fixture, verify cancellation when archived."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.archive_restore.normal",
+        "note.archive_restore.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "note.trash_restore",
+      "area": "organization",
+      "name": "回收站与恢复",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun delete()",
+          "line": 348,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L348"
+        }
+      ],
+      "expectedOutcome": "软删除移动至DELETED；恢复返回NOTES，数据及附件可用。",
+      "acceptancePoints": [
+        "Same ID and content; folder NOTES→DELETED→NOTES.",
+        "Referenced attachments still exist and retain hashes after soft delete/restore.",
+        "Notes and Deleted membership match folder transitions."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.trash_restore.normal",
+        "note.trash_restore.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "note.delete_forever",
+      "area": "organization",
+      "name": "永久删除、取消与批量撤销窗口",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun deleteForever()",
+          "line": 379,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L379"
+        }
+      ],
+      "expectedOutcome": "取消保留笔记；确认删除删除目标行并清理对应附件，其他笔记不受影响。",
+      "acceptancePoints": [
+        "Target row absent after confirmed final deletion; Undo restores selected rows before finalization.",
+        "Cleanup follows actual snackbar finalization, and files referenced by unaffected notes remain usable.",
+        "Deleted folder and notification state reflect final operation."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.delete_forever.normal",
+        "note.delete_forever.negative",
+        "note.delete_forever.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "note.bulk",
+      "area": "organization",
+      "name": "多选、全选与上下文菜单",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "override fun onChanged(",
+          "line": 41,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L41"
+        }
+      ],
+      "expectedOutcome": "各folder提供正确操作，多选仅影响选中id，单项分享只在选择1项可见。",
+      "acceptancePoints": [
+        "Only captured selected ID set changes; unselected canonical snapshot stable.",
+        "Selection count, folder-specific menu availability and single-selection share rule match source."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.bulk.normal",
+        "note.bulk.negative",
+        "note.bulk.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "note.convert",
+      "area": "editing",
+      "name": "文本与清单双向转换",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt",
+          "symbol": "suspend fun convertTo(",
+          "line": 468,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt#L468"
+        }
+      ],
+      "expectedOutcome": "type与body/items按原转换规则变化，id及附件/标签保留；不承诺富文本/层级无损往返。",
+      "acceptancePoints": [
+        "Same ID, expected NOTE/LIST type, exact resulting body/items according to pinned source; labels/attachments preserved.",
+        "Correct editor opens and every expected line/item is visible."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "note.convert.normal",
+        "note.convert.negative",
+        "note.convert.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "editing.history_view",
+      "area": "editing",
+      "name": "撤销重做、只读模式与快速跳转",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt",
+          "symbol": "R.string.undo",
+          "line": 552,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt#L552"
+        }
+      ],
+      "expectedOutcome": "编辑会话内Undo/Redo精确回退内容，只读不接受编辑，顶部/底部跳转不改数据。",
+      "acceptancePoints": [
+        "Saved body matches last intended edit; viewMode correct; navigation alone does not alter content.",
+        "Caret/scroll and disabled editing state match requested operation."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "editing.history_view.normal",
+        "editing.history_view.negative",
+        "editing.history_view.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "editing.rich_format",
+      "area": "editing",
+      "name": "富文本格式与范围",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/TextFormattingAdapter.kt",
+          "symbol": "class TextFormattingAdapter",
+          "line": 14,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/TextFormattingAdapter.kt#L14"
+        }
+      ],
+      "expectedOutcome": "粗体、斜体、等宽、删除线和清除格式作用于预期文字范围；正文和span可重开读取。",
+      "acceptancePoints": [
+        "Verify exact body plus normalized span ranges/styles; UTF-16 indices must stay within body length.",
+        "Screenshot visibly confirms requested styles and unchanged unselected text; tree alone cannot prove font styling."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "editing.rich_format.normal",
+        "editing.rich_format.negative",
+        "editing.rich_format.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "bold",
+        "italic",
+        "monospace",
+        "strikethrough",
+        "clear_formatting"
+      ]
+    },
+    {
+      "id": "editing.links",
+      "area": "editing",
+      "name": "外部链接与内部笔记链接",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditNoteActivity.kt",
+          "symbol": "private fun setupMovementMethod()",
+          "line": 228,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditNoteActivity.kt#L228"
+        }
+      ],
+      "expectedOutcome": "链接添加、编辑、复制、移除保持正确显示文字与目标；内部链接打开指定note ID。",
+      "acceptancePoints": [
+        "Inspect URL spans and internal note target IDs, preserving unrelated spans/body.",
+        "Clipboard or resolved ACTION_VIEW target equals expected URL; capture outbound intent only.",
+        "Internal navigation title/body match the linked ID, not merely any editor."
+      ],
+      "environmentRequirements": [
+        "可用浏览器或可验证Activity intent；clipboard读取条件"
+      ],
+      "executionClass": "system_ui",
+      "scenarioIds": [
+        "editing.links.normal",
+        "editing.links.negative",
+        "editing.links.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "external_url",
+        "internal_named_note",
+        "internal_unnamed_note"
+      ]
+    },
+    {
+      "id": "editing.search_toolbar",
+      "area": "editing",
+      "name": "编辑页搜索与工具栏动作布局",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt",
+          "symbol": "private fun showActionSelectionDialog(",
+          "line": 376,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt#L376"
+        }
+      ],
+      "expectedOutcome": "搜索前后命中位置正确；自定义顶部/底部动作可持久恢复并仍可从More访问动作。",
+      "acceptancePoints": [
+        "editNoteActivityTopActions/bottomActions store expected action identifiers, no illegal duplicates from customization.",
+        "Searching/customization does not change note content.",
+        "Match count/selection and actual toolbar action agree with chosen identifiers."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "editing.search_toolbar.normal",
+        "editing.search_toolbar.negative",
+        "editing.search_toolbar.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "NOTE",
+        "LIST"
+      ]
+    },
+    {
+      "id": "editing.external_text",
+      "area": "editing",
+      "name": "外部文本文件查看、编辑保存、转换为笔记",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditTextPlainActivity.kt",
+          "symbol": "private fun saveToUri(",
+          "line": 202,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditTextPlainActivity.kt#L202"
+        }
+      ],
+      "expectedOutcome": "VIEW文件进入独立编辑，Save写回来源，Save to device另存，Convert建立笔记。",
+      "acceptancePoints": [
+        "Original URI bytes and separately saved bytes match intended UTF-8 payload; original unchanged for save-as-only variant.",
+        "Conversion creates expected NOTE; editing external file alone must not create phantom notes.",
+        "File editor/note editor transitions and content match selected operation."
+      ],
+      "environmentRequirements": [
+        "可读写与只读DocumentProvider fixture"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "editing.external_text.normal",
+        "editing.external_text.negative",
+        "editing.external_text.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "text/plain",
+        "application/json",
+        "application/xml"
+      ]
+    },
+    {
+      "id": "editing.share_intents",
+      "area": "integration",
+      "name": "分享笔记与接收系统分享",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt",
+          "symbol": "private fun handleSharedNote()",
+          "line": 766,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt#L766"
+        }
+      ],
+      "expectedOutcome": "分享选中内容使用正确MIME/URI；接收文本或多个附件建立对应笔记且能保存。",
+      "acceptancePoints": [
+        "Independent chooser/intent capture verifies payload, MIME and read grants; no external message sent.",
+        "Received note has exact expected title/body/attachment references.",
+        "Imported attachment bytes equal fixture hashes."
+      ],
+      "environmentRequirements": [
+        "本地测试发送器/受控ContentProvider"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "editing.share_intents.normal",
+        "editing.share_intents.negative",
+        "editing.share_intents.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "outgoing_note",
+        "outgoing_list",
+        "incoming_text",
+        "incoming_single_file",
+        "incoming_multiple_files"
+      ]
+    },
+    {
+      "id": "editing.large_body",
+      "area": "editing",
+      "name": "超长正文与历史大笔记拆分",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/utils/NoteSplitUtils.kt",
+          "symbol": "suspend fun splitAndInsertForImport(",
+          "line": 88,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/utils/NoteSplitUtils.kt#L88"
+        }
+      ],
+      "expectedOutcome": "交互保存按insertSafe上限截断并提示；导入/历史迁移拆分按源码规则生成多段，不能混淆两条合同。",
+      "acceptancePoints": [
+        "For UI save compare exact allowed prefix and clipped valid spans; for import concatenate ordered chunks to original and verify expected titles/IDs.",
+        "Truncation/split feedback corresponds to actual persistent result."
+      ],
+      "environmentRequirements": [
+        "隔离数据目录与大型/历史DB fixture"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "editing.large_body.normal",
+        "editing.large_body.negative",
+        "editing.large_body.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "ui_at_limit",
+        "ui_over_limit",
+        "import_split",
+        "legacy_migration_split"
+      ]
+    },
+    {
+      "id": "labels.navigation_layout",
+      "area": "labels",
+      "name": "标签导航顺序、隐藏与显示上限",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/LabelsFragment.kt",
+          "symbol": "private fun setupItemTouchHelper(",
+          "line": 61,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/LabelsFragment.kt#L61"
+        }
+      ],
+      "expectedOutcome": "拖动排序影响导航顺序；隐藏标签也会从Notes概览过滤含该标签的笔记（原基线行为），持久标签归属及正文不变。",
+      "acceptancePoints": [
+        "Label.order changes exactly for intended reorder; BaseNote.labels/body unchanged.",
+        "Hidden-label set and maxLabels match user choices.",
+        "Navigation includes/excludes exact labels in expected order, More appears when needed; Notes overview excludes any note with a hidden label per original BaseNoteModel.initBaseNotes, without deleting its DB row."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "labels.navigation_layout.normal",
+        "labels.navigation_layout.negative",
+        "labels.navigation_layout.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "MaxLabels"
+      ]
+    },
+    {
+      "id": "settings.appearance",
+      "area": "settings",
+      "name": "主题、视图、字体与日期时间显示",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun NotallyXPreferences.setupAppearance(",
+          "line": 278,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L278"
+        }
+      ],
+      "expectedOutcome": "列表/网格、四种主题与动态色、编辑/概览字体及日期时间分别生效，业务数据不变。",
+      "acceptancePoints": [
+        "Exact preference keys and enum/numeric values equal requested choice.",
+        "Canonical business snapshot identical across presentation changes.",
+        "Layout, actual text size and formatted timestamps match explicit locale/timezone; visual styles require screenshot review."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "settings.appearance.normal",
+        "settings.appearance.negative",
+        "settings.appearance.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "view_list",
+        "view_grid",
+        "theme_light",
+        "theme_dark",
+        "theme_super_dark",
+        "theme_system",
+        "dynamic_colors",
+        "date_time_overview",
+        "date_time_editor",
+        "font_editor",
+        "font_overview",
+        "search_top_bar"
+      ],
+      "controls": [
+        "View",
+        "Theme",
+        "DateFormatOverview",
+        "DateFormatNoteView",
+        "TextSize",
+        "TextSizeOverview",
+        "ShowSearchInTopBar"
+      ]
+    },
+    {
+      "id": "settings.behavior",
+      "area": "settings",
+      "name": "排序、起始页、默认清单模式与自动保存",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun NotallyXPreferences.setupSettings(",
+          "line": 778,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L778"
+        }
+      ],
+      "expectedOutcome": "排序字段/升降序、勾选自动排序、起始页、默认清单模式及空闲保存按设置执行。",
+      "acceptancePoints": [
+        "NotesSortBy/order, startView, listItemSorting, defaultListView and autoSaveAfterIdle persist exactly.",
+        "Independently compute expected order from business fields; idle-save query observes committed body after configured threshold.",
+        "Actual order, launch destination and readonly/edit affordance match requested values."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "settings.behavior.normal",
+        "settings.behavior.negative",
+        "settings.behavior.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "sort_title_asc_desc",
+        "sort_creation_asc_desc",
+        "sort_modified_asc_desc",
+        "sort_color_asc_desc",
+        "checked_no_sort",
+        "checked_boolean_sort",
+        "checked_timestamp_sort",
+        "start_view",
+        "default_mode_readonly",
+        "default_mode_edit",
+        "default_mode_last_used",
+        "idle_save_enabled",
+        "idle_save_disabled"
+      ],
+      "controls": [
+        "NotesSortOrder",
+        "CheckedListItemSorting",
+        "StartView",
+        "DefaultListNoteViewMode",
+        "AutoSaveAfterIdle"
+      ]
+    },
+    {
+      "id": "settings.density",
+      "area": "settings",
+      "name": "概览内容密度与隐藏标签/图片",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun NotallyXPreferences.setupContentDensity(",
+          "line": 430,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L430"
+        }
+      ],
+      "expectedOutcome": "标题/正文/清单展示上限和隐藏内容只改变概览，不丢真实内容。",
+      "acceptancePoints": [
+        "maxTitle/maxItems/maxLines and overview hidden flags reflect choices.",
+        "Full body/items/attachment references unchanged.",
+        "Overview obeys requested limits and detail shows full data, not a truncated stored value."
+      ],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "scenarioIds": [
+        "settings.density.normal",
+        "settings.density.negative",
+        "settings.density.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "MaxTitle",
+        "MaxItems",
+        "MaxLines",
+        "LabelsHiddenInOverview",
+        "ImagesHiddenInOverview"
+      ]
+    },
+    {
+      "id": "attachments.images",
+      "area": "attachments",
+      "name": "图片添加、浏览、分享、保存与删除",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "fun addImages()",
+          "line": 449,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L449"
+        }
+      ],
+      "expectedOutcome": "选中图片复制到当前存储，预览和图片页动作指向同一文件；删除只影响目标附件。",
+      "acceptancePoints": [
+        "BaseNote.images metadata/references match imported images and final deletion set.",
+        "Stored/exported image hashes equal source fixtures; unrelated/shared referenced files remain valid.",
+        "Rendered pictures independently visually match fixtures; pager order and delete outcome agree."
+      ],
+      "environmentRequirements": [
+        "SAF图片fixtures含坏文件及撤销授权URI"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "attachments.images.normal",
+        "attachments.images.negative",
+        "attachments.images.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "attachments.files",
+      "area": "attachments",
+      "name": "一般文件添加、打开、导出与删除",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "fun attachFiles()",
+          "line": 464,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L464"
+        }
+      ],
+      "expectedOutcome": "不同MIME文件保留名称/内容与引用；外部打开使用正确URI权限，删除清理正确。",
+      "acceptancePoints": [
+        "FileAttachment metadata and final reference set match selected documents.",
+        "Distinct source bytes survive name collisions; unrelated references and source documents unchanged.",
+        "ACTION_VIEW has expected MIME/read grant; actual handler reads correct file."
+      ],
+      "environmentRequirements": [
+        "SAF文档fixtures与可用/不可用MIME处理器"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "attachments.files.normal",
+        "attachments.files.negative",
+        "attachments.files.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "attachments.audio",
+      "area": "attachments",
+      "name": "录音暂停恢复、播放、导出与删除",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/RecordAudioActivity.kt",
+          "symbol": "private fun updateUI(",
+          "line": 148,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/RecordAudioActivity.kt#L148"
+        }
+      ],
+      "expectedOutcome": "音频录制可暂停/继续并保存，播放暂停/seek/后台服务使用同一音频；导出删除正确。",
+      "acceptancePoints": [
+        "Audio metadata duration/name and note reference match saved file and final deletion set.",
+        "Audio container decodes, duration/timeline match pause behavior; exported hash matches saved audio.",
+        "Foreground microphone/playback service and notification lifecycle end appropriately.",
+        "Playback progress controls match media timeline; known content must be heard/decoded independently, not just nonzero bytes."
+      ],
+      "environmentRequirements": [
+        "麦克风权限控制、可识别声源及独立听感/解码验证；后台服务状态读取"
+      ],
+      "executionClass": "manual",
+      "scenarioIds": [
+        "attachments.audio.normal",
+        "attachments.audio.negative",
+        "attachments.audio.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "export.formats",
+      "area": "backup",
+      "name": "单篇与多选导出五种格式",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun exportNoteToFile(",
+          "line": 482,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L482"
+        }
+      ],
+      "expectedOutcome": "TXT/MD/PDF/JSON/HTML产物真实可解析，单篇与批量命名、内容和所选集合正确。",
+      "acceptancePoints": [
+        "Independent parser checks format-specific exact content; PDF rendered page/text plus screenshot inspection; compare selected set and collision-safe names.",
+        "Export leaves all notes and attachment references unchanged.",
+        "Picker/format choice and actual file type agree."
+      ],
+      "environmentRequirements": [
+        "SAF输出目录、宿主TXT/MD/JSON/HTML/PDF解析器"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "export.formats.normal",
+        "export.formats.negative",
+        "export.formats.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "TXT",
+        "MD",
+        "PDF",
+        "JSON",
+        "HTML"
+      ]
+    },
+    {
+      "id": "backup.zip_roundtrip",
+      "area": "backup",
+      "name": "整库ZIP备份与导入合并",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun exportBackup(",
+          "line": 396,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L396"
+        }
+      ],
+      "expectedOutcome": "备份包含可恢复业务数据库及引用附件；导入合并保留语义，重复处理与内部链接重映射按基线。",
+      "acceptancePoints": [
+        "Open ZIP independently; read coherent embedded DB, enumerate referenced attachments and hashes, reject extra unreferenced payload as imported data.",
+        "Canonical business graph matches fixture under documented ID remap, duplicate policy and reminder state.",
+        "Imported reminder/pin scheduling corresponds to imported notes only."
+      ],
+      "environmentRequirements": [
+        "隔离数据快照与ZIP fixture"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "backup.zip_roundtrip.normal",
+        "backup.zip_roundtrip.negative",
+        "backup.zip_roundtrip.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "duplicate_check_enabled",
+        "duplicate_check_disabled",
+        "id_link_remap"
+      ],
+      "controls": [
+        "ImportBackup",
+        "ExportBackup"
+      ]
+    },
+    {
+      "id": "backup.password",
+      "area": "backup",
+      "name": "备份密码设置、加密ZIP与错误密码",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun NotallyXPreferences.setupSecurity(",
+          "line": 745,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L745"
+        }
+      ],
+      "expectedOutcome": "备份密码影响ZIP加密，正确密码恢复；错误/空密码不冒充成功。",
+      "acceptancePoints": [
+        "ZIP encryption flags and independent decryption behavior match setting, bytes/content match expected fixture.",
+        "Correct-password import restores exact business graph; encrypted backup never accepted solely from file existence.",
+        "Password configured/cleared state verified without recording secret value."
+      ],
+      "environmentRequirements": [
+        "支持AES ZIP的宿主解析器、隔离测试密码"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "backup.password.normal",
+        "backup.password.negative",
+        "backup.password.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "BackupPassword"
+      ]
+    },
+    {
+      "id": "backup.legacy_import",
+      "area": "backup",
+      "name": "旧XML/SQLite备份兼容导入",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/utils/backup/ImportExtensions.kt",
+          "symbol": "suspend fun ContextWrapper.importRawDatabase(",
+          "line": 96,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/utils/backup/ImportExtensions.kt#L96"
+        }
+      ],
+      "expectedOutcome": "旧XML与ZIP内旧SQLite缺可选字段时使用明确默认值，转换保留可表达内容。",
+      "acceptancePoints": [
+        "Imported rows exactly match independently parsed legacy fixture and documented defaults.",
+        "Temporary imports cleaned after successful/error completion; original backup unchanged."
+      ],
+      "environmentRequirements": [
+        "版本化XML与SQLite ZIP fixtures"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "backup.legacy_import.normal",
+        "backup.legacy_import.negative",
+        "backup.legacy_import.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "legacy_xml",
+        "legacy_sqlite_zip"
+      ]
+    },
+    {
+      "id": "backup.other_importers",
+      "area": "backup",
+      "name": "五类外部格式导入",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/imports/NotesImporter.kt",
+          "symbol": "enum class ImportSource",
+          "line": 198,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/imports/NotesImporter.kt#L198"
+        }
+      ],
+      "expectedOutcome": "Google Keep、Evernote、Quillpad、纯文本与JSON的支持字段/附件按各解析器导入。",
+      "acceptancePoints": [
+        "Exact decoded content/labels/items/attachments compare to per-format fixture expectation; no assumed universal lossless mapping.",
+        "Imported supported attachments hash-match source; unsupported/missing fields explicitly reported."
+      ],
+      "environmentRequirements": [
+        "5类本地fixture，不需要真实云账号"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "backup.other_importers.normal",
+        "backup.other_importers.negative",
+        "backup.other_importers.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "GOOGLE_KEEP",
+        "EVERNOTE",
+        "QUILLPAD",
+        "PLAIN_TEXT_file",
+        "PLAIN_TEXT_folder",
+        "JSON_file",
+        "JSON_folder"
+      ],
+      "controls": [
+        "ImportOther"
+      ]
+    },
+    {
+      "id": "backup.automatic",
+      "area": "backup",
+      "name": "自动备份目录、保存触发、周期与保留数",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun setupPeriodicBackup(",
+          "line": 673,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L673"
+        }
+      ],
+      "expectedOutcome": "已授权目录才启用自动备份，保存/周期触发生成可恢复产物，保留数与最近执行时间可核对。",
+      "acceptancePoints": [
+        "backupsFolder/onSave/period/enabled/max/lastExecution match requested and observed state.",
+        "Actual archive contents reflect committed note; newest retained files count and chronology match configured retention.",
+        "Unique WorkManager work state/interval/cancellation correspond to settings; scheduling alone is not execution proof."
+      ],
+      "environmentRequirements": [
+        "SAF持久授权目录、WorkManager状态读取、可观察实际执行窗口"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "backup.automatic.normal",
+        "backup.automatic.negative",
+        "backup.automatic.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "BackupsFolder",
+        "BackupOnSave",
+        "PeriodicBackups",
+        "PeriodicBackupLastExecution",
+        "PeriodicBackupsPeriodInDays",
+        "PeriodicBackupsMax"
+      ]
+    },
+    {
+      "id": "backup.missing_attachment_cleanup",
+      "area": "backup",
+      "name": "缺失附件备份反馈与后台清理",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/utils/backup/CleanupMissingAttachmentsWorker.kt",
+          "symbol": "override suspend fun doWork()",
+          "line": 26,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/utils/backup/CleanupMissingAttachmentsWorker.kt#L26"
+        }
+      ],
+      "expectedOutcome": "备份跳过缺失附件时明确列出，清理动作只移除确实缺失的引用。",
+      "acceptancePoints": [
+        "Only missing attachment metadata removed; valid attachment references and all note text remain.",
+        "Existing two hashes unchanged; archive missing-entry accounting exact.",
+        "Cleanup completion counts and notification correspond to actual affected notes."
+      ],
+      "environmentRequirements": [
+        "隔离附件目录故障fixture与WorkManager/通知访问"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "backup.missing_attachment_cleanup.normal",
+        "backup.missing_attachment_cleanup.negative",
+        "backup.missing_attachment_cleanup.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    },
+    {
+      "id": "settings.import_export_reset",
+      "area": "settings",
+      "name": "设置JSON导入导出与重置",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "suspend fun resetPreferences(",
+          "line": 785,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L785"
+        }
+      ],
+      "expectedOutcome": "设置JSON按允许字段恢复，安全密钥不会由普通导出泄漏；重置保留业务数据并正确处理锁/存储相关状态。",
+      "acceptancePoints": [
+        "Export JSON contains intended nonsensitive preferences and excludes biometricLock/iv/databaseEncryptionKey keys; inspect encrypted preference handling without exposing secrets.",
+        "Imported/default values match pinned source policy, including retained/migrated lock/storage fields.",
+        "Canonical notes/labels and accessible attachment graph preserved after reset."
+      ],
+      "environmentRequirements": [
+        "设置JSON fixtures；锁组合需生物识别环境"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "settings.import_export_reset.normal",
+        "settings.import_export_reset.negative",
+        "settings.import_export_reset.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "ImportSettings",
+        "ExportSettings",
+        "ResetSettings"
+      ]
+    },
+    {
+      "id": "reminders.schedule",
+      "area": "reminders",
+      "name": "提醒创建、编辑、删除与重复规则",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/reminders/RemindersActivity.kt",
+          "symbol": "private fun showRepetitionDialog(",
+          "line": 230,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/reminders/RemindersActivity.kt#L230"
+        }
+      ],
+      "expectedOutcome": "提醒ID/时刻/重复字段持久保存；一次和重复提醒实际送达，编辑删除更新调度。",
+      "acceptancePoints": [
+        "Reminder id/dateTime/repetition/value/unit/occurrence/dayOfWeek match exact user choice and delete set.",
+        "AlarmManager and delivered notification target correct note/reminder; next repeat calculated independently with explicit timezone/DST fixture.",
+        "Reminder list/chip and notification opened note match persisted IDs."
+      ],
+      "environmentRequirements": [
+        "通知和exact-alarm权限、短期实际触发窗口；DST/重启需扩展环境"
+      ],
+      "executionClass": "system_ui",
+      "scenarioIds": [
+        "reminders.schedule.normal",
+        "reminders.schedule.negative",
+        "reminders.schedule.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "none",
+        "daily",
+        "weekly",
+        "monthly_date",
+        "monthly_nth_weekday",
+        "monthly_last",
+        "yearly",
+        "custom_minutes",
+        "custom_hours",
+        "custom_days",
+        "custom_weeks",
+        "custom_months",
+        "custom_years"
+      ]
+    },
+    {
+      "id": "reminders.permissions_boot",
+      "area": "reminders",
+      "name": "通知/精确闹钟拒绝与重启恢复",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/reminders/ReminderReceiver.kt",
+          "symbol": "override fun onReceive(",
+          "line": 43,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/reminders/ReminderReceiver.kt#L43"
+        }
+      ],
+      "expectedOutcome": "权限被拒绝或撤销时实际状态可解释；授权后/BOOT_COMPLETED恢复符合当前库的提醒与固定通知。",
+      "acceptancePoints": [
+        "After real boot, exact alarm and notification IDs match eligible NOTES records; no duplicate or deleted-note alerts.",
+        "Reminder data preserved and visibility flags correspond to observed notification state."
+      ],
+      "environmentRequirements": [
+        "可重启专用设备、通知/精确闹钟权限控制；root设备窗口授权"
+      ],
+      "executionClass": "manual",
+      "scenarioIds": [
+        "reminders.permissions_boot.normal",
+        "reminders.permissions_boot.negative"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "notification_denied",
+        "exact_alarm_denied",
+        "permission_regrant",
+        "real_boot"
+      ]
+    },
+    {
+      "id": "notifications.pin",
+      "area": "notifications",
+      "name": "固定到通知栏与通知动作",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "fun Activity.refreshStatusBarPin(",
+          "line": 517,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L517"
+        }
+      ],
+      "expectedOutcome": "固定/取消固定及Open/Delete动作绑定正确笔记，正文变化刷新通知，归档/删除取消。",
+      "acceptancePoints": [
+        "isPinnedToStatus and folder reflect exact requested action on captured note ID.",
+        "Notification tag/id/text/action target correspond to note; cancelled notifications absent.",
+        "Opened editor matches unique target marker."
+      ],
+      "environmentRequirements": [
+        "通知权限与状态栏/系统通知读取"
+      ],
+      "executionClass": "system_ui",
+      "scenarioIds": [
+        "notifications.pin.normal",
+        "notifications.pin.negative",
+        "notifications.pin.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "NOTE",
+        "LIST"
+      ]
+    },
+    {
+      "id": "widgets.note_list",
+      "area": "widget",
+      "name": "桌面Widget选择、显示、勾选、重配与删除",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/widget/WidgetProvider.kt",
+          "symbol": "private fun checkChanged(",
+          "line": 66,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/widget/WidgetProvider.kt#L66"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "expectedOutcome": "Widget实例映射正确笔记，显示正文/清单，勾选修改正确任务，重配/删除更新实例配置。",
+      "acceptancePoints": [
+        "widget:<appWidgetId>/widgetNoteType mapping matches OS instance; removed instance keys gone.",
+        "Widget action changes the intended task occurrence identified by the observed position, fixture body marker and parent group; compare the full persisted body/checked/isChild/order/checkedTimestamp sequence and multiplicity. Other notes/tasks remain unchanged; ListItem.id is not persisted.",
+        "AppWidgetManager active IDs and provider correspond to actual launcher widgets.",
+        "Launcher screenshot/UIA shows expected note content and checkbox state, not merely app overview."
+      ],
+      "environmentRequirements": [
+        "支持该AppWidget的launcher与桌面UIA；锁组合需生物识别"
+      ],
+      "executionClass": "manual",
+      "scenarioIds": [
+        "widgets.note_list.normal",
+        "widgets.note_list.negative",
+        "widgets.note_list.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "NOTE",
+        "LIST",
+        "parent_child",
+        "stale_mapping",
+        "locked"
+      ]
+    },
+    {
+      "id": "security.biometric",
+      "area": "security",
+      "name": "生物识别锁、SQLCipher与解锁生命周期",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun showEnableBiometricLock()",
+          "line": 1000,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L1000"
+        }
+      ],
+      "expectedOutcome": "启用锁需认证，数据库加密并可认证后读取；后台/屏幕锁/重启门控正常，禁用锁可读回原业务。",
+      "acceptancePoints": [
+        "OS biometric prompt and real success/cancel recorded; authentication cannot be synthesized as pass.",
+        "Active DB encryption mode/header changes as source specifies; never print encryption material.",
+        "Authorized independent query after unlock returns canonical pre-lock data, and disable preserves all rows/attachments.",
+        "Locked screen hides note content; successful unlock restores correct destination."
+      ],
+      "environmentRequirements": [
+        "真实可用生物识别、已录入/未录入测试条件、授权SQLCipher只读oracle"
+      ],
+      "executionClass": "manual",
+      "scenarioIds": [
+        "security.biometric.normal",
+        "security.biometric.negative",
+        "security.biometric.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "BiometricLock"
+      ]
+    },
+    {
+      "id": "security.screen_protection",
+      "area": "security",
+      "name": "禁止截图/最近任务预览设置",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun NotallyXPreferences.setupSecurity(",
+          "line": 745,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L745"
+        }
+      ],
+      "expectedOutcome": "SecureFlag开启时系统阻止应用画面捕获；关闭恢复正常，不影响笔记内容。",
+      "acceptancePoints": [
+        "secureFlag preference matches selected state.",
+        "Window FLAG_SECURE and actual screenshot denial/redaction agree; protected screenshot absence is expected evidence.",
+        "Canonical note data unchanged."
+      ],
+      "environmentRequirements": [
+        "系统窗口flag/截图结果读取；必要人工观察recent apps"
+      ],
+      "executionClass": "system_ui",
+      "scenarioIds": [
+        "security.screen_protection.normal",
+        "security.screen_protection.negative",
+        "security.screen_protection.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "SecureFlag"
+      ]
+    },
+    {
+      "id": "storage.switch",
+      "area": "storage",
+      "name": "内私有与公共目录迁移",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun enableDataInPublic(",
+          "line": 262,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L262"
+        }
+      ],
+      "expectedOutcome": "切换数据库及全部附件到目标存储后再更改设置，目标可读且业务图/文件hash保持。",
+      "acceptancePoints": [
+        "Active DB and attachment roots change as requested; copied coherent DB/attachments remain readable with expected hashes.",
+        "Canonical business graph identical before/after each direction, IDs preserved.",
+        "dataOnExternalStorage only points to a successfully opened/pinged target; encryption mode preserved."
+      ],
+      "environmentRequirements": [
+        "独立测试目录、空间/权限故障fixture；锁组合需生物识别"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "storage.switch.normal",
+        "storage.switch.negative",
+        "storage.switch.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "private_to_public",
+        "public_to_private",
+        "encrypted_roundtrip"
+      ],
+      "controls": [
+        "DataInPublicFolder"
+      ]
+    },
+    {
+      "id": "storage.auto_trash_cleanup",
+      "area": "storage",
+      "name": "回收站自动过期清理",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/utils/AutoRemoveDeletedNotesWorker.kt",
+          "symbol": "suspend fun ContextWrapper.removeOldDeletedNotes()",
+          "line": 31,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/utils/AutoRemoveDeletedNotesWorker.kt#L31"
+        }
+      ],
+      "expectedOutcome": "过期阈值只删除符合时间条件的DELETED笔记及无剩余引用附件，禁用不清理。",
+      "acceptancePoints": [
+        "Deleted ID set equals independent folder+timestamp predicate, boundary compared with pinned DAO operator.",
+        "Cleanup respects surviving attachment references.",
+        "WorkManager enable/cancel/result agrees with configured days and actual run."
+      ],
+      "environmentRequirements": [
+        "可控时间/旧timestamp fixture与实际WorkManager执行"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "storage.auto_trash_cleanup.normal",
+        "storage.auto_trash_cleanup.negative",
+        "storage.auto_trash_cleanup.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "AutoEmptyBin"
+      ]
+    },
+    {
+      "id": "storage.clear_all",
+      "area": "storage",
+      "name": "清除全部数据与取消",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun deleteAll(",
+          "line": 669,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L669"
+        }
+      ],
+      "expectedOutcome": "明确确认后删除全库业务数据、标签及不再引用的附件并刷新通知/widget；取消完全保留。",
+      "acceptancePoints": [
+        "BaseNote/Label business tables empty after confirmed clear, unchanged after cancel.",
+        "No live attachment data erroneously retained as reachable note content; documented unrelated backups preserved.",
+        "Stale reminders/pinned notifications cancelled and widgets reflect missing note; no resurrected records."
+      ],
+      "environmentRequirements": [
+        "只含测试数据的隔离App目录与可恢复备份"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "storage.clear_all.normal",
+        "storage.clear_all.negative",
+        "storage.clear_all.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "ClearData"
+      ]
+    },
+    {
+      "id": "about.local",
+      "area": "about",
+      "name": "版本、开源库与日志页面",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun setupAbout(",
+          "line": 862,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L862"
+        }
+      ],
+      "expectedOutcome": "版本与构建一致，Libraries列出源码依赖入口，View logs展示/分享正确日志且不发送消息。",
+      "acceptancePoints": [
+        "Package versionName/code match displayed version.",
+        "Viewed/exported logs correspond to current test run, not stale unrelated artifact.",
+        "Libraries list and version display match pinned source/build manifest."
+      ],
+      "environmentRequirements": [
+        "可读测试日志"
+      ],
+      "executionClass": "system_ui",
+      "scenarioIds": [
+        "about.local.normal",
+        "about.local.negative"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "controls": [
+        "ViewLogs",
+        "Libraries",
+        "VersionText"
+      ]
+    },
+    {
+      "id": "about.external",
+      "area": "about",
+      "name": "反馈、商店、赞助、文档与源码链接",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt",
+          "symbol": "private fun openLink(",
+          "line": 1115,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/settings/SettingsFragment.kt#L1115"
+        }
+      ],
+      "expectedOutcome": "各入口构造正确外部URL/邮件草稿，缺处理器时显式失败；不发送/购买/发布。",
+      "acceptancePoints": [
+        "Resolved intent URI/action or draft destination matches pinned source exact target; no form submission, email send or payment.",
+        "Business snapshot unchanged.",
+        "Return to Settings works after chooser/browser cancellation."
+      ],
+      "environmentRequirements": [
+        "可验证intent目标；无handler变体需隔离配置"
+      ],
+      "executionClass": "system_ui",
+      "scenarioIds": [
+        "about.external.normal",
+        "about.external.negative"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "feedback_bug",
+        "feedback_feature",
+        "feedback_email",
+        "rate",
+        "donate",
+        "documentation",
+        "source_code",
+        "library_links"
+      ],
+      "controls": [
+        "SendFeedback",
+        "Rate",
+        "Donate",
+        "Documentation",
+        "SourceCode"
+      ]
+    },
+    {
+      "id": "navigation.shortcuts",
+      "area": "navigation",
+      "name": "桌面新建快捷入口",
+      "entrypoints": [
+        {
+          "path": "app/src/main/res/xml/shortcuts.xml",
+          "symbol": "android:shortcutId=\"takeNote\"",
+          "line": 6,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/xml/shortcuts.xml#L6"
+        }
+      ],
+      "expectedOutcome": "Launcher快捷入口分别进入文本/清单新建，保存后建立对应type，取消空白遵循空笔记规则。",
+      "acceptancePoints": [
+        "Resolved launcher shortcut target matches declared activity.",
+        "New row has expected NOTE/LIST type and exact marker.",
+        "Correct editor and overview tile appear."
+      ],
+      "environmentRequirements": [
+        "支持静态App shortcut的launcher"
+      ],
+      "executionClass": "manual",
+      "scenarioIds": [
+        "navigation.shortcuts.normal",
+        "navigation.shortcuts.negative"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "variants": [
+        "takeNote",
+        "makeList"
+      ]
+    },
+    {
+      "id": "note.empty_trash",
+      "area": "organization",
+      "name": "清空整个回收站",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun deleteAllTrashedBaseNotes()",
+          "line": 694,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L694"
+        }
+      ],
+      "expectedOutcome": "清空确认只永久删除DELETED集合及无剩余引用附件，Notes/Archived完整。",
+      "acceptancePoints": [
+        "Exactly all DELETED IDs removed; Notes/Archived canonical snapshots unchanged.",
+        "Cleanup preserves files still referenced by surviving notes.",
+        "Deleted empty state and other folders visible set agree."
+      ],
+      "environmentRequirements": [
+        "只含测试数据的回收站/共享附件fixture"
+      ],
+      "executionClass": "fixture",
+      "scenarioIds": [
+        "note.empty_trash.normal",
+        "note.empty_trash.negative",
+        "note.empty_trash.restart"
+      ],
+      "status": "not_run",
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": []
+    }
+  ],
+  "businessPersistence": {
+    "listItems": {
+      "container": "BaseNote.items JSON array",
+      "durableFields": [
+        "body",
+        "checked",
+        "isChild",
+        "order",
+        "checkedTimestamp"
+      ],
+      "durableItemId": false,
+      "nonDurableFields": [
+        "id",
+        "children"
+      ],
+      "nullableFields": [
+        "order",
+        "checkedTimestamp"
+      ],
+      "nullableEncoding": "For these two nullable fields only, the pinned JSONObject converter may omit a null value; canonical read may normalize absent and null to null. Do not invent an order or timestamp.",
+      "oracle": "Compare the entire ordered persisted field sequence, every body occurrence count, and reconstructed parent/child groups against explicit before/after fixtures. Use distinct body markers for individually tracked tasks. For intentionally indistinguishable duplicate tuples, preserve multiplicity and position/group; do not claim durable identity across restart.",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ]
+    }
+  },
+  "surfaceCoverage": {
+    "status": "static_source_mapped_only",
+    "rows": [
+      {
+        "surface": "settings",
+        "id": "View",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/View\"",
+          "line": 18,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L18"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "Theme",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/Theme\"",
+          "line": 22,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L22"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "DateFormatOverview",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/DateFormatOverview\"",
+          "line": 26,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L26"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "DateFormatNoteView",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/DateFormatNoteView\"",
+          "line": 30,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L30"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "TextSize",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/TextSize\"",
+          "line": 34,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L34"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "TextSizeOverview",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/TextSizeOverview\"",
+          "line": 38,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L38"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ShowSearchInTopBar",
+        "featureIds": [
+          "settings.appearance"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ShowSearchInTopBar\"",
+          "line": 42,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L42"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "NotesSortOrder",
+        "featureIds": [
+          "settings.behavior"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/NotesSortOrder\"",
+          "line": 57,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L57"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "CheckedListItemSorting",
+        "featureIds": [
+          "settings.behavior"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/CheckedListItemSorting\"",
+          "line": 61,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L61"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "StartView",
+        "featureIds": [
+          "settings.behavior"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/StartView\"",
+          "line": 65,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L65"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "DefaultListNoteViewMode",
+        "featureIds": [
+          "settings.behavior"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/DefaultListNoteViewMode\"",
+          "line": 69,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L69"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "AutoSaveAfterIdle",
+        "featureIds": [
+          "settings.behavior"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/AutoSaveAfterIdle\"",
+          "line": 73,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L73"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "AutoEmptyBin",
+        "featureIds": [
+          "storage.auto_trash_cleanup"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/AutoEmptyBin\"",
+          "line": 77,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L77"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "MaxTitle",
+        "featureIds": [
+          "settings.density"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/MaxTitle\"",
+          "line": 92,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L92"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "MaxItems",
+        "featureIds": [
+          "settings.density"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/MaxItems\"",
+          "line": 96,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L96"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "MaxLines",
+        "featureIds": [
+          "settings.density"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/MaxLines\"",
+          "line": 100,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L100"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "MaxLabels",
+        "featureIds": [
+          "labels.navigation_layout"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/MaxLabels\"",
+          "line": 104,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L104"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "LabelsHiddenInOverview",
+        "featureIds": [
+          "settings.density"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/LabelsHiddenInOverview\"",
+          "line": 108,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L108"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ImagesHiddenInOverview",
+        "featureIds": [
+          "settings.density"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ImagesHiddenInOverview\"",
+          "line": 112,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L112"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ImportBackup",
+        "featureIds": [
+          "backup.zip_roundtrip"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ImportBackup\"",
+          "line": 127,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L127"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ImportOther",
+        "featureIds": [
+          "backup.other_importers"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ImportOther\"",
+          "line": 134,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L134"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ExportBackup",
+        "featureIds": [
+          "backup.zip_roundtrip"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ExportBackup\"",
+          "line": 141,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L141"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "BackupsFolder",
+        "featureIds": [
+          "backup.automatic"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/BackupsFolder\"",
+          "line": 154,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L154"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "BackupOnSave",
+        "featureIds": [
+          "backup.automatic"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/BackupOnSave\"",
+          "line": 158,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L158"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "PeriodicBackups",
+        "featureIds": [
+          "backup.automatic"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/PeriodicBackups\"",
+          "line": 162,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L162"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "PeriodicBackupLastExecution",
+        "featureIds": [
+          "backup.automatic"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/PeriodicBackupLastExecution\"",
+          "line": 166,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L166"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "PeriodicBackupsPeriodInDays",
+        "featureIds": [
+          "backup.automatic"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/PeriodicBackupsPeriodInDays\"",
+          "line": 174,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L174"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "PeriodicBackupsMax",
+        "featureIds": [
+          "backup.automatic"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/PeriodicBackupsMax\"",
+          "line": 178,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L178"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "BiometricLock",
+        "featureIds": [
+          "security.biometric"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/BiometricLock\"",
+          "line": 193,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L193"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "BackupPassword",
+        "featureIds": [
+          "backup.password"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/BackupPassword\"",
+          "line": 197,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L197"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "SecureFlag",
+        "featureIds": [
+          "security.screen_protection"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/SecureFlag\"",
+          "line": 201,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L201"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ImportSettings",
+        "featureIds": [
+          "settings.import_export_reset"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ImportSettings\"",
+          "line": 216,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L216"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ExportSettings",
+        "featureIds": [
+          "settings.import_export_reset"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ExportSettings\"",
+          "line": 223,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L223"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ResetSettings",
+        "featureIds": [
+          "settings.import_export_reset"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ResetSettings\"",
+          "line": 230,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L230"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "DataInPublicFolder",
+        "featureIds": [
+          "storage.switch"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/DataInPublicFolder\"",
+          "line": 237,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L237"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ClearData",
+        "featureIds": [
+          "storage.clear_all"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ClearData\"",
+          "line": 241,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L241"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "SendFeedback",
+        "featureIds": [
+          "about.external"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/SendFeedback\"",
+          "line": 259,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L259"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "Rate",
+        "featureIds": [
+          "about.external"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/Rate\"",
+          "line": 266,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L266"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "Donate",
+        "featureIds": [
+          "about.external"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/Donate\"",
+          "line": 273,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L273"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "ViewLogs",
+        "featureIds": [
+          "about.local"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/ViewLogs\"",
+          "line": 280,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L280"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "Documentation",
+        "featureIds": [
+          "about.external"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/Documentation\"",
+          "line": 287,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L287"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "SourceCode",
+        "featureIds": [
+          "about.external"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/SourceCode\"",
+          "line": 294,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L294"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "Libraries",
+        "featureIds": [
+          "about.local"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/Libraries\"",
+          "line": 301,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L301"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "settings",
+        "id": "VersionText",
+        "featureIds": [
+          "about.local"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/layout/fragment_settings.xml",
+          "symbol": "android:id=\"@+id/VersionText\"",
+          "line": 308,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/layout/fragment_settings.xml#L308"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Notes",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Notes",
+          "line": 4,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L4"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Labels",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Labels",
+          "line": 21,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L21"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Deleted",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Deleted",
+          "line": 36,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L36"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Archived",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Archived",
+          "line": 50,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L50"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Reminders",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Reminders",
+          "line": 63,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L63"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Settings",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Settings",
+          "line": 69,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L69"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Search",
+        "featureIds": [
+          "search.scoped"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Search",
+          "line": 74,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L74"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "DisplayLabel",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/DisplayLabel",
+          "line": 82,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L82"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "navigation",
+        "id": "Unlabeled",
+        "featureIds": [
+          "navigation.folders"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/navigation/navigation.xml",
+          "symbol": "@+id/Unlabeled",
+          "line": 87,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/navigation/navigation.xml#L87"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "SEARCH",
+        "featureIds": [
+          "editing.search_toolbar"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "SEARCH(R.string.",
+          "line": 496,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L496"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "PIN",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "PIN(R.string.",
+          "line": 497,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L497"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "REMINDERS",
+        "featureIds": [
+          "reminders.schedule"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "REMINDERS(R.string.",
+          "line": 498,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L498"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "LABELS",
+        "featureIds": [
+          "labels.assignment"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "LABELS(R.string.",
+          "line": 499,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L499"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "CHANGE_COLOR",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "CHANGE_COLOR(R.string.",
+          "line": 500,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L500"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "DUPLICATE",
+        "featureIds": [
+          "note.duplicate"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "DUPLICATE(R.string.",
+          "line": 501,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L501"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "EXPORT",
+        "featureIds": [
+          "export.formats"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "EXPORT(R.string.",
+          "line": 502,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L502"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "SHARE",
+        "featureIds": [
+          "editing.share_intents"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "SHARE(R.string.",
+          "line": 503,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L503"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "DELETE",
+        "featureIds": [
+          "note.trash_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "DELETE(R.string.",
+          "line": 504,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L504"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "ARCHIVE",
+        "featureIds": [
+          "note.archive_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "ARCHIVE(R.string.",
+          "line": 505,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L505"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "TOGGLE_VIEW_MODE",
+        "featureIds": [
+          "editing.history_view"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "TOGGLE_VIEW_MODE(R.string.",
+          "line": 506,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L506"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "CONVERT",
+        "featureIds": [
+          "note.convert"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "CONVERT(R.string.",
+          "line": 507,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L507"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "DELETE_FOREVER",
+        "featureIds": [
+          "note.delete_forever"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "DELETE_FOREVER(R.string.",
+          "line": 508,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L508"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "RESTORE",
+        "featureIds": [
+          "note.trash_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "RESTORE(R.string.",
+          "line": 509,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L509"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_action",
+        "id": "PIN_TO_STATUS",
+        "featureIds": [
+          "notifications.pin"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "PIN_TO_STATUS(R.string.",
+          "line": 510,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L510"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_list_action",
+        "id": "DELETE_CHECKED",
+        "featureIds": [
+          "list.delete_checked"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "DELETE_CHECKED(R.string.",
+          "line": 554,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L554"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_list_action",
+        "id": "CHECK_ALL",
+        "featureIds": [
+          "list.checked"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "CHECK_ALL(R.string.",
+          "line": 555,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L555"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "edit_list_action",
+        "id": "UNCHECK_ALL",
+        "featureIds": [
+          "list.checked"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt",
+          "symbol": "UNCHECK_ALL(R.string.",
+          "line": 556,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/preference/Preference.kt#L556"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:select_all",
+        "featureIds": [
+          "note.bulk"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.select_all",
+          "line": 46,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L46"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:pin",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.pin",
+          "line": 104,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L104"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:labels",
+        "featureIds": [
+          "labels.assignment"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.labels",
+          "line": 114,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L114"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:delete",
+        "featureIds": [
+          "note.trash_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.delete",
+          "line": 94,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L94"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:duplicate",
+        "featureIds": [
+          "note.duplicate"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.duplicate",
+          "line": 63,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L63"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:archive",
+        "featureIds": [
+          "note.archive_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.archive",
+          "line": 66,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L66"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:change_color",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.change_color",
+          "line": 118,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L118"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:pin_to_status_bar",
+        "featureIds": [
+          "notifications.pin"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.pin_to_status_bar",
+          "line": 110,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L110"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:share",
+        "featureIds": [
+          "editing.share_intents"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.share",
+          "line": 99,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L99"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "NOTES:export",
+        "featureIds": [
+          "export.formats"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.export",
+          "line": 161,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L161"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:select_all",
+        "featureIds": [
+          "note.bulk"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.select_all",
+          "line": 46,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L46"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:unarchive",
+        "featureIds": [
+          "note.archive_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.unarchive",
+          "line": 75,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L75"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:delete",
+        "featureIds": [
+          "note.trash_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.delete",
+          "line": 94,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L94"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:duplicate",
+        "featureIds": [
+          "note.duplicate"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.duplicate",
+          "line": 63,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L63"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:export",
+        "featureIds": [
+          "export.formats"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.export",
+          "line": 161,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L161"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:pin",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.pin",
+          "line": 104,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L104"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:labels",
+        "featureIds": [
+          "labels.assignment"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.labels",
+          "line": 114,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L114"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:change_color",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.change_color",
+          "line": 118,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L118"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "ARCHIVED:share",
+        "featureIds": [
+          "editing.share_intents"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.share",
+          "line": 99,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L99"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "DELETED:select_all",
+        "featureIds": [
+          "note.bulk"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.select_all",
+          "line": 46,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L46"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "DELETED:restore",
+        "featureIds": [
+          "note.trash_restore"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.restore",
+          "line": 91,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L91"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "DELETED:delete_forever",
+        "featureIds": [
+          "note.delete_forever"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.delete_forever",
+          "line": 94,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L94"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "DELETED:export",
+        "featureIds": [
+          "export.formats"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.export",
+          "line": 161,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L161"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "DELETED:change_color",
+        "featureIds": [
+          "note.pin_color"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.change_color",
+          "line": 118,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L118"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "folder_selection",
+        "id": "DELETED:share",
+        "featureIds": [
+          "editing.share_intents"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "R.string.share",
+          "line": 99,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L99"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "deleted_toolbar",
+        "id": "delete_all",
+        "featureIds": [
+          "note.empty_trash"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/DeletedFragment.kt",
+          "symbol": "R.string.delete_all",
+          "line": 21,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/DeletedFragment.kt#L21"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "image_menu",
+        "id": "share/save/delete",
+        "featureIds": [
+          "attachments.images"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/ViewImageActivity.kt",
+          "symbol": "R.string.share",
+          "line": 172,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/ViewImageActivity.kt#L172"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "audio_menu",
+        "id": "share/save/delete",
+        "featureIds": [
+          "attachments.audio"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/PlayAudioActivity.kt",
+          "symbol": "R.string.share",
+          "line": 175,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/PlayAudioActivity.kt#L175"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "formatting",
+        "id": "link/bold/italic/mono/strike/clear",
+        "featureIds": [
+          "editing.rich_format"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/TextFormattingAdapter.kt",
+          "symbol": "class TextFormattingAdapter",
+          "line": 14,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/TextFormattingAdapter.kt#L14"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "link_menu",
+        "id": "open/copy/remove/edit/change_note",
+        "featureIds": [
+          "editing.links"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditNoteActivity.kt",
+          "symbol": "private fun setupMovementMethod()",
+          "line": 228,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditNoteActivity.kt#L228"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "plain_text_menu",
+        "id": "save/save_as/convert",
+        "featureIds": [
+          "editing.external_text"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditTextPlainActivity.kt",
+          "symbol": "override fun initBottomMenu()",
+          "line": 166,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditTextPlainActivity.kt#L166"
+        },
+        "status": "source_mapped_only"
+      },
+      {
+        "surface": "launcher",
+        "id": "takeNote/makeList",
+        "featureIds": [
+          "navigation.shortcuts"
+        ],
+        "entrypoint": {
+          "path": "app/src/main/res/xml/shortcuts.xml",
+          "symbol": "android:shortcutId=\"takeNote\"",
+          "line": 6,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/res/xml/shortcuts.xml#L6"
+        },
+        "status": "source_mapped_only"
+      }
+    ],
+    "counts": {
+      "settings": 44,
+      "navigation": 9,
+      "edit_action": 15,
+      "edit_list_action": 3,
+      "folder_selection": 25,
+      "deleted_toolbar": 1,
+      "image_menu": 1,
+      "audio_menu": 1,
+      "formatting": 1,
+      "link_menu": 1,
+      "plain_text_menu": 1,
+      "launcher": 1
+    },
+    "unmappedStaticIds": [],
+    "limits": [
+      "Mapping a control to a planned scenario does not prove it was exercised.",
+      "This is a functional inventory at one source commit, not a claim that every pixel, locale, Android version, input-method or dynamic OS surface has been enumerated.",
+      "Parameter variants remain separate required coverage slots; template success cannot cover unattempted variants.",
+      "Crash/error UI, full accessibility/localization/device matrix and every historical database schema require additional discovery beyond this inventory."
+    ]
+  },
+  "coverage": {
+    "featureCount": 51,
+    "scenarioCount": 143,
+    "variantSlotCount": 311,
+    "executed": 0,
+    "passed": 0,
+    "claim": "Source inventory and test plan only; no device coverage claimed."
+  }
+}

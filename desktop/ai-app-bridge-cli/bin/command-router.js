@@ -4,13 +4,14 @@ const isolatedCommandDefinitions = [
   {
     command: 'script',
     domain: 'advanced',
-    summary: 'Run an isolated Script operation: start, status, progress, pause, resume, cancel, or intervene.',
-    options: ['operation'],
+    summary: 'Run an isolated trusted-local-code JavaScript or Python Script. Operations: start, status, wait, progress, pause, resume, decide, cancel, intervene, or runtime-status. Script source is not an OS sandbox.',
+    options: ['operation', 'waitMs', 'afterSequence'],
+    runtime: 'trusted-local-code',
   },
   {
     command: 'intent',
     domain: 'advanced',
-    summary: 'Run an isolated Intent operation: start, status, decide, pause, resume, cancel, or intervene.',
+    summary: 'Run an isolated Intent operation: start, status, observe, decide, pause, resume, cancel, or intervene. target.foregroundPackages explicitly enables Android foreground provider routing.',
     options: ['operation'],
   },
 ];

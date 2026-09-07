@@ -236,7 +236,7 @@ test('MCP execution keeps the legacy operation available while reporting fact-ca
   assert.equal(payload._feedback.factCache.error, 'node_sqlite_unavailable');
 });
 
-test('MCP execution persists evidence and exposes its action fact in feedback', async (t) => {
+test('MCP execution keeps live four-stream payload and exposes action facts without copying mobile bodies', async (t) => {
   const cache = createSqliteCache(t);
   const factRecorder = new FactRecorder({ cache, now: () => 20_000 });
   const result = await runBridgeChecked('events', {
@@ -253,10 +253,12 @@ test('MCP execution persists evidence and exposes its action fact in feedback', 
   });
 
   const payload = payloadOf(result);
-  assert.equal(cache.query({ partition: 'ui' }).count, 1);
+  assert.equal(payload.items[0].name, 'ui.changed');
+  assert.equal(cache.query({ partition: 'ui' }).count, 0);
   assert.equal(cache.query({ partition: 'action' }).count, 1);
-  assert.equal(payload._feedback.evidence.some((item) => item.partition === 'ui'), true);
+  assert.equal(payload._feedback.evidence.some((item) => item.partition === 'ui'), false);
   assert.equal(payload._feedback.evidence.some((item) => item.partition === 'action'), true);
+  assert.equal(JSON.stringify(payload._feedback.evidence).includes('ui.changed'), false);
   assert.equal(payload._feedback.factCache.persistence, true);
   assert.equal(payload._feedback.factCache.degraded, false);
   assert.deepEqual(payload._feedback.factCache.profileSelection, { mode: 'explicit' });
@@ -264,17 +266,17 @@ test('MCP execution persists evidence and exposes its action fact in feedback', 
   assert.equal(payload._feedback.factCache.mmap.effectiveBytes > 0, true);
 });
 
-test('MCP existing evidence commands can read persisted history without calling the live provider', async (t) => {
+test('MCP existing evidence commands can read persisted Web history without calling the live provider', async (t) => {
   const cache = createSqliteCache(t);
   const factRecorder = new FactRecorder({ cache, now: () => 30_000 });
-  const args = { serial: 'android-1', packageName: 'com.example.app' };
-  factRecorder.recordEvidence('network', args, {
+  const args = { sessionId: 'web-1' };
+  factRecorder.recordEvidence('web-network', args, {
     ok: true,
     items: [{ id: 1, method: 'GET', url: 'https://example.test' }],
   });
   let liveCalls = 0;
 
-  const result = await runBridgeChecked('network', {
+  const result = await runBridgeChecked('web-network', {
     ...args,
     history: true,
   }, {

@@ -1,6 +1,7 @@
 'use strict';
 
 const { semanticNode } = require('./semantic-node');
+const { parseXmlAttributes } = require('./xml-attributes');
 
 const DEFAULT_MAX_BYTES = 64 * 1024;
 const HARD_LIMIT_MS = 50;
@@ -25,6 +26,7 @@ function summarizeTree({
   let visited = 0;
   let truncated = false;
   let reason = null;
+  const activity = provider === 'native' && typeof rawTree?.activity === 'string' ? rawTree.activity : undefined;
 
   walkProvider(provider, rawTree, (source, sourceIndex) => {
     visited += 1;
@@ -46,6 +48,7 @@ function summarizeTree({
     truncated,
     reason,
     maxBytes,
+    activity,
   });
   truncated = truncated || nodes.truncated;
   reason = reason || nodes.reason;
@@ -58,6 +61,7 @@ function summarizeTree({
     visited,
     truncated,
     reason,
+    ...(activity === undefined ? {} : { activity }),
     nodes: nodes.nodes,
   };
 }
@@ -71,10 +75,20 @@ function walkProvider(provider, rawTree, visit) {
 
 function walkNative(tree, visit) {
   const index = { i: 0 };
-  if (Array.isArray(tree?.windows)) {
-    for (const windowInfo of tree.windows) {
-      if (walkChildren(windowInfo?.root, visit, index) === false) return;
-    }
+  if (Array.isArray(tree?.windows) && tree.windows.length) {
+    // Match native action selection: the last non-hidden root owns the foreground.
+    // An unknown/disabled root still blocks background controls. Do not spend the
+    // summary budget on a long background page before exposing its modal dialog.
+    const foreground = tree.windows.findLastIndex(window => {
+      const root = window?.root;
+      return !(root && (root.visible === false || root.effectiveVisible === false || root.alpha === 0
+        || root.visibility === 'gone' || root.visibility === 'invisible'));
+    });
+    if (foreground < 0) return;
+    // Preserve the sourceIndex ordinal in the original windows' preorder.
+    for (let i = 0; i < foreground; i++) walkChildren(tree.windows[i]?.root, () => true, index);
+    walkChildren(tree.windows[foreground]?.root, visit, index);
+    return;
   }
   if (tree?.root) walkChildren(tree.root, visit, index);
   else if (tree && !tree.windows && !tree.root) walkChildren(tree, visit, index);
@@ -176,6 +190,12 @@ function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId) 
       || source.clickable === 'true'
       || (Array.isArray(source.actions) && source.actions.includes('tap')),
     ),
+    ...(provider === 'native' ? {
+      resourceName: source.resourceName,
+      editable: source.editable,
+      visible: source.visible,
+      effectiveVisible: source.effectiveVisible,
+    } : {}),
   });
 }
 
@@ -230,16 +250,6 @@ function parseUiaBounds(value) {
   };
 }
 
-function parseXmlAttributes(tag) {
-  const attrs = {};
-  const regex = /([:\w-]+)="([^"]*)"/g;
-  let match;
-  while ((match = regex.exec(tag)) !== null) {
-    attrs[match[1]] = match[2];
-  }
-  return attrs;
-}
-
 function firstString(...values) {
   for (const value of values) {
     if (value == null) continue;
@@ -255,8 +265,8 @@ function boolOrNull(value) {
   return null;
 }
 
-function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes }) {
-  const meta = { provider, rawTreeId, screenshotId, visited, truncated, reason };
+function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity }) {
+  const meta = { provider, rawTreeId, screenshotId, visited, truncated, reason, ...(activity === undefined ? {} : { activity }) };
   if (byteSize(nodes, meta) <= maxBytes) {
     return { nodes, truncated, reason };
   }

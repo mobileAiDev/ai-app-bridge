@@ -1,0 +1,14 @@
+.gradle/
+.idea/
+build/
+local.properties
+.cxx/
+.externalNativeBuild/
+/app/obfuscation/
+!app/src/**/*.png
+!app/src/**/*.jpg
+!app/src/**/*.jpeg
+!app/src/**/*.webp
+# Frozen provenance bundles are regression inputs, including their referenced assets.
+!validation/source-evidence*/**/
+!validation/source-evidence*/**/*

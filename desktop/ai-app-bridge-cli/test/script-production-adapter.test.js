@@ -65,14 +65,8 @@ test('production Script adapter allows different packages on the same serial in 
     gate.resolve();
     results = await Promise.all([first, second]);
   }
-  assert.deepEqual(
-    results[0].adbTimings.map((item) => item.packageName),
-    ['com.example.first', 'com.example.first'],
-  );
-  assert.deepEqual(
-    results[1].adbTimings.map((item) => item.packageName),
-    ['com.example.second', 'com.example.second'],
-  );
+  assert.deepEqual(results[0].adbTimings, []);
+  assert.deepEqual(results[1].adbTimings, []);
 });
 
 test('G4-B production adapter uses injected ports and never overlaps device I/O', async () => {
@@ -128,9 +122,8 @@ test('G4-B production adapter uses injected ports and never overlaps device I/O'
     store: createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() }),
     adapter,
   });
-  assert.equal(result.ok, true);
-  assert.equal(adapter.maxActive, 1);
-  assert.deepEqual(adapter.calls.map((item) => item.name), ['observe:native', 'action']);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'script_format_removed');
 });
 
 test('G4-B production adapter taps Flutter text with bounds via host tap', async () => {
@@ -177,12 +170,14 @@ test('G4-B production adapter taps Flutter text with bounds via host tap', async
     store: createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() }),
     adapter,
   });
-  assert.equal(result.ok, true);
-  assert.equal(flutterAcquires, 1);
-  assert.deepEqual(taps, [{ x: 84, y: 204 }]);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'script_format_removed');
+  assert.equal(flutterAcquires, 0);
+  assert.deepEqual(taps, []);
 });
 
 test('G4-B production adapter does not call runBridgeChecked or Batch', () => {
   const source = fs.readFileSync(path.join(__dirname, '../bin/script/script-production-adapter.js'), 'utf8');
   assert.equal(/runBridgeChecked|runBatch|LegacyDispatcher|executeCommand|\.tapText\(/.test(source), false);
+  assert.equal(/probeAdb|shell', 'true'|adb_probe/.test(source), false);
 });

@@ -1,0 +1,450 @@
+{
+  "expected": {
+    "id": "rename-updates-exact-label-references-only",
+    "noteCount": 2,
+    "notes": [
+      {
+        "where": {
+          "id": 1
+        },
+        "fields": {
+          "id": 1,
+          "type": "NOTE",
+          "folder": "NOTES",
+          "color": "#AFCCDC",
+          "title": "AAB-TEXT-script-1788752487009-10e9d2",
+          "pinned": true,
+          "timestamp": 1788752495340,
+          "modifiedTimestamp": 1788753172848,
+          "labels": [
+            "AAB项目-script-1788752487009-10e9d2",
+            "AAB-label-renamed"
+          ],
+          "body": "第一行中文\nsecond line & <tag>-edited",
+          "spans": [],
+          "items": [],
+          "images": [],
+          "files": [],
+          "audios": [],
+          "reminders": [],
+          "viewMode": "EDIT",
+          "isPinnedToStatus": false
+        }
+      },
+      {
+        "where": {
+          "id": 2
+        },
+        "fields": {
+          "id": 2,
+          "type": "LIST",
+          "folder": "NOTES",
+          "color": "DEFAULT",
+          "title": "AAB-LIST-script-1788752487009-10e9d2",
+          "pinned": false,
+          "timestamp": 1788752532207,
+          "modifiedTimestamp": 1788753415431,
+          "labels": [
+            "AAB-label-ab"
+          ],
+          "body": "",
+          "spans": [],
+          "items": [
+            {
+              "body": "Parent-A",
+              "checked": false,
+              "isChild": false,
+              "order": 0
+            },
+            {
+              "body": "Child-A1",
+              "checked": false,
+              "isChild": true,
+              "order": 1
+            },
+            {
+              "body": "Child-A2-edited",
+              "checked": false,
+              "isChild": true,
+              "order": 2
+            },
+            {
+              "body": "Parent-B",
+              "checked": true,
+              "isChild": false,
+              "order": 3,
+              "checkedTimestamp": 1788752541063
+            }
+          ],
+          "images": [],
+          "files": [],
+          "audios": [],
+          "reminders": [],
+          "viewMode": "EDIT",
+          "isPinnedToStatus": false
+        }
+      }
+    ],
+    "labels": [
+      {
+        "value": "AAB-label-ab",
+        "order": 2
+      },
+      {
+        "value": "AAB-label-renamed",
+        "order": 1
+      },
+      {
+        "value": "AAB项目-script-1788752487009-10e9d2",
+        "order": 0
+      }
+    ],
+    "preferences": {
+      "dataSchemaId": 2
+    }
+  },
+  "result": {
+    "id": "rename-updates-exact-label-references-only",
+    "verdict": "passed",
+    "ok": true,
+    "snapshotId": "ef35f3c8-5f9e-4449-8539-57103831ac78",
+    "runId": "expansion-labels-bulk-20260907-FYZLAU49X8OVQGJ7",
+    "source": "independent-host-business-oracle",
+    "checks": [
+      {
+        "field": "noteCount",
+        "verdict": "passed",
+        "expected": 2,
+        "actual": 2
+      },
+      {
+        "field": "notes[0].count",
+        "verdict": "passed",
+        "expected": 1,
+        "actual": 1
+      },
+      {
+        "field": "notes[0].id",
+        "verdict": "passed",
+        "expected": 1,
+        "actual": 1
+      },
+      {
+        "field": "notes[0].type",
+        "verdict": "passed",
+        "expected": "NOTE",
+        "actual": "NOTE"
+      },
+      {
+        "field": "notes[0].folder",
+        "verdict": "passed",
+        "expected": "NOTES",
+        "actual": "NOTES"
+      },
+      {
+        "field": "notes[0].color",
+        "verdict": "passed",
+        "expected": "#AFCCDC",
+        "actual": "#AFCCDC"
+      },
+      {
+        "field": "notes[0].title",
+        "verdict": "passed",
+        "expected": "AAB-TEXT-script-1788752487009-10e9d2",
+        "actual": "AAB-TEXT-script-1788752487009-10e9d2"
+      },
+      {
+        "field": "notes[0].pinned",
+        "verdict": "passed",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "field": "notes[0].timestamp",
+        "verdict": "passed",
+        "expected": 1788752495340,
+        "actual": 1788752495340
+      },
+      {
+        "field": "notes[0].modifiedTimestamp",
+        "verdict": "passed",
+        "expected": 1788753172848,
+        "actual": 1788753172848
+      },
+      {
+        "field": "notes[0].labels",
+        "verdict": "passed",
+        "expected": [
+          "AAB项目-script-1788752487009-10e9d2",
+          "AAB-label-renamed"
+        ],
+        "actual": [
+          "AAB项目-script-1788752487009-10e9d2",
+          "AAB-label-renamed"
+        ]
+      },
+      {
+        "field": "notes[0].body",
+        "verdict": "passed",
+        "expected": "第一行中文\nsecond line & <tag>-edited",
+        "actual": "第一行中文\nsecond line & <tag>-edited"
+      },
+      {
+        "field": "notes[0].spans",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[0].items",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[0].images",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[0].files",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[0].audios",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[0].reminders",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[0].viewMode",
+        "verdict": "passed",
+        "expected": "EDIT",
+        "actual": "EDIT"
+      },
+      {
+        "field": "notes[0].isPinnedToStatus",
+        "verdict": "passed",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "field": "notes[1].count",
+        "verdict": "passed",
+        "expected": 1,
+        "actual": 1
+      },
+      {
+        "field": "notes[1].id",
+        "verdict": "passed",
+        "expected": 2,
+        "actual": 2
+      },
+      {
+        "field": "notes[1].type",
+        "verdict": "passed",
+        "expected": "LIST",
+        "actual": "LIST"
+      },
+      {
+        "field": "notes[1].folder",
+        "verdict": "passed",
+        "expected": "NOTES",
+        "actual": "NOTES"
+      },
+      {
+        "field": "notes[1].color",
+        "verdict": "passed",
+        "expected": "DEFAULT",
+        "actual": "DEFAULT"
+      },
+      {
+        "field": "notes[1].title",
+        "verdict": "passed",
+        "expected": "AAB-LIST-script-1788752487009-10e9d2",
+        "actual": "AAB-LIST-script-1788752487009-10e9d2"
+      },
+      {
+        "field": "notes[1].pinned",
+        "verdict": "passed",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "field": "notes[1].timestamp",
+        "verdict": "passed",
+        "expected": 1788752532207,
+        "actual": 1788752532207
+      },
+      {
+        "field": "notes[1].modifiedTimestamp",
+        "verdict": "passed",
+        "expected": 1788753415431,
+        "actual": 1788753415431
+      },
+      {
+        "field": "notes[1].labels",
+        "verdict": "passed",
+        "expected": [
+          "AAB-label-ab"
+        ],
+        "actual": [
+          "AAB-label-ab"
+        ]
+      },
+      {
+        "field": "notes[1].body",
+        "verdict": "passed",
+        "expected": "",
+        "actual": ""
+      },
+      {
+        "field": "notes[1].spans",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[1].items",
+        "verdict": "passed",
+        "expected": [
+          {
+            "body": "Parent-A",
+            "checked": false,
+            "isChild": false,
+            "order": 0
+          },
+          {
+            "body": "Child-A1",
+            "checked": false,
+            "isChild": true,
+            "order": 1
+          },
+          {
+            "body": "Child-A2-edited",
+            "checked": false,
+            "isChild": true,
+            "order": 2
+          },
+          {
+            "body": "Parent-B",
+            "checked": true,
+            "isChild": false,
+            "order": 3,
+            "checkedTimestamp": 1788752541063
+          }
+        ],
+        "actual": [
+          {
+            "body": "Parent-A",
+            "checked": false,
+            "isChild": false,
+            "order": 0
+          },
+          {
+            "body": "Child-A1",
+            "checked": false,
+            "isChild": true,
+            "order": 1
+          },
+          {
+            "body": "Child-A2-edited",
+            "checked": false,
+            "isChild": true,
+            "order": 2
+          },
+          {
+            "body": "Parent-B",
+            "checked": true,
+            "isChild": false,
+            "order": 3,
+            "checkedTimestamp": 1788752541063
+          }
+        ]
+      },
+      {
+        "field": "notes[1].images",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[1].files",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[1].audios",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[1].reminders",
+        "verdict": "passed",
+        "expected": [],
+        "actual": []
+      },
+      {
+        "field": "notes[1].viewMode",
+        "verdict": "passed",
+        "expected": "EDIT",
+        "actual": "EDIT"
+      },
+      {
+        "field": "notes[1].isPinnedToStatus",
+        "verdict": "passed",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "field": "labels",
+        "verdict": "passed",
+        "expected": [
+          {
+            "value": "AAB-label-ab",
+            "order": 2
+          },
+          {
+            "value": "AAB-label-renamed",
+            "order": 1
+          },
+          {
+            "value": "AAB项目-script-1788752487009-10e9d2",
+            "order": 0
+          }
+        ],
+        "actual": [
+          {
+            "value": "AAB-label-ab",
+            "order": 2
+          },
+          {
+            "value": "AAB-label-renamed",
+            "order": 1
+          },
+          {
+            "value": "AAB项目-script-1788752487009-10e9d2",
+            "order": 0
+          }
+        ]
+      },
+      {
+        "field": "preferences.dataSchemaId",
+        "verdict": "passed",
+        "expected": 2,
+        "actual": 2
+      }
+    ]
+  }
+}

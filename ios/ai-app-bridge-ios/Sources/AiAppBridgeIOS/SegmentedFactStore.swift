@@ -800,6 +800,7 @@ internal final class SegmentedFactStore {
     private var acceptedRecords: UInt64 = 0
     private var writtenRecords: UInt64 = 0
     private var droppedRecords: UInt64 = 0
+    private var receiptOutcomes: [Bool] = []
     private var unflushedRecords = 0
     private var flushTimer: DispatchSourceTimer?
     private var lastOperation = SegmentedFactStoreOperationResult(code: SegmentedFactStoreResultCode.closed)
@@ -954,6 +955,38 @@ internal final class SegmentedFactStore {
         partitionId: UInt32 = 0,
         durability: SegmentedFactStoreDurability = .memory
     ) -> SegmentedFactRecordEnqueueResult {
+        enqueueRecord(payload, partitionId: partitionId, durability: durability, trackReceiptOutcome: false)
+    }
+
+    @discardableResult
+    internal func recordForReceipt(
+        _ payload: Data,
+        partitionId: UInt32 = 0,
+        durability: SegmentedFactStoreDurability = .memory
+    ) -> SegmentedFactRecordEnqueueResult {
+        enqueueRecord(payload, partitionId: partitionId, durability: durability, trackReceiptOutcome: true)
+    }
+
+    internal func takeReceiptOutcomes() -> [Bool] {
+        withLock {
+            let taken = receiptOutcomes
+            receiptOutcomes.removeAll()
+            return taken
+        }
+    }
+
+    private func offerReceiptOutcome(_ track: Bool, success: Bool) {
+        if !track { return }
+        receiptOutcomes.append(success)
+    }
+
+    @discardableResult
+    private func enqueueRecord(
+        _ payload: Data,
+        partitionId: UInt32,
+        durability: SegmentedFactStoreDurability,
+        trackReceiptOutcome: Bool
+    ) -> SegmentedFactRecordEnqueueResult {
         let configuration = withLock {
             RecordConfiguration(
                 state: stateValue,
@@ -1000,7 +1033,10 @@ internal final class SegmentedFactStore {
             defer { withLock { pendingRecords -= 1 } }
             let snapshot = withLock { (handle, native) }
             guard snapshot.0 != 0, let adapter = snapshot.1 else {
-                withLock { droppedRecords += 1 }
+                withLock {
+                    droppedRecords += 1
+                    offerReceiptOutcome(trackReceiptOutcome, success: false)
+                }
                 return
             }
             let result: NativeAppendResult
@@ -1024,8 +1060,10 @@ internal final class SegmentedFactStore {
                 lastOperation = result.operation
                 if result.operation.isSuccess {
                     writtenRecords += 1
+                    offerReceiptOutcome(trackReceiptOutcome, success: true)
                 } else {
                     droppedRecords += 1
+                    offerReceiptOutcome(trackReceiptOutcome, success: false)
                 }
             }
             if result.operation.isSuccess {
@@ -1061,6 +1099,22 @@ internal final class SegmentedFactStore {
                 cursor: cursor,
                 bufferCapacity: bufferCapacity
             ))
+        }
+    }
+
+    internal func flush(completion: @escaping (SegmentedFactStoreOperationResult) -> Void) {
+        writer.async { [self] in
+            let snapshot = withLock { (handle, native) }
+            guard snapshot.0 != 0, let adapter = snapshot.1 else {
+                completion(.init(code: SegmentedFactStoreResultCode.closed))
+                return
+            }
+            if unflushedRecords == 0 {
+                completion(.init(code: SegmentedFactStoreResultCode.ok))
+                return
+            }
+            flushPendingOnWriter(adapter: adapter, handle: snapshot.0)
+            completion(withLock { lastOperation })
         }
     }
 

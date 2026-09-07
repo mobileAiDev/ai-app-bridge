@@ -111,13 +111,23 @@ test('G1 LegacyDispatcher only forwards existing commands', async () => {
   assert.deepEqual(calls, [{ command: 'screenshot', args: { serial: 'android-1' } }]);
 });
 
-test('G1 capabilities adds only script and intent definitions', () => {
+test('G1 capabilities preserves Legacy and adds Script, Intent, and explicit mobile capture options', () => {
   const live = capabilityPayload({ includeOptions: true });
   assert.equal(live.ok, true);
   assert.deepEqual(live.commandDomains, capabilitySnapshot.commandDomains);
   assert.deepEqual(live.supportedTargets, capabilitySnapshot.supportedTargets);
   assert.equal(live.usage, capabilitySnapshot.usage);
-  assert.deepEqual(withoutIsolatedCommands(live.domains), capabilitySnapshot.domains);
+  const legacy = withoutIsolatedCommands(live.domains);
+  const captureCommands = new Set(['logs', 'network', 'state', 'events', 'ios-logs', 'ios-network', 'ios-state', 'ios-events']);
+  const captureOptions = ['view', 'runtimeEpoch', 'afterActionId', 'mobileFactId', 'targetKey'];
+  for (const commands of Object.values(legacy)) {
+    for (const command of commands) {
+      if (!captureCommands.has(command.command)) continue;
+      assert.deepEqual(command.options.filter((option) => captureOptions.includes(option)), captureOptions);
+      command.options = command.options.filter((option) => !captureOptions.includes(option));
+    }
+  }
+  assert.deepEqual(legacy, capabilitySnapshot.domains);
   const added = live.domains.advanced.map((item) => item.command).filter((name) => name === 'script' || name === 'intent');
   assert.deepEqual(added, ['script', 'intent']);
   assert.equal(capabilityPayload({ command: 'script' }).ok, true);

@@ -1,0 +1,86 @@
+--------- beginning of crash
+09-07 11:06:22.610 11433   419 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0xd in tid 419 (ADB-JDWP Connec), pid 11433 (notallyx.sample)
+09-07 11:06:22.902   456   456 F DEBUG   : Process name is <pre-initialized>, uid is 10488, not key_process
+09-07 11:06:22.902   456   456 F DEBUG   : keyProcess: 0
+09-07 11:06:22.902   456   456 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+09-07 11:06:22.902   456   456 F DEBUG   : Build fingerprint: 'OnePlus/PKR110/OP60EBL1:16/AP3A.240617.008/V.3c1c42f-1770e5d-17c3b35:user/release-keys'
+09-07 11:06:22.902   456   456 F DEBUG   : Revision: '0'
+09-07 11:06:22.902   456   456 F DEBUG   : ABI: 'arm64'
+09-07 11:06:22.902   456   456 F DEBUG   : Timestamp: 2026-09-07 11:06:22.671969212+0800
+09-07 11:06:22.902   456   456 F DEBUG   : Process uptime: 1615s
+09-07 11:06:22.902   456   456 F DEBUG   : Cmdline: <pre-initialized>
+09-07 11:06:22.902   456   456 F DEBUG   : pid: 11433, tid: 419, name: ADB-JDWP Connec  >>> <pre-initialized> <<<
+09-07 11:06:22.902   456   456 F DEBUG   : uid: 10488
+09-07 11:06:22.902   456   456 F DEBUG   : tagged_addr_ctrl: 0000000000000001 (PR_TAGGED_ADDR_ENABLE)
+09-07 11:06:22.902   456   456 F DEBUG   : pac_enabled_keys: 000000000000000f (PR_PAC_APIAKEY, PR_PAC_APIBKEY, PR_PAC_APDAKEY, PR_PAC_APDBKEY)
+09-07 11:06:22.902   456   456 F DEBUG   : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x000000000000000d
+09-07 11:06:22.902   456   456 F DEBUG   : Cause: null pointer dereference
+09-07 11:06:22.902   456   456 F DEBUG   :     x0  000000000000000b  x1  0000007b29244da0  x2  0000007b29244e20  x3  0000000000000008
+09-07 11:06:22.902   456   456 F DEBUG   :     x4  000000000000206e  x5  0000000000000000  x6  0000007a16565678  x7  0000000000000000
+09-07 11:06:22.902   456   456 F DEBUG   :     x8  d282c2b9b7706333  x9  d282c2b9b7706333  x10 0000007a16566880  x11 0000000000000001
+09-07 11:06:22.902   456   456 F DEBUG   :     x12 0000007a65535be0  x13 0000007a64495180  x14 0000007a65104ab0  x15 0000000000000000
+09-07 11:06:22.902   456   456 F DEBUG   :     x16 0000007b1caa1318  x17 0000007b00d761cc  x18 00000079b1128000  x19 0000007b29244e20
+09-07 11:06:22.902   456   456 F DEBUG   :     x20 0000007b29244da0  x21 0000007b29244da0  x22 000000000000000b  x23 0000007b1caa3000
+09-07 11:06:22.902   456   456 F DEBUG   :     x24 0000007a16566840  x25 0000000000000000  x26 0000007b1caa3698  x27 0000007b1caa2408
+09-07 11:06:22.902   456   456 F DEBUG   :     x28 0000000000000008  x29 0000007b29244c90
+09-07 11:06:22.902   456   456 F DEBUG   :     lr  005f64fb1ca9edb0  sp  0000007b29244b60  pc  0000007a65541458  pst 0000000060001000
+09-07 11:06:22.902   456   456 F DEBUG   : 28 total frames
+09-07 11:06:22.902   456   456 F DEBUG   : backtrace:
+09-07 11:06:22.902   456   456 F DEBUG   :       #00 pc 0000000000541458  /apex/com.android.art/lib64/libart.so (art::FaultManager::HandleSigsegvFault(int, siginfo*, void*)+68) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #01 pc 0000000000005dac  /apex/com.android.art/lib64/libsigchain.so (art::SignalChain::Handler(int, siginfo*, void*)+372) (BuildId: f071631ef44ecce38b552c8802055f21)
+09-07 11:06:22.902   456   456 F DEBUG   :       #02 pc 0000000000000848  [vdso]
+09-07 11:06:22.902   456   456 F DEBUG   :       #03 pc 0000000000d90300  /apex/com.android.art/lib64/libart.so (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #04 pc 00000000006f2394  /apex/com.android.art/lib64/libart.so (bool art::interpreter::DoCall<false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, bool, art::JValue*)+380) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #05 pc 00000000006e3da8  /apex/com.android.art/lib64/libart.so (void art::interpreter::ExecuteSwitchImplCpp<false>(art::interpreter::SwitchImplContext*)+452) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #06 pc 0000000000505818  /apex/com.android.art/lib64/libart.so (ExecuteSwitchImplAsm+8) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #07 pc 00000000004af180  /system/framework/framework.jar (offset 0x7000) (android.ddm.DdmHandleHello.handleFEAT+0)
+09-07 11:06:22.902   456   456 F DEBUG   :       #08 pc 00000000006f34c4  /apex/com.android.art/lib64/libart.so (bool art::interpreter::DoCall<false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, bool, art::JValue*)+4780) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #09 pc 00000000006e3da8  /apex/com.android.art/lib64/libart.so (void art::interpreter::ExecuteSwitchImplCpp<false>(art::interpreter::SwitchImplContext*)+452) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #10 pc 0000000000505818  /apex/com.android.art/lib64/libart.so (ExecuteSwitchImplAsm+8) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #11 pc 00000000004af10c  /system/framework/framework.jar (offset 0x7000) (android.ddm.DdmHandleHello.handleChunk+0)
+09-07 11:06:22.902   456   456 F DEBUG   :       #12 pc 00000000006f34c4  /apex/com.android.art/lib64/libart.so (bool art::interpreter::DoCall<false>(art::ArtMethod*, art::Thread*, art::ShadowFrame&, art::Instruction const*, unsigned short, bool, art::JValue*)+4780) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #13 pc 00000000006e3da8  /apex/com.android.art/lib64/libart.so (void art::interpreter::ExecuteSwitchImplCpp<false>(art::interpreter::SwitchImplContext*)+452) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #14 pc 0000000000505818  /apex/com.android.art/lib64/libart.so (ExecuteSwitchImplAsm+8) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #15 pc 00000000000478fc  /apex/com.android.art/javalib/core-libart.jar (org.apache.harmony.dalvik.ddmc.DdmServer.dispatch+0)
+09-07 11:06:22.902   456   456 F DEBUG   :       #16 pc 0000000000504a50  /apex/com.android.art/lib64/libart.so (art::interpreter::Execute(art::Thread*, art::CodeItemDataAccessor const&, art::ShadowFrame&, art::JValue, bool, bool) (.__uniq.112435418011751916792819755956732575238.llvm.7580782965977736154)+720) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #17 pc 0000000000504140  /apex/com.android.art/lib64/libart.so (artQuickToInterpreterBridge+1744) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #18 pc 0000000000535c38  /apex/com.android.art/lib64/libart.so (art_quick_to_interpreter_bridge+88) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #19 pc 000000000051a260  /apex/com.android.art/lib64/libart.so (art_quick_invoke_static_stub+640) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #20 pc 0000000000681810  /apex/com.android.art/lib64/libart.so (art::ArtMethod::Invoke(art::Thread*, unsigned int*, unsigned int, art::JValue*, char const*)+216) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #21 pc 00000000009f30ec  /apex/com.android.art/lib64/libart.so (art::detail::ShortyTraits<(char)76>::Type art::ArtMethod::InvokeStatic<(char)76, (char)73, (char)76, (char)73, (char)73>(art::Thread*, art::detail::ShortyTraits<(char)73>::Type, art::detail::ShortyTraits<(char)76>::Type, art::detail::ShortyTraits<(char)73>::Type, art::detail::ShortyTraits<(char)73>::Type)+88) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #22 pc 00000000009f2330  /apex/com.android.art/lib64/libart.so (art::Dbg::DdmHandleChunk(_JNIEnv*, unsigned int, art::ArrayRef<signed char const> const&, unsigned int*, std::__1::vector<unsigned char, std::__1::allocator<unsigned char>>*)+288) (BuildId: 226050610e4b81d0876a0d0fed3bdeec)
+09-07 11:06:22.902   456   456 F DEBUG   :       #23 pc 000000000001139c  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::AdbConnectionState::HandleDataWithoutAgent(art::Thread*)+1116) (BuildId: 19ba534c8b8bd54a1eb2ab57ea632843)
+09-07 11:06:22.902   456   456 F DEBUG   :       #24 pc 0000000000010344  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::AdbConnectionState::RunPollLoop(art::Thread*)+2276) (BuildId: 19ba534c8b8bd54a1eb2ab57ea632843)
+09-07 11:06:22.902   456   456 F DEBUG   :       #25 pc 000000000000e1c4  /apex/com.android.art/lib64/libadbconnection.so (adbconnection::CallbackFunction(void*)+1428) (BuildId: 19ba534c8b8bd54a1eb2ab57ea632843)
+09-07 11:06:22.902   456   456 F DEBUG   :       #26 pc 0000000000099fec  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start(void*)+184) (BuildId: 28057735687b475a45ee7ab9afcb5eb7)
+09-07 11:06:22.902   456   456 F DEBUG   :       #27 pc 000000000008c808  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+68) (BuildId: 28057735687b475a45ee7ab9afcb5eb7)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: [OPLUS]FATAL EXCEPTION: main
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: Process: io.github.mobileaidev.notallyx.sample, PID: 11752
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: java.lang.IllegalStateException: Label already exists: AAB扩展标签-01
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at com.philkes.notallyx.application.NoteApplicationService$addLabel$2.invokeSuspend(NoteApplicationService.kt:192)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at com.philkes.notallyx.application.NoteApplicationService$addLabel$2.invoke(Unknown Source:8)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at com.philkes.notallyx.application.NoteApplicationService$addLabel$2.invoke(Unknown Source:4)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at com.philkes.notallyx.application.DatabaseSession$transaction$2$1.invokeSuspend(DatabaseSession.kt:40)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at com.philkes.notallyx.application.DatabaseSession$transaction$2$1.invoke(Unknown Source:8)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at com.philkes.notallyx.application.DatabaseSession$transaction$2$1.invoke(Unknown Source:2)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.RoomDatabaseKt$withTransaction$transactionBlock$1.invokeSuspend(RoomDatabaseExt.kt:62)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.RoomDatabaseKt$withTransaction$transactionBlock$1.invoke(Unknown Source:8)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.RoomDatabaseKt$withTransaction$transactionBlock$1.invoke(Unknown Source:4)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.intrinsics.UndispatchedKt.startUndispatchedOrReturn(Undispatched.kt:78)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.BuildersKt__Builders_commonKt.withContext(Builders.common.kt:167)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.BuildersKt.withContext(Unknown Source:1)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.RoomDatabaseKt$startTransactionCoroutine$2$1$1.invokeSuspend(RoomDatabaseExt.kt:103)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:280)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:85)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:59)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source:1)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.RoomDatabaseKt$startTransactionCoroutine$2$1.run(RoomDatabaseExt.kt:99)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.TransactionExecutor.execute$lambda$1$lambda$0(TransactionExecutor.kt:36)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.TransactionExecutor.$r8$lambda$FZWr2PGmP3sgXLCiri-DCcePXSs(Unknown Source:0)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at androidx.room.TransactionExecutor$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	at java.lang.Thread.run(Thread.java:1119)
+09-07 11:20:19.413 11752 11752 E OplusExceptionHelper: 	Suppressed: kotlinx.coroutines.internal.DiagnosticCoroutineContextException: [StandaloneCoroutine{Cancelling}@c8bffa6, Dispatchers.Main.immediate]

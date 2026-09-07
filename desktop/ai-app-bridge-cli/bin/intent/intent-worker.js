@@ -17,6 +17,8 @@ function createIntentWorker({
   budget = null,
   timeoutMs = null,
   now = Date.now,
+  capturePort = null,
+  captureRequirements = null,
 } = {}) {
   const runtime = createIntentRuntime({ operationId, now });
   runtime.state.mode = mode;
@@ -27,7 +29,11 @@ function createIntentWorker({
     provider,
     store,
     adapter,
+    mode,
     now,
+    capturePort,
+    captureRequirements,
+    canDispatch: () => runtime.state.status === 'decision_committed',
     latestSummary: null,
     latestEvidenceId: null,
     latestEvidenceIds: {},
@@ -59,15 +65,20 @@ function createIntentWorker({
     return snapshotResult(false);
   }
 
+  function observationFailure(observed) {
+    runtime.state.status = context.target.foregroundPackages !== undefined && observed.stage === 'provider'
+      ? 'waiting_for_observation' : 'blocked_evidence_store';
+    runtime.state.error = observed.error;
+    runtime.emit('blocked', { error: observed.error });
+    return snapshotResult(false);
+  }
+
   async function start() {
     runtime.state.status = 'observing';
     runtime.emit('intent_started', { goal: goal || null });
     const observed = await observeAndCommit(context);
     if (!observed.ok) {
-      runtime.state.status = 'blocked_evidence_store';
-      runtime.state.error = observed.error;
-      runtime.emit('blocked', { error: observed.error });
-      return snapshotResult(false);
+      return observationFailure(observed);
     }
     runtime.state.revision = observed.revision;
     runtime.state.status = 'waiting_for_decision';
@@ -81,6 +92,7 @@ function createIntentWorker({
 
   async function runAutonomous() {
     runtime.state.mode = 'autonomous';
+    context.mode = 'autonomous';
     while (runtime.state.status === 'waiting_for_decision' && !stopAutonomous) {
       if (timedOut()) return enterTimeout();
       if (!agent || typeof agent.decide !== 'function') {
@@ -106,6 +118,7 @@ function createIntentWorker({
           revision: runtime.state.revision,
           summary: context.latestSummary,
           evidenceId: context.latestEvidenceId,
+          ...(context.latestCapture ? { capture: context.latestCapture } : {}),
         });
         context.timings.decisionWaitMs += now() - waitStarted;
         agentCalls += 1;
@@ -160,6 +173,10 @@ function createIntentWorker({
         basedOnEvidenceIds: [context.latestEvidenceId].filter(Boolean),
         actionSpecHash: 'terminal',
         agentDecision,
+        mode: context.mode,
+        reason: decision.reason,
+        timestampMs: context.now(),
+        target: context.target,
       });
       if (!persisted.ok) {
         return intentError(persisted.error || 'plan_or_decision_not_persisted', snapshotResult(false));
@@ -174,6 +191,10 @@ function createIntentWorker({
     if (agentDecision !== 'act') return intentError('invalid_agent_decision', { agentDecision, ...snapshotResult(false) });
     runtime.state.status = 'decision_committed';
     const acted = await executeDecisionAction(context, decision);
+    if (runtime.state.status === 'cancelled') {
+      if (acted.ambiguous) runtime.state.error = acted.error;
+      return snapshotResult(false);
+    }
     if (!acted.ok) {
       if (acted.error === 'reobserve_required') {
         runtime.state.status = 'waiting_for_decision';
@@ -194,9 +215,7 @@ function createIntentWorker({
     runtime.state.status = 'observing';
     const observed = await observeAndCommit(context);
     if (!observed.ok) {
-      runtime.state.status = 'blocked_evidence_store';
-      runtime.state.error = observed.error;
-      return snapshotResult(false);
+      return observationFailure(observed);
     }
     runtime.state.revision = observed.revision;
     runtime.state.status = 'waiting_for_decision';
@@ -204,12 +223,36 @@ function createIntentWorker({
     return snapshotResult(true);
   }
 
-  function status() {
-    return snapshotResult(
+  function status(args = {}) {
+    const result = snapshotResult(
       runtime.state.status === 'waiting_for_decision'
       || runtime.state.status === 'completed'
       || runtime.state.status === 'created',
     );
+    if (context.store.ledger) {
+      const afterSequence = args.afterSequence == null ? 0 : args.afterSequence;
+      result.history = context.store.ledger.query(context.operationId, afterSequence, args.limit);
+    }
+    return result;
+  }
+
+  async function observe(args = {}) {
+    if (!['waiting_for_decision', 'waiting_for_observation'].includes(runtime.state.status)) return intentError('not_waiting_for_decision', snapshotResult(false));
+    if (args.basedOnRevision != null && Number(args.basedOnRevision) !== runtime.state.revision) return intentError('reobserve_required', snapshotResult(false));
+    if (timedOut()) return enterTimeout();
+    runtime.state.status = 'observing';
+    context.revision += 1;
+    runtime.emit('observing', { revision: context.revision, reason: 'explicit_reobserve' });
+    const observed = await observeAndCommit(context);
+    if (runtime.state.status !== 'observing') return snapshotResult(false);
+    if (!observed.ok) {
+      return observationFailure(observed);
+    }
+    runtime.state.revision = observed.revision;
+    runtime.state.status = 'waiting_for_decision';
+    runtime.state.error = null;
+    runtime.emit('waiting_for_decision', { revision: observed.revision, evidenceId: observed.evidenceId, reason: 'explicit_reobserve' });
+    return snapshotResult(true);
   }
 
   function pause() {
@@ -247,7 +290,7 @@ function createIntentWorker({
   }
 
   function snapshotResult(ok) {
-    return {
+    const result = {
       ok,
       ...runtime.snapshot(),
       summary: context.latestSummary,
@@ -257,9 +300,11 @@ function createIntentWorker({
       agentCalls,
       actionSteps,
     };
+    if (context.latestCapture) result.capture = context.latestCapture;
+    return result;
   }
 
-  return { operationId, start, decide, status, pause, resume, cancel, intervene, runtime, context };
+  return { operationId, start, decide, observe, status, pause, resume, cancel, intervene, runtime, context };
 }
 
 module.exports = { createIntentWorker };

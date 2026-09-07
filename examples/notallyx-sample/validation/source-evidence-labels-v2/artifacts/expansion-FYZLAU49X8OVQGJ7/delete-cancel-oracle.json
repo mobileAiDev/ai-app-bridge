@@ -1,0 +1,6 @@
+{
+  "id": "delete-cancel-no-business-change",
+  "verdict": "inconclusive",
+  "ok": false,
+  "reason": "unverified_snapshot"
+}

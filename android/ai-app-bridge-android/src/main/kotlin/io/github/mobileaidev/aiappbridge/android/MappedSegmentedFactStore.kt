@@ -177,6 +177,18 @@ internal class MappedSegmentedFactStore(
         }
     }
 
+    // Record locations are already maintained in ascending global sequence order by this engine.
+    // Seek within that existing metadata instead of rescanning every retained record for each row.
+    private fun firstIndexAfterSequence(records: List<RecordLocation>, sequence: Long): Int {
+        var low = 0
+        var high = records.size
+        while (low < high) {
+            val middle = low + (high - low) / 2
+            if (records[middle].sequence <= sequence) low = middle + 1 else high = middle
+        }
+        return low
+    }
+
     override fun scan(
         handle: Long,
         cursor: SegmentedFactStoreCursor,
@@ -191,8 +203,9 @@ internal class MappedSegmentedFactStore(
         val candidate = if (cursor.partitionId == -1) {
             partitions.asSequence()
                 .filter { it.enabled }
-                .flatMap { it.records.asSequence() }
-                .filter { it.sequence > cursor.afterSequence }
+                .mapNotNull { partition ->
+                    partition.records.getOrNull(firstIndexAfterSequence(partition.records, cursor.afterSequence))
+                }
                 .minByOrNullCompat { it.sequence }
         } else {
             val partition = partitions[cursor.partitionId]
@@ -203,12 +216,12 @@ internal class MappedSegmentedFactStore(
                 )
             }
             partitionCursorEvicted = if (cursor.segmentId == 0L) {
-                partition.evictedRecords > 0L
+                partition.evictedRecords > 0L && cursor.afterSequence < partition.firstSequence
             } else {
                 partition.segments.none { it.id == cursor.segmentId } &&
                     (partition.segments.firstOrNull()?.id ?: 0L) > cursor.segmentId
             }
-            partition.records.firstOrNull { location ->
+            partition.records.listIterator(firstIndexAfterSequence(partition.records, cursor.afterSequence)).asSequence().firstOrNull { location ->
                 when {
                     cursor.segmentId == 0L -> true
                     location.segmentId > cursor.segmentId -> true
@@ -689,8 +702,12 @@ internal class MappedSegmentedFactStore(
 
     private fun decodeFrame(map: ByteBuffer, fileSize: Int, offset: Int): DecodedFrame {
         if (offset == fileSize) return DecodedFrame(ending = FrameEnding.END)
-        if (offset > fileSize || fileSize - offset < FRAME_PREFIX_SIZE) {
-            return DecodedFrame(ending = FrameEnding.TORN)
+        if (offset > fileSize) return DecodedFrame(ending = FrameEnding.TORN)
+        if (fileSize - offset < FRAME_PREFIX_SIZE) {
+            // Portable v1 segments may end with less than a frame prefix of zero padding.
+            // Match the C reader: only a nonzero short tail represents an incomplete frame.
+            val ending = if ((offset until fileSize).all { map.get(it).toInt() == 0 }) FrameEnding.END else FrameEnding.TORN
+            return DecodedFrame(ending = ending)
         }
         var zero = true
         for (index in 0 until FRAME_PREFIX_SIZE) {

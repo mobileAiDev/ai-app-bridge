@@ -1,0 +1,2401 @@
+{
+  "fixtureKind": "derived-native-tree-selector-contract",
+  "sourcePath": "build/ai_app_bridge_artifacts/notallyx-migration/exploration/1788751146519-tree.json",
+  "sourceSha256": "fb67aa18213957eb2398448cf5fb67f0322dd68850f56e3de4257edae25b8cee",
+  "note": "Actual observed topology and selector/visibility fields; unrelated fields and duplicate top-level root representation omitted. Host fixture, not a new device observation.",
+  "windows": [
+    {
+      "bounds": {
+        "left": 0,
+        "top": 0,
+        "right": 1080,
+        "bottom": 2376,
+        "width": 1080,
+        "height": 2376
+      },
+      "root": {
+        "className": "com.android.internal.policy.DecorView",
+        "resourceName": null,
+        "contentDescription": null,
+        "visibility": "visible",
+        "effectiveVisible": true,
+        "visible": true,
+        "enabled": true,
+        "editable": false,
+        "alpha": 1,
+        "bounds": {
+          "left": 0,
+          "top": 0,
+          "right": 1080,
+          "bottom": 2376,
+          "width": 1080,
+          "height": 2376
+        },
+        "children": [
+          {
+            "className": "android.widget.LinearLayout",
+            "resourceName": null,
+            "contentDescription": null,
+            "visibility": "visible",
+            "effectiveVisible": true,
+            "visible": true,
+            "enabled": true,
+            "editable": false,
+            "alpha": 1,
+            "bounds": {
+              "left": 0,
+              "top": 0,
+              "right": 1080,
+              "bottom": 2376,
+              "width": 1080,
+              "height": 2376
+            },
+            "children": [
+              {
+                "className": "android.view.ViewStub",
+                "resourceName": "android:id/action_mode_bar_stub",
+                "contentDescription": null,
+                "visibility": "gone",
+                "effectiveVisible": false,
+                "visible": false,
+                "enabled": true,
+                "editable": false,
+                "alpha": 1,
+                "bounds": {
+                  "left": 0,
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "width": 0,
+                  "height": 0
+                }
+              },
+              {
+                "className": "android.widget.FrameLayout",
+                "resourceName": null,
+                "contentDescription": null,
+                "visibility": "visible",
+                "effectiveVisible": true,
+                "visible": true,
+                "enabled": true,
+                "editable": false,
+                "alpha": 1,
+                "bounds": {
+                  "left": 0,
+                  "top": 0,
+                  "right": 1080,
+                  "bottom": 2376,
+                  "width": 1080,
+                  "height": 2376
+                },
+                "children": [
+                  {
+                    "className": "androidx.appcompat.widget.FitWindowsLinearLayout",
+                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/action_bar_root",
+                    "contentDescription": null,
+                    "visibility": "visible",
+                    "effectiveVisible": true,
+                    "visible": true,
+                    "enabled": true,
+                    "editable": false,
+                    "alpha": 1,
+                    "bounds": {
+                      "left": 0,
+                      "top": 0,
+                      "right": 1080,
+                      "bottom": 2376,
+                      "width": 1080,
+                      "height": 2376
+                    },
+                    "children": [
+                      {
+                        "className": "androidx.appcompat.widget.ViewStubCompat",
+                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/action_mode_bar_stub",
+                        "contentDescription": null,
+                        "visibility": "gone",
+                        "effectiveVisible": false,
+                        "visible": false,
+                        "enabled": true,
+                        "editable": false,
+                        "alpha": 1,
+                        "bounds": {
+                          "left": 0,
+                          "top": 0,
+                          "right": 0,
+                          "bottom": 0,
+                          "width": 0,
+                          "height": 0
+                        }
+                      },
+                      {
+                        "className": "androidx.appcompat.widget.ContentFrameLayout",
+                        "resourceName": "android:id/content",
+                        "contentDescription": null,
+                        "visibility": "visible",
+                        "effectiveVisible": true,
+                        "visible": true,
+                        "enabled": true,
+                        "editable": false,
+                        "alpha": 1,
+                        "bounds": {
+                          "left": 0,
+                          "top": 0,
+                          "right": 1080,
+                          "bottom": 2376,
+                          "width": 1080,
+                          "height": 2376
+                        },
+                        "children": [
+                          {
+                            "className": "androidx.drawerlayout.widget.DrawerLayout",
+                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/DrawerLayout",
+                            "contentDescription": null,
+                            "visibility": "visible",
+                            "effectiveVisible": true,
+                            "visible": true,
+                            "enabled": true,
+                            "editable": false,
+                            "alpha": 1,
+                            "bounds": {
+                              "left": 0,
+                              "top": 0,
+                              "right": 1080,
+                              "bottom": 2376,
+                              "width": 1080,
+                              "height": 2376
+                            },
+                            "children": [
+                              {
+                                "className": "android.widget.RelativeLayout",
+                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/RelativeLayout",
+                                "contentDescription": null,
+                                "visibility": "visible",
+                                "effectiveVisible": true,
+                                "visible": true,
+                                "enabled": true,
+                                "editable": false,
+                                "alpha": 1,
+                                "bounds": {
+                                  "left": 0,
+                                  "top": 0,
+                                  "right": 1080,
+                                  "bottom": 2376,
+                                  "width": 1080,
+                                  "height": 2376
+                                },
+                                "children": [
+                                  {
+                                    "className": "com.google.android.material.appbar.MaterialToolbar",
+                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/Toolbar",
+                                    "contentDescription": "Toolbar",
+                                    "visibility": "visible",
+                                    "effectiveVisible": true,
+                                    "visible": true,
+                                    "enabled": true,
+                                    "editable": false,
+                                    "alpha": 1,
+                                    "bounds": {
+                                      "left": 0,
+                                      "top": 120,
+                                      "right": 1080,
+                                      "bottom": 312,
+                                      "width": 1080,
+                                      "height": 192
+                                    },
+                                    "children": [
+                                      {
+                                        "className": "androidx.appcompat.widget.AppCompatTextView",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": true,
+                                        "visible": true,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 180,
+                                          "top": 172,
+                                          "right": 312,
+                                          "bottom": 259,
+                                          "width": 132,
+                                          "height": 87
+                                        },
+                                        "text": "标签"
+                                      },
+                                      {
+                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                        "resourceName": null,
+                                        "contentDescription": "打开抽屉式导航栏",
+                                        "visibility": "visible",
+                                        "effectiveVisible": true,
+                                        "visible": true,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 0,
+                                          "top": 132,
+                                          "right": 168,
+                                          "bottom": 300,
+                                          "width": 168,
+                                          "height": 168
+                                        }
+                                      },
+                                      {
+                                        "className": "androidx.appcompat.widget.ActionMenuView",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": true,
+                                        "visible": true,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 936,
+                                          "top": 132,
+                                          "right": 1080,
+                                          "bottom": 300,
+                                          "width": 144,
+                                          "height": 168
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.view.menu.ActionMenuItemView",
+                                            "resourceName": null,
+                                            "contentDescription": "添加标签",
+                                            "visibility": "visible",
+                                            "effectiveVisible": true,
+                                            "visible": true,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 936,
+                                              "top": 144,
+                                              "right": 1080,
+                                              "bottom": 288,
+                                              "width": 144,
+                                              "height": 144
+                                            },
+                                            "text": ""
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "className": "com.google.android.material.appbar.MaterialToolbar",
+                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/ActionMode",
+                                    "contentDescription": null,
+                                    "visibility": "gone",
+                                    "effectiveVisible": false,
+                                    "visible": false,
+                                    "enabled": true,
+                                    "editable": false,
+                                    "alpha": 1,
+                                    "bounds": {
+                                      "left": 0,
+                                      "top": 0,
+                                      "right": 0,
+                                      "bottom": 0,
+                                      "width": 0,
+                                      "height": 0
+                                    },
+                                    "children": [
+                                      {
+                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 0,
+                                          "top": 0,
+                                          "right": 0,
+                                          "bottom": 0,
+                                          "width": 0,
+                                          "height": 0
+                                        }
+                                      },
+                                      {
+                                        "className": "androidx.appcompat.widget.ActionMenuView",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 0,
+                                          "top": 0,
+                                          "right": 0,
+                                          "bottom": 0,
+                                          "width": 0,
+                                          "height": 0
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.view.menu.ActionMenuItemView",
+                                            "resourceName": null,
+                                            "contentDescription": "全选",
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 0,
+                                              "top": 0,
+                                              "right": 0,
+                                              "bottom": 0,
+                                              "width": 0,
+                                              "height": 0
+                                            },
+                                            "text": ""
+                                          },
+                                          {
+                                            "className": "androidx.appcompat.view.menu.ActionMenuItemView",
+                                            "resourceName": null,
+                                            "contentDescription": "取消固定",
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 0,
+                                              "top": 0,
+                                              "right": 0,
+                                              "bottom": 0,
+                                              "width": 0,
+                                              "height": 0
+                                            },
+                                            "text": ""
+                                          },
+                                          {
+                                            "className": "androidx.appcompat.view.menu.ActionMenuItemView",
+                                            "resourceName": null,
+                                            "contentDescription": "标签",
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 0,
+                                              "top": 0,
+                                              "right": 0,
+                                              "bottom": 0,
+                                              "width": 0,
+                                              "height": 0
+                                            },
+                                            "text": ""
+                                          },
+                                          {
+                                            "className": "androidx.appcompat.view.menu.ActionMenuItemView",
+                                            "resourceName": null,
+                                            "contentDescription": "删除",
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 0,
+                                              "top": 0,
+                                              "right": 0,
+                                              "bottom": 0,
+                                              "width": 0,
+                                              "height": 0
+                                            },
+                                            "text": ""
+                                          },
+                                          {
+                                            "className": "androidx.appcompat.widget.ActionMenuPresenter$OverflowMenuButton",
+                                            "resourceName": null,
+                                            "contentDescription": "更多选项",
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 0,
+                                              "top": 0,
+                                              "right": 0,
+                                              "bottom": 0,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "androidx.appcompat.widget.AppCompatTextView",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 0,
+                                          "top": 0,
+                                          "right": 0,
+                                          "bottom": 0,
+                                          "width": 0,
+                                          "height": 0
+                                        },
+                                        "text": "0"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "className": "androidx.fragment.app.FragmentContainerView",
+                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/NavHostFragment",
+                                    "contentDescription": null,
+                                    "visibility": "visible",
+                                    "effectiveVisible": true,
+                                    "visible": true,
+                                    "enabled": true,
+                                    "editable": false,
+                                    "alpha": 1,
+                                    "bounds": {
+                                      "left": 0,
+                                      "top": 312,
+                                      "right": 1080,
+                                      "bottom": 2376,
+                                      "width": 1080,
+                                      "height": 2064
+                                    },
+                                    "children": [
+                                      {
+                                        "className": "androidx.fragment.app.FragmentContainerView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/NavHostFragment",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": true,
+                                        "visible": true,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": 0,
+                                          "top": 312,
+                                          "right": 1080,
+                                          "bottom": 2376,
+                                          "width": 1080,
+                                          "height": 2064
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.constraintlayout.widget.ConstraintLayout",
+                                            "resourceName": null,
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": true,
+                                            "visible": true,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": 0,
+                                              "top": 312,
+                                              "right": 1080,
+                                              "bottom": 2376,
+                                              "width": 1080,
+                                              "height": 2064
+                                            },
+                                            "children": [
+                                              {
+                                                "className": "com.google.android.material.textfield.TextInputLayout",
+                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/EnterSearchKeywordLayout",
+                                                "contentDescription": null,
+                                                "visibility": "gone",
+                                                "effectiveVisible": false,
+                                                "visible": false,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": 0,
+                                                  "top": 312,
+                                                  "right": 0,
+                                                  "bottom": 312,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "children": [
+                                                  {
+                                                    "className": "android.widget.FrameLayout",
+                                                    "resourceName": null,
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "children": [
+                                                      {
+                                                        "className": "com.google.android.material.textfield.TextInputEditText",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/EnterSearchKeyword",
+                                                        "contentDescription": null,
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": false,
+                                                        "visible": false,
+                                                        "enabled": true,
+                                                        "editable": true,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 312,
+                                                          "right": 0,
+                                                          "bottom": 312,
+                                                          "width": 0,
+                                                          "height": 0
+                                                        },
+                                                        "text": ""
+                                                      },
+                                                      {
+                                                        "className": "com.google.android.material.textfield.StartCompoundLayout",
+                                                        "resourceName": null,
+                                                        "contentDescription": null,
+                                                        "visibility": "gone",
+                                                        "effectiveVisible": false,
+                                                        "visible": false,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 312,
+                                                          "right": 0,
+                                                          "bottom": 312,
+                                                          "width": 0,
+                                                          "height": 0
+                                                        },
+                                                        "children": [
+                                                          {
+                                                            "className": "com.google.android.material.internal.CheckableImageButton",
+                                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/text_input_start_icon",
+                                                            "contentDescription": null,
+                                                            "visibility": "gone",
+                                                            "effectiveVisible": false,
+                                                            "visible": false,
+                                                            "enabled": true,
+                                                            "editable": false,
+                                                            "alpha": 1,
+                                                            "bounds": {
+                                                              "left": 0,
+                                                              "top": 312,
+                                                              "right": 0,
+                                                              "bottom": 312,
+                                                              "width": 0,
+                                                              "height": 0
+                                                            }
+                                                          },
+                                                          {
+                                                            "className": "androidx.appcompat.widget.AppCompatTextView",
+                                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/textinput_prefix_text",
+                                                            "contentDescription": null,
+                                                            "visibility": "gone",
+                                                            "effectiveVisible": false,
+                                                            "visible": false,
+                                                            "enabled": true,
+                                                            "editable": false,
+                                                            "alpha": 1,
+                                                            "bounds": {
+                                                              "left": 0,
+                                                              "top": 312,
+                                                              "right": 0,
+                                                              "bottom": 312,
+                                                              "width": 0,
+                                                              "height": 0
+                                                            },
+                                                            "text": ""
+                                                          }
+                                                        ]
+                                                      },
+                                                      {
+                                                        "className": "com.google.android.material.textfield.EndCompoundLayout",
+                                                        "resourceName": null,
+                                                        "contentDescription": null,
+                                                        "visibility": "gone",
+                                                        "effectiveVisible": false,
+                                                        "visible": false,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 312,
+                                                          "right": 0,
+                                                          "bottom": 312,
+                                                          "width": 0,
+                                                          "height": 0
+                                                        },
+                                                        "children": [
+                                                          {
+                                                            "className": "androidx.appcompat.widget.AppCompatTextView",
+                                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/textinput_suffix_text",
+                                                            "contentDescription": null,
+                                                            "visibility": "gone",
+                                                            "effectiveVisible": false,
+                                                            "visible": false,
+                                                            "enabled": true,
+                                                            "editable": false,
+                                                            "alpha": 1,
+                                                            "bounds": {
+                                                              "left": 0,
+                                                              "top": 312,
+                                                              "right": 0,
+                                                              "bottom": 312,
+                                                              "width": 0,
+                                                              "height": 0
+                                                            },
+                                                            "text": ""
+                                                          },
+                                                          {
+                                                            "className": "android.widget.FrameLayout",
+                                                            "resourceName": null,
+                                                            "contentDescription": null,
+                                                            "visibility": "gone",
+                                                            "effectiveVisible": false,
+                                                            "visible": false,
+                                                            "enabled": true,
+                                                            "editable": false,
+                                                            "alpha": 1,
+                                                            "bounds": {
+                                                              "left": 0,
+                                                              "top": 312,
+                                                              "right": 0,
+                                                              "bottom": 312,
+                                                              "width": 0,
+                                                              "height": 0
+                                                            },
+                                                            "children": [
+                                                              {
+                                                                "className": "com.google.android.material.internal.CheckableImageButton",
+                                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/text_input_end_icon",
+                                                                "contentDescription": null,
+                                                                "visibility": "gone",
+                                                                "effectiveVisible": false,
+                                                                "visible": false,
+                                                                "enabled": true,
+                                                                "editable": false,
+                                                                "alpha": 1,
+                                                                "bounds": {
+                                                                  "left": 0,
+                                                                  "top": 312,
+                                                                  "right": 0,
+                                                                  "bottom": 312,
+                                                                  "width": 0,
+                                                                  "height": 0
+                                                                }
+                                                              }
+                                                            ]
+                                                          },
+                                                          {
+                                                            "className": "com.google.android.material.internal.CheckableImageButton",
+                                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/text_input_error_icon",
+                                                            "contentDescription": "错误",
+                                                            "visibility": "gone",
+                                                            "effectiveVisible": false,
+                                                            "visible": false,
+                                                            "enabled": true,
+                                                            "editable": false,
+                                                            "alpha": 1,
+                                                            "bounds": {
+                                                              "left": 0,
+                                                              "top": 312,
+                                                              "right": 0,
+                                                              "bottom": 312,
+                                                              "width": 0,
+                                                              "height": 0
+                                                            }
+                                                          }
+                                                        ]
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "className": "com.google.android.material.chip.ChipGroup",
+                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/ChipGroup",
+                                                "contentDescription": null,
+                                                "visibility": "gone",
+                                                "effectiveVisible": false,
+                                                "visible": false,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": 0,
+                                                  "top": 312,
+                                                  "right": 0,
+                                                  "bottom": 312,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "children": [
+                                                  {
+                                                    "className": "com.google.android.material.chip.Chip",
+                                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/Notes",
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "text": "笔记"
+                                                  },
+                                                  {
+                                                    "className": "com.google.android.material.chip.Chip",
+                                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/Deleted",
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "text": "已删除"
+                                                  },
+                                                  {
+                                                    "className": "com.google.android.material.chip.Chip",
+                                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/Archived",
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "text": "已存档"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "className": "com.google.android.material.chip.ChipGroup",
+                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/ReminderFilter",
+                                                "contentDescription": null,
+                                                "visibility": "gone",
+                                                "effectiveVisible": false,
+                                                "visible": false,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": 0,
+                                                  "top": 312,
+                                                  "right": 0,
+                                                  "bottom": 312,
+                                                  "width": 0,
+                                                  "height": 0
+                                                },
+                                                "children": [
+                                                  {
+                                                    "className": "com.google.android.material.chip.Chip",
+                                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/upcoming",
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "text": "即将到来"
+                                                  },
+                                                  {
+                                                    "className": "com.google.android.material.chip.Chip",
+                                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/elapsed",
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "text": "已过了"
+                                                  },
+                                                  {
+                                                    "className": "com.google.android.material.chip.Chip",
+                                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/all",
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 0,
+                                                      "bottom": 312,
+                                                      "width": 0,
+                                                      "height": 0
+                                                    },
+                                                    "text": "所有"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "className": "androidx.recyclerview.widget.RecyclerView",
+                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/MainListView",
+                                                "contentDescription": null,
+                                                "visibility": "visible",
+                                                "effectiveVisible": true,
+                                                "visible": true,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": 0,
+                                                  "top": 312,
+                                                  "right": 1080,
+                                                  "bottom": 2376,
+                                                  "width": 1080,
+                                                  "height": 2064
+                                                },
+                                                "children": [
+                                                  {
+                                                    "className": "android.widget.LinearLayout",
+                                                    "resourceName": null,
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": true,
+                                                    "visible": true,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 312,
+                                                      "right": 1080,
+                                                      "bottom": 472,
+                                                      "width": 1080,
+                                                      "height": 160
+                                                    },
+                                                    "children": [
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DragHandle",
+                                                        "contentDescription": "拖动处理",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 332,
+                                                          "right": 120,
+                                                          "bottom": 452,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "com.google.android.material.textview.MaterialTextView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/LabelText",
+                                                        "contentDescription": null,
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 144,
+                                                          "top": 312,
+                                                          "right": 720,
+                                                          "bottom": 472,
+                                                          "width": 576,
+                                                          "height": 160
+                                                        },
+                                                        "text": "AAB扩展标签-01"
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/VisibilityButton",
+                                                        "contentDescription": "在概览中隐藏标签",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 720,
+                                                          "top": 332,
+                                                          "right": 840,
+                                                          "bottom": 452,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/EditButton",
+                                                        "contentDescription": "编辑",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 840,
+                                                          "top": 332,
+                                                          "right": 960,
+                                                          "bottom": 452,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DeleteButton",
+                                                        "contentDescription": "删除",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 960,
+                                                          "top": 332,
+                                                          "right": 1080,
+                                                          "bottom": 452,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "className": "android.widget.LinearLayout",
+                                                    "resourceName": null,
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": true,
+                                                    "visible": true,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 475,
+                                                      "right": 1080,
+                                                      "bottom": 634,
+                                                      "width": 1080,
+                                                      "height": 159
+                                                    },
+                                                    "children": [
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DragHandle",
+                                                        "contentDescription": "拖动处理",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 494,
+                                                          "right": 120,
+                                                          "bottom": 614,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "com.google.android.material.textview.MaterialTextView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/LabelText",
+                                                        "contentDescription": null,
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 144,
+                                                          "top": 475,
+                                                          "right": 720,
+                                                          "bottom": 634,
+                                                          "width": 576,
+                                                          "height": 159
+                                                        },
+                                                        "text": "AAB项目-script-1788748692838-f4ffca"
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/VisibilityButton",
+                                                        "contentDescription": "在概览中隐藏标签",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 720,
+                                                          "top": 494,
+                                                          "right": 840,
+                                                          "bottom": 614,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/EditButton",
+                                                        "contentDescription": "编辑",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 840,
+                                                          "top": 494,
+                                                          "right": 960,
+                                                          "bottom": 614,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DeleteButton",
+                                                        "contentDescription": "删除",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 960,
+                                                          "top": 494,
+                                                          "right": 1080,
+                                                          "bottom": 614,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "className": "android.widget.LinearLayout",
+                                                    "resourceName": null,
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": true,
+                                                    "visible": true,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 637,
+                                                      "right": 1080,
+                                                      "bottom": 796,
+                                                      "width": 1080,
+                                                      "height": 159
+                                                    },
+                                                    "children": [
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DragHandle",
+                                                        "contentDescription": "拖动处理",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 656,
+                                                          "right": 120,
+                                                          "bottom": 776,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "com.google.android.material.textview.MaterialTextView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/LabelText",
+                                                        "contentDescription": null,
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 144,
+                                                          "top": 637,
+                                                          "right": 720,
+                                                          "bottom": 796,
+                                                          "width": 576,
+                                                          "height": 159
+                                                        },
+                                                        "text": "AAB项目-script-1788745719434-244594"
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/VisibilityButton",
+                                                        "contentDescription": "在概览中隐藏标签",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 720,
+                                                          "top": 656,
+                                                          "right": 840,
+                                                          "bottom": 776,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/EditButton",
+                                                        "contentDescription": "编辑",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 840,
+                                                          "top": 656,
+                                                          "right": 960,
+                                                          "bottom": 776,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DeleteButton",
+                                                        "contentDescription": "删除",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 960,
+                                                          "top": 656,
+                                                          "right": 1080,
+                                                          "bottom": 776,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      }
+                                                    ]
+                                                  },
+                                                  {
+                                                    "className": "android.widget.LinearLayout",
+                                                    "resourceName": null,
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": true,
+                                                    "visible": true,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": 0,
+                                                      "top": 799,
+                                                      "right": 1080,
+                                                      "bottom": 959,
+                                                      "width": 1080,
+                                                      "height": 160
+                                                    },
+                                                    "children": [
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DragHandle",
+                                                        "contentDescription": "拖动处理",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 0,
+                                                          "top": 819,
+                                                          "right": 120,
+                                                          "bottom": 939,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "com.google.android.material.textview.MaterialTextView",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/LabelText",
+                                                        "contentDescription": null,
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 144,
+                                                          "top": 799,
+                                                          "right": 720,
+                                                          "bottom": 959,
+                                                          "width": 576,
+                                                          "height": 160
+                                                        },
+                                                        "text": "AAB项目"
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/VisibilityButton",
+                                                        "contentDescription": "在概览中隐藏标签",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 720,
+                                                          "top": 819,
+                                                          "right": 840,
+                                                          "bottom": 939,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/EditButton",
+                                                        "contentDescription": "编辑",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 840,
+                                                          "top": 819,
+                                                          "right": 960,
+                                                          "bottom": 939,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      },
+                                                      {
+                                                        "className": "androidx.appcompat.widget.AppCompatImageButton",
+                                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DeleteButton",
+                                                        "contentDescription": "删除",
+                                                        "visibility": "visible",
+                                                        "effectiveVisible": true,
+                                                        "visible": true,
+                                                        "enabled": true,
+                                                        "editable": false,
+                                                        "alpha": 1,
+                                                        "bounds": {
+                                                          "left": 960,
+                                                          "top": 819,
+                                                          "right": 1080,
+                                                          "bottom": 939,
+                                                          "width": 120,
+                                                          "height": 120
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "className": "androidx.appcompat.widget.AppCompatImageView",
+                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/ImageView",
+                                                "contentDescription": "Background",
+                                                "visibility": "gone",
+                                                "effectiveVisible": false,
+                                                "visible": false,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": 396,
+                                                  "top": 1200,
+                                                  "right": 684,
+                                                  "bottom": 1488,
+                                                  "width": 288,
+                                                  "height": 288
+                                                }
+                                              },
+                                              {
+                                                "className": "com.google.android.material.progressindicator.CircularProgressIndicator",
+                                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/LoadingProgress",
+                                                "contentDescription": null,
+                                                "visibility": "gone",
+                                                "effectiveVisible": false,
+                                                "visible": false,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": 0,
+                                                  "top": 312,
+                                                  "right": 0,
+                                                  "bottom": 312,
+                                                  "width": 0,
+                                                  "height": 0
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "className": "com.google.android.material.floatingactionbutton.FloatingActionButton",
+                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/MakeList",
+                                    "contentDescription": "制作列表",
+                                    "visibility": "gone",
+                                    "effectiveVisible": false,
+                                    "visible": false,
+                                    "enabled": true,
+                                    "editable": false,
+                                    "alpha": 0,
+                                    "bounds": {
+                                      "left": 914,
+                                      "top": 1994,
+                                      "right": 1082,
+                                      "bottom": 2162,
+                                      "width": 168,
+                                      "height": 168
+                                    }
+                                  },
+                                  {
+                                    "className": "com.google.android.material.floatingactionbutton.FloatingActionButton",
+                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/TakeNote",
+                                    "contentDescription": "记笔记",
+                                    "visibility": "gone",
+                                    "effectiveVisible": false,
+                                    "visible": false,
+                                    "enabled": true,
+                                    "editable": false,
+                                    "alpha": 0,
+                                    "bounds": {
+                                      "left": 914,
+                                      "top": 2210,
+                                      "right": 1082,
+                                      "bottom": 2378,
+                                      "width": 168,
+                                      "height": 168
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "className": "com.google.android.material.navigation.NavigationView",
+                                "resourceName": "io.github.mobileaidev.notallyx.sample:id/NavigationView",
+                                "contentDescription": null,
+                                "visibility": "invisible",
+                                "effectiveVisible": false,
+                                "visible": false,
+                                "enabled": true,
+                                "editable": false,
+                                "alpha": 1,
+                                "bounds": {
+                                  "left": -888,
+                                  "top": 0,
+                                  "right": 0,
+                                  "bottom": 2376,
+                                  "width": 888,
+                                  "height": 2376
+                                },
+                                "children": [
+                                  {
+                                    "className": "com.google.android.material.internal.NavigationMenuView",
+                                    "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_navigation_view",
+                                    "contentDescription": null,
+                                    "visibility": "visible",
+                                    "effectiveVisible": false,
+                                    "visible": false,
+                                    "enabled": true,
+                                    "editable": false,
+                                    "alpha": 1,
+                                    "bounds": {
+                                      "left": -888,
+                                      "top": 0,
+                                      "right": 0,
+                                      "bottom": 2376,
+                                      "width": 888,
+                                      "height": 2376
+                                    },
+                                    "children": [
+                                      {
+                                        "className": "android.widget.LinearLayout",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/navigation_header_container",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 0,
+                                          "right": 0,
+                                          "bottom": 336,
+                                          "width": 888,
+                                          "height": 336
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "android.widget.FrameLayout",
+                                            "resourceName": null,
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 120,
+                                              "right": 0,
+                                              "bottom": 312,
+                                              "width": 888,
+                                              "height": 192
+                                            },
+                                            "children": [
+                                              {
+                                                "className": "com.google.android.material.appbar.MaterialToolbar",
+                                                "resourceName": null,
+                                                "contentDescription": null,
+                                                "visibility": "visible",
+                                                "effectiveVisible": false,
+                                                "visible": false,
+                                                "enabled": true,
+                                                "editable": false,
+                                                "alpha": 1,
+                                                "bounds": {
+                                                  "left": -888,
+                                                  "top": 120,
+                                                  "right": 0,
+                                                  "bottom": 312,
+                                                  "width": 888,
+                                                  "height": 192
+                                                },
+                                                "children": [
+                                                  {
+                                                    "className": "androidx.appcompat.widget.AppCompatTextView",
+                                                    "resourceName": null,
+                                                    "contentDescription": null,
+                                                    "visibility": "visible",
+                                                    "effectiveVisible": false,
+                                                    "visible": false,
+                                                    "enabled": true,
+                                                    "editable": false,
+                                                    "alpha": 1,
+                                                    "bounds": {
+                                                      "left": -840,
+                                                      "top": 172,
+                                                      "right": -224,
+                                                      "bottom": 259,
+                                                      "width": 616,
+                                                      "height": 87
+                                                    },
+                                                    "text": "NotallyX AAB Sample"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Notes",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 336,
+                                          "right": 0,
+                                          "bottom": 480,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 348,
+                                              "right": -84,
+                                              "bottom": 468,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "笔记"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 336,
+                                              "right": -888,
+                                              "bottom": 336,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "android.widget.FrameLayout",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 480,
+                                          "right": 0,
+                                          "bottom": 531,
+                                          "width": 888,
+                                          "height": 51
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "android.view.View",
+                                            "resourceName": null,
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 504,
+                                              "right": -84,
+                                              "bottom": 507,
+                                              "width": 720,
+                                              "height": 3
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Unlabeled",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 531,
+                                          "right": 0,
+                                          "bottom": 675,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 543,
+                                              "right": -84,
+                                              "bottom": 663,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "未加标签"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 531,
+                                              "right": -888,
+                                              "bottom": 531,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Labels",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 675,
+                                          "right": 0,
+                                          "bottom": 819,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 687,
+                                              "right": -84,
+                                              "bottom": 807,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "标签"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 675,
+                                              "right": -888,
+                                              "bottom": 675,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DisplayLabel",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 819,
+                                          "right": 0,
+                                          "bottom": 963,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 831,
+                                              "right": -84,
+                                              "bottom": 951,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "AAB扩展标签-01"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 819,
+                                              "right": -888,
+                                              "bottom": 819,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DisplayLabel",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 963,
+                                          "right": 0,
+                                          "bottom": 1107,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 975,
+                                              "right": -84,
+                                              "bottom": 1095,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "AAB项目-script-1788748692838-f4ffca"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 963,
+                                              "right": -888,
+                                              "bottom": 963,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DisplayLabel",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1107,
+                                          "right": 0,
+                                          "bottom": 1251,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1119,
+                                              "right": -84,
+                                              "bottom": 1239,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "AAB项目-script-1788745719434-244594"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 1107,
+                                              "right": -888,
+                                              "bottom": 1107,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/DisplayLabel",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1251,
+                                          "right": 0,
+                                          "bottom": 1395,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1263,
+                                              "right": -84,
+                                              "bottom": 1383,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "AAB项目"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 1251,
+                                              "right": -888,
+                                              "bottom": 1251,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "android.widget.FrameLayout",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1395,
+                                          "right": 0,
+                                          "bottom": 1446,
+                                          "width": 888,
+                                          "height": 51
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "android.view.View",
+                                            "resourceName": null,
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1419,
+                                              "right": -84,
+                                              "bottom": 1422,
+                                              "width": 720,
+                                              "height": 3
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Deleted",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1446,
+                                          "right": 0,
+                                          "bottom": 1590,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1458,
+                                              "right": -84,
+                                              "bottom": 1578,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "已删除"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 1446,
+                                              "right": -888,
+                                              "bottom": 1446,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Archived",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1590,
+                                          "right": 0,
+                                          "bottom": 1734,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1602,
+                                              "right": -84,
+                                              "bottom": 1722,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "已存档"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 1590,
+                                              "right": -888,
+                                              "bottom": 1590,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "android.widget.FrameLayout",
+                                        "resourceName": null,
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1734,
+                                          "right": 0,
+                                          "bottom": 1785,
+                                          "width": 888,
+                                          "height": 51
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "android.view.View",
+                                            "resourceName": null,
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1758,
+                                              "right": -84,
+                                              "bottom": 1761,
+                                              "width": 720,
+                                              "height": 3
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Reminders",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1785,
+                                          "right": 0,
+                                          "bottom": 1929,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1797,
+                                              "right": -84,
+                                              "bottom": 1917,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "提醒"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 1785,
+                                              "right": -888,
+                                              "bottom": 1785,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "className": "com.google.android.material.internal.NavigationMenuItemView",
+                                        "resourceName": "io.github.mobileaidev.notallyx.sample:id/Settings",
+                                        "contentDescription": null,
+                                        "visibility": "visible",
+                                        "effectiveVisible": false,
+                                        "visible": false,
+                                        "enabled": true,
+                                        "editable": false,
+                                        "alpha": 1,
+                                        "bounds": {
+                                          "left": -888,
+                                          "top": 1929,
+                                          "right": 0,
+                                          "bottom": 2073,
+                                          "width": 888,
+                                          "height": 144
+                                        },
+                                        "children": [
+                                          {
+                                            "className": "androidx.appcompat.widget.AppCompatCheckedTextView",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_text",
+                                            "contentDescription": null,
+                                            "visibility": "visible",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -804,
+                                              "top": 1941,
+                                              "right": -84,
+                                              "bottom": 2061,
+                                              "width": 720,
+                                              "height": 120
+                                            },
+                                            "text": "设置"
+                                          },
+                                          {
+                                            "className": "android.view.ViewStub",
+                                            "resourceName": "io.github.mobileaidev.notallyx.sample:id/design_menu_item_action_area_stub",
+                                            "contentDescription": null,
+                                            "visibility": "gone",
+                                            "effectiveVisible": false,
+                                            "visible": false,
+                                            "enabled": true,
+                                            "editable": false,
+                                            "alpha": 1,
+                                            "bounds": {
+                                              "left": -888,
+                                              "top": 1929,
+                                              "right": -888,
+                                              "bottom": 1929,
+                                              "width": 0,
+                                              "height": 0
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

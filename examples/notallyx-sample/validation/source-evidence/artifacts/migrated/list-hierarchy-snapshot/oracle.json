@@ -1,0 +1,98 @@
+{
+  "id": "list.hierarchy.normal:oracle:1",
+  "verdict": "passed",
+  "ok": true,
+  "snapshotId": "fe1c292f-7f6d-424e-b429-851bbafc0ba5",
+  "runId": "intent-1788744265456-1",
+  "source": "independent-host-business-oracle",
+  "checks": [
+    {
+      "field": "noteCount",
+      "verdict": "passed",
+      "expected": 4,
+      "actual": 4
+    },
+    {
+      "field": "notes[0].count",
+      "verdict": "passed",
+      "expected": 1,
+      "actual": 1
+    },
+    {
+      "field": "notes[0].title",
+      "verdict": "passed",
+      "expected": "AAB-LIST-01",
+      "actual": "AAB-LIST-01"
+    },
+    {
+      "field": "notes[0].type",
+      "verdict": "passed",
+      "expected": "LIST",
+      "actual": "LIST"
+    },
+    {
+      "field": "notes[0].folder",
+      "verdict": "passed",
+      "expected": "NOTES",
+      "actual": "NOTES"
+    },
+    {
+      "field": "notes[0].items",
+      "verdict": "passed",
+      "expected": [
+        {
+          "body": "Parent-A",
+          "checked": false,
+          "isChild": false,
+          "order": 0
+        },
+        {
+          "body": "Child-A1",
+          "checked": false,
+          "isChild": true,
+          "order": 1
+        },
+        {
+          "body": "Child-A2-edited",
+          "checked": false,
+          "isChild": true,
+          "order": 2
+        },
+        {
+          "body": "Parent-B",
+          "checked": true,
+          "isChild": false,
+          "order": 3,
+          "checkedTimestamp": 1788744091387
+        }
+      ],
+      "actual": [
+        {
+          "body": "Parent-A",
+          "checked": false,
+          "isChild": false,
+          "order": 0
+        },
+        {
+          "body": "Child-A1",
+          "checked": false,
+          "isChild": true,
+          "order": 1
+        },
+        {
+          "body": "Child-A2-edited",
+          "checked": false,
+          "isChild": true,
+          "order": 2
+        },
+        {
+          "body": "Parent-B",
+          "checked": true,
+          "isChild": false,
+          "order": 3,
+          "checkedTimestamp": 1788744091387
+        }
+      ]
+    }
+  ]
+}

@@ -10,12 +10,13 @@ iOS, Flutter, WebView/H5/CDP, WKWebView, and desktop Web Bridge targets:
 
 ## Boundaries
 
-- Android runtime SDK: local HTTP bridge, Android View tree, native WebView DOM, capture buffers, public record APIs, foreground Activity tracking.
+- Android runtime SDK: local HTTP bridge, Android View tree, native WebView DOM, `MobileCaptureStore` for logs/network/state/events, public record APIs, foreground Activity tracking.
 - Android Gradle plugin: debug-only instrumentation such as OkHttp auto capture.
 - Flutter plugin: WidgetInspector snapshots, runtime actions, Flutter log/network/state/event forwarding, Flutter H5 adapter registry.
-- iOS runtime SDK: UIKit tree, WKWebView DOM/eval, screenshot, log/network/state/event buffers, and Flutter iOS evidence forwarding.
+- iOS runtime SDK: UIKit tree, WKWebView DOM/eval, screenshot, `MobileCaptureStore` for logs/network/state/events, and Flutter iOS evidence forwarding.
 - Desktop Web SDK/provider: browser-page DOM/log/network/state/event evidence and whitelisted commands through Web Bridge sessions.
 - Desktop CLI/MCP: ADB, UIAutomator, screenshots, device input, devicectl, WebDriverAgent/XCUITest, Web Bridge session hosting, port forwarding, and MCP command wrapping.
+- Isolated MCP `script` and `intent` runtimes: Script executes trusted-local-code JavaScript or Python (`permissions` gate Bridge calls only; not an OS sandbox). Intent records observation, decision, action, and evidence refs. Host live paths read phone `logs` / `network` / `state` / `events` from `MobileCaptureStore` and do not copy those payloads. MCP `history:true` on those streams reads the phone FactStore while connected; disconnect returns `target_disconnected` and does not fall back to a Host-copied payload. iOS `state` over 200 keys uses a byte-bounded keyed LRU.
 
 The core runtime must not depend on a business network stack or business page code.
 

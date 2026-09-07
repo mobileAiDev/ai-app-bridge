@@ -69,7 +69,12 @@ final class SegmentedFactStoreSourceMirrorTests: XCTestCase {
             "H5ConsoleLog.swift",
             "ObservationFactSink.swift",
             "SegmentedFactStore.swift",
-            "UiObservationStateMachine.swift"
+            "UiObservationStateMachine.swift",
+            "Capture/BoundedMemoryCaptureBackend.swift",
+            "Capture/CaptureAppend.swift",
+            "Capture/FactStoreReceiptPort.swift",
+            "Capture/LegacyLiveView.swift",
+            "Capture/MobileCaptureStore.swift"
         ].map { name in
             (
                 "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/\(name)",

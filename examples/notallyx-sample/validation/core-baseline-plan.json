@@ -1,0 +1,1025 @@
+{
+  "schemaVersion": "aab.notallyx.core-baseline/v1",
+  "source": {
+    "repository": "https://github.com/Crustack/NotallyX",
+    "commit": "03ff809f058dbcabd5f0d20f114546686dfc9cb5",
+    "frozenSourceDirectory": "/tmp/aab-notallyx-validation/source-03ff809"
+  },
+  "status": "not_run",
+  "businessPersistence": {
+    "listItems": {
+      "container": "BaseNote.items JSON array",
+      "durableFields": [
+        "body",
+        "checked",
+        "isChild",
+        "order",
+        "checkedTimestamp"
+      ],
+      "durableItemId": false,
+      "nonDurableFields": [
+        "id",
+        "children"
+      ],
+      "nullableFields": [
+        "order",
+        "checkedTimestamp"
+      ],
+      "nullableEncoding": "For these two nullable fields only, the pinned JSONObject converter may omit a null value; canonical read may normalize absent and null to null. Do not invent an order or timestamp.",
+      "oracle": "Compare the entire ordered persisted field sequence, every body occurrence count, and reconstructed parent/child groups against explicit before/after fixtures. Use distinct body markers for individually tracked tasks. For intentionally indistinguishable duplicate tuples, preserve multiplicity and position/group; do not claim durable identity across restart.",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ]
+    }
+  },
+  "scenarioIds": [
+    "navigation.folders.normal",
+    "note.text_crud.normal",
+    "list.hierarchy.normal",
+    "list.checked.normal",
+    "list.reorder.normal",
+    "list.delete_checked.normal",
+    "labels.manage.normal",
+    "labels.assignment.normal",
+    "search.scoped.normal",
+    "note.pin_color.normal",
+    "note.duplicate.normal",
+    "note.archive_restore.normal",
+    "note.trash_restore.normal",
+    "note.delete_forever.normal",
+    "note.bulk.normal",
+    "note.convert.normal",
+    "editing.history_view.normal"
+  ],
+  "scenarios": [
+    {
+      "id": "navigation.folders.normal",
+      "featureId": "navigation.folders",
+      "name": "所有主导航与返回",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "建立笔记A(无标签)、B(标签a)、C(归档)、D(回收站)。",
+        "依次打开抽屉各入口；从标签详情返回；从搜索/编辑返回。"
+      ],
+      "expectedOutcome": "Notes、Labels、Unlabeled、Archived、Deleted、Reminders、Settings 与指定标签页显示各自数据集合，返回栈正确。",
+      "oracles": [
+        {
+          "kind": "ui",
+          "assertion": "Verify destination-specific title AND expected included/excluded unique note markers.",
+          "id": "navigation.folders.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "database",
+          "assertion": "Folder/label filters are computed independently from BaseNote.folder and decoded labels; navigation does not alter rows.",
+          "id": "navigation.folders.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/MainActivity.kt",
+          "symbol": "private fun setupMenu()",
+          "line": 301,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/MainActivity.kt#L301"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed.",
+      "parameters": {
+        "variants": [
+          "Notes",
+          "Labels",
+          "Unlabeled",
+          "Archived",
+          "Deleted",
+          "Reminders",
+          "Settings",
+          "DisplayLabel"
+        ],
+        "expansionRequired": true,
+        "completionRule": "Every listed variant must have an attempt or an explicit blocked record."
+      }
+    },
+    {
+      "id": "note.text_crud.normal",
+      "featureId": "note.text_crud",
+      "name": "文本笔记创建、修改与保存",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "Take note 新建标题 AAB-TEXT-01，正文 第一行中文\nsecond line & <tag>。",
+        "返回列表再打开；追加 -edited；返回列表。"
+      ],
+      "expectedOutcome": "标题与正文中文、多行、符号精确保留，同一笔记修改保持id，返回重开可读。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Exactly one captured note ID has type NOTE, folder NOTES, exact title/body and sensible modifiedTimestamp.",
+          "id": "note.text_crud.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Overview and editor display the same unique marker and full multi-line body.",
+          "id": "note.text_crud.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt",
+          "symbol": "suspend fun saveNote(",
+          "line": 294,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt#L294"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "list.hierarchy.normal",
+      "featureId": "list.hierarchy",
+      "name": "清单父项、子项、编辑与层级",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "Make list 新建 AAB-LIST-01，添加 Parent-A、Child-A1、Child-A2、Parent-B。",
+        "将两条Child设为子项，修改Child-A2为Child-A2-edited；取消再恢复一条缩进。",
+        "返回并重开。"
+      ],
+      "expectedOutcome": "父项和子项关系、正文与顺序持久保存，缩进/取消缩进不丢任务。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Decode the complete BaseNote.items array and compare exact body/checked/isChild/order/checkedTimestamp fields, serialized sequence and parent/child grouping against the fixture. Use distinct fixture body markers plus multiplicity to detect loss or duplication; ListItem.id is not persisted.",
+          "id": "list.hierarchy.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Expected indentation and four visible task markers; none duplicated or lost.",
+          "id": "list.hierarchy.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun changeIsChild(",
+          "line": 335,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L335"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "list.checked.normal",
+      "featureId": "list.checked",
+      "name": "父子勾选与批量勾选",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "在带两个子项的清单上勾选父项，再取消一个子项。",
+        "依次执行 Check all、Uncheck all，再仅勾选Child-A1。"
+      ],
+      "expectedOutcome": "父项勾选同步子项，子项变化按父子规则更新；check all/uncheck all反映每个任务状态。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Verify checked and checkedTimestamp per item plus derived parent state, independently decoding items.",
+          "id": "list.checked.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Checkbox state, checked-section placement and parent state match persisted items.",
+          "id": "list.checked.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun changeChecked(",
+          "line": 301,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L301"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "list.reorder.normal",
+      "featureId": "list.reorder",
+      "name": "任务拖动和整组移动",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "将含子项的Parent-A整组移到Parent-B后；再移动子项到合法目标。",
+        "执行Undo/Redo，记录每一步顺序。"
+      ],
+      "expectedOutcome": "移动父项时子项保持所属；顺序保存，拖动撤销不丢任务。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Compare the complete ordered sequence of body/checked/isChild/order/checkedTimestamp tuples and reconstructed parent groups against the planned move. Every fixture body occurrence must appear exactly once in its expected position/group; no durable item ID exists.",
+          "id": "list.reorder.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Task bodies and indentation match expected order.",
+          "id": "list.reorder.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun move(",
+          "line": 211,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L211"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "list.delete_checked.normal",
+      "featureId": "list.delete_checked",
+      "name": "删除勾选项与恢复编辑历史",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "清单含勾选与未勾选父子项，执行 Delete checked。",
+        "Undo一次再Redo一次并离开保存。"
+      ],
+      "expectedOutcome": "只删除勾选集合，未勾选任务保留；编辑会话内Undo/Redo得到预期集合。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Remaining exact body/checked/isChild/order/checkedTimestamp tuples, serialized sequence and parent grouping equal the planned deletion result. Compare the full surviving task multiset, including duplicate-body multiplicity, rather than invented task IDs.",
+          "id": "list.delete_checked.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Count and markers agree after delete/undo/redo.",
+          "id": "list.delete_checked.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt",
+          "symbol": "fun deleteCheckedItems(",
+          "line": 370,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/view/note/listitem/ListManager.kt#L370"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun itemsToJSONArray(",
+          "line": 224,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L224"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/Converters.kt",
+          "symbol": "fun jsonToItems(json: JSONArray)",
+          "line": 195,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/Converters.kt#L195"
+        },
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt",
+          "symbol": "var id: Int = -1",
+          "line": 9,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/model/ListItem.kt#L9"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "labels.manage.normal",
+      "featureId": "labels.manage",
+      "name": "标签创建、改名、删除",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "创建AAB-label-a与AAB-label-ab，给笔记A赋予a、B赋予ab。",
+        "改名a为AAB-label-renamed，检查标签页、导航、两篇笔记。",
+        "删除renamed并取消一次删除后再确认。"
+      ],
+      "expectedOutcome": "Label实体与所有关联笔记同步，删除标签不删除笔记正文。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Read Label table and decoded BaseNote.labels: rename propagates exactly, deletion removes association but preserves note IDs/body.",
+          "id": "labels.manage.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Label navigation shows matching set only; a must not match ab by substring.",
+          "id": "labels.manage.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/LabelsFragment.kt",
+          "symbol": "private fun displayAddLabelDialog()",
+          "line": 173,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/fragment/LabelsFragment.kt#L173"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "labels.assignment.normal",
+      "featureId": "labels.assignment",
+      "name": "单篇和多选标签赋值",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "选两篇标签集合不同的笔记，打开多选Labels，记录三态。",
+        "将共同标签设选中，一个标签设取消；保存，再从单篇Labels移除一个标签。"
+      ],
+      "expectedOutcome": "单篇选择及多选三态标签只影响预期笔记；未触及标签保持原状。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Exact per-note label arrays match selected/unchecked/unchanged tri-state rules.",
+          "id": "labels.assignment.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Label chips, DisplayLabel and Unlabeled membership agree.",
+          "id": "labels.assignment.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "fun updateBaseNoteLabels(",
+          "line": 660,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L660"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "search.scoped.normal",
+      "featureId": "search.scoped",
+      "name": "标题、正文、任务、标签搜索与范围",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "在Notes/Archived/Deleted各建不同唯一标记，含标题、正文、任务子项、标签标记。",
+        "逐词搜索并切换当前范围；进入命中笔记，返回搜索结果。"
+      ],
+      "expectedOutcome": "命中真实业务文字且限制当前folder/标签/无标签范围，不命中JSON字段名。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Expected matching IDs computed from decoded business fields and folder/label predicate, not SQL LIKE output alone.",
+          "id": "search.scoped.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Actual visible result IDs/texts equal expected set.",
+          "id": "search.scoped.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/data/dao/BaseNoteDao.kt",
+          "symbol": "fun getBaseNotesByKeyword(",
+          "line": 309,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/data/dao/BaseNoteDao.kt#L309"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "note.pin_color.normal",
+      "featureId": "note.pin_color",
+      "name": "固定笔记与颜色",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "给A设置颜色并固定，给B不同颜色；取消A固定再固定。",
+        "在自定义色编辑/删除对话框替换一种颜色，观察涉及笔记。"
+      ],
+      "expectedOutcome": "固定/取消固定影响分组；颜色赋值、编辑和替换改变正确记录。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "BaseNote.pinned and color equal selected values; color replacement affects exactly matching original color rows.",
+          "id": "note.pin_color.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Pinned group and color swatches match records.",
+          "id": "note.pin_color.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun changeColor()",
+          "line": 295,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L295"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "note.duplicate.normal",
+      "featureId": "note.duplicate",
+      "name": "复制笔记与副本隔离",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "复制AAB-TEXT-01；记录原id和副本id。",
+        "修改副本标题/body或清单一项，返回查看原件。"
+      ],
+      "expectedOutcome": "复制建立新id且复制内容，副本编辑不污染原件。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "New distinct ID; title gains the localized copy suffix and timestamps reset per source; other initial business content equals source; subsequent edit changes only duplicate.",
+          "id": "note.duplicate.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "file",
+          "assertion": "For attachment-bearing variant, compare shared attachment references and bytes, because duplicateNotes deep-copies metadata without copying files; source attachments must remain valid. For no-attachment variants, explicitly prove both reference sets empty.",
+          "id": "note.duplicate.normal:oracle:2",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Original and duplicate separately open with expected content.",
+          "id": "note.duplicate.normal:oracle:3",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt",
+          "symbol": "suspend fun duplicateNote(",
+          "line": 718,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/BaseNoteModel.kt#L718"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed.",
+      "parameters": {
+        "variants": [
+          "text",
+          "checklist",
+          "with_attachment"
+        ],
+        "expansionRequired": true,
+        "completionRule": "Every listed variant must have an attempt or an explicit blocked record."
+      }
+    },
+    {
+      "id": "note.archive_restore.normal",
+      "featureId": "note.archive_restore",
+      "name": "归档与取消归档",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "归档目标笔记，验证Notes消失且Archived出现；从Archived恢复。"
+      ],
+      "expectedOutcome": "同一id在NOTES/ARCHIVED移动，正文标签附件不变；离开Notes时相关通知被取消。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Same ID; folder NOTES→ARCHIVED→NOTES and all content fields preserved.",
+          "id": "note.archive_restore.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Membership matches both folders.",
+          "id": "note.archive_restore.normal:oracle:2",
+          "required": true
+        },
+        {
+          "kind": "system",
+          "assertion": "If note has pinned notification/reminder fixture, verify cancellation when archived.",
+          "id": "note.archive_restore.normal:oracle:3",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun archive()",
+          "line": 356,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L356"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "note.trash_restore.normal",
+      "featureId": "note.trash_restore",
+      "name": "回收站与恢复",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "删除一篇含清单或附件的笔记；从Deleted打开并恢复。"
+      ],
+      "expectedOutcome": "软删除移动至DELETED；恢复返回NOTES，数据及附件可用。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Same ID and content; folder NOTES→DELETED→NOTES.",
+          "id": "note.trash_restore.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "file",
+          "assertion": "Referenced attachments still exist and retain hashes after soft delete/restore.",
+          "id": "note.trash_restore.normal:oracle:2",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Notes and Deleted membership match folder transitions.",
+          "id": "note.trash_restore.normal:oracle:3",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun delete()",
+          "line": 348,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L348"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "note.delete_forever.normal",
+      "featureId": "note.delete_forever",
+      "name": "永久删除、取消与批量撤销窗口",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "将专用AAB-DELETE数据移至Deleted，永久删除对话框先取消后确认。",
+        "另用批量永久删除并在Snackbar窗口Undo；再删除一次等窗口结束。"
+      ],
+      "expectedOutcome": "取消保留笔记；确认删除删除目标行并清理对应附件，其他笔记不受影响。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Target row absent after confirmed final deletion; Undo restores selected rows before finalization.",
+          "id": "note.delete_forever.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "file",
+          "assertion": "Cleanup follows actual snackbar finalization, and files referenced by unaffected notes remain usable.",
+          "id": "note.delete_forever.normal:oracle:2",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Deleted folder and notification state reflect final operation.",
+          "id": "note.delete_forever.normal:oracle:3",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt",
+          "symbol": "private fun deleteForever()",
+          "line": 379,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/NoteActionHandler.kt#L379"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "note.bulk.normal",
+      "featureId": "note.bulk",
+      "name": "多选、全选与上下文菜单",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "在Notes选择A/B保留C未选；依次批量固定、标签、颜色、归档/恢复。",
+        "检查Archived/Deleted的选择菜单和select all；退出选择模式。"
+      ],
+      "expectedOutcome": "各folder提供正确操作，多选仅影响选中id，单项分享只在选择1项可见。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Only captured selected ID set changes; unselected canonical snapshot stable.",
+          "id": "note.bulk.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Selection count, folder-specific menu availability and single-selection share rule match source.",
+          "id": "note.bulk.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt",
+          "symbol": "override fun onChanged(",
+          "line": 41,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/main/ModelFolderObserver.kt#L41"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "note.convert.normal",
+      "featureId": "note.convert",
+      "name": "文本与清单双向转换",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "把三行纯文本转换成清单，核对三项；再转换回文本。",
+        "另用带列表语法与勾选的文本验证解析分支。"
+      ],
+      "expectedOutcome": "type与body/items按原转换规则变化，id及附件/标签保留；不承诺富文本/层级无损往返。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Same ID, expected NOTE/LIST type, exact resulting body/items according to pinned source; labels/attachments preserved.",
+          "id": "note.convert.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Correct editor opens and every expected line/item is visible.",
+          "id": "note.convert.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt",
+          "symbol": "suspend fun convertTo(",
+          "line": 468,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/viewmodel/NotallyModel.kt#L468"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    },
+    {
+      "id": "editing.history_view.normal",
+      "featureId": "editing.history_view",
+      "name": "撤销重做、只读模式与快速跳转",
+      "layer": "normal",
+      "priority": "core",
+      "status": "not_run",
+      "preconditions": [
+        "固定测试 applicationId/serial/build；只使用本套件建立的数据；记录操作前持久快照"
+      ],
+      "steps": [
+        "输入两段正文后Undo/Redo；切换Read only并尝试输入，再切Edit修改。",
+        "长文本执行Jump to top/bottom。"
+      ],
+      "expectedOutcome": "编辑会话内Undo/Redo精确回退内容，只读不接受编辑，顶部/底部跳转不改数据。",
+      "oracles": [
+        {
+          "kind": "database",
+          "assertion": "Saved body matches last intended edit; viewMode correct; navigation alone does not alter content.",
+          "id": "editing.history_view.normal:oracle:1",
+          "required": true
+        },
+        {
+          "kind": "ui",
+          "assertion": "Caret/scroll and disabled editing state match requested operation.",
+          "id": "editing.history_view.normal:oracle:2",
+          "required": true
+        }
+      ],
+      "sourceIntentExecutionIds": [],
+      "sourceEvidenceRefs": [],
+      "sourceEvidenceIndex": [],
+      "environmentRequirements": [],
+      "executionClass": "script",
+      "entrypoints": [
+        {
+          "path": "app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt",
+          "symbol": "R.string.undo",
+          "line": 552,
+          "url": "https://github.com/Crustack/NotallyX/blob/03ff809f058dbcabd5f0d20f114546686dfc9cb5/app/src/main/java/com/philkes/notallyx/presentation/activity/note/EditActivity.kt#L552"
+        }
+      ],
+      "evidenceRequired": [
+        "same-state screenshot + app tree (system UIA when outside app)",
+        "raw independent oracle snapshot before/after",
+        "execution request/receipt history"
+      ],
+      "passRule": "All required oracles agree. A Script terminal state or UI toast is insufficient. Missing evidence is unverified/inconclusive, never passed."
+    }
+  ]
+}

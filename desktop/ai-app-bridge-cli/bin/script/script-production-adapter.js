@@ -1,23 +1,16 @@
 'use strict';
 
-const { spawn } = require('node:child_process');
 const { androidAppTargetKey, getProcessTargetLease } = require('../shared-kernel/target-lease-protocol');
-
-const ADB_PROBE_TIMEOUT_MS = 2000;
-const ADB_SLOW_MS = 500;
 
 function createProductionScriptDeviceAdapter({
   lease = getProcessTargetLease(),
   ports = null,
   adb = process.env.ADB || 'adb',
-  probeAdb = null,
 } = {}) {
   const impl = ports || require('../ai-app-bridge');
-  const probe = probeAdb || ((serial) => probeAdbShell(adb, serial));
   let currentActive = 0;
   let maxActive = 0;
   const calls = [];
-  const adbTimings = [];
 
   async function withDevice(serial, packageName, name, fn) {
     const waitStarted = Date.now();
@@ -34,49 +27,16 @@ function createProductionScriptDeviceAdapter({
     maxActive = Math.max(maxActive, currentActive);
     calls.push({ name, serial, packageName, atMs: Date.now() });
     try {
-      const before = await probe(serial);
-      recordTiming(serial, packageName, name, 'before', before);
-      if (!before.ok) return before;
       const result = await fn();
-      const after = await probe(serial);
-      recordTiming(serial, packageName, name, 'after', after);
-      if (!after.ok) {
-        return {
-          ok: false,
-          error: after.error,
-          adbMs: after.ms,
-          adbTimings: timingsFor(serial, packageName, name),
-        };
-      }
       return {
         ...result,
-        adbTimings: timingsFor(serial, packageName, name),
+        adbTimings: [],
         targetLeaseWaitMs: Date.now() - waitStarted,
       };
     } finally {
       currentActive -= 1;
       held.release();
     }
-  }
-
-  function recordTiming(serial, packageName, name, phase, probeResult) {
-    adbTimings.push({
-      serial,
-      packageName,
-      name,
-      phase,
-      ok: probeResult.ok !== false,
-      ms: probeResult.ms,
-      error: probeResult.error || null,
-    });
-  }
-
-  function timingsFor(serial, packageName, name) {
-    return adbTimings.filter((item) => (
-      item.serial === serial
-      && item.packageName === packageName
-      && item.name === name
-    )).slice(-2);
   }
 
   function context(target) {
@@ -90,7 +50,7 @@ function createProductionScriptDeviceAdapter({
 
   return {
     calls,
-    adbTimings,
+    adbTimings: [],
     get maxActive() { return maxActive; },
     get callCount() { return calls.length; },
     async observe({ serial, packageName, provider, rawTreeId, port }) {
@@ -253,45 +213,6 @@ function shapeAction(result) {
   };
 }
 
-function probeAdbShell(adb, serial) {
-  return new Promise((resolve) => {
-    const started = process.hrtime.bigint();
-    const child = spawn(adb, ['-s', serial, 'shell', 'true'], { windowsHide: true });
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(result);
-    };
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      finish({ ok: false, error: 'transport_timeout', ms: ADB_PROBE_TIMEOUT_MS });
-    }, ADB_PROBE_TIMEOUT_MS);
-    child.on('error', (error) => {
-      finish({
-        ok: false,
-        error: error.message || String(error),
-        ms: Number(process.hrtime.bigint() - started) / 1e6,
-      });
-    });
-    child.on('close', (code) => {
-      const ms = Number(process.hrtime.bigint() - started) / 1e6;
-      if (code !== 0) {
-        finish({ ok: false, error: 'adb_probe_failed', ms });
-        return;
-      }
-      if (ms > ADB_SLOW_MS) {
-        finish({ ok: false, error: 'adb_slow', ms });
-        return;
-      }
-      finish({ ok: true, ms });
-    });
-  });
-}
-
 module.exports = {
-  ADB_PROBE_TIMEOUT_MS,
-  ADB_SLOW_MS,
   createProductionScriptDeviceAdapter,
 };

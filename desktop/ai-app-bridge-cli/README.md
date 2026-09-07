@@ -1,5 +1,9 @@
 # AI App Bridge CLI
 
+The current working tree builds `0.3.0-rc.1`. This is a local release candidate;
+it has not been published to npm. Installing the public package does not imply
+that the optional Script/Intent and capture contracts below are available.
+
 AI App Bridge CLI/MCP supports Android native apps, Android WebView/H5/CDP,
 Flutter apps on Android and iOS, iOS native apps via `AiAppBridgeIOS` plus
 WebDriverAgent/XCUITest, WKWebView, and desktop Web Bridge sessions.
@@ -13,7 +17,7 @@ Command domains:
 - `webview`: `h5-*`, `flutter-h5-*`, `webview-pages`, `webview-network`, `webview-console`
 - `ios`: `ios-devices`, `ios-doctor`, `ios-setup`, `ios-*` runtime evidence, WDA tree/tap/input/swipe, WKWebView, and Flutter iOS
 - `web`: `web-session-start`, `web-sessions`, `web-status`, `web-dom`, `web-logs`, `web-network`, `web-state`, `web-events`, `web-command`, `web-click`, `web-input`, `web-wait`, `web-scroll`
-- `diagnostics` / `advanced`: `logcat`, `smoke`, `batch`, `forward`, `remove-forward`
+- `diagnostics` / `advanced`: `logcat`, `smoke`, `batch`, `forward`, `remove-forward`, plus isolated MCP `script` and `intent` (not CLI verbs)
 
 For MCP clients, the default surface is compact: call `capabilities` to discover
 domains, commands, and options, then call `run` with the selected command.
@@ -60,8 +64,11 @@ into the model context:
 - `run` executes a selected command with command-specific arguments.
 
 This keeps install, data reset, launch, UI action, Flutter, WebView/H5/CDP,
-iOS, Web Bridge, logcat, network, permission, smoke, batch, and port-forward
-capabilities discoverable without exposing dozens of full schemas at session start.
+iOS, Web Bridge, logcat, network, permission, smoke, batch, port-forward,
+and isolated `script`/`intent` capabilities discoverable without exposing
+dozens of full schemas at session start. `script` is trusted-local-code
+JavaScript or Python: `permissions` gate Bridge SDK calls only and are not
+an OS sandbox. There is no explore, export-to-script, or assemble-report command.
 Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
 `ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
 surface.
@@ -73,13 +80,15 @@ Node REPL scripts can send and read one JSON object per line.
 
 ## Persistent facts and action feedback
 
-The MCP process keeps one in-process connection path per target, serializes
-mutations for the same target, and continuously collects incremental
-`logs`/`network`/`state`/`events` facts after an explicit target is used. Android
-App logs come from that App's in-process `logs` stream by default; the collector
-does not attribute device-wide logcat to the App. Device logs are enabled only
-with the additive `deviceLogScope: "device"` option and are stored as an
-explicit device target. One bounded stream is then reused per explicit serial.
+The MCP process keeps one in-process connection path per target and serializes
+mutations for the same target. Phone `logs`/`network`/`state`/`events` live in
+`MobileCaptureStore` on the device. Host live commands read the phone; the
+collector does not copy those payloads into Host history. Android App logs
+come from that App's in-process `logs` stream on an explicit live read. The
+collector does not attribute device-wide logcat to the App. Device logs are
+enabled only with the additive `deviceLogScope: "device"` option and are stored
+as an explicit device target. One bounded stream is then reused per explicit
+serial. Web Bridge sessions still collect Host-owned web evidence streams.
 The default buffers are `main`, `system`, and `crash`; sensitive `radio`,
 `security`, and `kernel` buffers still require explicit `deviceLogBuffers`.
 The observer keeps at most 32 targets and retires a target after 30 minutes
@@ -122,20 +131,96 @@ content. An explicit live `network` read keeps its existing behavior. Each fact
 also carries a canonical target key, App identity, runtime epoch, global
 sequence, timestamps, and an action id when correlation is available.
 
-Existing evidence commands read the persisted timeline without adding a new
-top-level command. Pass `history: true`, then reuse the returned opaque
-`factCursor` for the next page. `events`/`ios-events`/`web-events` additionally
-accept `includeActions: true` to return correlated execution records:
+On an Android runtime that supports persistent capture, phone
+`logs`/`network`/`state`/`events` with `history: true` read the phone FactStore
+while the device is connected. This also applies to capture forwarded by the
+Flutter Android plugin when its embedded Android runtime has been updated.
+If the phone or runtime is unavailable they return an explicit error and do not
+fall back to a Host-copied payload. The current iOS capture backend is volatile:
+strong `decision-window` and `connected-history` reads return
+`persistence_unavailable`, empty refs and uncommitted coverage. Its existing
+Legacy reads remain available. Web evidence history still pages
+Host-owned facts through the existing command plus an opaque `factCursor`.
+Mobile history does not merge Host execution records into mobile facts. Use
+Script/Intent history to inspect execution records separately:
 
 ```json
 {
   "command": "events",
   "packageName": "io.github.mobileaidev.aiappbridge.sample",
   "history": true,
-  "includeActions": true,
   "arguments": { "limit": 100 }
 }
 ```
+
+## Optional Script and evidence contracts in this candidate
+
+Agents may keep using ordinary `run` calls or `batch`. Intent is optional; a
+Script does not need to be generated from an Intent session. Start a Script
+through MCP `run` with `command: "script"`, `operation: "start"` and a `script`
+object containing `schemaVersion: "aab.code-script/v1"`, `language`, one of
+`source`/`sourcePath`, and `target: {serial, packageName}`. Code exports
+`async function main(ctx)`; Python defines its corresponding `main` entrypoint.
+This candidate's new device execution validation focuses on Android and
+Flutter Android. Existing platform command availability is a separate contract.
+
+- `completed` means that execution finished. Inspect the device assertion
+  results to determine which application outcomes were verified.
+- `ctx.assert({scope: "code", name, condition})` checks local code. It cannot
+  claim device evidence and is counted separately in `rollingSummary`.
+- Device assertions are the default. Pass the exact `evidence` object returned
+  by a current `ctx.call`; fabricated, missing, expired or pre-mutation
+  observations are `inconclusive`. UI tree and screenshot predicates must use
+  their own evidence. The Host keeps at most 128 observations / 256 KiB of
+  assertion metadata per Script and does not retain mobile capture bodies.
+- For asynchronous mobile results, read the stream before the action. Save
+  `before.evidence.capture.watermarkCursor` and `.runtimeEpoch`; after the
+  action, pass them as `factCursor` and `runtimeEpoch` to the same stream.
+  The Host verifies that this boundary was observed before that action.
+  `afterActionId` is an optional association filter, not proof of business
+  causality; match the actual request or business fields in the predicate.
+  If startup dropped records before persistence attached, use a fresh device
+  `status.updatedAtMs` as the baseline `sinceMs` and preserve that same
+  `sinceMs` in later cursor reads. A cursor alone does not erase a recorded
+  loss fence. New loss inside the chosen window still makes it partial.
+- Strong device assertions currently require a complete single page, actual
+  refs and `hasMore: false`. Multi-page reads are supported with `nextCursor`,
+  but there is no merged multi-page assertion contract yet. Partial windows,
+  missing refs, dropped facts and unknown capture backends stay inconclusive.
+- `view: "decision-window"` queries the current epoch.
+  `view: "connected-history"` (or `history: true`) queries retained mobile
+  history. `mobileFactId` re-reads an exact ref while connected. Ref identity
+  survives App restart while the record remains retained; clear invalidates
+  the corresponding refs, and old epoch data cannot verify a new action.
+  Cursors and refs are opaque and must not be synthesized.
+- Android `status.capturePersistence` reports attachment and lifecycle state,
+  including the actual storage operation error. Strong queries remain
+  unavailable while the durable backend is not attached. Startup records
+  that could not be committed are reported as a gap.
+- `committed` means that the fact writer has made the record readable. The
+  mobile store uses group flushing; this does not promise survival of an
+  arbitrary power loss before flush. Cold disk reads and cache performance
+  are measured separately; this candidate has not passed the old hot-query
+  latency target on all devices and retained-store sizes.
+
+Script defaults to `restartPolicy: "none"`. Opt into `"checkpoint"` only for
+explicitly reentrant code that uses `ctx.checkpoint` and `ctx.resume`.
+Recovery preserves the frozen source, target and permissions and uses the
+real provider. It cannot restore an arbitrary JS/Python stack. An unmatched
+prepare/receipt, a side effect after the last user checkpoint, or an uncertain
+write requires reconciliation and is never automatically replayed. Completed
+and cancelled operations cannot be resumed to repeat their effects.
+
+The old declarative Script `steps` format is rejected with
+`script_format_removed`; migrate it to an explicit code Script. Legacy command
+JSON and its per-`(serial, packageName)` concurrency remain unchanged. New
+Script/Intent mutations serialize on the physical Android serial. No fake
+provider is selected by a missing production dependency.
+
+Development checkout: [Script contract validation](scripts/validation/script-contract.md)
+provides an explicit real-device MCP runner for assertion boundaries, cancellation,
+checkpoint recovery and durable action receipts. Supply the server, device and
+package explicitly; these runtime checks do not imply full application acceptance.
 
 Every normal object result keeps its legacy fields and adds `_feedback` unless
 `feedback: "off"` is requested. The default `auto` mode does not add post-action
