@@ -2,6 +2,8 @@
 
 更新于 2026-09-07，分支 `codex/script-intent-isolated-rebuild` 的开发工作区。
 
+后续进展见 [Intent 证据复用结果](INTENT_SCRIPT_REUSE_2026-09-08.md)：搜索流程已完成采证、干净上下文的 Script 编写，以及 PGFM10 上同一源码三次正向和两个负例验证；正向耗时约 24 秒，业务数据无差异。两台手机均获授权，PKR110 已备好同版本夹具，其完整重复运行仍待验证。以下保留阶段提交时的结果。
+
 ## 当前目标
 
 交付对象是 AI App Bridge：Intent 支持日常操作和探索，并保留可分析的证据；Agent 根据已验证的步骤和业务预期编写 Script，进行重复回归。NotallyX 用于检验这些能力在复杂真实 App 上是否成立。

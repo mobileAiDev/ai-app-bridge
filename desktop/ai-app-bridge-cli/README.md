@@ -164,6 +164,9 @@ object containing `schemaVersion: "aab.code-script/v1"`, `language`, one of
 This candidate's new device execution validation focuses on Android and
 Flutter Android. Existing platform command availability is a separate contract.
 
+See [Script authoring](docs/SCRIPT_AUTHORING.md) for the executable source shape,
+call envelope, assertion results, bounded UI waits and evidence reuse boundaries.
+
 - `completed` means that execution finished. Inspect the device assertion
   results to determine which application outcomes were verified.
 - `ctx.assert({scope: "code", name, condition})` checks local code. It cannot

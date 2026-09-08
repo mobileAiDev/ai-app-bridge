@@ -40,6 +40,9 @@
     "bin/web-provider.js",
     "skills/ai-app-bridge-use",
     "README.md",
+    "docs/SCRIPT_AUTHORING.md",
+    "docs/INTENT_NATIVE_EDITING.md",
+    "docs/INTENT_FOREGROUND.md",
     "!bin/script/fake-*.js",
     "!bin/script/p9-*.js",
     "!bin/intent/intent-device-adapter.js"

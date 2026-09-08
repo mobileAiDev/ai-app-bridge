@@ -39,6 +39,7 @@ function scriptEventTarget(record, type, extra = {}) {
 function scriptPayload(extra) {
   return {
     command: extra.command,
+    callId: extra.callId,
     args: extra.args,
     error: extra.error,
     status: extra.status,

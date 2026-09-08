@@ -585,8 +585,13 @@ function trackHost(host, record, now) {
       }
       emitRecord(record, result.ok === false ? 'call_failed' : 'call_completed', {
         command, args, actionId,
+        callId: result.execution?.callId,
         error: result.error || null,
         evidenceRefs: result.evidence?.refs,
+        observationId: result.evidence?.observationId,
+        source: result.evidence?.source,
+        window: result.evidence?.window,
+        coverage: result.evidence?.coverage,
       }, now);
       return result;
     } finally {

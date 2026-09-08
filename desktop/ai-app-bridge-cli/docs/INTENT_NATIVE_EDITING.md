@@ -23,3 +23,23 @@ An exact native accessibility name can use `selector: {"contentDescription":"置
 Native input passes its observed coordinates and Host action ID to the Bridge input endpoint. App-local input failures do not fall back to ADB text insertion into an unrelated focused field. Older Android runtimes may not return/associate the input action ID; Host receipts alone do not establish mobile action correlation. The caller must inspect the actual runtime evidence and verify the resulting business state.
 
 Unsupported actions/providers fail closed. UIA and Flutter inputText are outside this addition. Unknown actions never become taps. Intent execution completion is separate from business acceptance.
+
+For a native gesture starting on an observed node, use `action: "swipe"` with
+an explicit `selector`, numeric `deltaX`/`deltaY`, and a positive integer
+`durationMs`. The start is the selected node's center; the end adds those
+deltas and must remain inside the observed window. For example, a downward
+finger gesture has positive `deltaY`. The existing `scroll` action uses the
+whole window; its start may land in a fixed toolbar instead of the list.
+Reobserve to verify actual movement. A successful gesture receipt proves
+dispatch, not that content scrolled.
+
+`action: "back"` sends Android Back. `action: "keyevent", keyCode: 4` expresses
+that key explicitly. Observe the keyboard/page state before deciding what Back
+should accomplish; dismissing a keyboard and leaving a page are different outcomes.
+
+Preserve per-step Intent responses and action receipts. Native observations
+currently do not take a screenshot automatically: `summary.screenshotId` can
+be null. A separate `screenshot` call should retain its artifact hash, timestamp
+and the adjacent observation ID. This association is sequential, not an atomic
+tree/screenshot capture. `status.history` is a bounded execution ledger and
+does not expose the full stored raw tree for each observation.
