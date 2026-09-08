@@ -18,6 +18,7 @@ const {
   restartGate,
 } = require('./script-durable-restore');
 const { scriptError } = require('./script-errors');
+const { createEvidenceRecording } = require('../shared-kernel/evidence-recording');
 
 function createDefaultRuntime(opts = {}) {
   if (opts.language === 'javascript') return createNodeRuntimeAdapter(opts);
@@ -66,6 +67,19 @@ function createScriptSupervisor({
     }
     sequence += 1;
     const operationId = args.operationId || `script-${now()}-${sequence}`;
+    if (args.store?.latest?.(operationId, 'checkpoint') && !args[RESTORE_CONTEXT]) {
+      return scriptError('operation_exists', { operationId });
+    }
+    let recording = null;
+    if (args.recordingDir !== undefined) {
+      if (compiled.spec.policy.restartPolicy !== 'none') {
+        return scriptError('recording_restart_unsupported', { operationId });
+      }
+      try {
+        recording = createEvidenceRecording({ directory: args.recordingDir, namespace: 'script',
+          operationId, store: args.store, now });
+      } catch (error) { return scriptError(error.code || 'recording_failed', { operationId }); }
+    }
     const events = createBoundedEventLog({
       maxEvents: registry.maxEvents,
       maxEventBytes: registry.maxEventBytes,
@@ -103,6 +117,7 @@ function createScriptSupervisor({
         agent,
         host,
         runtime,
+        recording,
       });
     }
     return finishStart(args, {
@@ -112,16 +127,15 @@ function createScriptSupervisor({
       agent,
       host,
       runtime,
+      recording,
     });
   }
 
   async function persistStart(args, parts) {
-    if (typeof args.store.latest === 'function' && args.store.latest(parts.operationId, 'checkpoint')) {
-      return scriptError('operation_exists', { operationId: parts.operationId });
-    }
     const persisted = await args.store.persist(
       'checkpoint',
-      codeStartCheckpoint(parts.compiled, parts.operationId),
+      { ...codeStartCheckpoint(parts.compiled, parts.operationId),
+        ...(parts.recording ? { recording: parts.recording.info() } : {}) },
     );
     if (!persisted.ok) {
       return scriptError(persisted.error || 'checkpoint_not_persisted', { operationId: parts.operationId });
@@ -129,7 +143,7 @@ function createScriptSupervisor({
     return finishStart(args, parts);
   }
 
-  function finishStart(args, { compiled, operationId, events, agent, host, runtime }) {
+  function finishStart(args, { compiled, operationId, events, agent, host, runtime, recording }) {
     const startedAtMs = now();
     const restoreContext = args[RESTORE_CONTEXT] || null;
     const record = {
@@ -156,6 +170,7 @@ function createScriptSupervisor({
       decisions: new Map(),
       ledger: scriptLedger,
       store: args.store || null,
+      recording,
       lastCheckpoint: restoreContext && restoreContext.checkpoint,
       checkpointRevision: Number(restoreContext && restoreContext.revision) || 1,
       actionSequence: Number(restoreContext && restoreContext.actionSequence) || 0,
@@ -397,6 +412,7 @@ function createScriptSupervisor({
         args.afterSequence == null ? 0 : args.afterSequence,
         args.limit,
       ),
+      ...(record.recording ? { recording: record.recording.info() } : {}),
       catalog: args.includeCatalog ? catalogPayload() : undefined,
       ...extra,
     };
@@ -480,6 +496,7 @@ async function commitTerminal(record, status, error, now, result) {
     actionSequence: record.actionSequence,
     status,
     error,
+    ...(record.recording ? { recording: record.recording.info() } : {}),
   });
   record.checkpointRevision = revision;
   record.finished = true;
@@ -583,6 +600,15 @@ function trackHost(host, record, now) {
           timings: result.timings,
         }, now);
       }
+      if (record.recording) {
+        const saved = await record.recording.record({ kind: 'script-call', revision: record.checkpointRevision,
+          target: scriptEventTarget(record, 'call_completed', { args }),
+          data: { command, args, options, startedAtMs, completedAtMs: now(), envelope: result } });
+        if (!saved.ok) {
+          record.durableError = saved.error;
+          return failedCall(command, saved.error, actionId, result.ambiguous === true);
+        }
+      }
       emitRecord(record, result.ok === false ? 'call_failed' : 'call_completed', {
         command, args, actionId,
         callId: result.execution?.callId,
@@ -609,6 +635,14 @@ function trackHost(host, record, now) {
     call,
     assert: async (assertion) => {
       const result = await host.assert(assertion);
+      if (record.recording) {
+        const saved = await record.recording.record({ kind: 'script-assertion', revision: record.checkpointRevision,
+          target: record.spec.target, data: { assertion, result } });
+        if (!saved.ok) {
+          record.durableError = saved.error;
+          return { ok: false, name: result.name, scope: result.scope, verdict: 'inconclusive', reason: saved.error };
+        }
+      }
       emitRecord(record, `assertion_${result.verdict}`, {
         name: result.name,
         verdict: result.verdict,

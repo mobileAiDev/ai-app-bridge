@@ -1,4 +1,4 @@
-# Export and verify retained Host evidence
+# Record, export and verify execution evidence
 
 Discover the public MCP command with `capabilities {"command":"evidence"}`.
 It works for both Intent operation IDs and Script execution IDs, including
@@ -27,7 +27,7 @@ The response includes `archiveDir`, `manifestPath`, `manifestSha256`,
 `recordCount`, `targets`, and `coverage`. Save the returned manifest SHA256
 separately when handing the archive to an author or reviewer.
 
-The directory contains two files:
+Without `includeRecordedPayloads`, the directory contains two files:
 
 - `records.json`: the original ordered Facts, including their globalSeq,
   outer source binding, full evidence envelopes, raw trees where stored,
@@ -59,7 +59,7 @@ Move or copy the directory as a unit, then call:
 }
 ```
 
-Verification opens only these two ordinary files. It does not open a
+Verification opens only the archive's ordinary files. It does not open a
 FactStore, initialize an operation, or contact a phone. It verifies the
 externally supplied manifest hash, records hash/size, each evidence checksum,
 namespace/operation/source binding, IDs, sequence, internal reference order
@@ -102,7 +102,7 @@ Currently persisted Intent content includes observations with raw trees,
 summaries, decisions, dispatch markers, and action receipts. Script content
 includes durable checkpoints, dispatch markers, and action receipts.
 
-`externalPayloads` is `not-included`. External screenshot files, phone
+Without recorded payload inclusion, `externalPayloads` is `not-included`. External screenshot files, phone
 logs/network capture items, Script call results/assertions, and in-memory
 events are outside this archive. Existing external references are listed
 but not downloaded or dereferenced. Preserve those artifacts separately
@@ -112,3 +112,85 @@ when the intended check requires them.
 The caller can inspect recorded decisions/checkpoints, but Intent cancellation
 and other in-memory state cannot be recovered from a successful export.
 Archive integrity alone does not establish a passed business assertion.
+
+## Explicit recording for one execution
+
+Add `recordingDir: "/absolute/existing-parent/new-recording"` to the
+**arguments of `script start` or `intent start`**, alongside `script` or
+`goal`/`target`. The parent must exist and the directory must be new.
+This is opt-in file output for this execution; ordinary live calls do not
+copy mobile payloads to a Host history database.
+
+Script records each returned Host call envelope (command, arguments, actual
+result, call/action/observation IDs, source hash, window, coverage, refs and
+capture metadata), plus each assertion input and Host verdict. The Host
+copies referenced screenshot PNG bytes immediately, checking the issued
+SHA256 before an original path can be reused. It awaits the attachment's
+FactStore receipt before replying to the child. This does not depend on the
+child writing files or on retaining the bounded event log.
+
+Intent records the complete capture pages already fetched by its `require`
+streams, including items. Each attachment references its persisted raw-tree
+observation. Recording itself does not query extra streams or take Intent
+screenshots. With no `require` streams, Intent has no mobile payload to record.
+
+The existing Host FactStore stores small `attachment` records containing
+file hashes and execution bindings; the payload files remain in the explicit
+output directory. The live mobile query path never consults those files.
+Script recording currently requires `restartPolicy: "none"`; a checkpoint
+restart request with recording is rejected as `recording_restart_unsupported`.
+Live pause/resume can continue the same recording. No recording is silently
+reopened after Host or child loss.
+
+Limits are 10,000 attachments, 16 MiB per JSON/PNG file and 256 MiB per
+recording. A write, checksum or persistence failure stops further successful
+recording: Script receives an explicit error and blocks further calls;
+Intent stops exposing the new observation. Previously committed material
+can still be exported. Unreferenced files left by a failed write are not
+included. Existing output directories are never replaced or cleaned up.
+
+JSON uses the existing FactStore credential redaction. `representation`
+distinguishes `original-json` from `redacted-json`. Original and archived
+data hashes are stored separately; a redacted payload is never presented as
+the original `source.payloadSha256` bytes. PNGs retain their original bytes.
+
+## Include recorded files in the portable archive
+
+Use the same public export call with `includeRecordedPayloads: true`:
+
+```json
+{
+  "command": "evidence",
+  "arguments": {
+    "operation": "export",
+    "namespace": "script",
+    "operationId": "script-from-your-response",
+    "outputDir": "/absolute/existing-parent/new-archive",
+    "includeRecordedPayloads": true
+  }
+}
+```
+
+This produces `aab.evidence-archive/v2`: records, manifest and flat
+`payload-<sha256>.json/png` files. All retained attachment references must
+resolve with the expected size/hash. Export never re-fetches mobile facts
+or substitutes another screenshot. Keep the recording directory in place
+until export; after export, move the archive as a unit and use the same
+`verify` operation and separately saved manifest hash. Offline verification
+never opens the old recording directory or screenshot paths.
+
+`recordedPayloads` reports included calls, Host assertion verdict counts,
+screenshots, mobile pages/items and checked item/ref associations. Item IDs,
+timestamps, stream, target and explicitly filtered epoch must agree. A
+connected-history page's current epoch is not substituted for an older
+fact's own epoch. Coverage, query window, pagination and store generation
+remain the values returned by the source. Uncommitted items remain visible
+without being counted as bound mobile facts.
+
+This remains an archive of **retained recorded payloads**, not proof of a
+complete run. Unqueried facts, calls made without recording, evicted
+attachment references, in-memory progress and late/in-flight calls outside
+the export watermark are not reconstructed. Assertion verdicts are retained
+Host judgments of the supplied condition/evidence, not an independent
+recalculation of business expectations. Integrity verification does not
+turn a failed or inconclusive assertion into a pass.

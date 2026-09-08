@@ -5,20 +5,20 @@ const isolatedCommandDefinitions = [
     command: 'script',
     domain: 'advanced',
     summary: 'Run an isolated trusted-local-code JavaScript or Python Script. Operations: start, status, wait, progress, pause, resume, decide, cancel, intervene, or runtime-status. Script source is not an OS sandbox.',
-    options: ['operation', 'waitMs', 'afterSequence'],
+    options: ['operation', 'waitMs', 'afterSequence', 'recordingDir'],
     runtime: 'trusted-local-code',
   },
   {
     command: 'intent',
     domain: 'advanced',
     summary: 'Run an isolated Intent operation: start, status, observe, decide, pause, resume, cancel, or intervene. target.foregroundPackages explicitly enables Android foreground provider routing.',
-    options: ['operation'],
+    options: ['operation', 'recordingDir'],
   },
   {
     command: 'evidence',
     domain: 'advanced',
-    summary: 'Export retained Host Intent or Script evidence for one operation, or verify an archive offline against its frozen manifest SHA-256. Verification does not open FactStore; external payloads are not included.',
-    options: ['operation', 'namespace', 'operationId', 'outputDir', 'archiveDir', 'manifestSha256'],
+    summary: 'Export retained Host evidence for one operation; includeRecordedPayloads adds files captured with start.recordingDir. Verify archives offline against their frozen manifest SHA-256 without opening FactStore or contacting devices.',
+    options: ['operation', 'namespace', 'operationId', 'outputDir', 'includeRecordedPayloads', 'archiveDir', 'manifestSha256'],
   },
 ];
 

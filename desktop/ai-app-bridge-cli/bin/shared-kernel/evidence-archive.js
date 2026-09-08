@@ -4,8 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { canonicalJson, validateRecord, verifyChecksum } = require('./evidence-schema');
+const { analyzeRecordedPayloads } = require('./recorded-payload-archive');
+const { readRegularFile: readRecordedFile } = require('./evidence-recording');
 
 const SCHEMA = 'aab.evidence-archive/v1';
+const PAYLOAD_ARCHIVE_SCHEMA = 'aab.evidence-archive/v2';
 const MAX_RECORDS = 10_000;
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
@@ -30,6 +33,8 @@ async function handle(args = {}, { getFactStore } = {}) {
       namespaceArgument(args.namespace);
       textArgument(args.operationId, 'operationId');
       textArgument(args.outputDir, 'outputDir');
+      requireValue(args.includeRecordedPayloads === undefined || typeof args.includeRecordedPayloads === 'boolean',
+        'invalid_argument', 'includeRecordedPayloads');
       requireValue(!fs.existsSync(path.resolve(args.outputDir)), 'output_exists');
       const store = getFactStore();
       await store.drain();
@@ -48,7 +53,7 @@ async function handle(args = {}, { getFactStore } = {}) {
 
 // There is no await between the watermark, page reads and final status: the
 // owning Host writer cannot interleave another command with this snapshot.
-function exportArchive({ namespace, operationId, outputDir }, store) {
+function exportArchive({ namespace, operationId, outputDir, includeRecordedPayloads = false }, store) {
   const status = store.status();
   requireValue(status.ok === true && status.authoritative === true && status.persistence === true,
     'fact_store_unavailable');
@@ -82,10 +87,18 @@ function exportArchive({ namespace, operationId, outputDir }, store) {
   requireValue(after.ok === true && after.storeId === status.storeId
     && after.sequences?.nextGlobalSeq === throughGlobalSeq + 1, 'store_changed_during_export');
   const analysis = analyzeFacts(facts, { namespace, operationId, throughGlobalSeq });
+  const payloadFiles = new Map();
+  if (includeRecordedPayloads) {
+    includePayloadAnalysis(analysis, analyzeRecordedPayloads(facts, (record, file, name) => {
+      const bytes = readRecordedFile(record.directory, file.name);
+      payloadFiles.set(name, bytes);
+      return bytes;
+    }));
+  }
   const recordsBytes = Buffer.from(JSON.stringify(facts) + '\n');
   requireValue(recordsBytes.length <= MAX_BYTES, 'archive_limit_exceeded');
   const manifest = {
-    schemaVersion: SCHEMA,
+    schemaVersion: includeRecordedPayloads ? PAYLOAD_ARCHIVE_SCHEMA : SCHEMA,
     namespace,
     operationId,
     exportedAtMs: Date.now(),
@@ -108,6 +121,7 @@ function exportArchive({ namespace, operationId, outputDir }, store) {
   try { fs.mkdirSync(directory); }
   catch (error) { if (error.code === 'EEXIST') error.code = 'output_exists'; throw error; }
   fs.writeFileSync(path.join(directory, 'records.json'), recordsBytes, { flag: 'wx' });
+  for (const [name, bytes] of payloadFiles) fs.writeFileSync(path.join(directory, name), bytes, { flag: 'wx', mode: 0o600 });
   fs.writeFileSync(path.join(directory, 'manifest.json'), manifestBytes, { flag: 'wx' });
   return resultOf(manifest, directory, sha256(manifestBytes));
 }
@@ -211,6 +225,8 @@ function analyzeFacts(facts, { namespace, operationId, throughGlobalSeq }) {
         if (typeof ref !== 'string' || !ids.has(ref)) externalReferences.push({ evidenceId: record.evidenceId, field, ref });
       }
     }
+    if (record.kind === 'attachment') externalReferences.push({ evidenceId: record.evidenceId,
+      field: 'recordedPayload', ref: { recordingId: record.recordingId, sequence: record.sequence, file: record.file } });
   }
   return {
     recordCount: facts.length,
@@ -256,7 +272,7 @@ function verifyArchive({ archiveDir, manifestSha256 }) {
   const manifestBytes = readRegularFile(directory, 'manifest.json', MAX_MANIFEST_BYTES);
   requireValue(sha256(manifestBytes) === manifestSha256, 'manifest_checksum_mismatch');
   const manifest = JSON.parse(manifestBytes);
-  requireValue(manifest.schemaVersion === SCHEMA, 'unsupported_archive_schema');
+  requireValue([SCHEMA, PAYLOAD_ARCHIVE_SCHEMA].includes(manifest.schemaVersion), 'unsupported_archive_schema');
   namespaceArgument(manifest.namespace);
   textArgument(manifest.operationId, 'operationId');
   requireValue(manifest.records?.path === 'records.json', 'invalid_archive_path');
@@ -267,18 +283,31 @@ function verifyArchive({ archiveDir, manifestSha256 }) {
   const recordsBytes = readRegularFile(directory, 'records.json', MAX_BYTES);
   requireValue(recordsBytes.length === manifest.records.bytes && sha256(recordsBytes) === manifest.records.sha256,
     'records_checksum_mismatch');
-  const analysis = analyzeFacts(JSON.parse(recordsBytes), { namespace: manifest.namespace,
+  const facts = JSON.parse(recordsBytes);
+  const analysis = analyzeFacts(facts, { namespace: manifest.namespace,
     operationId: manifest.operationId, throughGlobalSeq: manifest.source.throughGlobalSeq });
+  if (manifest.schemaVersion === PAYLOAD_ARCHIVE_SCHEMA) {
+    includePayloadAnalysis(analysis, analyzeRecordedPayloads(facts, (_record, _file, name) => readRecordedFile(directory, name)));
+  } else requireValue(manifest.recordedPayloads === undefined, 'manifest_analysis_mismatch', 'recordedPayloads');
   for (const [field, expected] of Object.entries(analysis)) {
     requireValue(canonicalJson(manifest[field]) === canonicalJson(expected), 'manifest_analysis_mismatch', field);
   }
   return { ...resultOf(manifest, directory, manifestSha256), integrity: 'verified' };
 }
 
+function includePayloadAnalysis(analysis, payloads) {
+  analysis.recordedPayloads = payloads;
+  analysis.coverage.externalPayloads = 'included-retained-recordings';
+  analysis.coverage.exclusions = payloads.exclusions;
+  analysis.coverage.missingReferences.push(...payloads.missingReferences);
+  analysis.coverage.referenceClosure = analysis.coverage.missingReferences.length ? 'partial' : 'complete';
+}
+
 function resultOf(manifest, directory, manifestSha256) {
   return { ok: true, archiveDir: directory, manifestPath: path.join(directory, 'manifest.json'), manifestSha256,
     namespace: manifest.namespace, operationId: manifest.operationId, recordCount: manifest.recordCount,
-    targets: manifest.targets, coverage: manifest.coverage };
+    targets: manifest.targets, coverage: manifest.coverage,
+    ...(manifest.recordedPayloads ? { recordedPayloads: manifest.recordedPayloads } : {}) };
 }
 
 module.exports = { handle, analyzeFacts };

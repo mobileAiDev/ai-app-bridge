@@ -40,6 +40,13 @@ pages execution events. Preserve every returned event page and inspect gaps.
 `cancel` uses the same operation ID. An execution status of `completed` means
 the child returned; it does not imply that its assertions passed.
 
+For a portable evidence run, add `recordingDir` to the start arguments with
+a new output directory. The Host records returned calls, assertions and
+referenced screenshots before bounded events are evicted. With
+`restartPolicy: "none"`, use public `evidence export` with
+`includeRecordedPayloads: true`, then offline `evidence verify` with the
+saved manifest hash. See [the recording and archive contract](EVIDENCE_ARCHIVE.md).
+
 For successive event waits, set `afterSequence` to the previous response's
 **`eventSequence`**. `history.lastSequence` belongs to the history page; there
 is no top-level `lastSequence`. Repeatedly passing zero re-delivers old events

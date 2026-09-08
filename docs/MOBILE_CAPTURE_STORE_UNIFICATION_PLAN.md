@@ -1,5 +1,7 @@
 # Mobile CaptureStore 统一存查与 Script / Intent 决策接线计划
 
+> 2026-09-08 归档补充：当前获准的外部证据归档允许 Agent 显式用 `start.recordingDir` 为单次执行保留已经取得的手机载荷文件。具体契约见 [EVIDENCE_ARCHIVE.md](../desktop/ai-app-bridge-cli/docs/EVIDENCE_ARCHIVE.md)。这是以下 Host 零复制规则的有限例外：默认执行路径不复制；Host FactStore 仍只存附件引用和 hash；live/history、断连、恢复路径均不能读取这些文件，不后台补齐，不新增手机数据查询库或自动报告工作流。
+
 > 状态：执行任务书
 >
 > 适用对象：Grok、Cursor Agent、Codex 或其他实现代理

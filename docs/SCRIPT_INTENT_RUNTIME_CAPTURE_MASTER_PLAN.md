@@ -4,6 +4,8 @@
 >
 > 当前阶段完成度、收敛后的下一步与实测范围见 `docs/BRIDGE_DEVELOPMENT_STATUS_2026-09-07.md`。以下合同继续有效；后续优先补 Bridge 通用能力缺口，不以样例 App 的功能覆盖清单决定开发范围。
 >
+> 2026-09-08 路线复核见 [下一阶段关口](BRIDGE_NEXT_GATES_2026-09-08.md)。显式单次证据文件输出的有限例外以手机存查子计划开头及公开 `EVIDENCE_ARCHIVE.md` 为准；它不改变默认 live 路径、数据权威或 Agent 编排边界。
+>
 > 当前记录基线：`codex/script-intent-isolated-rebuild` @ `eec151b`（实施前必须重新核对）
 >
 > 适用对象：Grok、Cursor Agent、Codex 或其他实现代理

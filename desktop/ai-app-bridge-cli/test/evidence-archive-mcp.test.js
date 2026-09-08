@@ -16,6 +16,44 @@ const { createScriptEvidenceStore } = require('../bin/script/script-evidence-sto
 const MCP_SERVER = path.join(__dirname, '..', 'bin', 'mcp-server.js');
 const OPERATION_ID = 'archive-mcp-intent';
 
+test('public Script recording exports actual child calls and all assertion verdicts for offline verification', async t => {
+  const root = temporaryDirectory(t);
+  const client = await openMcp(t, path.join(root, 'facts'));
+  const script = { schemaVersion: 'aab.code-script/v1', language: 'javascript',
+    target: { serial: 'no-device', packageName: 'offline.fixture' }, source: `
+      exports.main = async ctx => {
+        await ctx.call('page-summary', { provider: 'native', rawTreeId: 'fixture-tree', rawTree: { nodes: [] } });
+        await ctx.assert({ name: 'positive', scope: 'code', condition: true });
+        await ctx.assert({ name: 'negative', scope: 'code', condition: false });
+        await ctx.assert({ name: 'missing', scope: 'device', condition: true });
+      };
+    ` };
+  const started = await client.call('run', { command: 'script', arguments: { operation: 'start', script,
+    recordingDir: path.join(root, 'recording') } });
+  assert.equal(started.ok, true, JSON.stringify(started));
+  let state = started;
+  for (let i = 0; i < 20 && !['completed', 'failed'].includes(state.status); i += 1) {
+    state = await client.call('run', { command: 'script', arguments: { operation: 'wait',
+      operationId: started.operationId, afterSequence: state.eventSequence, waitMs: 1000 } });
+  }
+  assert.equal(state.status, 'completed', JSON.stringify(state));
+  const exported = await client.evidence({ operation: 'export', namespace: 'script', operationId: started.operationId,
+    outputDir: path.join(root, 'archive'), includeRecordedPayloads: true });
+  assert.equal(exported.ok, true, JSON.stringify(exported));
+  assert.equal(exported.recordedPayloads.counts.scriptCalls, 1);
+  assert.deepEqual(exported.recordedPayloads.counts.assertions, { passed: 1, failed: 1, inconclusive: 1 });
+  await client.close();
+  const moved = path.join(root, 'moved');
+  fs.renameSync(exported.archiveDir, moved);
+  fs.rmSync(path.join(root, 'recording'), { recursive: true });
+  const unavailable = path.join(root, 'unavailable-store'); fs.writeFileSync(unavailable, 'not a directory');
+  const offline = await openMcp(t, unavailable);
+  const verified = await offline.evidence({ operation: 'verify', archiveDir: moved, manifestSha256: exported.manifestSha256 });
+  assert.equal(verified.ok, true, JSON.stringify(verified));
+  assert.equal(verified.integrity, 'verified');
+  assert.deepEqual(verified.recordedPayloads, exported.recordedPayloads);
+});
+
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
@@ -177,7 +215,7 @@ test('evidence MCP discovery and invalid requests do not initialize FactStore', 
   const command = capabilities.domains.advanced.find((item) => item.command === 'evidence');
   assert.ok(command);
   assert.equal(command.targetKind, 'none');
-  assert.deepEqual(command.options, ['operation', 'namespace', 'operationId', 'outputDir', 'archiveDir', 'manifestSha256']);
+  assert.deepEqual(command.options, ['operation', 'namespace', 'operationId', 'outputDir', 'includeRecordedPayloads', 'archiveDir', 'manifestSha256']);
   assert.equal((await mcp.call('capabilities', { command: 'evidence' })).ok, true);
 
   for (const [args, field] of [

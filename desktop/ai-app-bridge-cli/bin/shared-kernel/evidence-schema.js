@@ -14,6 +14,7 @@ const KINDS = Object.freeze([
   'dispatch-marker',
   'action-receipt',
   'checkpoint',
+  'attachment',
 ]);
 
 function checksumOf(value) {
@@ -74,6 +75,9 @@ function requiredFields(kind) {
   }
   if (kind === 'checkpoint') {
     return ['operationId', 'revision', 'stepId'];
+  }
+  if (kind === 'attachment') {
+    return ['operationId', 'revision', 'recordingId', 'sequence', 'payloadKind', 'directory', 'file'];
   }
   return null;
 }

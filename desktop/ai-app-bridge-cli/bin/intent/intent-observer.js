@@ -54,6 +54,12 @@ async function observeAndCommit(context) {
   if (!persisted.ok) {
     return intentError(persisted.error || 'evidence_not_persisted', { persisted: false });
   }
+  if (capture && context.recording) {
+    const saved = await context.recording.record({ kind: 'intent-capture', revision: context.revision,
+      target: context.target, parentFactId: persisted.evidenceId,
+      data: { rawTreeId: observation.rawTreeId, capture } });
+    if (!saved.ok) return intentError(saved.error, { persisted: false });
+  }
   const summaryStarted = context.now();
   const summary = summarizeTree({
     provider: activeProvider,

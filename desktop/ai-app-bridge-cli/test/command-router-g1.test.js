@@ -157,7 +157,7 @@ test('G1 capabilities preserves Legacy and adds Script, Intent, evidence, and ex
   const evidence = capabilityPayload({ command: 'evidence' });
   assert.equal(evidence.ok, true);
   assert.equal(evidence.targetKind, 'none');
-  assert.deepEqual(evidence.options, ['operation', 'namespace', 'operationId', 'outputDir', 'archiveDir', 'manifestSha256']);
+  assert.deepEqual(evidence.options, ['operation', 'namespace', 'operationId', 'outputDir', 'includeRecordedPayloads', 'archiveDir', 'manifestSha256']);
   assert.equal(capabilityPayload({ command: 'page-summary' }).ok, false);
 });
 

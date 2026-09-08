@@ -6,6 +6,7 @@ const { createProductionIntentDeviceAdapter } = require('./intent-production-ada
 const { intentError } = require('./intent-errors');
 const { createIntentEvidenceStore } = require('./intent-evidence-store');
 const { createIntentWorker } = require('./intent-worker');
+const { createEvidenceRecording } = require('../shared-kernel/evidence-recording');
 
 const operations = new Map();
 const ledgers = new Map();
@@ -40,6 +41,13 @@ async function start(args) {
     return intentError('registry_full', { operationId });
   }
   const store = args.store || createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
+  let recording = null;
+  if (args.recordingDir !== undefined) {
+    try {
+      recording = createEvidenceRecording({ directory: args.recordingDir, namespace: 'intent', operationId, store,
+        now: args.now || Date.now });
+    } catch (error) { return intentError(error.code || 'recording_failed', { operationId }); }
+  }
   const worker = createIntentWorker({
     operationId,
     goal: args.goal || args.intent || null,
@@ -54,6 +62,7 @@ async function start(args) {
     now: args.now || Date.now,
     capturePort: args.capturePort || null,
     captureRequirements: args.require || null,
+    recording,
   });
   operations.set(operationId, worker);
   ledgers.set(operationId, { ledger: store.ledger, status: 'created' });

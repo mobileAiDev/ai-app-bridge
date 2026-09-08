@@ -118,7 +118,7 @@ async function main(options) {
         write(path.join(directory, 'events.json'), events);
       };
       trial.executionStartedAtMs = Date.now();
-      let state = await run('script', { operation: 'start', script: spec });
+      let state = await run('script', { operation: 'start', script: spec, recordingDir: path.join(directory, 'host-recording') });
       activeId = state.operationId; trial.operationId = activeId; trial.scriptHash = state.hash; collect(state); save();
       const deadline = Date.now() + 200000;
       while (!terminal(state)) {
@@ -138,7 +138,7 @@ async function main(options) {
       // Freeze the public archive receipt while this Host still owns FactStore.
       // Offline review must use this returned root hash, never a hash reconstructed later.
       trial.archive = await run('evidence', { operation: 'export', namespace: 'script', operationId: trial.operationId,
-        outputDir: path.join(directory, 'durable-archive') });
+        outputDir: path.join(directory, 'durable-archive'), includeRecordedPayloads: true });
       write(path.join(directory, 'archive-export.json'), trial.archive); save();
       assert.equal(trial.archive.ok, true, 'public_evidence_export_failed:' + JSON.stringify(trial.archive));
       assert.equal(trial.archive.namespace, 'script'); assert.equal(trial.archive.operationId, trial.operationId);
@@ -152,6 +152,16 @@ async function main(options) {
       write(path.join(directory, 'artifacts.json'), evidence.artifacts);
       trial.ui = evaluateTrial({ kind, status: state.status, evidence, expected: baseInputs.expected,
         baselineTitles: fixtureSummary.notes.filter(note => note.folder === 'NOTES').map(note => note.title), events });
+      // The frozen author still writes its evidence independently. Compare it to
+      // the new Host recorder, so a successful export alone cannot pass this gate.
+      const recorded = trial.archive.recordedPayloads;
+      assert.equal(recorded.counts.scriptCalls, evidence.calls.length, 'recorded_call_count_mismatch');
+      assert.equal(recorded.counts.screenshots, evidence.screenshots.length, 'recorded_screenshot_count_mismatch');
+      assert.deepEqual(recorded.counts.assertions, trial.ui.assertions, 'recorded_assertion_counts_mismatch');
+      const archivedCalls = recorded.attachments.map(item => read(path.join(trial.archive.archiveDir, item.path)))
+        .filter(doc => doc.kind === 'script-call').map(doc => doc.data.envelope)
+        .sort((a, b) => Number(a.execution.callId.slice(5)) - Number(b.execution.callId.slice(5)));
+      assert.deepEqual(archivedCalls, evidence.calls, 'recorded_call_payload_mismatch');
       write(path.join(directory, 'independent-ui-oracle.json'), trial.ui);
       trial.verdict = trial.ui.verdict; trial.finishedAtMs = Date.now(); save();
       assert.equal(trial.verdict, 'passed');

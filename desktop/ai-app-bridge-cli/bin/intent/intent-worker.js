@@ -19,6 +19,7 @@ function createIntentWorker({
   now = Date.now,
   capturePort = null,
   captureRequirements = null,
+  recording = null,
 } = {}) {
   const runtime = createIntentRuntime({ operationId, now });
   runtime.state.mode = mode;
@@ -33,6 +34,7 @@ function createIntentWorker({
     now,
     capturePort,
     captureRequirements,
+    recording,
     canDispatch: () => runtime.state.status === 'decision_committed',
     latestSummary: null,
     latestEvidenceId: null,
@@ -301,6 +303,7 @@ function createIntentWorker({
       actionSteps,
     };
     if (context.latestCapture) result.capture = context.latestCapture;
+    if (context.recording) result.recording = context.recording.info();
     return result;
   }
 
