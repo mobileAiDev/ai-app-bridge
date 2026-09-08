@@ -1,5 +1,7 @@
 # 公开证据导出与离线核验
 
+后续已完成 [PKR110 与 PGFM10 的同源码跨设备复跑](INTENT_SCRIPT_CROSS_DEVICE_2026-09-08.md)。以下保留本轮当时的归档接口与验证记录。
+
 上一阶段的固定 Script 复用结果已提交为 `13f5b75`（本地提交）。本轮完成公开 `evidence export/verify` 接口，并让真实回归控制器使用它读取持久证据。NotallyX 业务源码与独立作者的 Script 均未修改。
 
 ## 接口与证据边界
