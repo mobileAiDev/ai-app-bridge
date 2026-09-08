@@ -1,5 +1,14 @@
 # AI App Bridge CLI
 
+Android connections discover the app's device port and reuse an ADB forward for
+that serial and device port, or let ADB allocate a free host port. The host port
+can differ from the device port; use the `forward` command's `hostPort` result
+for direct HTTP clients. `--port` explicitly selects the same host/device port
+and rejects an existing mapping owned by another target. Every Bridge HTTP
+request checks the cached mapping before dispatch. A missing or replaced route
+fails with `bridge_forward_mismatch`; mutating requests are never replayed.
+For manual cleanup, pass the returned host port to `remove-forward --port PORT`.
+
 The current working tree builds `0.3.0-rc.1`. This is a local release candidate;
 it has not been published to npm. Installing the public package does not imply
 that the optional Script/Intent and capture contracts below are available.

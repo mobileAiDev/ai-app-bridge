@@ -38,4 +38,21 @@ The selector must identify exactly one enabled node in the observed package. Dup
 
 If the foreground changes during observation, the operation enters `waiting_for_observation`. Call `operation: "observe"` with the same `operationId`; the operation returns to `waiting_for_decision` only after a new observation commits. Acting or completing from `waiting_for_observation` is rejected. Existing evidence-store failures retain their separate blocked state.
 
+Flutter taps accept one exact selector: `{ "text": "Settings" }` or
+`{ "nodeId": "15" }`. The top-level `text` shorthand remains supported; do not
+combine it with `selector`. Text must identify one actionable node. Repeated
+labels such as three settings rows displaying "System" return
+`flutter_selector_not_unique` without dispatch. Select the intended row's
+`nodeId` from the current committed observation instead. IDs are local to that
+observation; a new tree requires a new lookup. A node must supply valid
+`tap.bounds`; the Host does not invent tap bounds for text-only nodes. Flutter
+coordinates remain logical pixels. Material `NavigationDestination` nodes
+expose their public labels and individual destination bounds.
+
+The operable tree traverses live Elements, including framework-owned pages
+such as `LicensePage`. It is separate from the diagnostic inspector summary.
+Repeated text for the same action region is emitted once; distinct settings
+rows keep distinct targets. Each emitted label needs its own visible bounds.
+The traversal reports truncation when its 512-level depth limit is reached.
+
 This brackets foreground identity; it is not an atomic OS screenshot/action transaction. Animations and layout changes within the same Activity still require fresh stable observations and post-action verification. This change does not add arbitrary UIA Unicode input or attachment/backup business assertions.

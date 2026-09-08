@@ -43,6 +43,7 @@ const PERMISSIONS = Object.freeze({
     'keyevent',
     'wait-text',
     'hide-keyboard',
+    'tap-flutter',
     'tap-flutter-text',
     'input-flutter-text',
     'scroll-flutter',

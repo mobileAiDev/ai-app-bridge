@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const packageInfo = require('../package.json');
-const { executeCommand, inputTextBridgePayload } = require('./ai-app-bridge');
+const { executeCommand, inputTextBridgePayload, flutterTapPayload } = require('./ai-app-bridge');
 const { createFactStore } = require('./fact-store');
 const { FactRecorder, historyDescriptor, isMobileCaptureCommand } = require('./fact-recorder');
 const { runWithFeedbackProbe } = require('./feedback-probe');
@@ -89,7 +89,7 @@ const mutationCommands = new Set([
   'launch-activity', 'launch-native-test', 'launch-flutter', 'permission-grant',
   'permission-revoke', 'permission-dialog', 'appops-set',
   'tap', 'tap-text', 'tap-uia-text', 'input-text', 'hide-keyboard', 'swipe', 'keyevent',
-  'flutter-action', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter',
+  'flutter-action', 'tap-flutter', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter',
   'h5-eval', 'h5-click', 'h5-input', 'h5-scroll',
   'flutter-h5-eval', 'flutter-h5-click', 'flutter-h5-input', 'flutter-h5-scroll',
   'ios-setup', 'ios-install-app', 'ios-launch-app', 'ios-h5-eval', 'ios-flutter-action',
@@ -651,6 +651,7 @@ const commandDefinitions = [
   { command: 'flutter-tree', domain: 'flutter', summary: 'Read the latest Flutter layout snapshot.', targetApp: true, options: ['serial', 'packageName', 'port'] },
   { command: 'flutter-nodes', domain: 'flutter', summary: 'Read Flutter operable nodes.', targetApp: true, options: ['serial', 'packageName', 'port'] },
   { command: 'flutter-action', domain: 'flutter', summary: 'Dispatch a raw Flutter action payload.', targetApp: true, options: ['serial', 'packageName', 'payload'] },
+  { command: 'tap-flutter', domain: 'flutter', summary: 'Tap non-negative Flutter logical coordinates from a fresh Flutter tree; tapX and tapY are required and must not be multiplied by devicePixelRatio.', targetApp: true, options: ['serial', 'packageName', 'tapX', 'tapY'] },
   { command: 'tap-flutter-text', domain: 'flutter', summary: 'Tap a Flutter node by visible text.', targetApp: true, options: ['serial', 'packageName', 'targetText'] },
   { command: 'input-flutter-text', domain: 'flutter', summary: 'Set Flutter TextField text through the Flutter action bridge.', targetApp: true, options: ['serial', 'packageName', 'text', 'tapX', 'tapY', 'hideKeyboard'] },
   { command: 'scroll-flutter', domain: 'flutter', summary: 'Scroll Flutter content by delta or until text is visible.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'delta', 'maxSwipes'] },
@@ -980,9 +981,10 @@ async function runBridgeChecked(command, args = {}, dependencies = {}) {
   if (definition?.targetApp && !args.packageName && !args.port) {
     return toolText(`${command}: packageName or explicit port is required in MCP mode so the command cannot fall back to a default package.`, true);
   }
-  if (command === 'input-text') {
+  if (command === 'input-text' || command === 'tap-flutter') {
     try {
-      inputTextBridgePayload(args.text, normalizeArgs(args));
+      if (command === 'tap-flutter') flutterTapPayload(normalizeArgs(args));
+      else inputTextBridgePayload(args.text, normalizeArgs(args));
     } catch (error) {
       return toolJson({ ok: false, error: error.code || error.message }, true);
     }
@@ -1650,6 +1652,7 @@ function generatedBatchId() {
 
 function buildBridgeCliArgs(command, args = {}) {
   if (command === 'input-text') inputTextBridgePayload(args.text, args);
+  if (command === 'tap-flutter') flutterTapPayload(args);
   const cliArgs = [cliScript, command];
   addCommonArgs(cliArgs, args);
   addArg(cliArgs, 'device-id', args.deviceId);

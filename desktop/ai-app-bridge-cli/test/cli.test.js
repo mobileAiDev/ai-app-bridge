@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const test = require('node:test');
 const WebSocket = require('ws');
+const { createAdbHttpFixture } = require('../test-support/adb-http-fixture');
 
 const {
   buildBridgeFailureResult,
@@ -586,6 +587,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then c
     } }));
   });
   await new Promise((resolve) => treeServer.listen(0, '127.0.0.1', resolve));
+  const adb = createAdbHttpFixture({ directory: cacheDir, serial: 'fixture-device', port: treeServer.address().port });
   const client = createLineJsonMcpClient({
     env: {
       AI_APP_BRIDGE_FACT_CACHE_PATH: path.join(cacheDir, 'facts.sqlite'),
@@ -663,7 +665,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then c
           operation: 'start',
           operationId: 'cli-unified-intent',
           goal: 'confirm persistence without a device',
-          target: { serial: 'fixture-device', packageName: 'com.example.fixture', adb: '/usr/bin/true', port: treeServer.address().port },
+          target: { serial: 'fixture-device', packageName: 'com.example.fixture', adb, port: treeServer.address().port },
         },
       },
     });

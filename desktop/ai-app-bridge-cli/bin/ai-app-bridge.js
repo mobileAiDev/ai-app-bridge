@@ -9,6 +9,7 @@ const os = require('os');
 const path = require('path');
 const { IOSBridgeProvider } = require('./ios-provider');
 const { ConnectionCache } = require('./connection-cache');
+const { createBridgeForward, verifyBridgeForward } = require('./bridge-forward');
 const { decodeXmlAttribute, parseXmlAttributes } = require('./shared-kernel/xml-attributes');
 const {
   artifactTimestamp,
@@ -100,6 +101,7 @@ Flutter commands:
   flutter-tree           Read the latest Flutter layout snapshot.
   flutter-nodes          Read Flutter operable nodes.
   flutter-action         Dispatch a raw Flutter action payload.
+  tap-flutter            Tap Flutter logical coordinates from a fresh Flutter tree.
   tap-flutter-text       Tap a Flutter node by text.
   input-flutter-text     Set Flutter text through the Flutter action bridge.
   scroll-flutter         Scroll Flutter content.
@@ -336,14 +338,16 @@ async function runCommand(command, options, ctx) {
     }
     case 'flutter-nodes':
       return flutterNodes(ctx);
+    case 'tap-flutter':
+      return flutterAction(ctx, flutterTapPayload(options), options);
     case 'tap-flutter-text':
-      return flutterAction(ctx, { action: 'tapText', text: requiredString(options.targetText, 'targetText') });
+      return flutterAction(ctx, { action: 'tapText', text: requiredString(options.targetText, 'targetText') }, options);
     case 'input-flutter-text': {
       const result = await flutterAction(ctx, {
         action: 'inputText',
         text: requiredInputString(options.text, 'text'),
         ...(options.tapX !== undefined && options.tapY !== undefined ? { x: Number(options.tapX), y: Number(options.tapY) } : {}),
-      });
+      }, options);
       if (booleanOption(options.hideKeyboard)) {
         result.keyboard = await hideKeyboard(ctx, options);
       }
@@ -351,10 +355,10 @@ async function runCommand(command, options, ctx) {
     }
     case 'scroll-flutter':
       return options.targetText
-        ? flutterAction(ctx, { action: 'scrollUntilText', text: options.targetText, maxSwipes: Number(options.maxSwipes || 12) })
-        : flutterAction(ctx, { action: 'scrollBy', delta: Number(options.delta || 420) });
+        ? flutterAction(ctx, { action: 'scrollUntilText', text: options.targetText, maxSwipes: Number(options.maxSwipes || 12) }, options)
+        : flutterAction(ctx, { action: 'scrollBy', delta: Number(options.delta || 420) }, options);
     case 'flutter-action':
-      return flutterAction(ctx, JSON.parse(requiredString(options.payload, 'payload')));
+      return flutterAction(ctx, JSON.parse(requiredString(options.payload, 'payload')), options);
     case 'logs':
       return bridgeGet(ctx, withQuery('/v1/logs', captureQuery(options)));
     case 'network':
@@ -887,10 +891,9 @@ async function ensureForward(ctx, { force = false } = {}) {
   const connection = await bridgeForwardCache.getOrCreate(cacheKey, async () => {
     const resolvedPort = await resolveDevicePort(ctx);
     const devicePort = resolvedPort.port;
-    const hostPort = ctx.explicitPort ? ctx.port : devicePort;
-    await adb(ctx, ['forward', `tcp:${hostPort}`, `tcp:${devicePort}`]);
+    const forward = await createBridgeForward(ctx, devicePort, adb);
     return {
-      hostPort,
+      ...forward,
       devicePort,
       devicePortSource: resolvedPort.source,
       devicePortState: resolvedPort.state,
@@ -904,6 +907,13 @@ async function ensureForward(ctx, { force = false } = {}) {
   ctx.devicePortError = connection.devicePortError;
   ctx.forwardCacheKey = cacheKey;
   ctx.forwardReused = reused;
+  try {
+    // A different ADB client can replace a cached mapping. Check ownership before HTTP dispatch.
+    await verifyBridgeForward(ctx, connection, adb);
+  } catch (error) {
+    bridgeForwardCache.invalidate(cacheKey);
+    throw error;
+  }
   return {
     ok: true,
     forward: `tcp:${connection.hostPort} -> device tcp:${connection.devicePort}`,
@@ -1115,6 +1125,13 @@ function normalizeBridgeError(error) {
       code: 'adb_timeout',
       message,
       suggestion: 'Check the device state and retry; if the bridge port is known, pass --port to skip package port discovery.',
+    };
+  }
+  if (error?.aiAppBridgeForwardMismatch) {
+    return {
+      code: 'bridge_forward_mismatch',
+      message,
+      suggestion: 'The ADB mapping is missing or belongs to another target. Inspect the forwards and observe the target again before a new action.',
     };
   }
   if (error?.aiAppBridgePackageMismatch || lower.includes('bridge package mismatch')) {
@@ -2997,7 +3014,23 @@ async function flutterNodes(ctx) {
   return status.flutter?.layout?.operable || { ok: false, error: 'no_flutter_operable_tree' };
 }
 
-async function flutterAction(ctx, payload) {
+function flutterTapPayload(options) {
+  const point = {};
+  for (const [option, axis] of [['tapX', 'x'], ['tapY', 'y']]) {
+    const value = options[option];
+    if (!(typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+      || !Number.isFinite(Number(value)) || Number(value) < 0) {
+      throw new Error('invalid_flutter_coordinates');
+    }
+    point[axis] = Number(value);
+  }
+  return { action: 'tapAt', ...point };
+}
+
+async function flutterAction(ctx, payload, options = {}) {
+  if (options.runtimeActionId !== undefined) {
+    payload = { ...payload, actionId: requiredString(options.runtimeActionId, 'runtimeActionId') };
+  }
   const result = await bridgePost(ctx, '/v1/flutter/action', payload);
   return { ...result, transport: 'bridge', source: 'flutter-runtime-action', request: payload };
 }
@@ -4627,6 +4660,7 @@ module.exports = {
   buildBridgeFailureResult,
   bridgeTree,
   createBridgeContext,
+  flutterTapPayload,
   flutterAction,
   flutterNodes,
   foregroundWindow,

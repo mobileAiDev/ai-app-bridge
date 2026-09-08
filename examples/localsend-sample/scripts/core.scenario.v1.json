@@ -1,0 +1,305 @@
+{
+  "schemaVersion": "localsend.scenario/v1",
+  "version": "1.0.5",
+  "authority": {
+    "document": "docs/SCRIPT_INTENT_RUNTIME_CAPTURE_MASTER_PLAN.md",
+    "row": "Phase 9 / LocalSend (Flutter)",
+    "rule": "Do not delete failing or missing requirements from the fixed measured scenario."
+  },
+  "source": {
+    "path": "examples/localsend-sample/scripts/localsend-flow.v1.js",
+    "sha256": "e193188913c89c76cd30769e09c70887cec74c2df5bed60475cf8937a29aa985",
+    "language": "javascript",
+    "entrypoint": "main",
+    "scriptSchemaVersion": "aab.code-script/v1"
+  },
+  "frozenEvidence": {
+    "handoff": "build/ai_app_bridge_artifacts/localsend-evidence-2026-09-08/handoff-manifest.json",
+    "handoffSha256": "4065fa0de414fbcc1c6dd00f028c101af8de366f5fc9de04a0d9d72d96f71efe",
+    "additional": "build/ai_app_bridge_artifacts/localsend-script-2026-09-08-intent/additional-evidence-manifest.json",
+    "additionalSha256": "ea2349456f9fa342631f7c930f0971e5b346b9455beae81a0de63640133abe67"
+  },
+  "target": {
+    "packageName": "org.localsend.localsend_app.bridge_sample",
+    "authoredAgainstSerial": "FYZLAU49X8OVQGJ7",
+    "onDevicePortability": "Coordinates come from each fresh viewport and node; another authorized OPPO device requires the same fixture and observed picker contract, not an inferred equivalence."
+  },
+  "inputContract": {
+    "required": [
+      "serial",
+      "outputDir"
+    ],
+    "properties": {
+      "serial": "Explicit authorized Android serial, matching ScriptSpec target.serial.",
+      "outputDir": "Absolute existing screenshot output directory unique to this run. Host recordingDir is separately required on start.",
+      "scenario": {
+        "enum": [
+          "core",
+          "acceptance"
+        ],
+        "default": "acceptance"
+      },
+      "expectedDeviceName": {
+        "type": "string",
+        "default": "好的椰子",
+        "negativeTrial": "AAB deliberately wrong device"
+      },
+      "cancelBeforeSettings": {
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "runtime": {
+    "permissions": [
+      "app.read",
+      "app.interact",
+      "capture.read"
+    ],
+    "restartPolicy": "none",
+    "recordingDir": "Required at script start; fresh directory; no reopening existing recording.",
+    "mutations": "No blind retries. Reobserve without mutation while awaiting declared page conditions; every further scroll requires fresh confirmed movement.",
+    "deviceIO": "Only ctx.call, no arbitrary host/ADB/process/file scripting in the worker.",
+    "appTap": "Before every app tap, read-only wait for the exact unique target with complete node and actionable bounds inside the current viewport, across advancing stable SDK generations. Re-resolve from the final qualifying tree; convert current tap.bounds center using current validated DPR. Explicit app package must return transport=bridge; stop without mutation retry on any different transport.",
+    "systemPickerTap": "Current unique UIA physical bounds; explicit com.coloros.filemanager plus feedback=off deliberately dispatches ADB input.",
+    "scrollObservation": "A changed stable tree must contain a current unique scrollable content Text anchor or the actual destination. A navigation-only transition tree cannot authorize another swipe. Subsequent anchors are uniquely topmost/leftmost among current individually unique text nodes, never reused IDs.",
+    "scrollRoutes": {
+      "settings": "Explicit observed physical swipe using current scroll bounds and DPR.",
+      "about": "Explicit primary scroll-flutter delta=min(450,current visible logical scroll extent*0.6), preceded by one unique matching SingleChildScrollView assertion. One action per observed movement; no scrollUntilText or fallback."
+    },
+    "flutterObservationStability": "Require exact relevant label/node/tap/scroll geometry and viewport to match across distinct advancing finite positive SDK updatedAtMs values. Different Host observation IDs for one cached generation are insufficient. Wait read-only up to 10 seconds; missing, regressed or nonadvancing generations remain inconclusive."
+  },
+  "fixture": {
+    "initialPage": "Receive",
+    "finalPage": "Receive",
+    "settingsScroll": "top",
+    "expectedDeviceName": "好的椰子",
+    "selectedFiles": 0,
+    "settingsExact": {
+      "flutter.ls_theme": "system",
+      "flutter.ls_color": "system"
+    },
+    "absentKeys": [
+      "flutter.ls_locale"
+    ],
+    "initialExternalOracle": "Controller must read allowlisted run-as preferences and prove exact baseline before start.",
+    "finalExternalOracle": "Controller must independently read final preferences after terminal and compare exact allowlisted map with initial.",
+    "setupBranches": [
+      {
+        "id": "already-onboarded",
+        "trigger": "Fresh Chinese Receive fixture and all three exact NavigationDestination nodes observed",
+        "action": "Continue."
+      },
+      {
+        "id": "onboarding-permission-installer-or-unexpected-start",
+        "trigger": "Receive fixture absent or current UI differs",
+        "action": "Return/report inconclusive. No frozen application onboarding/permission actions are supplied; controller must freeze an explicit setup branch before replay."
+      }
+    ],
+    "settingsScrollGeometry": {
+      "baseline": "Captured from this run initial settings-top-baseline full flutter-nodes observation.",
+      "widgetType": "Text",
+      "exactUniqueLabels": [
+        "设置",
+        "主题",
+        "颜色",
+        "语言"
+      ],
+      "edges": [
+        "left",
+        "top",
+        "right",
+        "bottom"
+      ],
+      "toleranceLogicalPixels": 0.5,
+      "restoration": "Every one of the 16 current edges must differ from its retained baseline by strictly less than 0.5 logical pixel before settings-scroll-restored checkpoint; visible System rows alone are insufficient.",
+      "comparison": "Math.abs(currentEdge - baselineEdge) < 0.5; strict for every edge."
+    }
+  },
+  "evidenceRules": {
+    "pageAssertions": "Each page and target assertion uses the unchanged evidence from its current read before the next mutation.",
+    "screenshots": "Fresh current-run screenshots with returned hashes and nearby trees; separate captures, never described as atomic.",
+    "mobile": "Immediately before the declared mutation, request each stream with sinceMs=Date.now()-1000 and limit=200; require complete committed gap-free hasMore=false current watermark/epoch/target. Refresh UI selector, mutate once, query same stream using that factCursor, runtimeEpoch and afterActionId. Retain unavailable/missing/partial/unbound facts as nonpassing mobile assertions. Picker package cannot establish app-local capture association. Existence is separate from business semantics.",
+    "archive": "Opt-in recording plus public evidence export(includeRecordedPayloads=true), separately pinned manifest SHA256, separate offline MCP evidence verify. Retain failed runs.",
+    "snapshotIdentity": "Retain each qualifying snapshot pair with SDK updatedAtMs, both Host observation IDs and evidence references under stableObservations. Current ctx.assert receives unchanged latest evidence; Host call identity does not prove a new Flutter generation."
+  },
+  "timing": {
+    "fields": [
+      "activeMs",
+      "providerWaitMs",
+      "businessWaitMs",
+      "decisionWaitMs",
+      "pausedMs",
+      "evidenceQueryMs",
+      "wallMs"
+    ],
+    "source": "Host per-run timings and controller terminal timestamps; Script result.wallMs is supplemental.",
+    "agentOracleWait": "Included in wall time.",
+    "interpretation": "These are gates to measure, not achieved results.",
+    "wallGateMs": 300000,
+    "level": "core target"
+  },
+  "requiredExternalGates": [
+    {
+      "id": "required-mobile-business-evidence",
+      "statusAtAuthoring": "inconclusive",
+      "requirement": "Key business-correlated state/events/logs and screenshot evidence for navigation/cancel/settings outcomes.",
+      "missing": "Frozen action-filtered event pages are empty. No reliable business predicates or Rust transport coverage contract supplied. Script retains fresh capture calls/assertions and leaves this gate open.",
+      "appliesTo": [
+        "core",
+        "acceptance"
+      ],
+      "requiredInThisScenario": true
+    },
+    {
+      "id": "final-independent-fixture-equality",
+      "statusAtAuthoring": "external-required",
+      "requirement": "Fresh final allowlisted preferences equal the controller-verified initial map exactly.",
+      "interpretation": "A Script checkpoint or returned expectedSettings object is not the oracle.",
+      "appliesTo": [
+        "core",
+        "acceptance"
+      ],
+      "requiredInThisScenario": true
+    }
+  ],
+  "verdictRules": {
+    "executionCompleted": "Only means the worker returned.",
+    "uiReplayPassed": "Every UI/page/selector/screenshot assertion passed and flowCompleted=true.",
+    "fullScenarioPassed": "UI replay passed, applicable changed/restored/final independent oracles passed, every external gate marked requiredInThisScenario resolved with current evidence, archive verified, timing gate met.",
+    "missingEvidence": "inconclusive; never passed.",
+    "negative": "Deliberately wrong business expectation must produce a failed ctx.assert from fresh tree; execution may still be completed because the worker returns the recorded failure."
+  },
+  "id": "localsend-core-v1",
+  "scenarioInput": "core",
+  "steps": [
+    {
+      "id": "initial-receive",
+      "actions": [
+        "observe stable current Receive twice",
+        "record initial-fixture checkpoint",
+        "capture initial-receive screenshot"
+      ],
+      "assertions": [
+        "NavigationDestination 接收/发送/设置 each unique",
+        "通过链接接收 Text exists",
+        "fixture device name equals expectedDeviceName"
+      ]
+    },
+    {
+      "id": "settings-top-baseline",
+      "actions": [
+        "tap current Settings NavigationDestination",
+        "observe top Settings twice",
+        "capture settings-top-baseline screenshot",
+        "retain the four unique current Text rectangles and baseline observation/evidence references"
+      ],
+      "assertions": [
+        "Theme/Color/Language titles paired with their own System controls by current horizontal and vertical row bounds",
+        "Settings/Theme/Color/Language Text rectangles are unique, finite and nonempty"
+      ]
+    },
+    {
+      "id": "settings-to-about",
+      "actions": [
+        "bounded observed vertical swipes inside current text scroll.bounds; maximum 5",
+        "tap unique 打开 aligned with 关于 LocalSend"
+      ],
+      "assertions": [
+        "Each scroll visibly moved or destination reached",
+        "About row distinct from Privacy Policy Open",
+        "tap center within current viewport"
+      ]
+    },
+    {
+      "id": "about-top",
+      "actions": [
+        "observe About",
+        "capture about-top screenshot"
+      ],
+      "assertions": [
+        "关于 LocalSend, LocalSend and localsend.org visible"
+      ]
+    },
+    {
+      "id": "about-to-license-notices",
+      "actions": [
+        "bounded primary Flutter scrollBy steps from a fresh unique About scroll container, maximum 8",
+        "tap exact unique License Notices"
+      ],
+      "assertions": [
+        "Each scroll movement observed before another step",
+        "One current matching SingleChildScrollView before each Flutter scroll",
+        "License Notices current action bounds"
+      ]
+    },
+    {
+      "id": "framework-license-list",
+      "actions": [
+        "observe real framework license list",
+        "capture list screenshot",
+        "tap exact unique _fe_analyzer_shared"
+      ],
+      "assertions": [
+        "许可 and Powered by Flutter visible",
+        "_fe_analyzer_shared is one current actionable node"
+      ]
+    },
+    {
+      "id": "framework-license-body",
+      "actions": [
+        "observe license detail",
+        "capture body screenshot",
+        "record framework-license-body checkpoint"
+      ],
+      "assertions": [
+        "Exact _fe_analyzer_shared title and 1 份许可",
+        "Exact frozen copyright and redistribution body paragraphs visible; not title-only license proof"
+      ]
+    },
+    {
+      "id": "return-path",
+      "actions": [
+        "tap current 返回 Semantics to license list",
+        "tap current 返回 Semantics to About",
+        "tap current 返回 Semantics to Settings"
+      ],
+      "assertions": [
+        "Each distinct destination observed before next back mutation"
+      ]
+    },
+    {
+      "id": "restore-settings-scroll-top",
+      "actions": [
+        "bounded current-anchor upward swipes, maximum 5; continue only after fresh observed movement until baseline geometry matches",
+        "record settings-scroll-restored checkpoint with both geometry maps and observation references"
+      ],
+      "assertions": [
+        "Fresh Theme/Color/Language rows have System values",
+        "Every left/top/right/bottom edge of unique 设置/主题/颜色/语言 Text nodes differs from this run initial baseline by strictly less than 0.5 logical pixel"
+      ]
+    },
+    {
+      "id": "final-receive",
+      "actions": [
+        "tap current Receive NavigationDestination",
+        "observe Receive",
+        "capture final-receive screenshot",
+        "record final-fixture checkpoint",
+        "query current-window events/state/logs"
+      ],
+      "assertions": [
+        "Final Receive and expected fixture device name",
+        "Every required mobile stream assertion retained, including inconclusive outcomes",
+        "Controller final preference equality required"
+      ]
+    }
+  ],
+  "settingsOracles": [],
+  "expectedCheckpoints": [
+    "initial-fixture",
+    "framework-license-body",
+    "settings-scroll-restored",
+    "final-fixture"
+  ]
+}

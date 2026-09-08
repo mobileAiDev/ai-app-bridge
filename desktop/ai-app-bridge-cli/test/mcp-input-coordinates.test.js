@@ -6,6 +6,7 @@ const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { createAdbHttpFixture } = require('../test-support/adb-http-fixture');
 const { buildBridgeCliArgs, runBridgeChecked } = require('../bin/mcp-server');
 const { TargetExecution } = require('../bin/target-execution');
 const { createMcpClient, payloadOf } = require('../scripts/validation/mcp-jsonrpc-client');
@@ -78,8 +79,6 @@ test('MCP still dispatches focused input and complete numeric coordinate aliases
 test('real MCP JSON-RPC rejects double null, blank and false coordinates without HTTP or ADB dispatch', async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-input-wire-'));
   const adbLog = path.join(directory, 'adb-calls.jsonl');
-  const adbPath = path.join(directory, 'adb-spy');
-  fs.writeFileSync(adbPath, `#!${process.execPath}\nrequire('node:fs').appendFileSync(process.env.AAB_TEST_ADB_CALLS, JSON.stringify(process.argv.slice(2)) + '\\n');\n`, { mode: 0o755 });
   const requests = [];
   const server = http.createServer(async (req, res) => {
     let body = '';
@@ -89,11 +88,12 @@ test('real MCP JSON-RPC rejects double null, blank and false coordinates without
     res.end(JSON.stringify({ ok: true }));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const adbPath = createAdbHttpFixture({ directory, serial: 'input-wire', port: server.address().port, logPath: adbLog });
   const client = createMcpClient({
     serverPath: path.resolve(__dirname, '../bin/mcp-server.js'),
     transcriptPath: path.join(directory, 'mcp.jsonl'), stderrPath: path.join(directory, 'stderr.log'),
     timeoutMs: 10_000,
-    env: { AI_APP_BRIDGE_FACT_CACHE: 'off', AAB_TEST_ADB_CALLS: adbLog },
+    env: { AI_APP_BRIDGE_FACT_CACHE: 'off' },
   });
   t.after(async () => {
     await client.close();

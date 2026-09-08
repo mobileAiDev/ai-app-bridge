@@ -29,7 +29,7 @@ function payloadOf(result) {
 function withoutIsolatedCommands(domains) {
   const next = {};
   for (const [domain, commands] of Object.entries(domains)) {
-    next[domain] = commands.filter((item) => !['script', 'intent', 'evidence'].includes(item.command));
+    next[domain] = commands.filter((item) => !['script', 'intent', 'evidence', 'tap-flutter'].includes(item.command));
   }
   return next;
 }
@@ -39,7 +39,8 @@ test('G1 isolated commands stay out of the legacy command registry', () => {
   const start = source.indexOf('const commandDefinitions = [');
   const end = source.indexOf('const commandByName =');
   const commands = [...source.slice(start, end).matchAll(/command:\s*'([^']+)'/g)].map((match) => match[1]);
-  assert.deepEqual(commands, snapshot.commands);
+  assert.deepEqual(commands.filter(name => name !== 'tap-flutter'), snapshot.commands);
+  assert.equal(commands.filter(name => name === 'tap-flutter').length, 1);
   assert.equal(commands.includes('script'), false);
   assert.equal(commands.includes('intent'), false);
   assert.equal(commands.includes('evidence'), false);
@@ -150,6 +151,8 @@ test('G1 capabilities preserves Legacy and adds Script, Intent, evidence, and ex
     }
   }
   assert.deepEqual(legacy, capabilitySnapshot.domains);
+  assert.deepEqual(live.domains.flutter.filter(item => item.command === 'tap-flutter').map(item => item.options),
+    [['serial', 'packageName', 'tapX', 'tapY']]);
   const added = live.domains.advanced.map((item) => item.command).filter((name) => ['script', 'intent', 'evidence'].includes(name));
   assert.deepEqual(added, ['script', 'intent', 'evidence']);
   assert.equal(capabilityPayload({ command: 'script' }).ok, true);

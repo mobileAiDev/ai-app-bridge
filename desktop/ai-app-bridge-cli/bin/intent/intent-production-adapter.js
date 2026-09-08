@@ -159,7 +159,7 @@ function createProductionIntentDeviceAdapter({
             if (spec.provider !== 'native') return shapeAction({ ok: false, error: 'inputText_provider_unsupported', dispatched: false });
             return shapeAction(await inputFromNativeObservedTree(impl, ctx, spec, rawTree, actionId));
           }
-          if (spec.provider === 'flutter' && spec.action === 'tap' && spec.text) {
+          if (spec.provider === 'flutter' && spec.action === 'tap') {
             return shapeAction(await tapFromFlutterObservedTree(impl, ctx, spec, rawTree, actionId));
           }
           if (spec.provider === 'uia' && spec.action === 'tap' && (spec.selector || route)) {
@@ -391,14 +391,21 @@ async function scrollHost(impl, ctx, spec, rawTree) {
 }
 
 async function tapFromFlutterObservedTree(impl, ctx, spec, rawTree, actionId) {
-  if (!rawTree) return { ok: false, error: 'observed_tree_required' };
-  const nodes = Array.isArray(rawTree.nodes) ? rawTree.nodes : [];
-  const node = nodes.find((item) => item.text === spec.text && item.tap?.bounds)
-    || nodes.find((item) => item.text === spec.text && item.bounds);
-  if (!node) return { ok: false, error: 'text_not_found' };
-  const bounds = node.tap?.bounds || node.bounds;
-  const x = bounds.centerX != null ? bounds.centerX : (bounds.left + bounds.right) / 2;
-  const y = bounds.centerY != null ? bounds.centerY : (bounds.top + bounds.bottom) / 2;
+  const reject = error => ({ ok: false, error, dispatched: false });
+  if (!Array.isArray(rawTree?.nodes)) return reject('observed_tree_required');
+  const selector = spec.selector || (typeof spec.text === 'string' ? { text: spec.text } : null);
+  const keys = Object.keys(selector || {});
+  if (keys.length !== 1 || !['text', 'nodeId'].includes(keys[0])
+    || typeof selector[keys[0]] !== 'string' || !selector[keys[0]]
+    || spec.exact === false || (spec.selector && spec.text != null)) return reject('explicit_exact_flutter_selector_required');
+  const selected = rawTree.nodes.filter(node => keys[0] === 'nodeId'
+    ? node.id != null && String(node.id) === selector.nodeId
+    : node.text === selector.text && node.tap?.bounds);
+  if (selected.length !== 1) return reject(selected.length ? 'flutter_selector_not_unique' : 'flutter_selector_not_found');
+  const bounds = selected[0].tap?.bounds;
+  if (!validBounds(bounds)) return reject('flutter_node_not_operable');
+  const x = (bounds.left + bounds.right) / 2;
+  const y = (bounds.top + bounds.bottom) / 2;
   return impl.flutterAction(ctx, { action: 'tapAt', x, y, actionId });
 }
 

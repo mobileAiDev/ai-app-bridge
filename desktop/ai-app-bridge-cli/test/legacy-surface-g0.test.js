@@ -46,9 +46,10 @@ function sourceSnapshot() {
   return { commands, compactTools, fullTools };
 }
 
-test('G0 freezes legacy command names, compact tools, and full tools', () => {
+test('G0 retains frozen legacy commands and adds the explicit Flutter coordinate tap', () => {
   const live = sourceSnapshot();
-  assert.deepEqual(live.commands, snapshot.commands);
+  assert.deepEqual(live.commands.filter(name => name !== 'tap-flutter'), snapshot.commands);
+  assert.equal(live.commands.filter(name => name === 'tap-flutter').length, 1);
   assert.deepEqual(live.compactTools, snapshot.compactTools);
   assert.deepEqual(live.fullTools, snapshot.fullTools);
   for (const name of FORBIDDEN_COMMANDS) {

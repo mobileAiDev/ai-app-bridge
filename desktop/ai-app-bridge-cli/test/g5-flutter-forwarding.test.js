@@ -34,13 +34,11 @@ test('G5 Flutter plugins map record* onto the native SDK record methods', () => 
     'ios/ai_app_bridge_flutter/Sources/ai_app_bridge_flutter/AiAppBridgeFlutterPlugin.swift',
   );
   assert.match(android, /androidBridgeClassName = "io\.github\.mobileaidev\.aiappbridge\.android\.AiAppBridge"/);
-  assert.match(android, /"recordLog" -> recordLog/);
-  assert.match(android, /"recordNetwork" -> recordNetwork/);
-  assert.match(android, /"recordState" -> recordState/);
-  assert.match(android, /"recordEvent" -> recordEvent/);
-  assert.match(android, /bridgeClass\.getMethod\(\s*"recordLog"/);
-  assert.match(android, /bridgeClass\.getMethod\(\s*"recordState"/);
-  assert.match(android, /bridgeClass\.getMethod\(\s*"recordEvent"/);
+  // Channel names stay public; Android now forwards the whole payload to preserve actionId.
+  assert.match(android, /"recordLog", "recordNetwork", "recordState", "recordEvent" ->/);
+  assert.match(android, /recordCapture\(call\.method, call\.arguments as String\)/);
+  assert.match(android, /getMethod\("recordFlutterCapture", String::class\.java, String::class\.java\)/);
+  assert.match(android, /\.invoke\(null, method, payloadJson\)/);
   assert.match(ios, /AiAppBridge\.shared\.recordLog\(/);
   assert.match(ios, /AiAppBridge\.shared\.recordNetwork\(/);
   assert.match(ios, /AiAppBridge\.shared\.recordState\(/);

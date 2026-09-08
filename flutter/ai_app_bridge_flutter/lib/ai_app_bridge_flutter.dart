@@ -43,7 +43,7 @@ class AiAppBridge {
   static const int _maxDumpLength = 200000;
   static const int _maxSemanticsDepth = 24;
   static const int _maxSemanticsNodes = 600;
-  static const int _maxOperableDepth = 140;
+  static const int _maxOperableDepth = 512;
   static const int _maxOperableNodes = 600;
   static const int _maxAutoCaptureBodyChars = 12000;
   static const int _maxAutoCaptureMessageChars = 4000;
@@ -118,6 +118,9 @@ class AiAppBridge {
       "buf.push({method:name,message:args.map(function(value){return value==null?'':String(value);}).join(' '),atMs:Date.now()});"
       "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};});return 1;})()";
   static final Object _autoCaptureSuppressionKey = Object();
+  static final Object _actionCaptureKey = Object();
+  // An explicit no-ID action must not inherit an enclosing action's zone value.
+  static final Object _unattributedAction = Object();
 
   bool _enabled = false;
   bool _debugPrintCaptureInstalled = false;
@@ -814,6 +817,7 @@ class AiAppBridge {
       var textCount = 0;
       var actionCount = 0;
       final Set<Element> visited = HashSet<Element>.identity();
+      final Set<String> emittedTargets = <String>{};
 
       void collectNode({
         required int depth,
@@ -826,12 +830,13 @@ class AiAppBridge {
         if (sampleWidgetTypes.length < 40) {
           sampleWidgetTypes.add(widgetType);
         }
+        if (bounds == null) return;
         final _ActionTarget? currentTapTarget =
-            _isTapWidget(widgetType) && bounds != null
+            _isTapWidget(widgetType)
                 ? _ActionTarget(widgetType: widgetType, bounds: bounds)
                 : tapTarget;
         final _ActionTarget? currentScrollTarget =
-            _isScrollWidget(widgetType) && bounds != null
+            _isScrollWidget(widgetType)
                 ? _ActionTarget(widgetType: widgetType, bounds: bounds)
                 : scrollTarget;
 
@@ -841,8 +846,8 @@ class AiAppBridge {
           textCount += 1;
         }
         final Set<String> actions = <String>{};
-        final Rect? tapBounds = currentTapTarget?.bounds ?? bounds;
-        if (tapBounds != null && text.isNotEmpty) {
+        final Rect tapBounds = currentTapTarget?.bounds ?? bounds;
+        if (text.isNotEmpty) {
           actions.add('tap');
         }
         if (_isInputWidget(widgetType)) {
@@ -861,19 +866,26 @@ class AiAppBridge {
             _isScrollWidget(widgetType) && currentScrollTarget != null;
 
         if (isActionNode || isStandaloneScrollNode) {
+          // Text, RichText and Semantics can describe the same hit region.
+          // Keep one observed target per label/value, action set and region.
+          final String targetKey = jsonEncode(<Object?>[
+            text, value, actions.toList()..sort(),
+            _rectToJson(tapBounds),
+          ]);
+          if (!emittedTargets.add(targetKey)) return;
           nodes.add(<String, Object?>{
             'id': nextId++,
             'widgetType': widgetType,
             if (text.isNotEmpty) 'text': _trimNodeText(text),
             if (value.isNotEmpty) 'value': _trimNodeText(value),
-            if (bounds != null) 'bounds': _rectToJson(bounds),
+            'bounds': _rectToJson(bounds),
             'actions': actions.toList()..sort(),
-            if (tapBounds != null && text.isNotEmpty)
+            if (text.isNotEmpty)
               'tap': <String, Object?>{
                 'widgetType': currentTapTarget?.widgetType ?? widgetType,
                 'bounds': _rectToJson(tapBounds),
               },
-            if (_isInputWidget(widgetType) && bounds != null)
+            if (_isInputWidget(widgetType))
               'input': <String, Object?>{'bounds': _rectToJson(bounds)},
             if (currentScrollTarget != null)
               'scroll': <String, Object?>{
@@ -885,60 +897,6 @@ class AiAppBridge {
         }
       }
 
-      void visitInspector(
-        Map<String, Object?> node, {
-        required int depth,
-        _ActionTarget? tapTarget,
-        _ActionTarget? scrollTarget,
-      }) {
-        if (depth > _maxOperableDepth) {
-          return;
-        }
-        if (nodes.length >= _maxOperableNodes) {
-          truncated = true;
-          return;
-        }
-        final Element? element = _elementFromInspectorNode(node);
-        if (element != null && !visited.add(element)) {
-          return;
-        }
-        visitedCount += 1;
-        final Widget? widget = element?.widget;
-        final Rect? bounds = _visibleGlobalBounds(element);
-        _ActionTarget? nextTapTarget = tapTarget;
-        _ActionTarget? nextScrollTarget = scrollTarget;
-        if (widget != null) {
-          collectNode(
-            depth: depth,
-            widget: widget,
-            bounds: bounds,
-            tapTarget: tapTarget,
-            scrollTarget: scrollTarget,
-          );
-          final String widgetType = widget.runtimeType.toString();
-          if (_isTapWidget(widgetType) && bounds != null) {
-            nextTapTarget = _ActionTarget(
-              widgetType: widgetType,
-              bounds: bounds,
-            );
-          }
-          if (_isScrollWidget(widgetType) && bounds != null) {
-            nextScrollTarget = _ActionTarget(
-              widgetType: widgetType,
-              bounds: bounds,
-            );
-          }
-        }
-        for (final Map<String, Object?> child in _inspectorChildren(node)) {
-          visitInspector(
-            child,
-            depth: depth + 1,
-            tapTarget: nextTapTarget,
-            scrollTarget: nextScrollTarget,
-          );
-        }
-      }
-
       void visitElement(
         Element element, {
         required int depth,
@@ -946,6 +904,7 @@ class AiAppBridge {
         _ActionTarget? scrollTarget,
       }) {
         if (depth > _maxOperableDepth) {
+          truncated = true;
           return;
         }
         if (!visited.add(element)) {
@@ -959,7 +918,10 @@ class AiAppBridge {
         visitedCount += 1;
         final Widget widget = element.widget;
         final String widgetType = widget.runtimeType.toString();
-        final Rect? bounds = _visibleGlobalBounds(element);
+        final bool needsBounds = _isTapWidget(widgetType) ||
+            _isScrollWidget(widgetType) || _isInputWidget(widgetType) ||
+            _widgetText(widget).isNotEmpty || _widgetValue(widget).isNotEmpty;
+        final Rect? bounds = needsBounds ? _visibleGlobalBounds(element) : null;
         final _ActionTarget? currentTapTarget =
             _isTapWidget(widgetType) && bounds != null
                 ? _ActionTarget(widgetType: widgetType, bounds: bounds)
@@ -977,7 +939,7 @@ class AiAppBridge {
           scrollTarget: scrollTarget,
         );
 
-        _visitElementChildren(element, (Element child) {
+        element.visitChildren((Element child) {
           visitElement(
             child,
             depth: depth + 1,
@@ -987,12 +949,9 @@ class AiAppBridge {
         });
       }
 
-      final Map<String, Object?>? inspectorRoot = _inspectorRootTree();
-      if (inspectorRoot != null) {
-        visitInspector(inspectorRoot, depth: 0);
-      } else {
-        visitElement(rootElement, depth: 0);
-      }
+      // A diagnostic summary omits framework-created children (for example an
+      // entire LicensePage). Operable facts come from the live Element tree.
+      visitElement(rootElement, depth: 0);
       return <String, Object?>{
         'ok': true,
         'nodes': nodes,
@@ -1091,27 +1050,39 @@ class AiAppBridge {
       final Map<String, Object?> request = decoded is Map
           ? decoded.cast<String, Object?>()
           : <String, Object?>{};
-      final String action = request['action']?.toString() ?? '';
-      final Map<String, Object?> result = switch (action) {
-        'tapAt' => await _runTapAt(request),
-        'tapText' => await _runTapText(request),
-        'inputText' => await _runInputText(request),
-        'swipe' => await _runSwipe(request),
-        'scrollBy' => await _runScrollBy(request),
-        'scrollUntilText' => await _runScrollUntilText(request),
-        'hideKeyboard' => await _runHideKeyboard(),
-        'back' => await _runBack(),
-        'openHarness' => await _runOpenHarness(),
-        'h5Adapters' => _runH5Adapters(),
-        'h5Dom' => await _runH5Dom(),
-        'h5Eval' => await _runH5Eval(request),
-        _ => <String, Object?>{'ok': false, 'error': 'unknown_action'},
-      };
+      final Object? actionId = request['actionId'];
+      if (request.containsKey('actionId') &&
+          (actionId is! String || actionId.trim().isEmpty)) {
+        throw ArgumentError('actionId must be a non-empty string when present');
+      }
+      final result = await runZoned(() => _executeAction(request),
+          zoneValues: <Object, Object?>{
+            _actionCaptureKey: actionId ?? _unattributedAction,
+          });
       _schedulePost();
       return result;
     } catch (error) {
       return <String, Object?>{'ok': false, 'error': error.toString()};
     }
+  }
+
+  Future<Map<String, Object?>> _executeAction(Map<String, Object?> request) async {
+    final String action = request['action']?.toString() ?? '';
+    return switch (action) {
+      'tapAt' => await _runTapAt(request),
+      'tapText' => await _runTapText(request),
+      'inputText' => await _runInputText(request),
+      'swipe' => await _runSwipe(request),
+      'scrollBy' => await _runScrollBy(request),
+      'scrollUntilText' => await _runScrollUntilText(request),
+      'hideKeyboard' => await _runHideKeyboard(),
+      'back' => await _runBack(),
+      'openHarness' => await _runOpenHarness(),
+      'h5Adapters' => _runH5Adapters(),
+      'h5Dom' => await _runH5Dom(),
+      'h5Eval' => await _runH5Eval(request),
+      _ => <String, Object?>{'ok': false, 'error': 'unknown_action'},
+    };
   }
 
   Future<Map<String, Object?>> _runTapAt(Map<String, Object?> request) async {
@@ -1871,6 +1842,7 @@ class AiAppBridge {
         widgetType.endsWith('Button') ||
         widgetType == 'ListTile' ||
         widgetType == 'Tab' ||
+        widgetType == 'NavigationDestination' ||
         widgetType == 'BottomNavigationBar' ||
         widgetType == 'NavigationBar';
   }
@@ -1891,6 +1863,11 @@ class AiAppBridge {
   }
 
   String _widgetText(Widget widget) {
+    // The inspector summary omits the framework Text inside a destination.
+    // Its public label and its own bounds identify the individual tab.
+    if (widget is NavigationDestination) {
+      return widget.label;
+    }
     if (widget is Text) {
       return widget.data ?? widget.textSpan?.toPlainText() ?? '';
     }
@@ -1961,7 +1938,12 @@ class AiAppBridge {
     String path,
     Map<String, Object?> payload,
   ) async {
-    final String body = jsonEncode(payload);
+    // Freeze the causal scope before transport awaits; never infer it from time.
+    final Object? actionId = Zone.current[_actionCaptureKey];
+    final String body = jsonEncode(<String, Object?>{
+      ...payload,
+      if (actionId is String) 'actionId': actionId,
+    });
     if (await _invokeBridgeMethod(method, body)) {
       return;
     }

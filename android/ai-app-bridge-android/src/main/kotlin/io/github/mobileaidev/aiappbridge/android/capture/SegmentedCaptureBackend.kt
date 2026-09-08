@@ -36,6 +36,11 @@ internal class SegmentedCaptureBackend(
     private val lossThroughMs = streams.associateWith { 0L }.toMutableMap()
     private val lossCaptureIds = streams.associateWith { 0L }.toMutableMap()
     private val lossEpochs = streams.associateWith { "" }.toMutableMap()
+    // An opaque cursor acknowledges losses seen at its writer barrier. A loss can happen without
+    // advancing the store sequence, so a sequence alone cannot distinguish before from after.
+    // New attachments issue new acknowledgements; persisted historical loss fences stay intact.
+    private val lossVersions = streams.associateWith { UUID.randomUUID().toString() }.toMutableMap()
+    private val readIndexes = streams.associateWith { CaptureReadIndex(epochStartSequence) }.toMutableMap()
     private val watermarks = streams.associateWith { 0L }.toMutableMap()
     private val counts = streams.associateWith { 0 }.toMutableMap()
     @Volatile private var metadataError = false
@@ -102,7 +107,13 @@ internal class SegmentedCaptureBackend(
             payload, partitionForStream(record.stream),
             if (durability == "sync") SegmentedFactStoreDurability.SYNC else SegmentedFactStoreDurability.MEMORY,
         ) { receipt ->
-            if (!receipt.operation.isSuccess || receipt.sequence <= 0) noteLoss(record.stream, record.timestampMs, record.captureId)
+            if (!receipt.operation.isSuccess || receipt.sequence <= 0) {
+                noteLoss(record.stream, record.timestampMs, record.captureId)
+            } else synchronized(metadataLock) {
+                if (streamGenerations.getValue(record.stream) == streamGeneration) {
+                    readIndexes.getValue(record.stream).committed(receipt.sequence, record.timestampMs, record.captureId, payload.size)
+                }
+            }
         }
         if (enqueue != SegmentedFactRecordEnqueueResult.ACCEPTED) {
             // Schedule the small loss fence behind the writer, never perform file I/O on App callbacks.
@@ -135,44 +146,43 @@ internal class SegmentedCaptureBackend(
         val currentGeneration = synchronized(metadataLock) { generation }
         val cursor = try { decodeCursor(query.cursor, currentGeneration, query.stream) }
         catch (_: Exception) { return unavailable(query, "invalid_capture_cursor") }
-        val status = awaitStatus() ?: return unavailable(query, "capture_writer_timeout")
+        val snapshot = awaitSnapshot(query) ?: return unavailable(query, "capture_writer_timeout")
+        val status = snapshot.status
         if (status.state != SegmentedFactStoreState.OPEN || !status.operation.isSuccess) {
             return unavailable(query, "capture_store_unavailable")
         }
         if (metadataError) return unavailable(query, "capture_metadata_unavailable")
         val throughSequence = status.nextSequence - 1
-        if (cursor.afterSequence > throughSequence) return unavailable(query, "invalid_capture_cursor")
+        if (cursor.disk.afterSequence > throughSequence) return unavailable(query, "invalid_capture_cursor")
         val legacy = query.view == "legacy-live"
         val limit = (query.limit ?: 200).coerceIn(1, 500)
         val selected = LinkedHashMap<String, DiskFact>()
         var selectedBytes = 0
-        var observedWatermark = query.sinceId ?: 0L
+        var observedWatermark = maxOf(query.sinceId ?: 0L, snapshot.captureWatermark)
         var more = false
         var lost = false
         // Attachment is serialized with appends. Current-epoch views cannot contain older
         // records, so avoid hydrating every historical payload merely to reject its epoch.
         // Explicit history/ref queries retain their original cursor and full retained scope.
-        var readCursor = if (legacy || query.view == "decision-window") {
-            cursor.copy(afterSequence = maxOf(cursor.afterSequence, epochStartSequence))
-        } else cursor
+        var readCursor = cursor.disk.copy(afterSequence = maxOf(cursor.disk.afterSequence, snapshot.skipThrough))
+        val requestedStartSequence = readCursor.afterSequence
         var finished = false
         var scanError: String? = null
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         val requestedEpoch = if (legacy || query.view == "decision-window") runtimeEpoch else query.runtimeEpoch
-        val streamGeneration = synchronized(metadataLock) { streamGenerations.getValue(query.stream) }
-        val lossInsideWindow = synchronized(metadataLock) {
-            val pastTimeFence = query.sinceMs != null && query.sinceMs > lossThroughMs.getValue(query.stream)
-            val pastIdFence = requestedEpoch == runtimeEpoch && lossEpochs.getValue(query.stream) == runtimeEpoch &&
-                query.sinceId != null && query.sinceId >= lossCaptureIds.getValue(query.stream)
-            lossThroughMs.getValue(query.stream) > 0 && !pastTimeFence && !pastIdFence
-        }
+        val streamGeneration = snapshot.streamGeneration
+        val pastTimeFence = query.sinceMs != null && query.sinceMs > snapshot.lossThroughMs
+        val pastIdFence = requestedEpoch == runtimeEpoch && snapshot.lossEpoch == runtimeEpoch &&
+            query.sinceId != null && query.sinceId >= snapshot.lossCaptureId
+        val lossInsideWindow = snapshot.lossThroughMs > 0 && !pastTimeFence && !pastIdFence &&
+            cursor.lossVersion != snapshot.lossVersion
         if (lossInsideWindow) lost = true
         while (!finished && System.nanoTime() < deadline) {
             val batch = awaitPage(readCursor) ?: return unavailable(query, "capture_read_timeout")
             for (record in batch.first) {
                 if (record.sequence > throughSequence) { finished = true; break }
                 // A gap fence from the physical reader is relevant only after the requested cursor.
-                if (record.gapLastSequence > cursor.afterSequence) lost = true
+                if (record.gapLastSequence > requestedStartSequence) lost = true
                 val fact = try { parse(record) } catch (_: Exception) {
                     scanError = "capture_record_corrupt"; null
                 } ?: continue
@@ -224,14 +234,15 @@ internal class SegmentedCaptureBackend(
         val facts = selected.values.toList()
         val refs = facts.map { CaptureFactRef(it.mobileFactId, it.stream, it.captureId, it.targetKey, it.runtimeEpoch, it.timestampMs) }
         val next = if (more && !legacy && facts.isNotEmpty()) {
-            encodeCursor(currentGeneration, query.stream, facts.last().sequence)
+            // Pagination must not acknowledge losses beyond this page's last returned fact.
+            encodeCursor(currentGeneration, query.stream, facts.last().sequence, cursor.lossVersion)
         } else null
         return CapturePage(
             ok = true, type = query.stream, items = facts.map { it.record }, count = facts.size,
             coverage = CaptureCoverage(if (lost || more) "partial" else "complete", lost, true),
             gap = lost, hasMore = more, refs = refs,
             values = if (query.stream == "state") facts.associate { requireNotNull(it.stateKey) to it.record.opt("value") } else emptyMap(),
-            nextCursor = next, watermarkCursor = encodeCursor(currentGeneration, query.stream, throughSequence), runtimeEpoch = runtimeEpoch, targetKey = targetKey,
+            nextCursor = next, watermarkCursor = encodeCursor(currentGeneration, query.stream, throughSequence, snapshot.lossVersion), runtimeEpoch = runtimeEpoch, targetKey = targetKey,
             storeGeneration = currentGeneration, throughWatermark = observedWatermark,
             reason = if (lost) "capture_gap" else if (more) "capture_page_limit" else null,
             window = JSONObject().put("afterActionId", query.afterActionId ?: JSONObject.NULL)
@@ -270,6 +281,7 @@ internal class SegmentedCaptureBackend(
             (if (scope == "all") streams else listOf(scope)).forEach {
                 counts[it] = 0
                 watermarks[it] = 0
+                readIndexes[it] = CaptureReadIndex(epochStartSequence)
                 // Retain durable historical loss fences; exact refs and post-fence time windows can still be verified.
             }
             return ClearReceipt(true, generation)
@@ -295,6 +307,7 @@ internal class SegmentedCaptureBackend(
     }
 
     private fun updateLoss(stream: String, timestampMs: Long, captureId: Long) {
+        lossVersions[stream] = UUID.randomUUID().toString()
         lossThroughMs[stream] = maxOf(lossThroughMs.getValue(stream), timestampMs)
         if (lossEpochs.getValue(stream) != runtimeEpoch) lossCaptureIds[stream] = 0
         lossEpochs[stream] = runtimeEpoch
@@ -331,10 +344,21 @@ internal class SegmentedCaptureBackend(
         throughWatermark = watermarks[query.stream], reason = reason,
     )
 
-    private fun awaitStatus(): SegmentedFactStoreStatus? {
+    private fun awaitSnapshot(query: CaptureQuery): QuerySnapshot? {
         val latch = CountDownLatch(1)
-        var result: SegmentedFactStoreStatus? = null
-        store.status { result = it; latch.countDown() }
+        var result: QuerySnapshot? = null
+        store.status { status ->
+            synchronized(metadataLock) {
+                val index = readIndexes.getValue(query.stream)
+                result = QuerySnapshot(status, streamGenerations.getValue(query.stream),
+                    if (query.view == "legacy-live" || query.view == "decision-window") {
+                        index.skipThrough(query.sinceMs, query.sinceId, status.nextSequence - 1)
+                    } else 0L,
+                    index.captureWatermark, lossThroughMs.getValue(query.stream), lossCaptureIds.getValue(query.stream),
+                    lossEpochs.getValue(query.stream), lossVersions.getValue(query.stream))
+            }
+            latch.countDown()
+        }
         return if (latch.await(5, TimeUnit.SECONDS)) result else null
     }
 
@@ -345,14 +369,22 @@ internal class SegmentedCaptureBackend(
         return if (latch.await(5, TimeUnit.SECONDS)) result else null
     }
 
-    private fun encodeCursor(generation: Long, stream: String, sequence: Long) = "cf2:$namespace:$generation:$stream:$sequence"
-    private fun decodeCursor(value: String?, generation: Long, stream: String): SegmentedFactStoreCursor {
-        if (value == null) return SegmentedFactStoreCursor(partitionId = partitionForStream(stream))
+    private data class QuerySnapshot(
+        val status: SegmentedFactStoreStatus, val streamGeneration: Long, val skipThrough: Long,
+        val captureWatermark: Long, val lossThroughMs: Long, val lossCaptureId: Long, val lossEpoch: String, val lossVersion: String,
+    )
+
+    private data class QueryCursor(val disk: SegmentedFactStoreCursor, val lossVersion: String)
+    private fun encodeCursor(generation: Long, stream: String, sequence: Long, lossVersion: String) =
+        "cf3:$namespace:$generation:$stream:$lossVersion:$sequence"
+    private fun decodeCursor(value: String?, generation: Long, stream: String): QueryCursor {
+        if (value == null) return QueryCursor(SegmentedFactStoreCursor(partitionId = partitionForStream(stream)), "-")
         val parts = value.split(':')
-        require(parts.size == 5 && parts[0] == "cf2" && parts[1] == namespace && parts[2].toLong() == generation && parts[3] == stream)
-        val sequence = parts[4].toLong()
+        require(parts.size == 6 && parts[0] == "cf3" && parts[1] == namespace && parts[2].toLong() == generation && parts[3] == stream)
+        require(parts[4] == "-" || UUID.fromString(parts[4]).toString() == parts[4])
+        val sequence = parts[5].toLong()
         require(sequence >= 0)
-        return SegmentedFactStoreCursor(partitionId = partitionForStream(stream), afterSequence = sequence)
+        return QueryCursor(SegmentedFactStoreCursor(partitionId = partitionForStream(stream), afterSequence = sequence), parts[4])
     }
 
     private fun partitionForStream(stream: String) = when (stream) {

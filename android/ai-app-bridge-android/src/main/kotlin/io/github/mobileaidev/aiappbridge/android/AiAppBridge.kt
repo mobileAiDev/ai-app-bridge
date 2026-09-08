@@ -321,6 +321,32 @@ object AiAppBridge {
         recordEventPayload(payload, source = "sdk")
     }
 
+    /** Flutter owns the async action scope; the native ingress preserves it per record. */
+    @JvmStatic
+    fun recordFlutterCapture(method: String, payloadJson: String) {
+        val payload = JSONObject(payloadJson)
+        val source = if (method == "recordNetwork") payload.optString("source", "flutter-sdk") else "flutter-sdk"
+        recordExternalCapture(method, payload, source)
+    }
+
+    private fun recordExternalCapture(method: String, payload: JSONObject, source: String): JSONObject {
+        val actionId = if (payload.has("actionId")) {
+            val value = payload.get("actionId")
+            require(value is String && value.isNotBlank()) { "actionId must be a non-empty string when present" }
+            value
+        } else null
+        // Even an unassociated Flutter/HTTP record must clear unrelated native thread context.
+        return CaptureActionContext.withActionId(actionId) {
+            when (method) {
+                "recordLog" -> recordLogPayload(payload, source)
+                "recordNetwork" -> recordNetworkPayload(payload, source)
+                "recordState" -> recordStatePayload(payload, source)
+                "recordEvent" -> recordEventPayload(payload, source)
+                else -> throw IllegalArgumentException("Unknown capture method: $method")
+            }
+        }
+    }
+
     private fun ensureUiObserver(): AndroidUiObserver {
         uiObserver?.let { return it }
         synchronized(this) {
@@ -735,22 +761,22 @@ object AiAppBridge {
     }
 
     private fun postLog(body: String): JSONObject {
-        val event = recordLogPayload(requestJson(body), source = "http")
+        val event = recordExternalCapture("recordLog", requestJson(body), source = "http")
         return JSONObject().put("ok", true).put("event", event)
     }
 
     private fun postNetwork(body: String): JSONObject {
-        val event = recordNetworkPayload(requestJson(body), source = "http")
+        val event = recordExternalCapture("recordNetwork", requestJson(body), source = "http")
         return JSONObject().put("ok", true).put("event", event)
     }
 
     private fun postState(body: String): JSONObject {
-        val event = recordStatePayload(requestJson(body), source = "http")
+        val event = recordExternalCapture("recordState", requestJson(body), source = "http")
         return JSONObject().put("ok", true).put("event", event)
     }
 
     private fun postEvent(body: String): JSONObject {
-        val event = recordEventPayload(requestJson(body), source = "http")
+        val event = recordExternalCapture("recordEvent", requestJson(body), source = "http")
         return JSONObject().put("ok", true).put("event", event)
     }
 

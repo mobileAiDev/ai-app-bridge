@@ -52,10 +52,8 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
         try {
             val handled = when (call.method) {
                 "updateSnapshot" -> updateSnapshot(call.arguments?.toString() ?: "{}")
-                "recordLog" -> recordLog(call.arguments?.toString() ?: "{}")
-                "recordNetwork" -> recordNetwork(call.arguments?.toString() ?: "{}")
-                "recordState" -> recordState(call.arguments?.toString() ?: "{}")
-                "recordEvent" -> recordEvent(call.arguments?.toString() ?: "{}")
+                "recordLog", "recordNetwork", "recordState", "recordEvent" ->
+                    recordCapture(call.method, call.arguments as String)
                 else -> {
                     result.notImplemented()
                     return
@@ -179,117 +177,10 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
         return true
     }
 
-    private fun recordLog(payloadJson: String): Boolean {
-        val payload = JSONObject(payloadJson)
-        return invokeAndroidBridge("recordLog") { bridgeClass ->
-            val method = bridgeClass.getMethod(
-                "recordLog",
-                String::class.java,
-                String::class.java,
-                String::class.java,
-                String::class.java,
-            )
-            method.invoke(
-                null,
-                payload.optString("level", "info"),
-                payload.optString("tag", ""),
-                payload.optString("message", ""),
-                payload.optJsonString("data"),
-            )
-        }
-    }
-
-    private fun recordNetwork(payloadJson: String): Boolean {
-        val payload = JSONObject(payloadJson)
-        return invokeAndroidBridge("recordNetwork") { bridgeClass ->
-            val source = payload.optString("source", "flutter-sdk")
-            try {
-                val autoMethod = bridgeClass.getMethod(
-                    "recordNetworkAuto",
-                    String::class.java,
-                    String::class.java,
-                    String::class.java,
-                    java.lang.Integer.TYPE,
-                    java.lang.Long.TYPE,
-                    String::class.java,
-                    String::class.java,
-                    String::class.java,
-                    String::class.java,
-                    String::class.java,
-                )
-                autoMethod.invoke(
-                    null,
-                    source,
-                    payload.optString("method", "GET"),
-                    payload.optString("url", ""),
-                    payload.optInt("statusCode", -1),
-                    payload.optLong("durationMs", -1L),
-                    payload.optJsonString("requestHeaders"),
-                    payload.optJsonString("responseHeaders"),
-                    payload.optNullableString("requestBody"),
-                    payload.optNullableString("responseBody"),
-                    payload.optNullableString("error"),
-                )
-                return@invokeAndroidBridge
-            } catch (_: NoSuchMethodException) {
-                // Older Android debug SDKs only expose the compact recordNetwork API.
-            }
-            val method = bridgeClass.getMethod(
-                "recordNetwork",
-                String::class.java,
-                String::class.java,
-                java.lang.Integer.TYPE,
-                java.lang.Long.TYPE,
-                String::class.java,
-                String::class.java,
-                String::class.java,
-            )
-            method.invoke(
-                null,
-                payload.optString("method", "GET"),
-                payload.optString("url", ""),
-                payload.optInt("statusCode", -1),
-                payload.optLong("durationMs", -1L),
-                payload.optNullableString("requestBody"),
-                payload.optNullableString("responseBody"),
-                payload.optNullableString("error"),
-            )
-        }
-    }
-
-    private fun recordState(payloadJson: String): Boolean {
-        val payload = JSONObject(payloadJson)
-        return invokeAndroidBridge("recordState") { bridgeClass ->
-            val method = bridgeClass.getMethod(
-                "recordState",
-                String::class.java,
-                String::class.java,
-                String::class.java,
-            )
-            method.invoke(
-                null,
-                payload.optString("namespace", "app"),
-                payload.optString("key", "value"),
-                payload.optJsonString("value"),
-            )
-        }
-    }
-
-    private fun recordEvent(payloadJson: String): Boolean {
-        val payload = JSONObject(payloadJson)
-        return invokeAndroidBridge("recordEvent") { bridgeClass ->
-            val method = bridgeClass.getMethod(
-                "recordEvent",
-                String::class.java,
-                String::class.java,
-                String::class.java,
-            )
-            method.invoke(
-                null,
-                payload.optString("category", "app"),
-                payload.optString("name", "event"),
-                payload.optJsonString("data"),
-            )
+    private fun recordCapture(method: String, payloadJson: String): Boolean {
+        return invokeAndroidBridge("recordFlutterCapture") { bridgeClass ->
+            bridgeClass.getMethod("recordFlutterCapture", String::class.java, String::class.java)
+                .invoke(null, method, payloadJson)
         }
     }
 
@@ -305,24 +196,6 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
         } catch (error: Throwable) {
             Log.w(tag, "failed to call Android AI app bridge method $methodName", error)
             throw error
-        }
-    }
-
-    private fun JSONObject.optNullableString(key: String): String? {
-        if (!has(key) || isNull(key)) {
-            return null
-        }
-        return optString(key)
-    }
-
-    private fun JSONObject.optJsonString(key: String): String? {
-        if (!has(key) || isNull(key)) {
-            return null
-        }
-        val value = opt(key) ?: return null
-        return when (value) {
-            is String -> JSONObject.quote(value)
-            else -> value.toString()
         }
     }
 

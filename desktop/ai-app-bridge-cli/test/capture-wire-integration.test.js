@@ -3,12 +3,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createAdbHttpFixture } = require('../test-support/adb-http-fixture');
 const { executeCommand } = require('../bin/ai-app-bridge');
 const { createLiveCaptureQuery } = require('../bin/shared-kernel/live-capture-query');
 const { createScriptCapturePort } = require('../bin/script/script-capture-port');
 const { createIntentCapturePort } = require('../bin/intent/intent-capture-port');
 
-async function endpoint(t) {
+async function endpoint(t, serial = 'wire-test') {
   const requests = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -30,14 +34,18 @@ async function endpoint(t) {
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
-  return { requests, port: server.address().port };
+  const port = server.address().port;
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-capture-wire-'));
+  const adb = createAdbHttpFixture({ directory, serial, port });
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  return { requests, port, adb };
 }
 
 test('Script -> live query -> Android CLI -> HTTP preserves the actual durable window', async (t) => {
-  const { requests, port } = await endpoint(t);
+  const { requests, port, adb } = await endpoint(t);
   const capture = createScriptCapturePort({ query: createLiveCaptureQuery({ runner: executeCommand }) });
   const result = await capture.query('network', {
-    adb: '/usr/bin/true', serial: 'wire-test', packageName: 'pkg', port,
+    adb, serial: 'wire-test', packageName: 'pkg', port,
     runtimeEpoch: 'epoch-1', sinceId: 11, sinceMs: 123, factCursor: 'cf2:start',
     targetKey: 'pkg', afterActionId: 'action-7', limit: 17, urlFilter: '/wanted',
   });
@@ -71,10 +79,10 @@ test('Script iOS capture stays on iOS HTTP and keeps ref lookup metadata', async
 });
 
 test('Intent capture retains target and connected-history cursors through HTTP', async (t) => {
-  const { requests, port } = await endpoint(t);
+  const { requests, port, adb } = await endpoint(t, 'intent-wire');
   const capture = createIntentCapturePort({ query: createLiveCaptureQuery({ runner: executeCommand }) });
   const result = await capture.observe({ stream: 'state', view: 'connected-history', factCursor: 'cf2:start' }, {
-    target: { adb: '/usr/bin/true', port, serial: 'intent-wire', packageName: 'pkg' },
+    target: { adb, port, serial: 'intent-wire', packageName: 'pkg' },
   });
   assert.equal(result.coverage.status, 'complete');
   assert.equal(requests[0].path, '/v1/state');
@@ -98,7 +106,7 @@ test('live capture preserves failure reason and rejects a stale epoch response',
 });
 
 test('normal MCP Intent entry injects live capture and carries its watermark into the next observation', async (t) => {
-  const { requests, port } = await endpoint(t);
+  const { requests, port, adb } = await endpoint(t, 'mcp-wire');
   const previousCaptureSetting = process.env.AI_APP_BRIDGE_FACT_CACHE;
   process.env.AI_APP_BRIDGE_FACT_CACHE = 'off';
   t.after(() => {
@@ -117,7 +125,7 @@ test('normal MCP Intent entry injects live capture and carries its watermark int
   };
   const start = JSON.parse((await runGeneric({ command: 'intent', arguments: {
     operation: 'start', operationId: 'capture-mcp-wire', goal: 'inspect capture',
-    target: { adb: '/usr/bin/true', serial: 'mcp-wire', packageName: 'pkg', port },
+    target: { adb, serial: 'mcp-wire', packageName: 'pkg', port },
     adapter, store,
     require: { stream: 'network' },
   } })).content[0].text);

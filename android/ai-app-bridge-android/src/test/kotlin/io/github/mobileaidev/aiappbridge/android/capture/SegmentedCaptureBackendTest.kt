@@ -12,6 +12,101 @@ import java.util.concurrent.TimeUnit
 /** Exercises the real mapped segmented engine and the exact HTTP response adapter used by the SDK. */
 class SegmentedCaptureBackendTest {
     @Test
+    fun recentTimeWindowsDoNotHydrateTheCurrentEpochPrefixOrOrdinaryLogPayloads() = fixture { f ->
+        for (id in 1L..1200L) {
+            assertTrue(f.capture.append(input(id, "events")).accepted)
+            assertEquals(SegmentedFactRecordEnqueueResult.ACCEPTED,
+                f.store.record("{\"ordinaryLog\":true}".toByteArray(), MobileFactPartition.APP_LOG.id))
+            if (id % 64 == 0L) f.drain()
+        }
+        f.drain()
+        f.scanCursors.clear()
+        val recent = f.http("events", "view" to "decision-window", "sinceMs" to "2198")
+        assertEquals(listOf(1198L, 1199L, 1200L), itemIds(recent))
+        assertEquals("complete", recent.getJSONObject("coverage").getString("status"))
+        assertTrue("Recent query hydrated ${f.scanCursors.size} historical payloads", f.scanCursors.size <= 130)
+        f.scanCursors.clear()
+        assertEquals(0, f.http("logs", "view" to "decision-window", "sinceMs" to "2198").getInt("count"))
+        assertTrue("Empty capture stream hydrated ordinary logs", f.scanCursors.size <= 1)
+    }
+
+    @Test
+    fun recentLargeFactsDoNotHydrateMegabytesOfExcludedPayloads() = fixture(quota = 16 * 1024 * 1024) { f ->
+        for (id in 1L..150L) {
+            assertTrue(f.capture.append(input(id, "events").copy(record =
+                JSONObject().put("id", id).put("message", "x".repeat(60 * 1024)))).accepted)
+            if (id % 16 == 0L) f.drain()
+        }
+        f.drain()
+        f.scanCursors.clear()
+        assertEquals(listOf(149L, 150L), itemIds(f.http("events", "view" to "decision-window", "sinceMs" to "1149")))
+        assertTrue("Recent large-fact query hydrated ${f.scanCursors.size} old payloads", f.scanCursors.size <= 4)
+    }
+
+    @Test
+    fun cursorAcknowledgesOnlyLossesBeforeItsIssuedWatermarkIncludingSameSequenceLoss() = fixture { f ->
+        fun lose(id: Long) = f.capture.append(input(id, "events").copy(
+            record = JSONObject().put("id", id).put("body", "x".repeat(1024 * 1024))))
+        assertFalse(lose(1).accepted)
+        val before = f.http("events", "view" to "decision-window", "sinceMs" to "1002")
+        assertFalse(before.getBoolean("gap"))
+        val cursor = before.getString("watermarkCursor")
+        val after = f.http("events", "view" to "decision-window", "factCursor" to cursor)
+        assertFalse("Historical loss leaked into an issued cursor window", after.getBoolean("gap"))
+        // No successful append and no advancing store sequence separates these two windows.
+        assertFalse(lose(2).accepted)
+        val loss = f.http("events", "view" to "decision-window", "factCursor" to cursor)
+        assertTrue("Loss after watermark was hidden", loss.getBoolean("gap"))
+        val acknowledged = loss.getString("watermarkCursor")
+        assertNotEquals(cursor, acknowledged)
+        f.capture.append(input(3, "events"))
+        val next = f.http("events", "view" to "decision-window", "factCursor" to acknowledged)
+        assertEquals(listOf(3L), itemIds(next))
+        assertFalse(next.getBoolean("gap"))
+        f.reopen("epoch-2")
+        assertTrue("Reopen must retain durable historical loss", f.http("events", "view" to "connected-history").getBoolean("gap"))
+        val reopened = f.http("events", "view" to "decision-window", "sinceMs" to "2000")
+        assertFalse(f.http("events", "view" to "decision-window", "factCursor" to reopened.getString("watermarkCursor")).getBoolean("gap"))
+    }
+
+    @Test
+    fun prefixSeekPreservesBackdatedFactsFutureClocksAndNonmonotonicCaptureIds() = fixture { f ->
+        f.capture.append(input(5000, "events").copy(timestampMs = 9000))
+        for (id in 1L..260L) {
+            f.capture.append(input(id, "events"))
+            if (id % 64 == 0L) f.drain()
+        }
+        f.capture.append(input(261, "events").copy(timestampMs = 1000))
+        assertEquals(listOf(5000L, 258L, 259L, 260L), itemIds(f.http("events", "view" to "decision-window", "sinceMs" to "1258")))
+        assertEquals(listOf(5000L, 260L, 261L), itemIds(f.http("events", "view" to "decision-window", "sinceId" to "259")))
+        assertEquals(listOf(5000L, 260L), itemIds(f.http("events", "view" to "decision-window", "sinceMs" to "1258", "sinceId" to "259")))
+        f.capture.clear("events")
+        f.capture.append(input(1, "events").copy(timestampMs = 500))
+        val cleared = f.http("events", "view" to "decision-window", "sinceMs" to "499")
+        assertEquals(listOf(1L), itemIds(cleared))
+        assertEquals(1L, cleared.getLong("throughWatermark"))
+    }
+
+    @Test
+    fun pageCursorDoesNotAcknowledgeLossBeyondThePageOrLoseANewBackdatedDrop() = fixture { f ->
+        f.capture.append(input(1, "events"))
+        f.capture.append(input(2, "events"))
+        val rejected = input(100, "events").copy(record = JSONObject().put("body", "x".repeat(1024 * 1024)))
+        assertFalse(f.capture.append(rejected).accepted)
+        val first = f.http("events", "view" to "decision-window", "limit" to "1")
+        assertTrue(first.getBoolean("gap"))
+        assertTrue(first.getBoolean("hasMore"))
+        val second = f.http("events", "view" to "decision-window", "factCursor" to first.getString("nextCursor"))
+        assertEquals(listOf(2L), itemIds(second))
+        assertTrue(second.getBoolean("gap"))
+        val watermark = second.getString("watermarkCursor")
+        assertFalse(f.http("events", "view" to "decision-window", "factCursor" to watermark).getBoolean("gap"))
+        // The persistent timestamp/id maxima do not advance, but this is a NEW loss after the cursor.
+        assertFalse(f.capture.append(rejected.copy(captureId = 3, timestampMs = 900)).accepted)
+        assertTrue(f.http("events", "view" to "decision-window", "factCursor" to watermark).getBoolean("gap"))
+    }
+
+    @Test
     fun currentEpochReadsSkipHistoricalPayloadsButExplicitHistoryRetainsThem() = fixture { f ->
         val first = f.capture.append(input(1, "logs")).mobileFactId!!
         f.capture.append(input(2, "logs"))
@@ -349,6 +444,7 @@ class SegmentedCaptureBackendTest {
         }
         fun reopen(epoch: String) { closeStore(); store = newStore(); capture = newCapture(); open(epoch) }
         fun http(stream: String, vararg params: Pair<String, String>) = LegacyLiveView.fromHttp(capture, stream, mapOf(*params), 9000)
+        fun drain() { val latch = CountDownLatch(1); store.status { assertTrue(it.operation.isSuccess); latch.countDown() }; assertTrue(latch.await(5, TimeUnit.SECONDS)) }
         fun closeStore() { val latch = CountDownLatch(1); store.close { latch.countDown() }; assertTrue(latch.await(5, TimeUnit.SECONDS)) }
     }
 }

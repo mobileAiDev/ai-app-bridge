@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/localsend/localsend",
+  "tag": "v1.18.2",
+  "commit": "af0416be50770a97760f7070684bc667b759a15c",
+  "archiveUrl": "https://codeload.github.com/localsend/localsend/tar.gz/af0416be50770a97760f7070684bc667b759a15c",
+  "archiveSha256": "99047c3d6274f50f1feabd2ebaa40d2b0e9bd0c8a5728ed7bb27fb0bb993ac9f",
+  "flutter": "3.41.9",
+  "rust": "1.97.1",
+  "packageName": "org.localsend.localsend_app.bridge_sample",
+  "purpose": "Validate Bridge Intent evidence reuse and Flutter Script regression against an upstream business app."
+}

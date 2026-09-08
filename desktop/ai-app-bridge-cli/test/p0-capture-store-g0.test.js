@@ -181,10 +181,12 @@ test('G0 Flutter MethodChannel and HTTP fallback call shape stay frozen', () => 
     'flutter/ai_app_bridge_flutter/android/src/main/kotlin/io/github/mobileaidev/aiappbridge/flutter/AiAppBridgeFlutterPlugin.kt',
   );
   assert.match(androidPlugin, /private const val channelName = "ai_app_bridge"/);
-  assert.match(androidPlugin, /"recordLog" -> recordLog/);
-  assert.match(androidPlugin, /"recordNetwork" -> recordNetwork/);
-  assert.match(androidPlugin, /"recordState" -> recordState/);
-  assert.match(androidPlugin, /"recordEvent" -> recordEvent/);
+  // Channel names stay public; Android now forwards the whole payload to preserve actionId.
+  assert.match(androidPlugin, /"recordLog", "recordNetwork", "recordState", "recordEvent" ->/);
+  assert.match(androidPlugin, /recordCapture\(call\.method, call\.arguments as String\)/);
+  assert.match(androidPlugin, /getMethod\("recordFlutterCapture", String::class\.java, String::class\.java\)/);
+  assert.match(androidPlugin, /\.invoke\(null, method, payloadJson\)/);
+
 
   const iosPlugin = readRepo(
     'flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/ai_app_bridge_flutter/AiAppBridgeFlutterPlugin.swift',
