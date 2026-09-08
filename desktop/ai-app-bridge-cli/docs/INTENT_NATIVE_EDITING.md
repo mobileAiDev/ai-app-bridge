@@ -43,3 +43,9 @@ be null. A separate `screenshot` call should retain its artifact hash, timestamp
 and the adjacent observation ID. This association is sequential, not an atomic
 tree/screenshot capture. `status.history` is a bounded execution ledger and
 does not expose the full stored raw tree for each observation.
+
+Use [the public evidence export](EVIDENCE_ARCHIVE.md) with this Intent's
+operationId to freeze retained raw observations, summaries, decisions and
+receipts. A returned manifest hash supports verification after moving the
+archive or restarting MCP. External screenshot files and phone capture bodies
+remain separate; the export reports this coverage explicitly.

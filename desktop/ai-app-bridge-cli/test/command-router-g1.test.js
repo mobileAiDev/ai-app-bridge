@@ -29,7 +29,7 @@ function payloadOf(result) {
 function withoutIsolatedCommands(domains) {
   const next = {};
   for (const [domain, commands] of Object.entries(domains)) {
-    next[domain] = commands.filter((item) => item.command !== 'script' && item.command !== 'intent');
+    next[domain] = commands.filter((item) => !['script', 'intent', 'evidence'].includes(item.command));
   }
   return next;
 }
@@ -42,13 +42,15 @@ test('G1 isolated commands stay out of the legacy command registry', () => {
   assert.deepEqual(commands, snapshot.commands);
   assert.equal(commands.includes('script'), false);
   assert.equal(commands.includes('intent'), false);
-  assert.deepEqual(isolatedCommandDefinitions.map((item) => item.command), ['script', 'intent']);
+  assert.equal(commands.includes('evidence'), false);
+  assert.deepEqual(isolatedCommandDefinitions.map((item) => item.command), ['script', 'intent', 'evidence']);
 });
 
-test('G1 old commands do not load Script or Intent modules', async () => {
+test('G1 old commands do not load Script, Intent, or evidence modules', async () => {
   const router = createCommandRouter({
     loadScript: () => require('../bin/script/script-entry'),
     loadIntent: () => require('../bin/intent/intent-entry'),
+    loadEvidence: () => { throw new Error('evidence must remain lazy'); },
     legacyDispatch: async (command) => ({
       content: [{ type: 'text', text: JSON.stringify({ ok: true, command }) }],
     }),
@@ -58,6 +60,24 @@ test('G1 old commands do not load Script or Intent modules', async () => {
   assert.equal(result.command, 'status');
   assert.equal(router.loads.script, 0);
   assert.equal(router.loads.intent, 0);
+  assert.equal(router.loads.evidence, 0);
+});
+
+test('G1 evidence routes lazily without loading execution modules', async () => {
+  const calls = [];
+  const router = createCommandRouter({
+    loadScript: () => { throw new Error('script must remain lazy'); },
+    loadIntent: () => { throw new Error('intent must remain lazy'); },
+    loadEvidence: () => ({ handle: async (args) => {
+      calls.push(args);
+      return { ok: true, integrity: 'verified' };
+    } }),
+    legacyDispatch: async () => { throw new Error('evidence must not use legacy dispatch'); },
+  });
+  const args = { operation: 'verify', archiveDir: '/local/archive', manifestSha256: 'a'.repeat(64) };
+  assert.equal(payloadOf(await router.route('evidence', args)).integrity, 'verified');
+  assert.deepEqual(calls, [args]);
+  assert.deepEqual(router.loads, { script: 0, intent: 0, evidence: 1 });
 });
 
 test('G1 a throwing isolated loader does not break legacy dispatch', async () => {
@@ -93,11 +113,13 @@ test('G1 an exclusive FactStore writer conflict is explicit and remains isolated
   assert.equal(payload.error, 'fact_store_writer_busy');
 });
 
-test('G1 batch still rejects Script and Intent steps', async () => {
+test('G1 batch still rejects Script, Intent, and evidence steps', async () => {
   const script = payloadOf(await runBatch({ steps: [{ id: 's1', command: 'script' }] }));
   const intent = payloadOf(await runBatch({ steps: [{ id: 's1', command: 'intent' }] }));
+  const evidence = payloadOf(await runBatch({ steps: [{ id: 's1', command: 'evidence' }] }));
   assert.equal(script.error, 'unknown_batch_step_command');
   assert.equal(intent.error, 'unknown_batch_step_command');
+  assert.equal(evidence.error, 'unknown_batch_step_command');
 });
 
 test('G1 LegacyDispatcher only forwards existing commands', async () => {
@@ -111,7 +133,7 @@ test('G1 LegacyDispatcher only forwards existing commands', async () => {
   assert.deepEqual(calls, [{ command: 'screenshot', args: { serial: 'android-1' } }]);
 });
 
-test('G1 capabilities preserves Legacy and adds Script, Intent, and explicit mobile capture options', () => {
+test('G1 capabilities preserves Legacy and adds Script, Intent, evidence, and explicit mobile capture options', () => {
   const live = capabilityPayload({ includeOptions: true });
   assert.equal(live.ok, true);
   assert.deepEqual(live.commandDomains, capabilitySnapshot.commandDomains);
@@ -128,10 +150,14 @@ test('G1 capabilities preserves Legacy and adds Script, Intent, and explicit mob
     }
   }
   assert.deepEqual(legacy, capabilitySnapshot.domains);
-  const added = live.domains.advanced.map((item) => item.command).filter((name) => name === 'script' || name === 'intent');
-  assert.deepEqual(added, ['script', 'intent']);
+  const added = live.domains.advanced.map((item) => item.command).filter((name) => ['script', 'intent', 'evidence'].includes(name));
+  assert.deepEqual(added, ['script', 'intent', 'evidence']);
   assert.equal(capabilityPayload({ command: 'script' }).ok, true);
   assert.equal(capabilityPayload({ command: 'intent' }).ok, true);
+  const evidence = capabilityPayload({ command: 'evidence' });
+  assert.equal(evidence.ok, true);
+  assert.equal(evidence.targetKind, 'none');
+  assert.deepEqual(evidence.options, ['operation', 'namespace', 'operationId', 'outputDir', 'archiveDir', 'manifestSha256']);
   assert.equal(capabilityPayload({ command: 'page-summary' }).ok, false);
 });
 
@@ -152,6 +178,7 @@ test('G1 public run routes isolated commands and leaves legacy errors unchanged'
   assert.equal(require.cache[INTENT_ENTRY], undefined);
   assert.equal(commandRouter.loads.script, 0);
   assert.equal(commandRouter.loads.intent, 0);
+  assert.equal(commandRouter.loads.evidence, 0);
 
   const script = payloadOf(await runGeneric({ command: 'script', arguments: { operation: 'start' } }));
   const intent = payloadOf(await runGeneric({ command: 'intent', arguments: { operation: 'start' } }));

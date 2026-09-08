@@ -135,6 +135,14 @@ async function main(options) {
       state = await run('script', { operation: 'status', operationId: activeId, afterSequence: cursor, limit: 500 }); collect(state);
       trial.executionFinishedAtMs = Date.now(); trial.executionMs = trial.executionFinishedAtMs - trial.executionStartedAtMs;
       trial.executionStatus = state.status; activeId = null;
+      // Freeze the public archive receipt while this Host still owns FactStore.
+      // Offline review must use this returned root hash, never a hash reconstructed later.
+      trial.archive = await run('evidence', { operation: 'export', namespace: 'script', operationId: trial.operationId,
+        outputDir: path.join(directory, 'durable-archive') });
+      write(path.join(directory, 'archive-export.json'), trial.archive); save();
+      assert.equal(trial.archive.ok, true, 'public_evidence_export_failed:' + JSON.stringify(trial.archive));
+      assert.equal(trial.archive.namespace, 'script'); assert.equal(trial.archive.operationId, trial.operationId);
+      assert.match(trial.archive.manifestSha256, /^[a-f0-9]{64}$/);
       const manifest = collectSnapshot({ ...target, out: path.join(directory, 'after'), runId: trial.operationId, sequence: cursor, apkSha256 });
       const after = readSnapshot(manifest, { expectedTarget: target, expectedApkSha256: apkSha256, runId: trial.operationId,
         afterSequence: cursor, minCapturedAtMs: trial.executionFinishedAtMs });

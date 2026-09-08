@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { createMcpClient, payloadOf } = require('../../../desktop/ai-app-bridge-cli/scripts/validation/mcp-jsonrpc-client');
 const hashFile = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 function directoryHashes(directory) {
@@ -113,42 +114,79 @@ function reviewTrialRecords({ facts, events, trial, target, compiled, verifyChec
   return { actions: expected.length, terminalStatus: terminal.status };
 }
 
-// Run only after the controller's MCP process has exited. Read a verified copy.
+// Run only after the controller's MCP process has exited. Each pass uses a new
+// public MCP verifier with an unusable FactStore path; no private-store fallback.
 async function reviewDurable(out, report) {
   const runtime = path.dirname(report.server);
-  const { createFactStore } = require(path.join(runtime, 'fact-store'));
   const { verifyChecksum, checksumOf } = require(path.join(runtime, 'shared-kernel/evidence-schema'));
   const { compileScriptSpec } = require(path.join(runtime, 'script/script-spec'));
-  const original = path.join(out, 'host-facts'), review = path.join(out, 'durable-review');
+  assert(report.trials.length > 0, 'durable_trials_missing');
+  const review = path.join(out, 'durable-review');
   fs.mkdirSync(review);
-  const before = directoryHashes(original), copy = path.join(review, 'facts-copy');
-  fs.cpSync(original, copy, { recursive: true });
-  assert.deepEqual(directoryHashes(copy), before);
+  const blockedStore = path.join(review, 'fact-store-unavailable');
+  const blockedContents = 'Public archive verification must not open a FactStore.\n';
+  fs.writeFileSync(blockedStore, blockedContents, { flag: 'wx' });
+  const before = new Map();
+  for (const trial of report.trials) {
+    const archive = trial.archive, directory = path.join(out, trial.name, 'durable-archive');
+    assert.equal(archive?.ok, true, 'public_archive_export_receipt_missing');
+    assert.equal(archive.archiveDir, directory, 'public_archive_directory_mismatch');
+    assert.equal(archive.manifestPath, path.join(directory, 'manifest.json'), 'public_manifest_path_mismatch');
+    assert.equal(archive.namespace, 'script'); assert.equal(archive.operationId, trial.operationId);
+    assert.match(archive.manifestSha256 || '', /^[a-f0-9]{64}$/, 'frozen_manifest_hash_required');
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(out, trial.name, 'archive-export.json'))), archive,
+      'public_archive_export_receipt_changed');
+    before.set(trial.name, directoryHashes(directory));
+  }
   let first;
   for (let pass = 0; pass < 2; pass += 1) {
-    const store = createFactStore({ directory: copy }), checked = [];
+    const passDirectory = path.join(review, 'verify-pass-' + (pass + 1)); fs.mkdirSync(passDirectory);
+    const client = createMcpClient({ serverPath: report.server,
+      transcriptPath: path.join(passDirectory, 'mcp.jsonl'), stderrPath: path.join(passDirectory, 'mcp-stderr.log'),
+      env: { AI_APP_BRIDGE_FACT_STORE_DIR: blockedStore } });
+    const checked = [];
     try {
+      await client.initialize();
       for (const trial of report.trials) {
-        const records = []; let cursor;
-        do {
-          const page = store.read({ targetKey: 'evidence:script:' + trial.operationId, limit: 1000, ...(cursor ? { cursor } : {}) });
-          assert.equal(page.ok, true, JSON.stringify(page));
-          records.push(...page.items.map(({ globalSeq, payload }) => ({ globalSeq, payload })));
-          if (!page.hasMore) break;
-          assert(page.cursor); assert.notEqual(page.cursor, cursor); cursor = page.cursor;
-        } while (true);
+        const archive = trial.archive;
+        const verified = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command: 'evidence',
+          arguments: { operation: 'verify', archiveDir: archive.archiveDir, manifestSha256: archive.manifestSha256 } } }));
+        fs.writeFileSync(path.join(passDirectory, trial.name + '.json'), JSON.stringify(verified, null, 2) + '\n');
+        assert.equal(verified.ok, true, 'public_evidence_verify_failed:' + JSON.stringify(verified));
+        assert.equal(verified.integrity, 'verified');
+        const { integrity, ...verifiedReceipt } = verified;
+        assert.deepEqual(verifiedReceipt, archive, 'public_archive_identity_changed');
+        assert.deepEqual(directoryHashes(archive.archiveDir), before.get(trial.name), 'archive_changed_during_verify');
+        // Bind the actual bytes consumed by the independent action review to
+        // the same frozen public manifest, including the gap after MCP verify.
+        const manifestBytes = fs.readFileSync(archive.manifestPath);
+        assert.equal(crypto.createHash('sha256').update(manifestBytes).digest('hex'), archive.manifestSha256);
+        const manifest = JSON.parse(manifestBytes);
+        assert.equal(manifest.records.path, 'records.json');
+        const recordsBytes = fs.readFileSync(path.join(archive.archiveDir, 'records.json'));
+        assert.equal(recordsBytes.length, manifest.records.bytes);
+        assert.equal(crypto.createHash('sha256').update(recordsBytes).digest('hex'), manifest.records.sha256);
+        const records = JSON.parse(recordsBytes);
         const events = JSON.parse(fs.readFileSync(path.join(out, trial.name, 'events.json')));
         const spec = JSON.parse(fs.readFileSync(path.join(out, trial.name, 'spec.json'))), compiled = compileScriptSpec(spec);
         const verdict = reviewTrialRecords({ facts: records, events, trial, target: report.target, compiled, verifyChecksum, checksumOf });
-        checked.push({ trial: trial.name, records, ...verdict });
+        checked.push({ trial: trial.name, records, manifestSha256: archive.manifestSha256, ...verdict });
         if (pass === 0) fs.writeFileSync(path.join(review, trial.name + '.json'), JSON.stringify(records, null, 2) + '\n');
       }
-    } finally { await store.close(); }
+    } finally {
+      const exit = await client.close();
+      fs.writeFileSync(path.join(passDirectory, 'host-exit.json'), JSON.stringify(exit, null, 2) + '\n');
+      assert.deepEqual(exit, { code: 0, signal: null }, 'public_verifier_exit_failed');
+    }
     if (pass === 0) first = checked;
-    else assert.deepEqual(checked, first, 'evidence_changed_after_reopen');
+    else assert.deepEqual(checked, first, 'evidence_changed_between_public_verifiers');
   }
-  assert.deepEqual(directoryHashes(original), before, 'original_store_changed_during_review');
-  const result = { ok: true, reopenPasses: 2, originalUnchanged: true,
+  for (const trial of report.trials) {
+    assert.deepEqual(directoryHashes(trial.archive.archiveDir), before.get(trial.name), 'archive_changed_during_review');
+  }
+  assert.equal(fs.readFileSync(blockedStore, 'utf8'), blockedContents, 'offline_store_guard_changed');
+  const result = { ok: true, method: 'public-evidence-export-verify', freshVerifierProcesses: 2, archivesUnchanged: true,
+    offlineFactStoreUnavailable: true,
     records: first.reduce((sum, item) => sum + item.records.length, 0), actions: first.reduce((sum, item) => sum + item.actions, 0),
     operations: first.map(({ records, ...item }) => ({ ...item, recordCount: records.length })) };
   fs.writeFileSync(path.join(review, 'report.json'), JSON.stringify(result, null, 2) + '\n');

@@ -167,6 +167,10 @@ Flutter Android. Existing platform command availability is a separate contract.
 See [Script authoring](docs/SCRIPT_AUTHORING.md) for the executable source shape,
 call envelope, assertion results, bounded UI waits and evidence reuse boundaries.
 
+Use the public `evidence` command to export retained Intent/Script Host records
+and verify their frozen archive offline. [Evidence archives](docs/EVIDENCE_ARCHIVE.md)
+describes hashes, source binding, retention and the excluded external payloads.
+
 - `completed` means that execution finished. Inspect the device assertion
   results to determine which application outcomes were verified.
 - `ctx.assert({scope: "code", name, condition})` checks local code. It cannot

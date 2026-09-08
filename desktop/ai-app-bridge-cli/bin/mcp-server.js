@@ -723,6 +723,11 @@ const legacyDispatcher = createLegacyDispatcher((command, args) => {
 const commandRouter = createCommandRouter({
   loadScript: () => wrapIsolatedEntry(require('./script/script-entry'), 'script'),
   loadIntent: () => wrapIsolatedEntry(require('./intent/intent-entry'), 'intent'),
+  loadEvidence: () => ({
+    handle: (args) => require('./shared-kernel/evidence-archive').handle(args, {
+      getFactStore: getSharedFactStore,
+    }),
+  }),
   legacyDispatch: (command, args) => legacyDispatcher.dispatch(command, args),
 });
 

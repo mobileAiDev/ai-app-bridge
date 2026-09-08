@@ -14,13 +14,19 @@ const isolatedCommandDefinitions = [
     summary: 'Run an isolated Intent operation: start, status, observe, decide, pause, resume, cancel, or intervene. target.foregroundPackages explicitly enables Android foreground provider routing.',
     options: ['operation'],
   },
+  {
+    command: 'evidence',
+    domain: 'advanced',
+    summary: 'Export retained Host Intent or Script evidence for one operation, or verify an archive offline against its frozen manifest SHA-256. Verification does not open FactStore; external payloads are not included.',
+    options: ['operation', 'namespace', 'operationId', 'outputDir', 'archiveDir', 'manifestSha256'],
+  },
 ];
 
-function createCommandRouter({ loadScript, loadIntent, legacyDispatch } = {}) {
+function createCommandRouter({ loadScript, loadIntent, loadEvidence, legacyDispatch } = {}) {
   if (typeof legacyDispatch !== 'function') {
     throw new TypeError('legacyDispatch is required');
   }
-  const loads = { script: 0, intent: 0 };
+  const loads = { script: 0, intent: 0, evidence: 0 };
   return {
     isolatedCommandDefinitions,
     loads,
@@ -30,6 +36,9 @@ function createCommandRouter({ loadScript, loadIntent, legacyDispatch } = {}) {
       }
       if (command === 'intent') {
         return invokeIsolated('intent', loadIntent, args, loads);
+      }
+      if (command === 'evidence') {
+        return invokeIsolated('evidence', loadEvidence, args, loads);
       }
       return legacyDispatch(command, args);
     },
