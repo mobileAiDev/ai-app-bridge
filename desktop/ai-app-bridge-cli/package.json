@@ -90,5 +90,28 @@
   },
   "engines": {
     "node": ">=26.3.0 <27"
+  },
+  "overrides": {
+    "@appium/base-driver": {
+      "@xmldom/xmldom": "0.9.12"
+    },
+    "@appium/support": {
+      "@xmldom/xmldom": "0.9.12"
+    },
+    "@xmldom/xmldom": {
+      "@xmldom/xmldom": "0.9.12"
+    },
+    "appium-ios-simulator": {
+      "@xmldom/xmldom": "0.9.12"
+    },
+    "appium-webdriveragent": {
+      "@xmldom/xmldom": "0.9.12"
+    },
+    "appium-xcode": {
+      "@xmldom/xmldom": "0.9.12"
+    },
+    "plist": {
+      "@xmldom/xmldom": "0.9.12"
+    }
   }
 }
