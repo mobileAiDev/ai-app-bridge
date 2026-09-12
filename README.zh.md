@@ -25,11 +25,11 @@ AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS
 手机侧 `logs` / `network` / `state` / `events` 只存在 `MobileCaptureStore` 中。Host 连接态命令直读手机，不保存这些 payload 的复制历史。
 
 
-当前候选版的入口、参数与平台范围见[命令合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md)。Intent 和 Script 是一等执行入口，基础命令继续作为共用能力保留。
+当前版本的入口、参数与平台范围见[命令合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md)。Intent 和 Script 是一等执行入口，基础命令继续作为共用能力保留。
 
 命令域：`core`（状态、UI 观察和采集）、`app`（安装、生命周期和权限）、`action`、`flutter`、`webview`、`ios`、`web`、`diagnostics`、`execution`（`intent`、`script`、`runtime`、`device-ownership`）、`evidence`、`advanced`（UIA runtime 控制和端口转发）。
 
-默认 MCP surface 是 compact：先调用 `capabilities` 发现 domain、command 和 options，再调用 `run` 执行选定命令。
+默认 `capabilities` 返回精简命令目录；按 `command` 和 `operation` 查询所需合同。Intent decide 可再按 `platform`、`provider`、`action` 筛选，CLI `--help` 支持相同筛选。用 `run` 执行选定命令。
 
 CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Script、安装和权限操作可以由任一客户端启动，再由另一客户端通过 operationId 继续。客户端退出后任务继续运行；显式使用任务 cancel 或 `runtime --operation stop` 停止。
 
@@ -37,8 +37,8 @@ CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Scrip
 - `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。
 - Android 和 iOS 的 `logs` / `network` / `state` / `events` 使用手机侧持久存储，连接时通过 `history:true` 查询保留的事实；Host 分别保存执行与观察证据。Web 采集在接收时写入 Host FactStore。每次查询均需核对 refs、目标、epoch、coverage 和保留范围。
 
-当前工作区统一准备 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码 tag 的 `0.3.0-rc.1` 候选版，尚未发布。
-下面的版本安装示例供发布后使用；本地构建和发布顺序见[发行指南](desktop/ai-app-bridge-cli/docs/RELEASE.md)。Script 为可选能力；
+`0.3.1` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码 tag；npm 使用默认 `latest`，Flutter 使用 pub.dev 稳定版。
+本地构建和发布顺序见[发行指南](desktop/ai-app-bridge-cli/docs/RELEASE.md)。Script 为可选能力；
 执行结束、纯代码断言和有设备证据的结果分别统计。当前设备强断言仅支持完整单页，
 多页查询可以取数，但尚不支持合并为一个完整窗口断言。恢复仅适用于显式可重入
 checkpoint 模板，不确定副作用不会自动重放。参见 [候选版本合同与迁移说明](desktop/ai-app-bridge-cli/README.md#intent-script-and-evidence)。
@@ -109,7 +109,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0-rc.1")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.1")
 }
 ```
 
@@ -142,7 +142,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0-rc.1"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.1"
 }
 
 aiAppBridge {
@@ -157,7 +157,7 @@ aiAppBridge {
 在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0-rc.1")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.1")
 ```
 
 在 debug app 进程启动一次 runtime：
@@ -173,7 +173,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 安装桌面 CLI，并检查完整 iOS 控制栈：
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
+npm install -g @mobileaidev/ai-app-bridge@0.3.1
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -188,7 +188,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.0-rc.1
+  ai_app_bridge_flutter: 0.3.1
 ```
 
 初始化一次：
@@ -251,7 +251,7 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 ### 安装 MCP server
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
+npm install -g @mobileaidev/ai-app-bridge@0.3.1
 ```
 
 在你的 AI agent / 模型客户端 / IDE 的 MCP 配置里添加。

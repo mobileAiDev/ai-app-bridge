@@ -6,12 +6,46 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { validateCommandArguments, parseCliOptions } = require('../bin/command-registry');
+const { variants, intentActionSchema } = require('../bin/shared-kernel/execution-contracts');
 const { compileScriptSpec } = require('../bin/script/script-spec');
 const { createIntentWorker } = require('../bin/intent/intent-worker');
 const { createIntentBudget, createAutonomousAgentAdapter } = require('../bin/intent/intent-autonomous-adapter');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { invalidCases, verifyExecutionContract, verifyAutonomousContract } = require('../scripts/validation/verify-execution-contract');
+
+test('Intent discovery keeps repeated provider rules in one distinct union', () => {
+  const schema = intentActionSchema();
+  assert.deepEqual(schema.properties.provider, {
+    anyOf: ['native', 'uia', 'flutter', 'h5'].map(provider => ({ const: provider })),
+  });
+  assert.deepEqual(intentActionSchema('native', 'android').properties.provider, { const: 'native' });
+  const selectorRules = schema.properties.selector.anyOf;
+  assert.equal(selectorRules.length, new Set(selectorRules.map(rule => JSON.stringify(rule))).size);
+  assert.equal(selectorRules.some(rule => Object.keys(rule).length === 1 && rule.anyOf), false);
+});
+
+test('variant aggregation preserves original rule constraints and branch validation', () => {
+  const { validateValue, object } = require('../bin/shared-kernel/argument-schema');
+  const constrained = { type: 'integer', minimum: 1, anyOf: [{ const: 0 }, { const: 1 }] };
+  const other = { type: 'string', minLength: 1 };
+  const branches = [
+    object({ operation: { const: 'first' }, value: constrained }, ['operation', 'value']),
+    object({ operation: { const: 'second' }, value: other }, ['operation', 'value']),
+    object({ operation: { const: 'third' }, value: constrained }, ['operation', 'value']),
+  ];
+  const snapshot = structuredClone(branches);
+  const schema = variants('operation', branches);
+  assert.deepEqual(schema.properties.value, { anyOf: [constrained, other] });
+  assert.deepEqual(schema.anyOf, snapshot);
+  assert.deepEqual(branches, snapshot);
+  for (const value of [{ operation: 'first', value: 1 }, { operation: 'second', value: 'other' }, { operation: 'third', value: 1 }]) {
+    assert.doesNotThrow(() => validateValue(value, schema));
+  }
+  for (const value of [{ operation: 'first', value: 0 }, { operation: 'second', value: 1 }, { operation: 'third', value: 'other' }]) {
+    assert.throws(() => validateValue(value, schema), { code: 'invalid_argument', field: 'value' });
+  }
+});
 
 for (const item of invalidCases()) {
   test(`command contract rejects ${item.name} with an actionable field`, () => {

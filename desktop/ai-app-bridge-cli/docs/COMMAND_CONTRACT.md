@@ -8,11 +8,21 @@ remains useful for observation, interaction, fixture setup and diagnosis.
 
 ## Discovery and entrypoints
 
-MCP exposes exactly `capabilities` and `run`. Use `capabilities {"command":"tap-text"}`
+MCP exposes exactly `capabilities` and `run`. A default or domain query returns
+a light command directory. Use `capabilities {"command":"tap-text"}`
 for its current `inputSchema`, platform, role and supported entrypoints. Domain
 `execution` contains Intent, Script, runtime lifecycle and device ownership;
 `evidence` contains archive operations.
 `capabilities {"includeOptions":true}` returns every current command schema.
+
+Load only the operation needed for Intent, Script or evidence, for example
+`capabilities {"command":"intent","operation":"start"}`. To inspect an Intent
+action, add the actual platform, provider and action:
+`capabilities {"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}`.
+These filters narrow discovery only; execution still validates against the full
+runtime contract. Intent terminal decisions remain available in the selected
+decision schema. Unsupported operations or scope combinations return an error
+with the offending field. Omit filters to read the complete command contract.
 
 All parameters are under `run.arguments`:
 
@@ -30,7 +40,9 @@ fail with `unexpected_argument`; repeated single-value flags fail with
 `duplicate_argument` before device access, so a later value cannot replace the
 original target. Only `--category` and `--extra` accept repeated values. Parse
 failures return the same JSON error envelope and exit code 1 as validation errors.
-The CLI's `--help` and `--help COMMAND` come from the same registry. All
+The CLI's `--help` and `--help COMMAND` come from the same registry. Help accepts
+the same filters, such as `--help intent --operation decide --platform android
+--provider native --action tap`, without starting a Runtime. All
 registered commands are available through CLI and MCP, including Intent, Script,
 installation, permission dialogs, evidence and Web sessions. Both adapters call
 `runtime-client.js`; one independent `execution-runtime.js` owns the protocol-neutral

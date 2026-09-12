@@ -11,13 +11,12 @@ const serverInstructions = [
   'Intent, Script and individual commands share one runtime across CLI and MCP. Disconnecting a client leaves operations running; explicit task cancel or runtime stop owns cancellation. Platform capabilities do not imply full complex-App acceptance.',
   'Use script status/wait for progress and resultRef; read the final output with script operation=result and the same operationId, including after runtime restart. A completed execution is separate from the business verdict.',
   supportedTargetsText,
-  commandDomainsText,
   discoveryText,
   'Prefer AI App Bridge over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, permissions, or app-level Web evidence.',
   'Always pass packageName for Android app-specific commands. Port only selects the host forwarding port. For iOS, pass bundleId plus deviceId when more than one iPhone is connected.',
   'WDA App actions require the exact deviceId, wdaRunnerBundleId and wdaSessionId. A forwarded wdaUrl selects transport only; discover per-command requirements through capabilities.',
   'For Web Bridge sessions, start the provider, connect the browser SDK, then pass sessionId and targetId when needed.',
-  'Use freeze-app/thaw-app only as an optional stabilization control for dynamic or transient screens: thaw before reads/actions/captures, freeze after evidence capture only when it helps reasoning, and thaw before the next operation or before finishing so the app is not left frozen.',
+  'Freeze only when needed to stabilize evidence; thaw before further work and before finishing.',
 ].join(' ');
 const mcpHelpText = `Usage: ai-app-bridge-mcp [--help]
 
@@ -40,7 +39,8 @@ Target ids:
   Web Bridge commands use sessionId; add targetId for multi-target pages.
 
 Examples:
-  capabilities { "domain": "webview", "includeOptions": true }
+  capabilities { "domain": "webview" }
+  capabilities { "command": "intent", "operation": "start" }
   run { "command": "screenshot", "arguments": { "packageName": "com.example.app" } }
   run { "command": "web-session-start", "arguments": { "webPort": 18180 } }
 `;
@@ -239,9 +239,13 @@ function negotiateProtocolVersion(requestedVersion) {
 
 function toolDefinitions() {
   return [
-    { name: 'capabilities', description: 'Discover commands and their exact argument schemas. Include options or select one command for the complete contract.',
+    { name: 'capabilities', description: 'Discover a light command directory, then request one command and operation. For intent decide, narrow by the actual platform, provider and action. Omit filters for the full command schema; includeOptions:true explicitly expands a directory.',
       inputSchema: { type: 'object', additionalProperties: false, properties: {
         domain: { type: 'string' }, command: { type: 'string' }, includeOptions: { type: 'boolean' },
+        operation: { type: 'string', description: 'With command=intent, script or evidence, select one operation.' },
+        platform: { enum: ['android', 'ios', 'web'], description: 'Intent decide schema scope only.' },
+        provider: { enum: ['native', 'uia', 'flutter', 'h5'], description: 'Intent decide schema scope only; must be supported by the selected platform.' },
+        action: { type: 'string', description: 'Intent decide schema scope only, for example tap or inputText.' },
       } } },
     { name: 'run', description: 'Execute a command from capabilities. All command parameters, including target identity, belong in arguments.',
       inputSchema: { type: 'object', additionalProperties: false, required: ['command'], properties: {

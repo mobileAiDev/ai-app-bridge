@@ -1,6 +1,6 @@
 {
   "name": "@mobileaidev/ai-app-bridge-web",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Browser SDK for AI App Bridge Web sessions.",
   "main": "src/index.js",
   "browser": "src/index.js",

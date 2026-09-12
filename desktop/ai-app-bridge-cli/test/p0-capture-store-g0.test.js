@@ -79,10 +79,11 @@ class ManualTimers {
 }
 
 test('G0 Android capture contract stays platform-specific', () => {
+  const version = require('../package.json').version;
   const gradle = readRepo('android/ai-app-bridge-android/build.gradle.kts');
-  assert.match(gradle, /version = "0\.3\.0-rc\.1"/);
+  assert.equal(gradle.match(/^version = "([^"]+)"/m)?.[1], version);
   const source = readRepo(contract.android.source);
-  assert.match(source, /private const val bridgeVersion = "0\.3\.0-rc\.1"/);
+  assert.equal(source.match(/private const val bridgeVersion = "([^"]+)"/)?.[1], version);
   assert.match(source, /CountCaps\(logs = 300, network = 200, events = 300, state = 200\)/);
   assert.equal(source.includes('logEntries'), false);
   assert.equal(source.includes('networkEntries'), false);

@@ -16,14 +16,17 @@ const jsonObject = { type: 'object', additionalProperties: true, description: 'A
 const array = (items, minItems = 0, maxItems = 1000) => ({ type: 'array', items, minItems, maxItems });
 
 function variants(tag, branches) {
-  const properties = {};
+  const choices = {};
   for (const branch of branches) {
     for (const [name, rule] of Object.entries(branch.properties)) {
-      const prior = properties[name];
-      if (!prior) properties[name] = rule;
-      else if (JSON.stringify(prior) !== JSON.stringify(rule)) properties[name] = { anyOf: [prior, rule] };
+      choices[name] ||= new Map();
+      choices[name].set(JSON.stringify(rule), rule);
     }
   }
+  const properties = Object.fromEntries(Object.entries(choices).map(([name, choices]) => {
+    const rules = [...choices.values()];
+    return [name, rules.length === 1 ? rules[0] : { anyOf: rules }];
+  }));
   properties[tag] = { type: 'string', enum: [...new Set(branches.flatMap(branch => branch.properties[tag].enum || [branch.properties[tag].const]))] };
   return { ...object(properties, [tag]), anyOf: branches };
 }

@@ -1,4 +1,14 @@
-# 0.3.0 工程收尾与发布交接
+# 工程收尾与发布交接
+
+## 0.3.1：按需说明与 Reader 接入
+
+本轮按用户要求统一 CLI、Android SDK/插件、iOS、Flutter、Web 为 `0.3.1`。核心改动是 CLI/MCP 精简命令目录、按 operation/platform/provider/action 读取合同，以及随包 skill 的按需文档指引。SDK 执行行为沿用 0.3.0，仅同步版本与固定依赖；中文 README 的旧 rc.1 接入示例也已更新。
+
+Reader 使用公开 0.3.0 Android SDK/插件构建安装后，完成实际正文、目录、设置、返回书架和章节恢复的 Intent 验证；由观察形成的 Script 完成 42 次 Host 调用、22 项设备断言，终态耗时 19.005 秒，持久结果可读取。Native 点击关联的手机事件查询为 committed、gap=false。首次脚本的菜单状态错误和早前书源/前台中断记录保留，不归入成功。范围是这条已观察业务流程，并非 Reader 全 App 回归。
+
+本机 `evidence-driven-qa` 缩为 20 行；本轮 Reader 未使用该 skill。`ai-app-bridge-use` 的本机、仓库与 npm 随包版本对齐，保留关键合同，细节按需查询。完整检查首轮 1264 项中的 1263 项通过；一处版本断言仍写死 rc.1，改为核对 CLI/Android 实际版本一致后，受影响 87 项全部通过。
+
+打包、协议与公开发布记录统一保存于 `build/ai_app_bridge_artifacts/publish-031-20260912-01/`；外部发布成功以该目录的实际查询结果为准。Reader 原始记录位于其仓库 `build/ai_app_bridge_artifacts/reader-bridge-030/`。本次不重启既定全平台验收矩阵，原未完成范围继续保留。
 
 ## 正式版 0.3.0 与默认入口
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Aligns Android and iOS runtime versions with the coordinated Bridge `0.3.1` release.
+- Keeps Flutter execution behavior unchanged; the coordinated release adds on-demand CLI/MCP command discovery and updated Agent guidance.
+
 ## 0.3.0
 
 - Releases the managed Intent and Script integration and observed-target contracts as a stable package.

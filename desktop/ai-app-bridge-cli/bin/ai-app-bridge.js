@@ -2,7 +2,8 @@
 'use strict';
 
 const { CommandError, commandFailure } = require('./command-errors');
-const { commandDefinitions, isolatedCommandDefinitions, commandSchema, parseCliOptions } = require('./command-registry');
+const { commandDefinitions, isolatedCommandDefinitions, parseCliOptions } = require('./command-registry');
+const { commandInputSchema } = require('./command-discovery');
 const { encodeReply } = require('./runtime-protocol');
 const runtime = require('./runtime-client');
 
@@ -18,6 +19,8 @@ ${[...isolatedCommandDefinitions, ...commandDefinitions].map(d => `  ${d.command
   help                   Show this help.
 
 Use --help <command> to inspect its JSON input schema.
+For intent/script/evidence, add --operation to read only that operation.
+Intent decide also accepts --platform, --provider and --action schema filters.
 CLI flags use kebab-case, for example --package-name, --tap-x, --timeout-ms.
 Objects, arrays, nullable objects and Script decisions use JSON flag values.
 Only --category and --extra repeat as individual strings.
@@ -38,7 +41,9 @@ async function main() {
     command = parsed.command;
     if (parsed.options.help || command === 'help') {
       const name = command === 'help' ? '' : command;
-      process.stdout.write(name ? `${JSON.stringify(commandSchema(name), null, 2)}\n` : `${helpText}\n`);
+      const { help, ...filters } = parsed.options;
+      if (!name && Object.keys(filters).length) throw new CommandError('invalid_argument', 'Schema filters require a command after --help.', { field: Object.keys(filters)[0] });
+      process.stdout.write(name ? `${JSON.stringify(commandInputSchema(name, filters), null, 2)}\n` : `${helpText}\n`);
       return;
     }
     command ||= 'status';

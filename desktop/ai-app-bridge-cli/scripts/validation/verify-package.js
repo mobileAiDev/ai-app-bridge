@@ -65,6 +65,17 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     await client.initialize();
     const tools = (await client.request('tools/list', {})).result.tools.map(item => item.name);
     assert.deepEqual(tools, ['capabilities', 'run']); report.tools = tools;
+    const directory = payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: {} }));
+    assert(Object.values(directory.domains).flat().every(item => !Object.hasOwn(item, 'inputSchema')));
+    const selection = { command: 'intent', operation: 'decide', platform: 'android', provider: 'native', action: 'tap' };
+    const selected = payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: selection }));
+    assert.equal(selected.ok, true); assert.equal(selected.inputSchema.properties.operation.const, 'decide');
+    const selectedHelp = execFileSync(process.execPath, [path.join(installed, 'bin/ai-app-bridge.js'), '--help', 'intent',
+      '--operation', 'decide', '--platform', 'android', '--provider', 'native', '--action', 'tap'], { cwd: install, env, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(selectedHelp), selected.inputSchema);
+    report.progressiveDiscovery = { selection: selected.selection, sharedCliMcpSchema: true,
+      directoryBytes: Buffer.byteLength(JSON.stringify(directory)), selectedHelpBytes: Buffer.byteLength(selectedHelp) };
+    write('selected-capabilities.json', selected);
     const capabilities = payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: { includeOptions: true } }));
     const commands = Object.values(capabilities.domains).flat(); report.commandCount = commands.length;
     assert(commands.length > 0); assert.equal(commands.some(item => item.command === 'batch'), false);

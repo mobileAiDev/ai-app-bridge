@@ -1,8 +1,8 @@
 # Authoring a code Script
 
 This describes the current `aab.code-script/v1` implementation. Discover the
-running server's command allowlist with `capabilities({command:"script"})` and
-each command's arguments with `capabilities({command: name, includeOptions:true})`.
+running server's command allowlist and start contract with
+`capabilities({command:"script", operation:"start"})`, and each device command's arguments with `capabilities({command: name})`.
 An installed server can differ from a development checkout.
 
 ## Start and observe

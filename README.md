@@ -29,7 +29,7 @@ Phone-side `logs` / `network` / `state` / `events` live in `MobileCaptureStore`.
 
 Command domains: `core` (status, UI observations and capture), `app` (installation, lifecycle and permissions), `action`, `flutter`, `webview`, `ios`, `web`, `diagnostics`, `execution` (`intent`, `script`, `runtime`, `device-ownership`), `evidence`, and `advanced` (UIA runtime control and port forwarding).
 
-The default MCP surface is compact: call `capabilities` to discover domains, commands, and options, then call `run` with the chosen command.
+Default `capabilities` returns a light command directory. Request `command` and `operation` for the needed contract; Intent decide can also narrow by `platform`, `provider` and `action`. CLI `--help` supports the same filters. Execute with `run`.
 
 CLI and MCP use the same independent local execution runtime and command contracts. Intent, Script, installation and permission operations can be started from either client and continued by operation ID from the other. Client exit leaves tasks running; use task `cancel` or `runtime --operation stop` for explicit shutdown.
 
@@ -37,7 +37,7 @@ CLI and MCP use the same independent local execution runtime and command contrac
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
 - Android and iOS `logs` / `network` / `state` / `events` use phone-side persistent storage. `history:true` reads retained phone facts while connected; Host stores execution/observation evidence separately. Web capture is committed to the Host FactStore at ingress. Check refs, target, epoch, coverage and retention for each query.
 
-The coordinated `0.3.0` release covers the CLI, Android SDK/plugin, Flutter,
+The coordinated `0.3.1` release covers the CLI, Android SDK/plugin, Flutter,
 Web and iOS source tag. npm packages use the default `latest` dist-tag; Flutter
 uses the default stable pub.dev release. Local build and publication order are in [the release guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
 Script is optional. Execution completion, code assertions and
@@ -114,7 +114,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.1")
 }
 ```
 
@@ -147,7 +147,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.1"
 }
 
 aiAppBridge {
@@ -162,7 +162,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.1")
 ```
 
 Start the runtime once in the debug app process:
@@ -178,7 +178,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.0
+npm install -g @mobileaidev/ai-app-bridge@0.3.1
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -193,7 +193,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.0
+  ai_app_bridge_flutter: 0.3.1
 ```
 
 Initialize once:
@@ -256,7 +256,7 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 ### Install the MCP server
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.0
+npm install -g @mobileaidev/ai-app-bridge@0.3.1
 ```
 
 Add this MCP server to your AI agent, model client, or IDE MCP config.
