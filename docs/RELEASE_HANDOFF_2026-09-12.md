@@ -1,5 +1,13 @@
 # 0.3.0 候选工程收尾与发布交接
 
+## rc.3 发布更新
+
+当前统一发行候选为 **`0.3.0-rc.3`**。[JitPack 的 rc.2 构建](https://jitpack.io/com/github/mobileAiDev/ai-app-bridge/0.3.0-rc.2/build.log)通过 G8 后，Lint 发现 `LocalServerSocket.use` 的隐式 `Closeable` 转换要求 API 28，而 SDK 保留 minSdk 19。rc.3 改用 `try/finally`：服务继续在 `try` 中接收连接，仅在循环退出或异常时关闭 socket，保持原有资源生命周期。版本和依赖同步为 rc.3。
+
+本机完整 `clean build publishToMavenLocal` 通过（1 分 31 秒、100 个任务），包含 Android Debug/Release 各 185 项和插件 6 项检查。为兼容本机已安装 SDK 37，仅本次命令指定 Lint 9.3.2；没有改写仓库 Lint 配置、提高 minSdk 或屏蔽诊断。发布后的 JitPack 仍按仓库原配置独立构建。相关包、构建和远端验证记录位于 `build/ai_app_bridge_artifacts/publish-20260912-03/`。
+
+以下 rc.2/rc.1 为原始发布尝试记录，其 tag 和已发布 npm 包保持不可变。当前接入统一使用[发行说明](../desktop/ai-app-bridge-cli/docs/RELEASE.md)中的 rc.3 坐标，原业务验收边界不变。
+
 ## rc.2 发布更新
 
 当前统一发行候选为 **`0.3.0-rc.2`**。首次实际发布已推送 `0.3.0-rc.1` tag，并将 CLI `0.3.0-rc.1` 发布到 npm `next`；从 registry 下载的包与本文最终 `d2ab5888…` 包完全相同。

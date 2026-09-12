@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.3.0-rc.2"
+    private const val bridgeVersion = "0.3.0-rc.3"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     @Volatile
@@ -1026,12 +1026,15 @@ object AiAppBridge {
             executor.execute {
                 try {
                     writeEndpointState(ok = false, error = "starting")
-                    LocalServerSocket(socketName).use { serverSocket ->
+                    val serverSocket = LocalServerSocket(socketName)
+                    try {
                         writeEndpointState(ok = true, error = null)
                         Log.i(tag, "AI app bridge listening on localabstract:$socketName")
                         while (!Thread.currentThread().isInterrupted) {
                             handleClient(serverSocket.accept())
                         }
+                    } finally {
+                        serverSocket.close()
                     }
                 } catch (error: Throwable) {
                     Log.w(tag, "AI app bridge stopped", error)

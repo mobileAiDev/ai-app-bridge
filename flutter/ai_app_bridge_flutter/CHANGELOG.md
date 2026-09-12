@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0-rc.3
+
+- Aligns the Android debug runtime with the `0.3.0-rc.3` Bridge candidate.
+- Includes the Android SDK server socket cleanup fix for devices below API 28.
+
 ## 0.3.0-rc.2
 
 - Aligns the Android debug runtime with the `0.3.0-rc.2` Bridge candidate build.

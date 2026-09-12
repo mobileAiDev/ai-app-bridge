@@ -7,7 +7,7 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This release candidate is `0.3.0-rc.2`, distributed through the npm `next`
+This release candidate is `0.3.0-rc.3`, distributed through the npm `next`
 dist-tag. Install this exact version or `@next` to use the candidate Script/Intent
 and capture contracts below; `@latest` remains the previous stable release.
 The supported Node range is `>=26.3.0 <27`; this candidate was checked on 26.3.0.
@@ -56,7 +56,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # After candidate publication; see docs/RELEASE.md for local packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.2
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.3
 
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample

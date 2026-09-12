@@ -14,10 +14,10 @@ Add the Flutter package. The plugin's Android debug variant automatically includ
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.0-rc.2
+  ai_app_bridge_flutter: 0.3.0-rc.3
 ```
 
-This checkout is the `0.3.0-rc.2` candidate. The matching Android runtime and
+This checkout is the `0.3.0-rc.3` candidate. The matching Android runtime and
 Gradle plugin must be available from JitPack before publishing this Flutter
 version; a local path integration does not prove the public coordinate exists.
 The iOS sources and C store are included in the Flutter package. Flutter's own
