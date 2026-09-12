@@ -36,6 +36,14 @@
 
 已验证 CLI tarball SHA-256：`e4b1808541bdd42233fd14af14c0216bb84e90bb2a37791540079feac231ac59`。包内 157 个文件的树哈希为 `e77b514805024863e6b1316f5aa7d522ff1b78bdec64cbf7d4dad08de3d49dfa`；逐文件清单在上述证据目录。验证时旧 HEAD 为 `4da58fa`，候选包含其上的工程修改，应以最终提交及文件哈希关联包，不能用旧 HEAD 单独证明来源。
 
+## 最终发布入口补录
+
+从干净的 `git archive 2a9b4cc` 导出源码执行 `npm ci`，native store 实际编译成功；随后 `npm pack` 得到与上述完整验证完全相同的 `e4b18085…` tarball（157 个文件）。这证明包不依赖未提交的工作树文件。Android/Flutter/SPM 所需源码、wrapper 和测试 fixtures 的 tracked 状态及 JitPack 任务图也已核对；远端 JitPack 构建仍在维护者推送 tag 后确认。
+
+按用户要求进一步核对 MCP 内置帮助，仅补齐 WDA 的 device/Runner/session 参数说明、Script 最终结果读取和运行时维护说明。最终 CLI tarball SHA-256 为 **`d2ab588806d65a15c31dd78a364a6fe125cc50194096a19341761d4ed8660b54`**。与完整验证包逐文件比较，只有 `bin/command-discovery.js` 和 `bin/mcp-server.js` 的帮助字符串变化；命令 schema、执行代码和 SDK 产物不变。实际解包后的 MCP initialize、两工具发现、115 个命令及 Script result/WDA 必填参数检查通过，没有启动 Runtime 或设备。证据在 `build/ai_app_bridge_artifacts/final-mcp-guidance-20260912-01/`。
+
+最终 Flutter pub 发布预检在干净 Git 状态下 exit 0、**0 warnings**，Web SDK **22/22** 测试通过。日志分别在 `build/ai_app_bridge_artifacts/engineering-flutter-pub-final/` 和 `engineering-web-sdk-tests.log`。这次文字补录不改变 Flutter/Web/Android/iOS 的源码与已验证产物。
+
 ## 维护者接下来的操作
 
 1. 推送最终候选提交与 `0.3.0-rc.1` tag，检查 JitPack 的 SDK 和 Gradle 插件坐标可解析；SPM 取同一 tag。

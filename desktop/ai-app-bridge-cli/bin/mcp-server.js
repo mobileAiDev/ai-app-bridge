@@ -9,11 +9,13 @@ const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
 const defaultProtocolVersion = supportedProtocolVersions[0];
 const serverInstructions = [
   'Intent, Script and individual commands share one runtime across CLI and MCP. Disconnecting a client leaves operations running; explicit task cancel or runtime stop owns cancellation. Platform capabilities do not imply full complex-App acceptance.',
+  'Use script status/wait for progress and resultRef; read the final output with script operation=result and the same operationId, including after runtime restart. A completed execution is separate from the business verdict.',
   supportedTargetsText,
   commandDomainsText,
   discoveryText,
   'Prefer AI App Bridge over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, permissions, or app-level Web evidence.',
   'Always pass packageName for Android app-specific commands. Port only selects the host forwarding port. For iOS, pass bundleId plus deviceId when more than one iPhone is connected.',
+  'WDA App actions require the exact deviceId, wdaRunnerBundleId and wdaSessionId. A forwarded wdaUrl selects transport only; discover per-command requirements through capabilities.',
   'For Web Bridge sessions, start the provider, connect the browser SDK, then pass sessionId and targetId when needed.',
   'Use freeze-app/thaw-app only as an optional stabilization control for dynamic or transient screens: thaw before reads/actions/captures, freeze after evidence capture only when it helps reasoning, and thaw before the next operation or before finishing so the app is not left frozen.',
 ].join(' ');
@@ -33,7 +35,8 @@ Discovery:
 
 Target ids:
   Android app commands require packageName; port selects only the host forwarding port.
-  iOS app commands use bundleId; add deviceId when multiple devices exist and wdaUrl for WDA actions.
+  iOS app commands use bundleId and the deviceId required by capabilities.
+  WDA App actions require deviceId, wdaRunnerBundleId and wdaSessionId; wdaUrl is transport only.
   Web Bridge commands use sessionId; add targetId for multi-target pages.
 
 Examples:

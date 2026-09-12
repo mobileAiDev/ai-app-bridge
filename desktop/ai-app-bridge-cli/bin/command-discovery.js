@@ -10,17 +10,17 @@ const supportedTargets = [
   'desktop Web Bridge sessions',
 ];
 const commandDomains = {
-  execution: 'intent for observed decisions; script for repeatable local code with progress, cancellation and assertions',
+  execution: 'intent for observed decisions; script for repeatable local code with progress, persisted results and assertions; runtime and device-ownership controls',
   evidence: 'export and verify retained execution evidence',
   core: 'status, tree, uia-tree, screenshot, logs, network, state, events',
   app: 'install-apk, clear-app-data, launch-*, freeze-app/thaw-app, permission-*, appops-set',
   action: 'tap, tap-text, tap-uia, tap-uia-text, input-text, swipe, keyevent, wait-text, keyboard-state, hide-keyboard',
   flutter: 'flutter-tree, flutter-nodes, flutter-action, tap/input/scroll Flutter controls',
   webview: 'h5-*, flutter-h5-*, webview-pages, webview-network, webview-console',
-  ios: 'ios-devices, ios-doctor, ios-setup, ios runtime evidence, ios-uia-tree/tap/input/swipe, ios-h5-*, ios-flutter-*',
+  ios: 'ios-devices, ios-doctor, ios-setup, ios runtime evidence, ios-uia-tree, ios-tap/ios-input/ios-swipe, ios-h5-*, ios-flutter-*',
   web: 'web-session-start, web-sessions, web-status, web-dom, web-logs, web-network, web-state, web-events, web-command, web-click, web-input, web-wait, web-scroll',
   diagnostics: 'logcat',
-  advanced: 'forward, remove-forward',
+  advanced: 'uia-runtime maintenance, forward, remove-forward',
 };
 const supportedTargetsText = `AI App Bridge supports ${supportedTargets.join('; ')}.`;
 const commandDomainsText = `Command domains: ${Object.entries(commandDomains).map(([domain, summary]) => `${domain}(${summary})`).join('; ')}.`;
