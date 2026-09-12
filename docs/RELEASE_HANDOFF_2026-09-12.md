@@ -1,5 +1,13 @@
 # 工程收尾与发布交接
 
+## 0.3.2：保留失败记录后重建
+
+用户指定统一升级到 `0.3.2`，保留 0.3.1 的失败记录并以新版本重新构建。0.3.2 相对 0.3.1 仅调整各端版本、固定依赖与发行说明，按需发现和 skill 实现不变。
+
+0.3.1 的 npm CLI/Web 已发布；Android JitPack 首轮 185 项 Release JVM 检查中的 184 项通过，`G8RecordOverheadBenchTest` 的 p95 ≤ 1 ms 断言失败，日志保存在 `publish-031-20260912-01/jitpack/first-build-failed.log`。同一源码单项本机复核通过，四种 record 的 p95 为 0.061542 / 0.144166 / 0.059209 / 0.026459 ms；该复核不能替代远端构建。阈值和执行实现均保留。
+
+0.3.2 先完成 Android 公开构建，再发布其余渠道。新产物与实际查询记录放在 `build/ai_app_bridge_artifacts/publish-032-20260912-01/`。0.3.1 的证据、Git tag 和 npm 包保持原样；Flutter 0.3.1 未发布。以下按需说明与 Reader 验证结果继续适用于本补丁。
+
 ## 0.3.1：按需说明与 Reader 接入
 
 本轮按用户要求统一 CLI、Android SDK/插件、iOS、Flutter、Web 为 `0.3.1`。核心改动是 CLI/MCP 精简命令目录、按 operation/platform/provider/action 读取合同，以及随包 skill 的按需文档指引。SDK 执行行为沿用 0.3.0，仅同步版本与固定依赖；中文 README 的旧 rc.1 接入示例也已更新。
