@@ -4,11 +4,11 @@
 
 ## 2026-09-12 样本收敛与当前顺序
 
-用户最新裁决：验收用于验证 Bridge 能力与代码；主开发停止不断扩展、重复 App 回归，先完成工程收尾，测试可交给其他 Agent。用户准备在全部收尾后自行推送代码和发布新版依赖。
+用户最新裁决：验收用于验证 Bridge 能力与代码；主开发停止不断扩展、重复 App 回归，先完成工程收尾，测试可交给其他 Agent。用户已授权发布，并要求所有默认入口切换到正式版 `0.3.0`。
 
-[整体收尾审查](ENGINEERING_CLOSEOUT_REVIEW_2026-09-12.md)的 E1–E5 已完成工程收尾：完整 Script result 持久读取、Flutter H5 目标绑定、Intent 动作预算、根 SPM/Android/Flutter/CLI 发行接线及公共文档均已处理。候选版本为 `0.3.0-rc.3`，验证与包身份见[发布交接](RELEASE_HANDOFF_2026-09-12.md)。
+[整体收尾审查](ENGINEERING_CLOSEOUT_REVIEW_2026-09-12.md)的 E1–E5 已完成工程收尾：完整 Script result 持久读取、Flutter H5 目标绑定、Intent 动作预算、根 SPM/Android/Flutter/CLI 发行接线及公共文档均已处理。当前发行版本为 `0.3.0`，验证与包身份见[发布交接](RELEASE_HANDOFF_2026-09-12.md)。
 
-当前只剩维护者推送/候选发布、发布后来源检查，以及固定业务验收交接。主开发不再从 E1 或基础矩阵重新开一轮；只处理后续有具体证据的 Bridge 缺陷。原四 App、现有 iOS 原生/H5/Flutter及跨设备剩余范围仍保留，不能把移交写成通过。
+当前发布工作将 GitHub main、npm latest/next、pub.dev 稳定版和 Android/iOS 坐标统一到 `0.3.0`，完成来源核验后交接固定业务验收。主开发不再从 E1 或基础矩阵重新开一轮；只处理后续有具体证据的 Bridge 缺陷。原四 App、现有 iOS 原生/H5/Flutter及跨设备剩余范围仍保留，不能把移交写成通过。
 
 Wikipedia 07 仍为 failed：69.131 秒，新增收藏与文章关联正确，但独立核验时下载仍在排队。最新 Script 将核验移到实际下载就绪之后，源码已冻结且尚未执行。新四 App 组合接线也尚未执行。临时收藏已从原 UI 删除，独立 SQLite 确认恢复原默认收藏；现场与离线 Runtime 均已停止。详见[收尾审查与交接状态](ENGINEERING_CLOSEOUT_REVIEW_2026-09-12.md)。
 

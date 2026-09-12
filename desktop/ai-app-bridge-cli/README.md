@@ -7,10 +7,10 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This release candidate is `0.3.0-rc.3`, distributed through the npm `next`
-dist-tag. Install this exact version or `@next` to use the candidate Script/Intent
-and capture contracts below; `@latest` remains the previous stable release.
-The supported Node range is `>=26.3.0 <27`; this candidate was checked on 26.3.0.
+This release is `0.3.0`, distributed through the npm `latest` dist-tag.
+The default installation includes the Script/Intent and capture contracts below.
+The `next` dist-tag also points to this release until a newer candidate is published.
+The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
 See [the release guide](docs/RELEASE.md) for local packaging and coordinated publication.
 
 AI App Bridge CLI/MCP supports Android native apps, Android WebView/H5/CDP,
@@ -55,8 +55,8 @@ MCP exposes exactly two tools: call `capabilities` to discover
 domains, commands, and options, then call `run` with the selected command.
 
 ```bash
-# After candidate publication; see docs/RELEASE.md for local packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.3
+# Install the current stable release; see docs/RELEASE.md for packaging.
+npm install -g @mobileaidev/ai-app-bridge@0.3.0
 
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
@@ -264,7 +264,7 @@ describes hashes, source binding, retention and the excluded external payloads.
 - `committed` means that the fact writer has made the record readable. The
   mobile store uses group flushing; this does not promise survival of an
   arbitrary power loss before flush. Cold disk reads and cache performance
-  are measured separately; this candidate has not passed the old hot-query
+  are measured separately; this release has not passed the old hot-query
   latency target on all devices and retained-store sizes.
 
 Script defaults to `restartPolicy: "none"`. Opt into `"checkpoint"` only for

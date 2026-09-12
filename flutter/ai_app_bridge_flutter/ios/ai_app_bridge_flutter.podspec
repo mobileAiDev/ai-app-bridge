@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'ai_app_bridge_flutter'
-  s.version          = '0.3.0-rc.3'
+  s.version          = '0.3.0'
   s.summary          = 'Debug-only Flutter bridge for AI app inspection and control.'
   s.description      = <<-DESC
 AI App Bridge Flutter exposes Flutter widget snapshots, runtime actions,

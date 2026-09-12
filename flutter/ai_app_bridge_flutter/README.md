@@ -10,16 +10,23 @@ actions also appear under the `ios` domain (`ios-flutter-*`).
 
 ## Install
 
-Add the Flutter package. The plugin's Android debug variant automatically includes the Android runtime that starts the bridge server on the device. The iOS plugin starts the Swift runtime from the app process. Release builds should not expose the debug runtime automatically.
+Install the stable Flutter package from pub.dev:
+
+```sh
+flutter pub add ai_app_bridge_flutter
+```
+
+To pin this release, use:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.0-rc.3
+  ai_app_bridge_flutter: 0.3.0
 ```
 
-This checkout is the `0.3.0-rc.3` candidate. The matching Android runtime and
-Gradle plugin must be available from JitPack before publishing this Flutter
-version; a local path integration does not prove the public coordinate exists.
+The plugin's Android debug variant includes the `0.3.0` Android runtime from
+JitPack and starts the bridge server on the device. The iOS plugin starts the
+Swift runtime from the app process. Release builds should not expose the debug
+runtime automatically.
 The iOS sources and C store are included in the Flutter package. Flutter's own
 Swift Package Manager integration supplies its generated `FlutterFramework`
 package; native iOS consumers use the separate repository-root Swift package.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Releases the managed Intent and Script integration and observed-target contracts as a stable package.
+- Aligns the Android debug runtime with Bridge `0.3.0`, including the server socket cleanup fix for devices below API 28.
+- Includes the iOS Swift runtime and C persistent-store sources for CocoaPods and Flutter Swift Package Manager integration.
+
 ## 0.3.0-rc.3
 
 - Aligns the Android debug runtime with the `0.3.0-rc.3` Bridge candidate.
