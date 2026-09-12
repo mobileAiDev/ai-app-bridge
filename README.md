@@ -37,10 +37,9 @@ CLI and MCP use the same independent local execution runtime and command contrac
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
 - Android and iOS `logs` / `network` / `state` / `events` use phone-side persistent storage. `history:true` reads retained phone facts while connected; Host stores execution/observation evidence separately. Web capture is committed to the Host FactStore at ingress. Check refs, target, epoch, coverage and retention for each query.
 
-This working tree prepares the coordinated `0.3.0-rc.1` candidate for the CLI,
-Android SDK/plugin, Flutter, Web and iOS source tag. It has not been published.
-The versioned installation examples below apply after publication; local build
-and publication order are in [the release guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
+The coordinated `0.3.0-rc.2` candidate covers the CLI, Android SDK/plugin,
+Flutter, Web and iOS source tag. Use the exact candidate versions below; npm
+candidates use the `next` dist-tag. Local build and publication order are in [the release guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
 Script is optional. Execution completion, code assertions and
 device-backed outcomes are separate. See the [candidate contracts and
 migration notes](desktop/ai-app-bridge-cli/README.md#intent-script-and-evidence)
@@ -115,7 +114,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0-rc.1")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0-rc.2")
 }
 ```
 
@@ -148,7 +147,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0-rc.1"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0-rc.2"
 }
 
 aiAppBridge {
@@ -163,7 +162,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0-rc.1")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0-rc.2")
 ```
 
 Start the runtime once in the debug app process:
@@ -179,7 +178,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.2
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -194,7 +193,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.0-rc.1
+  ai_app_bridge_flutter: 0.3.0-rc.2
 ```
 
 Initialize once:
@@ -257,7 +256,7 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 ### Install the MCP server
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.2
 ```
 
 Add this MCP server to your AI agent, model client, or IDE MCP config.

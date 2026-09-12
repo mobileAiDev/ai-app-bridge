@@ -6,7 +6,7 @@
 
 用户最新裁决：验收用于验证 Bridge 能力与代码；主开发停止不断扩展、重复 App 回归，先完成工程收尾，测试可交给其他 Agent。用户准备在全部收尾后自行推送代码和发布新版依赖。
 
-[整体收尾审查](ENGINEERING_CLOSEOUT_REVIEW_2026-09-12.md)的 E1–E5 已完成工程收尾：完整 Script result 持久读取、Flutter H5 目标绑定、Intent 动作预算、根 SPM/Android/Flutter/CLI 发行接线及公共文档均已处理。候选版本为 `0.3.0-rc.1`，验证与包身份见[发布交接](RELEASE_HANDOFF_2026-09-12.md)。
+[整体收尾审查](ENGINEERING_CLOSEOUT_REVIEW_2026-09-12.md)的 E1–E5 已完成工程收尾：完整 Script result 持久读取、Flutter H5 目标绑定、Intent 动作预算、根 SPM/Android/Flutter/CLI 发行接线及公共文档均已处理。候选版本为 `0.3.0-rc.2`，验证与包身份见[发布交接](RELEASE_HANDOFF_2026-09-12.md)。
 
 当前只剩维护者推送/候选发布、发布后来源检查，以及固定业务验收交接。主开发不再从 E1 或基础矩阵重新开一轮；只处理后续有具体证据的 Bridge 缺陷。原四 App、现有 iOS 原生/H5/Flutter及跨设备剩余范围仍保留，不能把移交写成通过。
 

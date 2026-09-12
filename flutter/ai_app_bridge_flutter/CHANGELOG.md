@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0-rc.2
+
+- Aligns the Android debug runtime with the `0.3.0-rc.2` Bridge candidate build.
+- Updates the matching Android SDK's legacy in-memory-view test expectations to its persistent-query contract.
+
 ## 0.3.0-rc.1
 
 - Aligns the Android debug runtime with the `0.3.0-rc.1` Bridge candidate.

@@ -12,9 +12,11 @@ The MCP server defaults to a compact surface with two tools:
 - `run` executes a command from the capability index.
 
 Command domains are `core`, `app`, `action`, `flutter`, `webview`, `ios`,
-`web`, `diagnostics`, and `advanced`. Use `packageName` or explicit `port` for
-Android app commands, `bundleId` plus `deviceId` when needed for iOS commands,
-and `sessionId` plus optional `targetId` for Web Bridge commands.
+`web`, `diagnostics`, and `advanced`. Bind Android app commands with an explicit
+`serial` and `packageName`; an optional Host `port` only selects the transport.
+Bind iOS with `deviceId` and `bundleId`, plus the exact WDA Runner and session
+fields required by the command. Use `sessionId` and the command-specific target
+fields for Web Bridge. Inspect `capabilities` for each command's current schema.
 
 ## Android
 
@@ -36,7 +38,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0-rc.2")
 }
 ```
 
@@ -75,7 +77,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0-rc.2"
 }
 
 aiAppBridge {
@@ -90,7 +92,7 @@ The plugin keeps one public id and chooses the implementation internally: AGP 7+
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", from: "0.2.11")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0-rc.2")
 ```
 
 Start the runtime once from app startup code:

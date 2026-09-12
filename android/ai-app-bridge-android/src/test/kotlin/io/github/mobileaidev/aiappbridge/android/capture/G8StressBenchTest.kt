@@ -2,6 +2,7 @@ package io.github.mobileaidev.aiappbridge.android.capture
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,7 +42,11 @@ class G8StressBenchTest {
         println("G8_HEAP logs ownedBytes=${status.ownedBytes} budgetBytes=${status.budgetBytes} heap10k=$heapAtTenThousand heap100k=$heapAtOneHundredThousand")
         val page = store.query(CaptureQuery(view = "legacy-live", stream = "logs", limit = 200))
         assertEquals(200, page.items.size)
-        assertEquals("partial", page.coverage.status)
+        assertEquals("unavailable", page.coverage.status)
+        assertFalse(page.coverage.committed)
+        assertTrue(page.coverage.gap)
+        assertTrue(page.gap)
+        assertTrue(page.refs.isEmpty())
     }
 
     @Test

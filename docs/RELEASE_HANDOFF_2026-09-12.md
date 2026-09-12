@@ -1,4 +1,16 @@
-# 0.3.0-rc.1 工程收尾与发布交接
+# 0.3.0 候选工程收尾与发布交接
+
+## rc.2 发布更新
+
+当前统一发行候选为 **`0.3.0-rc.2`**。首次实际发布已推送 `0.3.0-rc.1` tag，并将 CLI `0.3.0-rc.1` 发布到 npm `next`；从 registry 下载的包与本文最终 `d2ab5888…` 包完全相同。
+
+[JitPack 的 rc.1 构建](https://jitpack.io/com/github/mobileAiDev/ai-app-bridge/0.3.0-rc.1/build.log)在 185 项 Release JVM 测试中发现一个未迁移的旧断言：`G8StressBenchTest` 对纯内存 `MobileCaptureStore()` 仍期望 `partial`，但当前合同明确返回 `unavailable`、`committed=false`。rc.2 修正此断言并保留全部容量、数量与堆增长检查，补充 gap 和无持久引用检查；各端版本、Android 固定依赖及公开安装示例同步为 rc.2。执行实现保持原有行为，Android 自报版本更新。
+
+rc.2 定向 Android Release JVM 检查及 Gradle 插件检查通过；具体计数见 `jvm-checks.json`。本机完整 `clean build` 被旧 Lint 解析已安装 SDK 37 的 `37.0` 格式阻断，远端完整构建须由新 tag 的 JitPack 日志确认。CLI 包与已发布 rc.1 逐文件比较，仅版本清单、README、发行说明改变，157 个包文件中的执行/SDK 文件完全一致。
+
+rc.1 的公开 tag 和 npm 包保持不可变。以下是 rc.1 工程收尾的原始证据；rc.2 的发布构建、包差异与远端查询记录放在 `build/ai_app_bridge_artifacts/publish-20260912-02/`。原有未完成业务验收范围不变。后续发布与接入采用[当前发行说明](../desktop/ai-app-bridge-cli/docs/RELEASE.md)中的 rc.2 坐标。
+
+## rc.1 原始工程收尾记录
 
 工程开发可以收尾，当前候选版本为 **0.3.0-rc.1**。E1–E5 的代码、依赖接入和公开说明已处理；后续执行既定业务验收，发现具体 Bridge 缺陷再回到开发，不继续扩展 App 或重复未受影响的矩阵。候选发布与正式生产验收分别记录。
 
