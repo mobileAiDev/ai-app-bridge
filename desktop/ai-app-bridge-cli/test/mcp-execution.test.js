@@ -4,10 +4,11 @@ const os = require('os');
 const path = require('path');
 const test = require('node:test');
 
-const { runBridgeChecked } = require('../bin/mcp-server');
+const { runBridgeChecked } = require('../test-support/host-client');
 const { TargetExecution } = require('../bin/target-execution');
-const { FactCache } = require('../bin/fact-cache');
+const { FactCache } = require('../test-support/fact-cache');
 const { FactRecorder } = require('../bin/fact-recorder');
+const { ObservationCollector } = require('../bin/observation-collector');
 
 function payloadOf(result) {
   return JSON.parse(result.content[0].text);
@@ -25,6 +26,30 @@ function nextTurn() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+test('MCP can launch an inactive Android app without an unsolicited SDK connection blocking its transport', async t => {
+  const calls = [];
+  let transportBlocked = false;
+  const rawRunner = async command => {
+    calls.push(command);
+    if (command === 'status') {
+      // Mirrors the physical failure: an inactive SDK connection blocks ADB
+      // while the ordinary launch is preparing its original shell command.
+      transportBlocked = true;
+      return { ok: false, error: 'provider_timeout' };
+    }
+    await new Promise(resolve => setTimeout(resolve, 30));
+    return transportBlocked ? { ok: false, error: 'deadline_exceeded', dispatched: false }
+      : { ok: true, component: 'example.app/.MainActivity', dispatched: true };
+  };
+  const collector = new ObservationCollector({ rawRunner, recordEvidence: async () => {}, recordDeviceLog: async () => {} });
+  collector.start(); t.after(() => collector.stop());
+  const result = payloadOf(await runBridgeChecked('launch-activity', {
+    serial: 'inactive-sdk-phone', packageName: 'example.app', activity: '.MainActivity', feedback: 'off',
+  }, { factRecorder: null, observationCollector: collector, targetExecution: new TargetExecution(), rawRunner }));
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(calls, ['launch-activity']);
+});
+
 function createSqliteCache(t, budgetBytes = 1024 * 1024) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-mcp-execution-'));
   const cache = new FactCache({ directory, budgetBytes });
@@ -35,7 +60,7 @@ function createSqliteCache(t, budgetBytes = 1024 * 1024) {
   return cache;
 }
 
-test('MCP execution uses the in-process target actor and keeps compatibility aliases', async () => {
+test('MCP execution uses the in-process target actor and preserves canonical coordinates', async () => {
   const targetExecution = new TargetExecution();
   const calls = [];
   const dependencies = {
@@ -49,8 +74,8 @@ test('MCP execution uses the in-process target actor and keeps compatibility ali
     serial: 'android-1',
     packageName: 'com.example.app',
     requestId: 'mcp-tap-1',
-    x: 0,
-    y: 0,
+    tapX: 0,
+    tapY: 0,
   };
 
   const first = payloadOf(await runBridgeChecked('tap', args, dependencies));
@@ -70,7 +95,7 @@ test('MCP execution uses the in-process target actor and keeps compatibility ali
   assert.deepEqual(duplicate, first);
 });
 
-test('MCP legacy execution keeps same-serial different-package concurrency', async () => {
+test('MCP legacy execution serializes same-serial different-package mutations', async () => {
   const gate = deferred();
   const starts = [];
   const dependencies = {
@@ -82,12 +107,12 @@ test('MCP legacy execution keeps same-serial different-package concurrency', asy
     },
   };
 
-  const first = runBridgeChecked('tap', {
+  const first = runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.first',
     feedback: 'off',
   }, dependencies);
-  const second = runBridgeChecked('tap', {
+  const second = runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.second',
     feedback: 'off',
@@ -97,7 +122,7 @@ test('MCP legacy execution keeps same-serial different-package concurrency', asy
   try {
     assert.deepEqual(
       new Set(starts),
-      new Set(['com.example.first', 'com.example.second']),
+      new Set(['com.example.first']),
     );
   } finally {
     gate.resolve();
@@ -125,7 +150,7 @@ test('MCP execution preserves an empty input value for clearing a field', async 
 
 test('full feedback promotes a correlated semantic UI change to verified', async () => {
   let eventReads = 0;
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     feedback: 'full',
@@ -158,7 +183,7 @@ test('full feedback promotes a correlated semantic UI change to verified', async
 
 test('full feedback never promotes a failed action even if the UI also changed', async () => {
   let eventReads = 0;
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     feedback: 'full',
@@ -191,7 +216,7 @@ test('full feedback never promotes a failed action even if the UI also changed',
 });
 
 test('MCP execution returns structured failed feedback when an in-process runner throws', async () => {
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     tapX: 1,
@@ -204,13 +229,14 @@ test('MCP execution returns structured failed feedback when an in-process runner
   const payload = payloadOf(result);
   assert.equal(result.isError, true);
   assert.equal(payload.ok, false);
-  assert.equal(payload.error, 'device unavailable');
+  assert.equal(payload.error, 'command_failed');
+  assert.equal(payload.message, 'device unavailable');
   assert.equal(payload._feedback.status, 'failed');
 });
 
 test('MCP execution keeps the legacy operation available while reporting fact-cache initialization failure', async () => {
   let operationCalls = 0;
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     tapX: 4,
@@ -239,20 +265,32 @@ test('MCP execution keeps the legacy operation available while reporting fact-ca
 test('MCP execution keeps live four-stream payload and exposes action facts without copying mobile bodies', async (t) => {
   const cache = createSqliteCache(t);
   const factRecorder = new FactRecorder({ cache, now: () => 20_000 });
+  const calls = [];
+  const rawRunner = async command => {
+    calls.push(command);
+    return { ok: true, items: [{ id: 1, category: 'ui', name: 'ui.changed' }] };
+  };
+  const observationCollector = new ObservationCollector({ rawRunner,
+    recordEvidence: factRecorder.recordEvidence.bind(factRecorder),
+    recordDeviceLog: factRecorder.recordDeviceLog.bind(factRecorder) });
+  observationCollector.start();
+  t.after(() => observationCollector.stop());
   const result = await runBridgeChecked('events', {
     serial: 'android-1',
     packageName: 'com.example.app',
     requestId: 'events-1',
   }, {
     factRecorder,
+    observationCollector,
     targetExecution: new TargetExecution(),
-    rawRunner: async () => ({
-      ok: true,
-      items: [{ id: 1, category: 'ui', name: 'ui.changed' }],
-    }),
+    rawRunner,
   });
 
   const payload = payloadOf(result);
+  assert.deepEqual(calls, ['events']);
+  assert.equal(payload._feedback.observer.target.backgroundPolling, false);
+  assert.equal(payload._feedback.observer.target.lastSuccessAtMs, null);
+  assert.equal(typeof payload._feedback.observer.target.expiresAtMs, 'number');
   assert.equal(payload.items[0].name, 'ui.changed');
   assert.equal(cache.query({ partition: 'ui' }).count, 0);
   assert.equal(cache.query({ partition: 'action' }).count, 1);
@@ -266,7 +304,7 @@ test('MCP execution keeps live four-stream payload and exposes action facts with
   assert.equal(payload._feedback.factCache.mmap.effectiveBytes > 0, true);
 });
 
-test('MCP existing evidence commands can read persisted Web history without calling the live provider', async (t) => {
+test('MCP Web history rejects an unbound request even when unrelated Host history is present', async (t) => {
   const cache = createSqliteCache(t);
   const factRecorder = new FactRecorder({ cache, now: () => 30_000 });
   const args = { sessionId: 'web-1' };
@@ -287,9 +325,10 @@ test('MCP existing evidence commands can read persisted Web history without call
 
   const payload = payloadOf(result);
   assert.equal(liveCalls, 0);
-  assert.equal(payload.items.length, 1);
-  assert.equal(payload.items[0].url, 'https://example.test/');
-  assert.equal(payload._factCache.history, true);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, 'missing_argument');
+  assert.equal(payload.field, 'runtimeEpoch');
+  assert.equal(payload.dispatched, false);
 });
 
 test('MCP registers a persistent observer, links the action, and reports compact observer health', async () => {
@@ -319,10 +358,12 @@ test('MCP registers a persistent observer, links the action, and reports compact
         targetExpirations: 0,
         targets: [{
           ...target,
-          runtimeEpoch: 'runtime-1',
+          runtimeEpoch: null,
           failureCount: 0,
           lastError: null,
-          lastSuccessAtMs: 40_000,
+          backgroundPolling: false,
+          expiresAtMs: 1_840_000,
+          lastSuccessAtMs: null,
           deviceLog: { enabled: true, running: true, buffers: ['main', 'system', 'crash'] },
         }],
         dropped: { deviceLogLines: 0, deviceLogBytes: 0, deviceLogBatches: 0 },
@@ -330,7 +371,7 @@ test('MCP registers a persistent observer, links the action, and reports compact
     },
   };
 
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     tapX: 10,
@@ -357,10 +398,12 @@ test('MCP registers a persistent observer, links the action, and reports compact
     targetExpirations: 0,
     target: {
       key: target.key,
-      runtimeEpoch: 'runtime-1',
+      runtimeEpoch: null,
       failureCount: 0,
       lastError: null,
-      lastSuccessAtMs: 40_000,
+      backgroundPolling: false,
+      expiresAtMs: 1_840_000,
+      lastSuccessAtMs: null,
       deviceLog: { enabled: true, running: true, buffers: ['main', 'system', 'crash'] },
     },
     dropped: { deviceLogLines: 0, deviceLogBytes: 0, deviceLogBatches: 0 },
@@ -393,7 +436,7 @@ test('MCP pre-registers a mutation and carries one generated action id through c
   const executionTimes = [995, 1_000, 1_005, 1_010];
   const targetExecution = new TargetExecution({ now: () => executionTimes.shift() });
 
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     tapX: 10,
@@ -415,7 +458,7 @@ test('MCP pre-registers a mutation and carries one generated action id through c
   assert.equal(calls[2].type, 'noteAction');
   assert.equal(calls[3].type, 'runner');
   assert.equal(notes.length, 3);
-  assert.match(notes[0].actionId, /^mcp-action-/);
+  assert.match(notes[0].actionId, /^host-action-/);
   assert.equal(notes[1].actionId, notes[0].actionId);
   assert.equal(notes[2].actionId, notes[0].actionId);
   assert.equal(Number.isSafeInteger(notes[1].timings.startedAtMs), true);
@@ -436,7 +479,7 @@ test('MCP treats observer failures as degraded feedback without failing the prim
     status() { throw new Error('status unavailable'); },
   };
 
-  const result = await runBridgeChecked('tap', {
+  const result = await runBridgeChecked('tap', { tapX: 1, tapY: 2,
     serial: 'android-1',
     packageName: 'com.example.app',
     tapX: 1,

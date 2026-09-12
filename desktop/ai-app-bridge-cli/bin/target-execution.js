@@ -1,5 +1,12 @@
 'use strict';
 
+const { createHash } = require('node:crypto');
+const { targetIdentity } = require('./shared-kernel/execution-target');
+const { CommandError } = require('./command-errors');
+const { isAndroidMutation, isMutationCommand, executionTimeoutMs } = require('./command-registry');
+const { runExecution, checkExecution, currentExecution, executionFailure } = require('./shared-kernel/execution-scope');
+const { getProcessDeviceMutationLease } = require('./shared-kernel/device-mutation-lease');
+
 class TargetExecution {
   constructor({ requestTtlMs = 5 * 60_000, maxRequests = 2_048, now = Date.now } = {}) {
     if (!Number.isFinite(requestTtlMs) || requestTtlMs < 0) {
@@ -29,19 +36,29 @@ class TargetExecution {
       throw new TypeError('runner must be a function');
     }
 
-    const normalizedArgs = normalizeArgs(args);
+    const normalizedArgs = { ...args };
     const target = targetFor(command, normalizedArgs);
     const requestKey = idempotencyKey(target.key, normalizedArgs.requestId);
+    const requestHash = requestKey === null ? null : requestDigest(command, normalizedArgs);
     this.pruneRequests();
     if (requestKey !== null && this.requests.has(requestKey)) {
-      return this.requests.get(requestKey).promise;
+      const existing = this.requests.get(requestKey);
+      if (existing.requestHash !== requestHash) throw new CommandError('idempotency_conflict',
+        'requestId was already used for a different command or arguments.', { field: 'requestId' });
+      return existing.promise;
     }
 
     const requestedAtMs = this.now();
-    const execution = this.enqueue(target.key, async () => {
+    const deviceMutation = isAndroidMutation(command, normalizedArgs);
+    const queueKey = deviceMutation ? `android-device:${normalizedArgs.serial}`
+      : command === 'web-execution' ? `${target.key}:control`
+      : command === 'web-dom' ? `${target.key}:observation` : target.key;
+    const execution = runExecution({ timeoutMs: executionTimeoutMs(command, normalizedArgs), mutation: isMutationCommand(command, normalizedArgs) }, () => this.enqueue(queueKey, async () => {
       const startedAtMs = this.now();
       try {
-        const legacyResult = await runner(command, normalizedArgs);
+        const legacyResult = deviceMutation
+          ? await getProcessDeviceMutationLease().run(normalizedArgs.serial, () => runner(command, normalizedArgs))
+          : await runner(command, normalizedArgs);
         const completedAtMs = this.now();
         const feedback = buildFeedback({
           command,
@@ -70,10 +87,11 @@ class TargetExecution {
         }
         throw error;
       }
-    });
+    }));
 
     if (requestKey !== null) {
       const request = {
+        requestHash,
         promise: execution,
         settled: false,
         expiresAtMs: Number.POSITIVE_INFINITY,
@@ -106,7 +124,15 @@ class TargetExecution {
 
   enqueue(targetKey, action) {
     const previous = this.targetTails.get(targetKey) || Promise.resolve();
-    const execution = previous.catch(() => undefined).then(action);
+    const scope = currentExecution();
+    let started = false;
+    let abort;
+    const execution = previous.catch(() => undefined).then(() => {
+      started = true;
+      scope?.signal.removeEventListener('abort', abort);
+      checkExecution();
+      return action();
+    });
     this.targetTails.set(targetKey, execution);
     const clearTail = () => {
       if (this.targetTails.get(targetKey) === execution) {
@@ -114,7 +140,13 @@ class TargetExecution {
       }
     };
     execution.then(clearTail, clearTail);
-    return execution;
+    // A queued cancellation may return immediately, but the queue barrier stays
+    // behind the preceding operation. Once dispatched, await actual settlement.
+    return new Promise((resolve, reject) => {
+      abort = () => { if (!started) reject(executionFailure(scope)); };
+      scope?.signal.addEventListener('abort', abort, { once: true });
+      execution.then(resolve, reject).finally(() => scope?.signal.removeEventListener('abort', abort));
+    });
   }
 }
 
@@ -122,18 +154,14 @@ function feedbackEnabled(value) {
   return value !== false && String(value || 'auto').toLowerCase() !== 'off';
 }
 
-function normalizeArgs(args) {
-  const normalized = { ...args };
-  if (normalized.targetText === undefined && Object.prototype.hasOwnProperty.call(args, 'text')) {
-    normalized.targetText = args.text;
+function requestDigest(command, args) {
+  function canonical(value) {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+    return value;
   }
-  if (normalized.tapX === undefined && Object.prototype.hasOwnProperty.call(args, 'x')) {
-    normalized.tapX = args.x;
-  }
-  if (normalized.tapY === undefined && Object.prototype.hasOwnProperty.call(args, 'y')) {
-    normalized.tapY = args.y;
-  }
-  return normalized;
+  const { requestId, ...content } = args;
+  return createHash('sha256').update(JSON.stringify(canonical({ command, arguments: content }))).digest('hex');
 }
 
 function targetFor(command, args) {
@@ -150,8 +178,8 @@ function targetFor(command, args) {
     const deviceId = targetPart(args.deviceId);
     const bundleId = targetPart(args.bundleId);
     return {
-      kind: 'ios',
-      key: targetKey('ios', deviceId, bundleId),
+      kind: 'ios', platform: 'ios',
+      key: targetIdentity({ platform: 'ios', deviceId, bundleId }),
       deviceId,
       bundleId,
     };
@@ -160,10 +188,12 @@ function targetFor(command, args) {
   if (command.startsWith('web-')) {
     const sessionId = targetPart(args.sessionId);
     const targetId = targetPart(args.targetId);
+    const runtimeEpoch = targetPart(args.runtimeEpoch);
     return {
-      kind: 'web',
-      key: targetKey('web', sessionId, targetId),
+      kind: 'web', platform: 'web',
+      key: targetIdentity({ platform: 'web', sessionId, runtimeEpoch, targetId }),
       sessionId,
+      runtimeEpoch,
       targetId,
     };
   }
@@ -171,8 +201,8 @@ function targetFor(command, args) {
   const serial = targetPart(args.serial);
   const packageName = targetPart(args.packageName);
   return {
-    kind: 'android',
-    key: targetKey('android', serial, packageName),
+    kind: 'android', platform: 'android',
+    key: targetIdentity({ platform: 'android', serial, packageName }),
     serial,
     packageName,
   };
@@ -241,6 +271,5 @@ function appendFeedback(legacyResult, feedback) {
 
 module.exports = {
   TargetExecution,
-  normalizeArgs,
   targetFor,
 };

@@ -19,7 +19,7 @@ function codeScript() {
     name: 'p7-route',
     language: 'javascript',
     source: SOURCE,
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     policy: { restartPolicy: 'checkpoint' },
   };
 }
@@ -62,20 +62,20 @@ test('P7 post-delete route rejects old steps payloads', async () => {
     operation: 'start',
     yaml: 'name: old\nsteps:\n  - id: o1\n    type: observe\n',
   }, blocked);
-  assert.equal(yamlStart.error, 'script_format_removed');
+  assert.equal(yamlStart.error, 'invalid_script');
 
   const sourceStart = await handleCodeOrRemoved({
     operation: 'start',
     source: 'name: old\nsteps:\n  - id: o1\n    type: observe\n',
   }, blocked);
-  assert.equal(sourceStart.error, 'script_format_removed');
+  assert.equal(sourceStart.error, 'invalid_script');
 
   const indentedStart = await handleCodeOrRemoved({
     operation: 'start',
     operationId: 'live-code',
     yaml: 'name: old\n  steps:\n    - id: o1\n      type: observe\n',
   }, blocked);
-  assert.equal(indentedStart.error, 'script_format_removed');
+  assert.equal(indentedStart.error, 'invalid_script');
 
   const taggedStart = await handleCodeOrRemoved({
     operation: 'start',

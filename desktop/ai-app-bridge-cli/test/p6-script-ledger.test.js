@@ -7,24 +7,25 @@ const path = require('node:path');
 const { createScriptLedger } = require('../bin/script/script-ledger');
 
 test('Script call and receipt facts retain explicit system-app targets while lifecycle facts retain the owning App', () => {
-  const port = createScriptLedger(), record = { operationId: 'cross-app', spec: { target: { serial: 'phone', packageName: 'sample' } } };
+  const port = createScriptLedger(), record = { operationId: 'cross-app', spec: { target: { platform: 'android', serial: 'phone', packageName: 'sample' } } };
   const args = { packageName: 'picker' };
-  for (const kind of ['call_started', 'call_completed', 'call_failed']) port.append(record, kind, { command: 'uia-tree', args }, 1000);
-  port.append(record, 'action_receipt', { actionId: 'a1', payloadSummary: { args } }, 1001);
+  const target = { ...record.spec.target, packageName: 'picker', port: 23456 };
+  for (const kind of ['call_started', 'call_completed', 'call_failed']) port.append(record, kind, { command: 'uia-tree', args, target }, 1000);
+  port.append(record, 'action_receipt', { actionId: 'a1', target, payloadSummary: { args } }, 1001);
   port.append(record, 'script_completed', {}, 1002);
   const rows = port.ledger.query('cross-app', 0, 20).items;
-  for (const row of rows.slice(0, 4)) assert.deepEqual(row.target, { serial: 'phone', packageName: 'picker' });
-  assert.deepEqual(rows[4].target, { serial: 'phone', packageName: 'sample' });
-  assert.deepEqual(record.spec.target, { serial: 'phone', packageName: 'sample' });
+  for (const row of rows.slice(0, 4)) assert.deepEqual(row.target, target);
+  assert.deepEqual(rows[4].target, { platform: 'android', serial: 'phone', packageName: 'sample' });
+  assert.deepEqual(record.spec.target, { platform: 'android', serial: 'phone', packageName: 'sample' });
 });
 
 test('P6 Script ledger records Host facts without mobile four-stream bodies', () => {
   const port = createScriptLedger();
   const record = {
     operationId: 'script-1',
-    spec: { target: { serial: 's', packageName: 'p' } },
+    spec: { target: { platform: 'android', serial: 's', packageName: 'p' } },
   };
-  port.append(record, 'call_started', { command: 'tap' }, 1000);
+  port.append(record, 'call_started', { command: 'tap', target: record.spec.target }, 1000);
   port.append(record, 'action-receipt', {
     actionId: 'a1',
     payloadSummary: 'ok',
@@ -44,7 +45,7 @@ test('P6 Script ledger omits script result bodies from payloadSummary', () => {
   const port = createScriptLedger();
   const record = {
     operationId: 'script-2',
-    spec: { target: { serial: 's', packageName: 'p' } },
+    spec: { target: { platform: 'android', serial: 's', packageName: 'p' } },
   };
   port.append(record, 'script_completed', {
     result: { items: [{ message: 'MOBILE_BODY' }] },

@@ -24,20 +24,24 @@ AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS
 
 手机侧 `logs` / `network` / `state` / `events` 只存在 `MobileCaptureStore` 中。Host 连接态命令直读手机，不保存这些 payload 的复制历史。
 
-MCP 命令域：`core`（`status`、`tree`、`uia-tree`、`screenshot`、`logs`、`network`、`state`、`events`）、`app`（安装、清数据、启动、freeze/thaw、权限、appops）、`action`（tap、input、swipe、keyevent、wait、keyboard）、`flutter`、`webview`、`ios`、`web`、`diagnostics`、`advanced`（`batch`、端口转发）。
+
+当前候选版的入口、参数与平台范围见[命令合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md)。Intent 和 Script 是一等执行入口，基础命令继续作为共用能力保留。
+
+命令域：`core`（状态、UI 观察和采集）、`app`（安装、生命周期和权限）、`action`、`flutter`、`webview`、`ios`、`web`、`diagnostics`、`execution`（`intent`、`script`、`runtime`、`device-ownership`）、`evidence`、`advanced`（UIA runtime 控制和端口转发）。
 
 默认 MCP surface 是 compact：先调用 `capabilities` 发现 domain、command 和 options，再调用 `run` 执行选定命令。
 
-隔离的 MCP 命令 `script` 和 `intent` 在 `advanced` 域。它们是通用运行时，不是 explore / export-to-script / assemble-report 这类产品工作流命令。
+CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Script、安装和权限操作可以由任一客户端启动，再由另一客户端通过 operationId 继续。客户端退出后任务继续运行；显式使用任务 cancel 或 `runtime --operation stop` 停止。
 
 - `script` 运行 trusted-local-code 的 JavaScript 或 Python。`permissions` 只门闩 Bridge SDK 调用，不是 OS 沙箱。默认 allowlist 不含清数据、安装、权限变更、eval、raw shell 或 ADB 管理。`page-summary` 只留在 Script/Intent 内部。
 - `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。
-- 手机 `logs` / `network` / `state` / `events` 由 `MobileCaptureStore` 管理。更新后的 Android runtime 在连接状态下支持 MCP `history:true` 持久查询；Host 不保存手机 payload 的复制历史。当前 iOS 强查询明确返回 `persistence_unavailable`，原有 Legacy 读取仍可使用。
+- Android 和 iOS 的 `logs` / `network` / `state` / `events` 使用手机侧持久存储，连接时通过 `history:true` 查询保留的事实；Host 分别保存执行与观察证据。Web 采集在接收时写入 Host FactStore。每次查询均需核对 refs、目标、epoch、coverage 和保留范围。
 
-当前工作区准备的是本地 CLI `0.3.0-rc.1`，尚未发布到 npm。Script 为可选能力；
+当前工作区统一准备 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码 tag 的 `0.3.0-rc.1` 候选版，尚未发布。
+下面的版本安装示例供发布后使用；本地构建和发布顺序见[发行指南](desktop/ai-app-bridge-cli/docs/RELEASE.md)。Script 为可选能力；
 执行结束、纯代码断言和有设备证据的结果分别统计。当前设备强断言仅支持完整单页，
 多页查询可以取数，但尚不支持合并为一个完整窗口断言。恢复仅适用于显式可重入
-checkpoint 模板，不确定副作用不会自动重放。参见 [候选版本合同与迁移说明](desktop/ai-app-bridge-cli/README.md#optional-script-and-evidence-contracts-in-this-candidate)。
+checkpoint 模板，不确定副作用不会自动重放。参见 [候选版本合同与迁移说明](desktop/ai-app-bridge-cli/README.md#intent-script-and-evidence)。
 
 ## 解决的问题
 
@@ -67,7 +71,7 @@ docs                                  设计、集成和测试文档
 
 ## 核心能力
 
-- 本地 bridge 状态查询：从 `127.0.0.1:18080` 开始自动选择可用端口
+- Android SDK 通过本次运行专属的本地 socket 提供 HTTP；Host 从 App 私有端点文件发现地址，再建立 ADB 转发
 - Android View tree、窗口树和截图
 - 原生 UI 操作，以及桌面端 ADB / UIAutomator 兜底操作
 - iOS UIKit tree、WKWebView DOM/eval、截图，以及 XCUITest/WebDriverAgent 操作
@@ -105,7 +109,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0-rc.1")
 }
 ```
 
@@ -138,7 +142,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0-rc.1"
 }
 
 aiAppBridge {
@@ -153,7 +157,7 @@ aiAppBridge {
 在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", from: "0.2.11")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0-rc.1")
 ```
 
 在 debug app 进程启动一次 runtime：
@@ -169,12 +173,12 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 安装桌面 CLI，并检查完整 iOS 控制栈：
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
 
-iOS 完整控制需要 Xcode、已信任且解锁的真机、已开启 Developer Mode、App 内 debug runtime，以及已签名并可访问的 WebDriverAgent/XCUITest。CLI 内置 `appium-webdriveragent`，可通过 `ios-setup --start-wda --team-id <APPLE_TEAM_ID>` 自动启动，并默认使用唯一的 WDA bundle id；需要时可用 `--wda-bundle-id` 覆盖。真机上后续命令应复用 setup 返回的 WDA URL，它可能是 CoreDevice tunnel，例如 `http://[fdxx::1]:8100`，不一定是 `127.0.0.1`。
+iOS 控制栈需要 Xcode、已信任且解锁并开启 Developer Mode 的设备、App debug runtime，以及经过准备和签名的 WDA Runner。`ios-setup --start-wda --team-id <APPLE_TEAM_ID>` 会从固定 WDA 14.1.1 生成独立副本并加入 Bridge 身份校验。`--wda-test-bundle-id` 设置测试包，默认 `io.github.mobileaidev.aiappbridge.wda`；setup 返回对应 Runner App ID。后续 WDA 命令必须带确切设备和 `wdaRunnerBundleId`，可选的转发 `wdaUrl` 不能跳过容器身份校验。在已经位于前台的 App 中显式创建 `ios-wda-session` 后才能读树和操作。WDA 已提供排队取消、原完成记录持久化及 `ios-execution --kind wda` 恢复；进行中事件取消、输入焦点限制及待完成的真机关口见 [WDA 合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md#ios-wda-target-and-session)。iOS Intent 和 Script 已支持明确目标绑定的 native、H5、Flutter provider；平台能力与每个真实 App 的业务验收结果分别判断。
 
 ## Flutter 快速接入
 
@@ -184,7 +188,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.4
+  ai_app_bridge_flutter: 0.3.0-rc.1
 ```
 
 初始化一次：
@@ -200,19 +204,22 @@ void main() {
 }
 ```
 
-Flutter WebView DOM 支持需要注册 H5 adapter，因为 WebView controller 在 Dart 层：
+Flutter WebView DOM 支持需要注册 H5 adapter，因为 WebView controller 在 Dart 层。`webViewIsVisible` 由实际 route/widget 状态维护：
 
 ```dart
 AiAppBridge.instance.registerH5Adapter(
   AiAppBridgeH5Adapter(
     id: 'main-webview',
     source: 'webview_flutter',
+    isVisible: () => webViewIsVisible,
     evaluateJavascript: (script) {
       return controller.runJavaScriptReturningResult(script);
     },
   ),
 );
 ```
+
+销毁视图时调用 `AiAppBridge.instance.unregisterH5Adapter('main-webview')`。多个 adapter 同时可见时必须明确选择已观察的 `adapterId`；注册本身不指定活动视图。替换同一 ID 必须先 unregister，旧页面引用随之失效。
 
 ## 连接 AI Agent
 
@@ -244,7 +251,7 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 ### 安装 MCP server
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
 ```
 
 在你的 AI agent / 模型客户端 / IDE 的 MCP 配置里添加。

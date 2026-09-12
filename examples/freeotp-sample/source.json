@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/freeotp/freeotp-ios",
+  "commit": "c1209be7c2ea48f923b0046a9179a640db403968",
+  "archiveUrl": "https://codeload.github.com/freeotp/freeotp-ios/tar.gz/c1209be7c2ea48f923b0046a9179a640db403968",
+  "archiveSha256": "438f906e39af166350a2377286dad86799d7405f2b5ac0f6b56ebf4e8d291c2a",
+  "bundleId": "io.github.mobileaidev.freeotp.sample",
+  "license": "Apache-2.0",
+  "purpose": "Dedicated UIKit business sample for iOS native Intent and Script: synthetic token creation, editing, cancellation, ordering and deletion with an independent OTP oracle. Never use real account credentials."
+}

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const {
   isAndroidUiElementOpeningTag,
   looksLikeAndroidUiHierarchyXml,
@@ -75,7 +76,11 @@ function sanitizeString(value, key) {
     try {
       const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === 'object') {
-        value = JSON.stringify(sanitizePersistentValue(parsed));
+        const sanitized = sanitizePersistentValue(parsed);
+        // JSON can itself be captured text, including a hashed device receipt.
+        // Preserve its bytes when no redaction is needed. Duplicate keys must
+        // still be collapsed: JSON.parse may have hidden an earlier secret.
+        if (!isDeepStrictEqual(parsed, sanitized) || hasDuplicateJsonKeys(trimmed)) value = JSON.stringify(sanitized);
       }
     } catch (_) {
       // Preserve non-JSON text and apply inline credential rules below.
@@ -120,6 +125,23 @@ function sanitizeString(value, key) {
     return `${prefix}${quote}${REDACTED}${quote}`;
   });
   return sanitized;
+}
+
+function hasDuplicateJsonKeys(json) {
+  // JSON.parse has already validated syntax. Keep quoted strings whole so a
+  // brace or colon inside a value cannot masquerade as an object/key token.
+  const tokens = json.match(/"(?:[^"\\]|\\.)*"|[{}\[\],:]/g) || [];
+  const objects = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === '{') objects.push(new Set());
+    else if (tokens[i] === '}') objects.pop();
+    else if (tokens[i + 1] === ':') {
+      const key = JSON.parse(tokens[i]);
+      if (objects.at(-1).has(key)) return true;
+      objects.at(-1).add(key);
+    }
+  }
+  return false;
 }
 
 function redactSecureAndroidUiXml(value) {

@@ -38,7 +38,7 @@ test('P4 ScriptHostPort stamps target and Host actionId onto dispatch', async ()
   let seen = null;
   const host = createScriptHostPort({
     executionId: 'script-p4',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     runner: async () => completePage('network'),
     actions: async (command, args) => {
       seen = { command, args };
@@ -60,7 +60,7 @@ test('P4 ScriptHostPort login network uses live query and mutation actionId', as
   const seen = [];
   const host = createScriptHostPort({
     executionId: 'script-p4',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     runner: async (command, args) => {
       afterActionIds.push(args.afterActionId);
       seen.push(args);
@@ -90,7 +90,7 @@ test('P4 ScriptHostPort login network uses live query and mutation actionId', as
 
 test('P4 ScriptHostPort does not invent complete from a container body', async () => {
   const host = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     runner: async () => ({ ok: true, items: [{ statusCode: 200 }] }),
     actions: async () => ({ ok: true }),
   });
@@ -105,7 +105,7 @@ test('P4 same serial mutations are busy; different serials run', async () => {
   let starts = 0;
   const firstHost = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-1' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     actions: async () => {
       starts += 1;
       await gate.promise;
@@ -115,13 +115,13 @@ test('P4 same serial mutations are busy; different serials run', async () => {
   });
   const secondHost = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-1' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     actions: async () => ({ ok: true }),
     runner: async () => completePage('logs'),
   });
   const otherHost = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-2' },
+    target: { platform: 'android', serial: 'phone-2', packageName: 'pkg' },
     actions: async () => ({ ok: true }),
     runner: async () => completePage('logs'),
   });
@@ -134,6 +134,7 @@ test('P4 same serial mutations are busy; different serials run', async () => {
     command: 'tap',
     callId: 'call-1',
     coverage: 'unavailable',
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
   });
   assert.equal(other.ok, true);
   assert.equal(starts, 1);
@@ -146,7 +147,7 @@ test('P4 capture and tree reads do not take the mutation lease', async () => {
   const held = lease.acquire('phone-1');
   const host = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-1' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     runner: async () => completePage('logs', { item: { message: 'ready' } }),
     actions: async (command) => ({ ok: true, command }),
   });
@@ -163,7 +164,7 @@ test('P4 Intent-style hold on the shared lease blocks Script mutation', async ()
   const intentHold = lease.acquire('phone-1');
   const host = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-1' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     actions: async () => ({ ok: true }),
     runner: async () => completePage('logs'),
   });
@@ -178,7 +179,7 @@ test('P4 Intent-style hold on the shared lease blocks Script mutation', async ()
 test('P4 screenshot stamps path as screenshotId when refs are absent', async () => {
   const host = createScriptHostPort({
     executionId: 'script-p4',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => ({
       ok: true,
       path: '/tmp/shot.png',
@@ -193,7 +194,7 @@ test('P4 screenshot stamps path as screenshotId when refs are absent', async () 
 test('P4 page-summary is a pure transform and does not call actions', async () => {
   let actionCalls = 0;
   const host = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => {
       actionCalls += 1;
       return { ok: true };
@@ -215,7 +216,7 @@ test('P4 page-summary is a pure transform and does not call actions', async () =
 
 test('P4 denied catalog commands stay denied', async () => {
   const host = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => ({ ok: true }),
     runner: async () => completePage('logs'),
   });
@@ -233,7 +234,7 @@ test('P4 denied catalog commands stay denied', async () => {
 test('P4 transport error and ambiguous action do not retry', async () => {
   let throws = 0;
   const throwing = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => {
       throws += 1;
       throw new Error('transport_timeout');
@@ -247,7 +248,7 @@ test('P4 transport error and ambiguous action do not retry', async () => {
 
   let ambiguousCalls = 0;
   const ambiguous = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 'separate-ambiguous-peer', packageName: 'pkg' },
     actions: async () => {
       ambiguousCalls += 1;
       return { ok: false, ambiguous: true, error: 'ambiguous' };
@@ -262,7 +263,7 @@ test('P4 transport error and ambiguous action do not retry', async () => {
 test('P4 live throw is unavailable and never calls readHistory', async () => {
   let readHistory = 0;
   const host = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     query: createLiveCaptureQuery({
       runner: async () => {
         throw new Error('target_disconnected');
@@ -278,7 +279,7 @@ test('P4 live throw is unavailable and never calls readHistory', async () => {
 
 test('P4 assert rejects a screenshot ref this execution did not produce', async () => {
   const host = createScriptHostPort({
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => ({ ok: true, path: '/tmp/this-round.png' }),
     runner: async () => completePage('logs'),
   });
@@ -306,7 +307,7 @@ test('P4 assert rejects a screenshot ref this execution did not produce', async 
 test('P4 page-summary cannot launder a foreign evidence ref into this execution', async () => {
   const host = createScriptHostPort({
     executionId: 'script-p4',
-    target: { serial: 's1' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => ({ ok: true, path: '/tmp/this-round.png' }),
   });
   const foreignRef = { stream: 'screenshot', screenshotId: '/tmp/other-round.png' };
@@ -341,9 +342,9 @@ test('P4 page-summary cannot launder a foreign evidence ref into this execution'
   assert.equal((await host.assert({ condition: true, evidence: shot.evidence })).verdict, 'passed');
 });
 
-function assertScriptCallEnvelope(result, { command, callId, coverage }) {
+function assertScriptCallEnvelope(result, { command, callId, coverage, target }) {
   assert.equal(result.command, command);
-  assert.deepEqual(result.execution, { executionId: undefined, callId, actionId: null });
+  assert.deepEqual(result.execution, { executionId: undefined, callId, actionId: null, ...(target ? { target } : {}) });
   assert.deepEqual(result.evidence.window, { afterActionId: null, closedAtMs: 0 });
   assert.equal(result.evidence.coverage.status, coverage);
   assert.deepEqual(result.evidence.refs, []);
@@ -359,7 +360,7 @@ test('P4 ScriptHostPort stays off Intent Legacy and MCP', () => {
 });
 
 test('device assertion needs Host evidence, while code assertion has explicit scope', async () => {
-  const host = createScriptHostPort({ actions: async () => { throw new Error('must_not_call'); } });
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => { throw new Error('must_not_call'); } });
   const assertion = {
     condition: true,
     evidence: { coverage: { status: 'complete', gap: false, committed: true }, refs: [] },
@@ -374,7 +375,7 @@ test('device assertion needs Host evidence, while code assertion has explicit sc
 
 test('Host issuance survives JSON transport but rejects coverage and refs tampering', async () => {
   const host = createScriptHostPort({
-    actions: async () => ({ ok: true }),
+    target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => ({ ok: true }),
     query: async () => ({ ...completePage('state'), coverage: { status: 'partial', gap: true, committed: false } }),
   });
   const result = await host.call('state');
@@ -389,7 +390,7 @@ test('Host issuance survives JSON transport but rejects coverage and refs tamper
 
 test('pre-mutation tree and same-path screenshot cannot certify a subsequent mutation', async () => {
   const host = createScriptHostPort({
-    target: { serial: 'freshness-device' },
+    target: { platform: 'android', serial: 'freshness-device', packageName: 'pkg' },
     actions: async (command) => command === 'screenshot'
       ? { ok: true, path: '/tmp/reused.png' }
       : { ok: true, root: { text: 'Saved' } },
@@ -412,7 +413,7 @@ test('pre-mutation tree and same-path screenshot cannot certify a subsequent mut
 
 test('capture after an unknown or older action cannot satisfy current action evidence', async () => {
   const host = createScriptHostPort({
-    target: { serial: 'capture-window-device' },
+    target: { platform: 'android', serial: 'capture-window-device', packageName: 'pkg' },
     actions: async () => ({ ok: true }), query: async (request) => completePage('network', { request }),
   });
   const first = await host.call('tap', {});
@@ -430,7 +431,7 @@ test('capture after an unknown or older action cannot satisfy current action evi
 test('observations overlapping a mutation and mutation receipts are not postconditions', async () => {
   const pending = deferred();
   const host = createScriptHostPort({
-    target: { serial: 'pending-device' },
+    target: { platform: 'android', serial: 'pending-device', packageName: 'pkg' },
     actions: async (command) => {
       if (command === 'tap') await pending.promise;
       return { ok: true, path: '/tmp/pending.png', refs: [{ stream: 'state', mobileFactId: 'f1' }] };
@@ -448,7 +449,7 @@ test('observations overlapping a mutation and mutation receipts are not postcond
 
 test('failed provider observations and reference-free replies cannot pass device assertions', async () => {
   for (const raw of [{ ok: false, refs: [{ stream: 'tree', rawTreeId: 't1' }] }, { ok: true, items: [] }]) {
-    const host = createScriptHostPort({ actions: async () => raw });
+    const host = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => raw });
     const evidence = (await host.call('status')).evidence;
     assert.equal((await host.assert({ condition: true, evidence })).verdict, 'inconclusive');
   }
@@ -456,7 +457,7 @@ test('failed provider observations and reference-free replies cannot pass device
 
 test('post-action capture requires the Host-observed pre-action watermark and matching epoch/target/filter', async () => {
   let reply = null;
-  const host = createScriptHostPort({ target: { serial: 'watermark-device', packageName: 'pkg' }, actions: async () => ({ ok: true }),
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'watermark-device', packageName: 'pkg' }, actions: async () => ({ ok: true }),
     query: async (request) => {
       const page = completePage('network', { request });
       return reply ? reply(page) : page;
@@ -488,15 +489,15 @@ test('post-action capture requires the Host-observed pre-action watermark and ma
 
 test('a serialized observation from another Host execution cannot be reused', async () => {
   const actions = async () => ({ ok: true, path: '/tmp/shared.png' });
-  const first = createScriptHostPort({ actions, executionId: 'one' });
-  const next = createScriptHostPort({ actions, executionId: 'two' });
+  const first = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions, executionId: 'one' });
+  const next = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions, executionId: 'two' });
   const old = JSON.parse(JSON.stringify((await first.call('screenshot')).evidence));
   await next.call('screenshot');
   assert.equal((await next.assert({ condition: true, evidence: old })).reason, 'evidence_not_host_issued');
 });
 
 test('an unread capture page cannot turn absence on one page into a failed assertion', async () => {
-  const host = createScriptHostPort({ actions: async () => ({ ok: true }),
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => ({ ok: true }),
     query: async (request) => ({ ...completePage('network', { request }), hasMore: true, nextCursor: 'next-page' }),
   });
   const result = await host.call('network');
@@ -504,15 +505,15 @@ test('an unread capture page cannot turn absence on one page into a failed asser
 });
 
 test('capture errors survive the Script envelope and successful store identity remains visible', async () => {
-  const missing = createScriptHostPort({ actions: async () => ({ ok: true }) });
+  const missing = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => ({ ok: true }) });
   const absent = await missing.call('network');
   assert.equal(absent.ok, false);
   assert.equal(absent.error, 'capture_unavailable');
-  const failed = createScriptHostPort({ actions: async () => ({ ok: true }), query: async () => ({ ok: false, reason: 'runtime_epoch_changed' }) });
+  const failed = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => ({ ok: true }), query: async () => ({ ok: false, reason: 'runtime_epoch_changed' }) });
   const failure = await failed.call('network');
   assert.equal(failure.ok, false);
   assert.equal(failure.error, 'runtime_epoch_changed');
-  const good = createScriptHostPort({ actions: async () => ({ ok: true }), query: async (request) => ({ ...completePage('network', { request }), storeGeneration: 7, throughWatermark: 19 }) });
+  const good = createScriptHostPort({ target: { platform: 'android', serial: 'host-port-fixture', packageName: 'pkg' }, actions: async () => ({ ok: true }), query: async (request) => ({ ...completePage('network', { request }), storeGeneration: 7, throughWatermark: 19 }) });
   const result = await good.call('network');
   assert.equal(result.ok, true);
   assert.equal(result.evidence.capture.storeGeneration, 7);
@@ -520,7 +521,7 @@ test('capture errors survive the Script envelope and successful store identity r
 });
 
 test('Host-observed watermark proves the window for asynchronous untagged network facts', async () => {
-  const host = createScriptHostPort({ target: { serial: 'async-network', packageName: 'pkg' },
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'async-network', packageName: 'pkg' },
     actions: async () => ({ ok: true }), query: async (request) => completePage('network', { request }),
   });
   const before = await host.call('network');

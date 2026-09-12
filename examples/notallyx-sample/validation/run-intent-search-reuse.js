@@ -103,7 +103,7 @@ async function main(options) {
       assert.equal(status.ok, true); assert.equal(status.app.packageName, PACKAGE); assert.equal(status._feedback.target.serial, target.serial);
       const inputs = structuredClone(baseInputs); inputs.out = scriptOut; inputs.cancelAfterTitle = kind === 'cancel';
       if (kind === 'wrong-expectation') inputs.expected.title.titles = ['AAB-INTENTIONALLY-WRONG-EXPECTED-TITLE'];
-      const spec = { schemaVersion: 'aab.code-script/v1', name, language: 'javascript', sourcePath: frozenSource, target, inputs,
+      const spec = { schemaVersion: 'aab.code-script/v1', name, language: 'javascript', sourcePath: frozenSource, target: { platform: 'android', ...target }, inputs,
         permissions: ['app.read', 'app.interact'], policy: { timeoutMs: 180000, restartPolicy: 'none' } };
       write(path.join(directory, 'spec.json'), spec);
       const events = []; let cursor = 0, page = 0;

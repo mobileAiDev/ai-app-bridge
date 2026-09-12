@@ -41,5 +41,5 @@ test('P7 code entry starts a JS script and rejects old steps', async () => {
     operation: 'start',
     yaml: 'name: old\nsteps:\n  - id: o1\n    type: observe\n',
   });
-  assert.equal(yamlRemoved.error, 'script_format_removed');
+  assert.equal(yamlRemoved.error, 'invalid_script');
 });

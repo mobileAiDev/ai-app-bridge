@@ -112,6 +112,9 @@ class FactRecorder {
   recordEvidence(command, args = {}, result, context = {}) {
     if (!result || typeof result !== 'object' || Buffer.isBuffer(result)) return [];
     if (isMobileCaptureCommand(command)) return [];
+    if (command.startsWith('web-') && (result.source === 'host-fact-store' || result.receipt?.source === 'host-fact-store')) {
+      return result.receipt ? [result.receipt] : (result.items || []).map(item => ({ ...item.ref, stored: true }));
+    }
     const target = targetFor(command, args);
     const runtimeEpoch = this.observeRuntimeEpoch(
       target.key,
@@ -157,11 +160,12 @@ class FactRecorder {
       });
       references.push({
         partition: descriptor.partition,
-        globalSeq: appended.globalSeq,
-        stored: appended.stored,
+        globalSeq: appended.globalSeq ?? null,
+        stored: appended.ok !== false && appended.stored === true,
+        ...(appended.ok === false || appended.stored !== true ? { error: appended.error || 'fact_evidence_not_stored' } : {}),
         ...(appended.deduplicated ? { deduplicated: true } : {}),
       });
-      if (evidenceKey) this.rememberEvidence(evidenceKey);
+      if (evidenceKey && appended.ok !== false && appended.stored === true) this.rememberEvidence(evidenceKey);
     }
     return references;
   }
@@ -540,7 +544,7 @@ function summarizeResult(result) {
     'ok', 'error', 'message', 'action', 'source', 'transport', 'activity', 'component',
     'path', 'count', 'nodeCount', 'sessionId', 'targetId', 'packageName', 'bundleId',
     'textLength', 'matched', 'target', 'windowType', 'x', 'y', 'handledDown', 'handledUp',
-    'verified', 'inconclusive',
+    'verified', 'inconclusive', 'dispatched', 'ambiguous', 'settled', 'executionReceipt', 'executionReceipts',
   ]) {
     if (result[key] !== undefined) summary[key] = boundedValue(result[key], 0);
   }

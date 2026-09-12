@@ -99,6 +99,7 @@ private enum NSLogSinkBox {
 }
 
 private let nslogCSink: aab_nslog_sink = { pointer in
+    guard let pointer else { return }
     NSLogSinkBox.persist?(String(cString: pointer))
 }
 #endif

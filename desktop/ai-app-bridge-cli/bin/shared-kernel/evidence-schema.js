@@ -5,6 +5,7 @@ const { sanitizePersistentValue } = require('../fact-codec');
 
 const NAMESPACES = Object.freeze(['script', 'intent']);
 const PROVIDERS = Object.freeze(['native', 'uia', 'flutter', 'h5']);
+const RECORD_SCHEMA = 'aab.execution-evidence/v1';
 const AGENT_DECISIONS = Object.freeze(['act', 'complete', 'fail', 'inconclusive']);
 const KINDS = Object.freeze([
   'observation',
@@ -14,6 +15,7 @@ const KINDS = Object.freeze([
   'dispatch-marker',
   'action-receipt',
   'checkpoint',
+  'result',
   'attachment',
 ]);
 
@@ -56,7 +58,7 @@ function verifyChecksum(record) {
 
 function requiredFields(kind) {
   if (kind === 'observation') {
-    return ['operationId', 'revision', 'serial', 'packageName', 'provider', 'capturedAtMs'];
+    return ['operationId', 'revision', 'target', 'provider', 'capturedAtMs'];
   }
   if (kind === 'summary') {
     return ['operationId', 'revision', 'rawTreeId'];
@@ -76,13 +78,16 @@ function requiredFields(kind) {
   if (kind === 'checkpoint') {
     return ['operationId', 'revision', 'stepId'];
   }
+  if (kind === 'result') {
+    return ['operationId', 'revision', 'bytes', 'sha256', 'originalSha256', 'representation'];
+  }
   if (kind === 'attachment') {
     return ['operationId', 'revision', 'recordingId', 'sequence', 'payloadKind', 'directory', 'file'];
   }
   return null;
 }
 
-function validateRecord(namespace, kind, record) {
+function validateRecord(namespace, kind, record, { archivedUnversioned = false } = {}) {
   if (!NAMESPACES.includes(namespace)) {
     return { ok: false, error: 'invalid_namespace' };
   }
@@ -92,10 +97,28 @@ function validateRecord(namespace, kind, record) {
   if (!record || typeof record !== 'object') {
     return { ok: false, error: 'invalid_record' };
   }
-  const fields = requiredFields(kind);
+  if (!archivedUnversioned && record.schemaVersion !== undefined && record.schemaVersion !== RECORD_SCHEMA) {
+    return { ok: false, error: 'unsupported_record_schema', field: 'schemaVersion' };
+  }
+  const fields = archivedUnversioned && kind === 'observation'
+    ? ['operationId', 'revision', 'serial', 'packageName', 'provider', 'capturedAtMs'] : requiredFields(kind);
   for (const field of fields) {
     if (record[field] === undefined || record[field] === null || record[field] === '') {
       return { ok: false, error: 'invalid_record', field };
+    }
+  }
+  if (kind === 'result' && (namespace !== 'script' || !Object.hasOwn(record, 'result')
+    || !Number.isSafeInteger(record.bytes) || record.bytes < 1
+    || !/^[a-f0-9]{64}$/.test(record.sha256) || !/^[a-f0-9]{64}$/.test(record.originalSha256)
+    || !['original-json', 'redacted-json'].includes(record.representation))) {
+    return { ok: false, error: 'invalid_record', field: 'result' };
+  }
+  for (const field of ['target', 'observedTarget']) {
+    if (archivedUnversioned || record[field] === undefined) continue;
+    try {
+      require('./execution-target').normalizeExecutionTarget(record[field], { intent: namespace === 'intent', nullable: true });
+    } catch (error) {
+      return { ok: false, error: 'invalid_record', field: error.field?.replace(/^target/, field), detail: error.message };
     }
   }
   if (kind === 'observation' && !PROVIDERS.includes(record.provider)) {
@@ -113,6 +136,15 @@ function validateRecord(namespace, kind, record) {
   return { ok: true };
 }
 
+// Immutable archive v1/v2 files predate platform targets. Verify their declared
+// original fields and checksum without converting them into current targets.
+// New execution writes always use validateRecord's current contract.
+function validateArchivedRecord(namespace, kind, record) {
+  if (record?.schemaVersion === RECORD_SCHEMA) return validateRecord(namespace, kind, record);
+  if (record?.schemaVersion !== undefined) return { ok: false, error: 'unsupported_record_schema' };
+  return validateRecord(namespace, kind, record, { archivedUnversioned: true });
+}
+
 function buildEnvelope(namespace, kind, record, { now, sequence } = {}) {
   const validation = validateRecord(namespace, kind, record);
   if (!validation.ok) return validation;
@@ -121,6 +153,7 @@ function buildEnvelope(namespace, kind, record, { now, sequence } = {}) {
   const evidenceId = record.evidenceId || `${namespace}:${kind}:${record.operationId}:${revision}:${sequence}`;
   const body = {
     ...record,
+    schemaVersion: RECORD_SCHEMA,
     namespace,
     kind,
     evidenceId,
@@ -150,10 +183,12 @@ module.exports = {
   KINDS,
   NAMESPACES,
   PROVIDERS,
+  RECORD_SCHEMA,
   buildEnvelope,
   canonicalJson,
   checksumOf,
   serializeRecord,
   validateRecord,
+  validateArchivedRecord,
   verifyChecksum,
 };

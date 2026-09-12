@@ -8,15 +8,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createTestScriptSupervisor: createScriptSupervisor } = require('./helpers/script-supervisor');
 const { main: checkpointReentry } = require('../bin/script/templates/checkpoint-reentry');
+const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
+const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 
 function spec(overrides = {}) {
   return {
     schemaVersion: 'aab.code-script/v1',
     name: 'p5',
-    language: 'js',
+    language: "javascript",
     source: 'async function main() { return { passed: true }; }\nmodule.exports = { main };',
-    target: { serial: 's', packageName: 'p' },
-    policy: overrides.policy,
+    target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
+    ...(overrides.policy === undefined ? {} : { policy: overrides.policy }),
   };
 }
 
@@ -453,8 +455,10 @@ test('P5 supervisor merges business progress and does not pause on checkpoint', 
 
 test('P5 official checkpoint template resumes from committed state', async () => {
   const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
+  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const started = await supervisor.handle({
     operation: 'start',
+    store,
     script: spec({ policy: { restartPolicy: 'checkpoint' } }),
     program: async (ctx) => {
       const result = await checkpointReentry(ctx);
@@ -473,22 +477,27 @@ test('P5 official checkpoint template resumes from committed state', async () =>
   assert.equal(second.status, 'completed');
   const completed = second.events.filter((event) => event.type === 'script_completed');
   assert.equal(completed.length, 1);
-  assert.equal(completed[0].result.resumed, true);
-  assert.equal(completed[0].result.step, 1);
+  await supervisor.registry.get(started.operationId).running;
+  const output = await supervisor.handle({ operation: 'result', operationId: started.operationId, store });
+  assert.equal(output.ok, true, JSON.stringify(output));
+  assert.equal(output.result.resumed, true);
+  assert.equal(output.result.step, 1);
 });
 
 test('P5 official JS template restarts as a Node child from checkpoint', async () => {
   const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
+  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const source = fs.readFileSync(path.join(__dirname, '../bin/script/templates/checkpoint-reentry.js'), 'utf8')
     + '\nmodule.exports.main = async ctx => { const result = await main(ctx); if (!result.resumed) process.exit(31); return result; };';
   const started = await supervisor.handle({
     operation: 'start',
+    store,
     script: {
       schemaVersion: 'aab.code-script/v1',
       name: 'p5-node-checkpoint',
       language: 'javascript',
       source,
-      target: { serial: 's', packageName: 'p' },
+      target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
       policy: { restartPolicy: 'checkpoint', timeoutMs: 15_000 },
     },
   });
@@ -503,8 +512,11 @@ test('P5 official JS template restarts as a Node child from checkpoint', async (
   const second = await supervisor.handle({ operation: 'status', operationId: started.operationId });
   const completed = second.events.filter((event) => event.type === 'script_completed');
   assert.equal(completed.length, 1);
-  assert.equal(completed[0].result.resumed, true);
-  assert.equal(completed[0].result.step, 1);
+  await supervisor.registry.get(started.operationId).running;
+  const output = await supervisor.handle({ operation: 'result', operationId: started.operationId, store });
+  assert.equal(output.ok, true, JSON.stringify(output));
+  assert.equal(output.result.resumed, true);
+  assert.equal(output.result.step, 1);
 });
 
 test('P5 live Node pause holds at the next progress boundary', async () => {
@@ -524,7 +536,7 @@ test('P5 live Node pause holds at the next progress boundary', async () => {
         '}',
         'module.exports = { main };',
       ].join('\n'),
-      target: { serial: 's', packageName: 'p' },
+      target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
       policy: { timeoutMs: 15_000 },
     },
   });
@@ -586,7 +598,7 @@ async function assertLiveCallPause({ language, name, source }) {
       name,
       language,
       source,
-      target: { serial: 's', packageName: 'p' },
+      target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
       policy: { timeoutMs: 15_000 },
     },
     handlers: {

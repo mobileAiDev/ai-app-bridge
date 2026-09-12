@@ -9,14 +9,19 @@ function createLiveCaptureQuery({ runner } = {}) {
     const command = commandFor(request);
     if (!command) return unavailablePage('unsupported_capture_stream');
     const { command: _command, stream: _stream, platform: _platform, ...args } = request;
+    // CaptureRequest uses null for an absent window boundary. Public command
+    // arguments represent absence by omission; no payload or error is replaced.
+    for (const key of ['serial', 'packageName', 'afterActionId', 'runtimeEpoch', 'sinceMs', 'timeoutMs']) {
+      if (args[key] == null) delete args[key];
+    }
     let result;
     try {
       result = await runner(command, {
         ...args,
-        limit: request.limit == null ? 200 : request.limit,
+        limit: request.limit == null ? (command.startsWith('web-') ? 16 : 200) : request.limit,
       });
     } catch (error) {
-      return unavailablePage(error.code || error.message || 'capture_query_failed');
+      return unavailablePage(error.code || error.message || 'capture_query_failed', error);
     }
     if (request.view === 'decision-window' && request.runtimeEpoch != null
       && result?.runtimeEpoch !== request.runtimeEpoch && result?.coverage?.status === 'complete') {
@@ -35,8 +40,8 @@ function createLiveCaptureQuery({ runner } = {}) {
 // Legacy payloads and explicit failures never acquire invented strong coverage.
 function capturePage(result) {
   const coverage = coverageOf(result);
-  if (!result || result.ok === false || result.error || !coverage) {
-    return unavailablePage(result?.error || result?.reason || 'capture_contract_unavailable');
+  if (!result || result.ok === false || result.error || !coverage || coverage.status === 'unavailable') {
+    return unavailablePage(result?.error || result?.reason || 'capture_contract_unavailable', result || {});
   }
   if (!Array.isArray(result.refs) || !Array.isArray(result.items)) {
     return unavailablePage('capture_contract_invalid');
@@ -62,6 +67,21 @@ function coverageOf(result) {
   return coverage;
 }
 
+// The durable observation and the portable payload verifier share this exact
+// metadata projection. Optional diagnostics remain absent when not supplied.
+function capturePageMetadata(page) {
+  return {
+    stream: page.stream, coverage: page.coverage, window: page.window,
+    runtimeEpoch: page.runtimeEpoch, targetKey: page.targetKey, storeGeneration: page.storeGeneration,
+    watermarkCursor: page.watermarkCursor, nextCursor: page.nextCursor,
+    hasMore: page.hasMore, throughWatermark: page.throughWatermark,
+    ...(page.barrier === undefined ? {} : { barrier: page.barrier }),
+    error: page.error || page.reason || null,
+    ...(page.field === undefined ? {} : { field: page.field }),
+    ...(page.message === undefined ? {} : { message: page.message }),
+  };
+}
+
 function commandFor(request) {
   const stream = request.stream;
   if (stream !== 'logs' && stream !== 'network' && stream !== 'state' && stream !== 'events') {
@@ -78,10 +98,12 @@ function commandFor(request) {
   return stream;
 }
 
-function unavailablePage(error = 'capture_unavailable') {
+function unavailablePage(error = 'capture_unavailable', { field, message } = {}) {
   return {
     ok: false,
     error,
+    ...(field === undefined ? {} : { field }),
+    ...(message === undefined ? {} : { message }),
     coverage: { status: 'unavailable', gap: true, committed: false },
     gap: true,
     committed: false,
@@ -90,4 +112,4 @@ function unavailablePage(error = 'capture_unavailable') {
   };
 }
 
-module.exports = { createLiveCaptureQuery, capturePage, unavailablePage };
+module.exports = { createLiveCaptureQuery, capturePage, capturePageMetadata, unavailablePage };

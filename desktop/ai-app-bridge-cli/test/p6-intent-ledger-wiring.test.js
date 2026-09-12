@@ -19,7 +19,7 @@ test('P6 Intent persist writes decision action and receipt into ExecutionLedger'
     operation: 'start',
     operationId: 'p6-ledger',
     goal: 'tap home',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
   });
@@ -31,7 +31,7 @@ test('P6 Intent persist writes decision action and receipt into ExecutionLedger'
       decisionId: 'd1',
       agentDecision: 'act',
       basedOnRevision: started.revision,
-      action: { action: 'tap', text: 'Home' },
+      action: { action: 'tap', selector: { text: 'Home' } },
       reason: 'home button visible',
     },
   });
@@ -53,7 +53,7 @@ test('P6 Intent persist writes decision action and receipt into ExecutionLedger'
   assert.equal(decision.payloadSummary.agentDecision, 'act');
   assert.equal(decision.payloadSummary.mode, 'supervised');
   assert.equal(decision.payloadSummary.action.action, 'tap');
-  assert.equal(decision.payloadSummary.action.text, 'Home');
+  assert.equal(decision.payloadSummary.action.selector.text, 'Home');
   assert.equal(decision.payloadSummary.reason, 'home button visible');
   assert.equal(decision.timestampMs != null, true);
   assert.equal(decision.target.serial, 's1');
@@ -64,11 +64,11 @@ test('P6 Intent persist writes decision action and receipt into ExecutionLedger'
   const marker = status.history.items.find((item) => item.kind === 'dispatch-marker');
   assert.equal(marker.payloadSummary.state, 'prepared');
   assert.equal(marker.payloadSummary.decisionId, 'd1');
-  assert.equal(marker.payloadSummary.action.text, 'Home');
+  assert.equal(marker.payloadSummary.action.selector.text, 'Home');
   const receipt = status.history.items.find((item) => item.kind === 'action-receipt');
   assert.equal(receipt.payloadSummary.mechanicalStatus, 'ok');
   assert.equal(receipt.payloadSummary.ambiguous, false);
-  assert.equal(receipt.payloadSummary.action.text, 'Home');
+  assert.equal(receipt.payloadSummary.action.selector.text, 'Home');
   assert.equal(receipt.payloadSummary.rawTreeId, 'p6-ledger:1');
   assert.equal(receipt.payloadSummary.basedOnEvidenceIds[0], decision.payloadSummary.basedOnEvidenceIds[0]);
   assert.equal(receipt.parentFactId, decision.payloadSummary.basedOnEvidenceIds[0]);
@@ -88,7 +88,7 @@ test('P6 Intent status reads ExecutionLedger after the live worker is evicted', 
     operation: 'start',
     operationId: 'p6-evicted',
     goal: 'tap home',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter,
   });
@@ -105,7 +105,7 @@ test('P6 Intent status reads ExecutionLedger after the live worker is evicted', 
     operation: 'start',
     operationId: 'p6-live',
     goal: 'next',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter,
   });

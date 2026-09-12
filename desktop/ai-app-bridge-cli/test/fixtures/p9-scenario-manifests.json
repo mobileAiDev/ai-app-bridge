@@ -26,7 +26,7 @@
     {
       "id": "vlc-android",
       "kind": "native",
-      "packageName": "org.videolan.vlc",
+      "packageName": "org.videolan.vlc.bridge_sample.debug",
       "coreId": "vlc-core-v1",
       "acceptanceId": "vlc-acceptance-v1",
       "coreMaxMs": 300000,

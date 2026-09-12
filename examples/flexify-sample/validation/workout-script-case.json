@@ -1,0 +1,8 @@
+{
+  "planTitle": "AAB Script 20260911-04",
+  "baselinePlanTitle": "AAB Intent 20260911-04",
+  "expectedDayVolumeKg": 2500,
+  "graphDay": "2026-09-11",
+  "graphTimeZone": "Asia/Shanghai",
+  "baselineDatabaseSha256": "fc98ab3e4b000b7e4c65b91cad468edd695d38475e6c87345dd86e79b07796bd"
+}

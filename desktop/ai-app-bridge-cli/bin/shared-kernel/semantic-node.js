@@ -8,6 +8,8 @@ function semanticNode({
   role,
   text = null,
   label = null,
+  hint,
+  errorText,
   bounds = null,
   enabled = true,
   checked = null,
@@ -15,8 +17,13 @@ function semanticNode({
   clickable = false,
   resourceName,
   editable,
+  interaction,
   visible,
   effectiveVisible,
+  accessibilityId,
+  elementId,
+  elementType,
+  targetRef,
 }) {
   return {
     nodeId: String(nodeId),
@@ -31,10 +38,17 @@ function semanticNode({
     checked,
     selected,
     clickable,
+    ...(typeof hint === 'string' ? { hint } : {}),
+    ...(typeof errorText === 'string' ? { errorText } : {}),
     ...(typeof resourceName === 'string' ? { resourceName } : {}),
     ...(typeof editable === 'boolean' ? { editable } : {}),
+    ...(interaction === undefined ? {} : { interaction }),
     ...(typeof visible === 'boolean' ? { visible } : {}),
     ...(typeof effectiveVisible === 'boolean' ? { effectiveVisible } : {}),
+    ...(typeof accessibilityId === 'string' ? { accessibilityId } : {}),
+    ...(typeof elementId === 'string' ? { elementId } : {}),
+    ...(typeof elementType === 'string' ? { elementType } : {}),
+    ...(targetRef === undefined ? {} : { targetRef }),
   };
 }
 

@@ -15,7 +15,7 @@ test('P8 page-summary Host path uses existing fixtures and never calls actions o
   let actions = 0;
   let runner = 0;
   const host = createScriptHostPort({
-    target: { serial: 'p8' },
+    target: { platform: 'android', serial: 'p8', packageName: 'pkg' },
     actions: async () => {
       actions += 1;
       return { ok: true };

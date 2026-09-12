@@ -5,7 +5,7 @@ const {
   TargetExecution,
   targetFor,
 } = require('../bin/target-execution');
-const { executeCommand } = require('../bin/ai-app-bridge');
+const { executeCommand } = require('../test-support/host-client');
 
 function deferred() {
   let resolve;
@@ -21,15 +21,14 @@ function nextTurn() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-test('exports the in-process legacy command executor', async () => {
+test('shared command entry rejects an unknown command before dispatch', async () => {
   assert.equal(typeof executeCommand, 'function');
-  await assert.rejects(
-    executeCommand('not-a-real-command', {}),
-    /unknown command: not-a-real-command/,
-  );
+  const rejected = await executeCommand('not-a-real-command', {});
+  assert.equal(rejected.error, 'unknown_command');
+  assert.equal(rejected.dispatched, false);
 });
 
-test('normalizes compatibility arguments without losing empty input text or zero coordinates', async () => {
+test('preserves canonical empty input text and zero coordinates', async () => {
   const execution = new TargetExecution();
   let received;
 
@@ -38,8 +37,8 @@ test('normalizes compatibility arguments without losing empty input text or zero
     serial: 'android-1',
     packageName: 'com.example.one',
     text: '',
-    x: 0,
-    y: 0,
+    tapX: 0,
+    tapY: 0,
   }, async (command, args) => {
     received = { command, args };
     return { ok: true, action: 'input-text' };
@@ -47,7 +46,7 @@ test('normalizes compatibility arguments without losing empty input text or zero
 
   assert.equal(received.command, 'input-text');
   assert.equal(received.args.text, '');
-  assert.equal(received.args.targetText, '');
+  assert.equal(Object.hasOwn(received.args, 'targetText'), false);
   assert.equal(received.args.tapX, 0);
   assert.equal(received.args.tapY, 0);
   assert.equal(result.ok, true);
@@ -56,28 +55,6 @@ test('normalizes compatibility arguments without losing empty input text or zero
   assert.deepEqual(result._feedback.evidence, []);
 });
 
-test('canonical compatibility arguments take precedence over aliases', async () => {
-  const execution = new TargetExecution();
-  let received;
-
-  await execution.execute('tap-text', {
-    serial: 'android-1',
-    packageName: 'com.example.one',
-    text: 'alias',
-    targetText: '',
-    x: 1,
-    tapX: 0,
-    y: 2,
-    tapY: 0,
-  }, async (_command, args) => {
-    received = args;
-    return { ok: true };
-  });
-
-  assert.equal(received.targetText, '');
-  assert.equal(received.tapX, 0);
-  assert.equal(received.tapY, 0);
-});
 
 test('target identity includes Android serial and package, iOS device and bundle, and Web session and target', () => {
   const android = targetFor('tap', { serial: 'a-1', packageName: 'com.example.a' });
@@ -86,7 +63,7 @@ test('target identity includes Android serial and package, iOS device and bundle
   assert.notEqual(android.key, androidOtherDevice.key);
   assert.notEqual(android.key, androidOtherPackage.key);
   assert.deepEqual(android, {
-    kind: 'android',
+    kind: 'android', platform: 'android',
     key: android.key,
     serial: 'a-1',
     packageName: 'com.example.a',
@@ -98,7 +75,7 @@ test('target identity includes Android serial and package, iOS device and bundle
   assert.notEqual(ios.key, iosOtherDevice.key);
   assert.notEqual(ios.key, iosOtherBundle.key);
   assert.deepEqual(ios, {
-    kind: 'ios',
+    kind: 'ios', platform: 'ios',
     key: ios.key,
     deviceId: 'ios-1',
     bundleId: 'com.example.ios',
@@ -110,9 +87,10 @@ test('target identity includes Android serial and package, iOS device and bundle
   assert.notEqual(web.key, webOtherSession.key);
   assert.notEqual(web.key, webOtherTarget.key);
   assert.deepEqual(web, {
-    kind: 'web',
+    kind: 'web', platform: 'web',
     key: web.key,
     sessionId: 'session-1',
+    runtimeEpoch: '',
     targetId: 'target-1',
   });
 });
@@ -179,7 +157,7 @@ test('runs actors for different targets in parallel', async () => {
   await Promise.all([first, second]);
 });
 
-test('runs different Android packages on the same serial in parallel', async () => {
+test('serializes different Android packages on the same serial', async () => {
   const execution = new TargetExecution();
   const gate = deferred();
   const starts = [];
@@ -205,7 +183,7 @@ test('runs different Android packages on the same serial in parallel', async () 
   try {
     assert.deepEqual(
       new Set(starts),
-      new Set(['com.example.first', 'com.example.second']),
+      new Set(['com.example.first']),
     );
   } finally {
     gate.resolve();

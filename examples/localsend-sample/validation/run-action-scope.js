@@ -10,7 +10,7 @@ const { createMcpClient, payloadOf } = require('../../../desktop/ai-app-bridge-c
 
 const ROOT = path.resolve(__dirname, '../../..');
 const SAMPLE = path.dirname(__dirname);
-const TARGET = { serial: 'FYZLAU49X8OVQGJ7', packageName: 'org.localsend.localsend_app.bridge_sample' };
+const TARGET = { serial: process.env.AAB_VALIDATION_SERIAL || 'FYZLAU49X8OVQGJ7', packageName: 'org.localsend.localsend_app.bridge_sample' };
 const BASELINE = { 'flutter.ls_theme': 'system', 'flutter.ls_color': 'system' };
 const EXPECTED = { dark: { ...BASELINE, 'flutter.ls_theme': 'dark' }, restored: BASELINE };
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -58,7 +58,7 @@ async function main(out, apkSha256, pilot = false) {
       const initialScreen = await run('screenshot', { ...TARGET, outFile: path.join(dir, 'initial.png') });
       write(path.join(dir, 'initial-screenshot.json'), initialScreen); assert.equal(initialScreen.foregroundMatchesPackage, true);
       const spec = { schemaVersion: 'aab.code-script/v1', name, language: 'javascript', sourcePath: frozenSource,
-        target: TARGET, inputs: { serial: TARGET.serial, wrongExpectation: name === 'wrong-expectation', cancelBeforeMutation: name === 'cancel' },
+        target: { platform: 'android', ...TARGET }, inputs: { serial: TARGET.serial, wrongExpectation: name === 'wrong-expectation', cancelBeforeMutation: name === 'cancel' },
         permissions: ['app.read', 'app.interact', 'capture.read'], policy: { timeoutMs: 120000, restartPolicy: 'none' } };
       write(path.join(dir, 'spec.json'), spec);
       const events = []; let cursor = 0, page = 0;
@@ -99,7 +99,9 @@ async function main(out, apkSha256, pilot = false) {
         collect(state);
       }
       trial.durationMs = Date.now() - startedAt; trial.status = state.status;
-      trial.result = events.findLast(event => event.type === 'script_completed')?.result;
+      const resultEnvelope = state.status === 'completed' ? await run('script', { operation: 'result', operationId: activeId }) : null;
+      if (resultEnvelope) { assert.equal(resultEnvelope.ok, true, JSON.stringify(resultEnvelope)); assert.equal(resultEnvelope.persisted, true); }
+      trial.result = resultEnvelope?.result;
       trial.archive = await run('evidence', { operation: 'export', namespace: 'script', operationId: activeId,
         outputDir: path.join(dir, 'archive'), includeRecordedPayloads: true });
       write(path.join(dir, 'export.json'), trial.archive); assert.equal(trial.archive.ok, true); activeId = null;

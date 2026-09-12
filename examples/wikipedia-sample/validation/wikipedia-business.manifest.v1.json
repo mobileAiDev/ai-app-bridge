@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "wikipedia-business-scenario/v1",
+  "frozen": true,
+  "scope": "Original Wikipedia Android fixed P9: prepared onboarding, real search and article, contents, return and Settings, no results, synthetic reading-list cancel/create/reopen/delete, Wikipedia language priority and theme changes restored, repeated article navigation, current evidence and independent business files.",
+  "target": {
+    "platform": "android",
+    "packageName": "org.wikipedia.dev.bridge_sample",
+    "locale": "zh-Hans-CN"
+  },
+  "upstream": {
+    "repository": "https://github.com/wikimedia/apps-android-wikipedia.git",
+    "ref": "r/50605-r-2026-09-08",
+    "commit": "2fa2f9536e0d0120ef82638d9ea8086be821f3a3",
+    "license": "Apache-2.0",
+    "licenseFile": "COPYING",
+    "versionCode": 50605,
+    "buildVariant": "devDebug",
+    "packageName": "org.wikipedia.dev.bridge_sample",
+    "compileSdk": 37,
+    "minSdk": 23,
+    "javaVersion": 17,
+    "gradleVersion": "9.7.1"
+  },
+  "apkSha256": "84e723bacaefdd3f5e06de11417d9987c41d12b55b61f093544fb4206eb72f18",
+  "sourceHashes": {
+    "script": "f5c04d6d3fa469566b6cb21f320bc590f2fe30e1dfd72af7ff1ad4d284ef0f98",
+    "databaseReader": "d1a529ea8f919214d13f5a559591aebff5ce18ec78a9085a8f6c18dc17304621",
+    "preferencesReader": "312982b9f3b9a2bbc0eff352e5b9e3da180205078468ee55d046d0960c8ba771"
+  },
+  "listName": "AAB Script Moon 20260912-P9",
+  "cancelledListName": "AAB Script Cancel 20260912-P9",
+  "listDescription": "Bridge fixed real article and persisted reading list",
+  "preparation": {
+    "onboardingCompleted": true,
+    "coachmarksDismissed": true,
+    "terminalPage": "Explicit clearTask Main launch with upstream returnToMain extra; Script selects Home before every Search entry",
+    "defaultCollection": {
+      "id": 1,
+      "listTitle": "",
+      "article": "月球",
+      "wiki": "zh.wikipedia.org",
+      "lang": "zh-cn",
+      "offline": 1,
+      "status": 1
+    },
+    "preferences": {
+      "colorTheme": 1,
+      "matchSystemTheme": true,
+      "languageApp": "zh-cn,zh-tw"
+    }
+  },
+  "intentEvidence": [
+    {
+      "operationId": "intent-1789186151809-1",
+      "manifestSha256": "dc890214cb3e72139e268ef558ba578dfca08c38a653d4b367185567a875922b"
+    },
+    {
+      "operationId": "intent-1789188115351-4",
+      "manifestSha256": "ee43962bf04869c62c5d3b0563324cdaa68c37e06eccfce598f674c97b5f895d"
+    }
+  ],
+  "timing": {
+    "coreMaximumMs": 300000,
+    "acceptanceMaximumMs": 600000,
+    "includes": "Script calls, UI waits, assertions, all eight independent original-file reads, mobile capture and screenshots",
+    "excludes": "Build/install/onboarding, preflight APK hashing, archive export and offline verification (reported separately)"
+  },
+  "limits": [
+    "Language coverage changes Wikipedia content-language priority; it does not change the system locale.",
+    "Saved offline flag is checked on original SQLite; reading under disconnected network is a separate scope.",
+    "This fixed App scenario does not close the original four-App suite, iOS matrix or production release."
+  ]
+}

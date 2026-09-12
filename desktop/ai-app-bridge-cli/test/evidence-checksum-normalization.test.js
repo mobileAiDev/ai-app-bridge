@@ -10,10 +10,11 @@ const { createMemoryEvidenceAdapter, createFileEvidenceAdapter, createSegmentedE
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createIntentWorker } = require('../bin/intent/intent-worker');
 const { buildEnvelope, checksumOf, verifyChecksum } = require('../bin/shared-kernel/evidence-schema');
+const { createHash } = require('node:crypto');
 
-const target = { serial: 'checksum-host-only', packageName: 'example.checksum' };
+const target = { platform: 'android', serial: 'checksum-host-only', packageName: 'example.checksum' };
 function observation(operationId, extra = {}) {
-  return { operationId, revision: 1, ...target, provider: 'native', capturedAtMs: 1,
+  return { operationId, revision: 1, target, provider: 'native', capturedAtMs: 1,
     foregroundTarget: target.packageName, rawTreeId: `${operationId}:1`, rawTree: { root: { text: 'Home' } }, ...extra };
 }
 function nativeStore(t) {
@@ -24,12 +25,26 @@ function nativeStore(t) {
   return { store: evidence(), reopen() { facts.close(); facts = createFactStore({ directory, profile: '64mb' }); return evidence(); } };
 }
 
+test('the native FactStore preserves hashed original receipt bytes through write, close and reopen', async t => {
+  const durable = nativeStore(t);
+  const receiptJson = String.raw`{"actionId":"intent:\u8282\u70b9","resourceName":"sample:id\/next","settled":true}`;
+  const digest = raw => createHash('sha256').update(raw).digest('hex');
+  const executionReceipt = { kind: 'uia-node', settled: true, receiptJson, responseSha256: digest(receiptJson) };
+  const saved = await durable.store.persist('checkpoint', { operationId: 'uia-original-bytes', revision: 1, target, stepId: 'original-receipt',
+    payloadSummary: { executionReceipt } });
+  assert.equal(saved.ok, true, JSON.stringify(saved));
+  const reopened = durable.reopen().read(saved.evidenceId);
+  assert.equal(reopened.ok, true);
+  assert.deepEqual(reopened.record.payloadSummary.executionReceipt, executionReceipt);
+  assert.equal(digest(reopened.record.payloadSummary.executionReceipt.receiptJson), executionReceipt.responseSha256);
+});
+
 test('Intent transient unavailable capture commits through native FactStore without a checksum block', async (t) => {
   const durable = nativeStore(t);
   const worker = createIntentWorker({
     operationId: 'transient-capture', target, store: durable.store,
     adapter: { observe: async ({ rawTreeId }) => ({ ok: true, rawTreeId, foregroundTarget: target.packageName, rawTree: { root: { text: 'Home' } } }) },
-    captureRequirements: { stream: 'events' },
+    captureRequirements: { streams: ['events'] },
     // Real restart failure shape: window is absent; epoch metadata is explicitly null.
     capturePort: { observe: async () => ({
       coverage: { status: 'unavailable', gap: false, committed: false }, refs: [], items: [],
@@ -59,7 +74,7 @@ test('native FactStore keeps checksums for actual Intent receipts with absent re
   });
   const start = await worker.start();
   assert.equal(start.status, 'waiting_for_decision');
-  const result = await worker.decide({ decisionId: 'd1', agentDecision: 'act', basedOnRevision: start.revision, action: { action: 'tap', text: 'Home' } });
+  const result = await worker.decide({ decisionId: 'd1', agentDecision: 'act', basedOnRevision: start.revision, action: { action: 'tap', selector: { text: 'Home' } } });
   assert.equal(result.status, 'waiting_for_decision');
   const receipt = durable.store.latest('receipt-normalization', 'action-receipt');
   assert.equal(durable.store.read(receipt.evidenceId).ok, true);
@@ -107,7 +122,9 @@ test('unchanged legacy evidence hashes remain valid and mismatched legacy record
   const body = { ...observation('legacy'), namespace: 'intent', kind: 'observation', evidenceId: 'intent:observation:legacy:1:1', committedAtMs: 2 };
   const legacy = { ...body, checksum: checksumOf(body), persisted: true };
   const built = buildEnvelope('intent', 'observation', observation('legacy'), { now: () => 2, sequence: 1 });
-  assert.equal(built.envelope.checksum, legacy.checksum);
+  assert.equal(built.envelope.schemaVersion, 'aab.execution-evidence/v1');
+  assert.equal(verifyChecksum(built.envelope).ok, true);
+  assert.notEqual(built.envelope.checksum, legacy.checksum);
   assert.equal(verifyChecksum(legacy).ok, true);
   const oldMismatch = { ...legacy, optionalField: null };
   const bytesBefore = JSON.stringify(oldMismatch);

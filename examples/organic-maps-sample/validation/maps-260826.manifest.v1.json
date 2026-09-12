@@ -1,0 +1,28 @@
+{
+  "upstreamCommit": "3ef379196cca434cf17f4ee684f16aa99fd8985e",
+  "dataVersion": 260826,
+  "catalogSha256": "d8a631f97ba180a04c2a064552ba5582ab1a523d1ce629789695cc8143ddc992",
+  "files": [
+    {
+      "name": "World.mwm",
+      "origin": "pinned upstream data/World.mwm",
+      "bytes": 64005633,
+      "blake3PrefixBase64": "oQvZQbw1wiTa",
+      "sha256": "1504e3516979977f3a84f69aace7f8eeaef828705e80790270e7703ee725317a"
+    },
+    {
+      "name": "WorldCoasts.mwm",
+      "origin": "pinned upstream data/WorldCoasts.mwm",
+      "bytes": 8354683,
+      "blake3PrefixBase64": "UMYGWXz8B8GT",
+      "sha256": "3f2a8c666f0aa5916e4bb59f0d3f4a4ea7815139874b156211f7b87c1aa06a58"
+    },
+    {
+      "name": "Monaco.mwm",
+      "origin": "https://cdn.organicmaps.app/maps/260826/Monaco.mwm",
+      "bytes": 1077264,
+      "blake3PrefixBase64": "Rw6Pc7ZQNsmk",
+      "sha256": "3970f58b6cda60e08c4d2e19249c105cc6aa3fb0e225a4ec4bf462be1129a131"
+    }
+  ]
+}

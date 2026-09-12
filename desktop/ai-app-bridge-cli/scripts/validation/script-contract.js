@@ -83,7 +83,7 @@ async function main(argv = process.argv.slice(2)) {
   async function start(scenario, inputs = {}, restartPolicy = 'none') {
     const directory = path.join(out, scenario);
     fs.mkdirSync(directory);
-    const spec = { schemaVersion: 'aab.code-script/v1', name: scenario, language: 'javascript', sourcePath, target,
+    const spec = { schemaVersion: 'aab.code-script/v1', name: scenario, language: 'javascript', sourcePath, target: { platform: 'android', ...target },
       inputs: { scenario, out: directory, ...inputs }, permissions: ['app.read', 'app.interact'],
       policy: { timeoutMs: 120000, restartPolicy } };
     const begun = write(`${scenario}-start`, await script({ operation: 'start', script: spec }));
@@ -93,11 +93,12 @@ async function main(argv = process.argv.slice(2)) {
     save();
     return begun.operationId;
   }
-  const resultOf = state => {
+  const resultOf = async state => {
     assert.equal(state.status, 'completed', JSON.stringify(state));
-    const event = state.events.find(item => item.type === 'script_completed');
-    assert.ok(event, 'Missing completed event');
-    return event.result;
+    const resultEnvelope = write(`${state.operationId}-${hostIndex}-result`, await script({ operation: 'result', operationId: state.operationId }));
+    assert.equal(resultEnvelope.ok, true, JSON.stringify(resultEnvelope)); assert.equal(resultEnvelope.persisted, true);
+    assert.equal(resultEnvelope.status, 'completed');
+    return resultEnvelope.result;
   };
   const verdict = (value, expected, reason) => {
     assert.equal(value.verdict, expected, JSON.stringify(value));
@@ -145,7 +146,7 @@ async function main(argv = process.argv.slice(2)) {
 
     const seedId = await start('seed');
     const seed = await waitFor(seedId);
-    const seedResult = resultOf(seed);
+    const seedResult = await resultOf(seed);
     issuedTree('seed/tree.json');
     checkScreenshot('seed');
     verdict(seedResult.verdict, 'passed');
@@ -153,7 +154,7 @@ async function main(argv = process.argv.slice(2)) {
 
     const evidenceId = await start('evidence', { foreignEvidence: seedResult.evidence });
     const evidence = await waitFor(evidenceId);
-    const values = resultOf(evidence).verdicts;
+    const values = (await resultOf(evidence)).verdicts;
     issuedTree('evidence/before.json'); issuedTree('evidence/after.json');
     verdict(values.fresh, 'passed'); verdict(values.refreshed, 'passed');
     verdict(values.falsePredicate, 'failed');
@@ -173,7 +174,7 @@ async function main(argv = process.argv.slice(2)) {
     const cancelled = write('cancel-reply', await script({ operation: 'cancel', operationId: cancelId }));
     assert.equal(cancelled.status, 'cancelled'); live.delete(cancelId);
     const afterCancelId = await start('after-cancel');
-    verdict(resultOf(await waitFor(afterCancelId)).verdict, 'passed');
+    verdict((await resultOf(await waitFor(afterCancelId))).verdict, 'passed');
     checkScreenshot('after-cancel');
     const cancelledFull = await waitFor(cancelId);
     assert.equal(factsOf(cancelledFull).some(item => item.kind === 'action_receipt'), false);
@@ -215,7 +216,7 @@ async function main(argv = process.argv.slice(2)) {
       const resumed = write(`${name}-resume`, await script({ operation: 'resume', operationId: id }));
       assert.equal(resumed.ok, true, JSON.stringify(resumed)); live.add(id);
       const completed = await waitFor(id);
-      const result = resultOf(completed);
+      const result = await resultOf(completed);
       issuedTree(`${name}/after-restart.json`);
       verdict(result.old, 'inconclusive', 'evidence_not_host_issued'); verdict(result.fresh, 'passed');
       assert.equal(result.app.packageName, target.packageName);

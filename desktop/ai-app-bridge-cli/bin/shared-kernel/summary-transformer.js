@@ -1,7 +1,11 @@
 'use strict';
 
+const { foregroundNativeWindow } = require('./native-target');
+
 const { semanticNode } = require('./semantic-node');
 const { parseXmlAttributes } = require('./xml-attributes');
+const iosNative = require('./ios-native-target');
+const uia = require('./uia-protocol');
 
 const DEFAULT_MAX_BYTES = 64 * 1024;
 const HARD_LIMIT_MS = 50;
@@ -26,7 +30,14 @@ function summarizeTree({
   let visited = 0;
   let truncated = false;
   let reason = null;
+  const page = provider === 'h5' && ([require('./ios-h5-target').schema, require('./android-h5-target').schema].includes(rawTree?.h5TargetSchema)
+    || rawTree?.webTargetSchema === require('./web-dom-target').schema)
+    ? { ...rawTree.pageRef, title: rawTree.dom.title.slice(0,500), readyState: rawTree.dom.readyState,
+      ...(rawTree.dom.viewport === undefined ? {} : { viewport: rawTree.dom.viewport }),
+      bodyText: rawTree.dom.bodyText.slice(0, Math.min(12000, Math.floor(maxBytes / 12))),
+      bodyTextTruncated: rawTree.dom.bodyTextTruncated || rawTree.dom.bodyText.length > Math.min(12000, Math.floor(maxBytes / 12)) } : undefined;
   const activity = provider === 'native' && typeof rawTree?.activity === 'string' ? rawTree.activity : undefined;
+  const uiaSnapshot = provider === 'uia' ? uia.snapshotIdentity(rawTree) : null;
 
   walkProvider(provider, rawTree, (source, sourceIndex) => {
     visited += 1;
@@ -35,7 +46,7 @@ function summarizeTree({
       reason = 'hard_limit_ms';
       return false;
     }
-    const node = toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId);
+    const node = toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId, uiaSnapshot);
     if (node && keepNode(node)) collected.push(node);
     return true;
   });
@@ -49,6 +60,8 @@ function summarizeTree({
     reason,
     maxBytes,
     activity,
+    page,
+    prioritizeVisibleControls: provider === 'native' && rawTree?.nativeTargetSchema === iosNative.schema,
   });
   truncated = truncated || nodes.truncated;
   reason = reason || nodes.reason;
@@ -62,6 +75,7 @@ function summarizeTree({
     truncated,
     reason,
     ...(activity === undefined ? {} : { activity }),
+    ...(page === undefined ? {} : { page }),
     nodes: nodes.nodes,
   };
 }
@@ -74,17 +88,27 @@ function walkProvider(provider, rawTree, visit) {
 }
 
 function walkNative(tree, visit) {
+  if (tree?.nativeTargetSchema === iosNative.schema) {
+    let sourceIndex = 0;
+    for (const node of iosNative.nodesOf(tree)) {
+      const rect = node.rect;
+      const source = { id: node.elementId, elementId: node.elementId, className: node.type, elementType: node.type,
+        text: node.value, label: node.label, accessibilityId: node.rawIdentifier,
+        enabled: node.isEnabled === '1', visible: node.isVisible === '1',
+        editable: ['TextField', 'SecureTextField', 'TextView', 'SearchField'].includes(node.type),
+        bounds: rect ? { left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height } : null };
+      if (visit(source, sourceIndex++) === false) return;
+    }
+    return;
+  }
   const index = { i: 0 };
   if (Array.isArray(tree?.windows) && tree.windows.length) {
     // Match native action selection: the last non-hidden root owns the foreground.
     // An unknown/disabled root still blocks background controls. Do not spend the
     // summary budget on a long background page before exposing its modal dialog.
-    const foreground = tree.windows.findLastIndex(window => {
-      const root = window?.root;
-      return !(root && (root.visible === false || root.effectiveVisible === false || root.alpha === 0
-        || root.visibility === 'gone' || root.visibility === 'invisible'));
-    });
-    if (foreground < 0) return;
+    const selected = foregroundNativeWindow(tree);
+    if (!selected) return;
+    const foreground = selected.index;
     // Preserve the sourceIndex ordinal in the original windows' preorder.
     for (let i = 0; i < foreground; i++) walkChildren(tree.windows[i]?.root, () => true, index);
     walkChildren(tree.windows[foreground]?.root, visit, index);
@@ -140,6 +164,15 @@ function walkFlutter(tree, visit) {
 }
 
 function walkH5(tree, visit) {
+  if ([require('./ios-h5-target').schema, require('./android-h5-target').schema].includes(tree?.h5TargetSchema) || tree?.webTargetSchema === require('./web-dom-target').schema) {
+    for (const [index, node] of tree.dom.controls.entries()) {
+      if (visit({ ...node, elementType: node.tag, label: node.ariaLabel, enabled: !node.disabled,
+        clickable: ['a', 'button'].includes(node.tag)
+          || node.tag === 'input' && ['checkbox', 'radio'].includes(node.type)
+          || ['checkbox', 'menuitemcheckbox', 'radio', 'menuitemradio', 'switch'].includes(node.role) }, index) === false) return;
+    }
+    return;
+  }
   if (Array.isArray(tree?.nodes)) {
     let sourceIndex = 0;
     for (const node of tree.nodes) {
@@ -160,7 +193,7 @@ function walkChildren(node, visit, index) {
   return true;
 }
 
-function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId) {
+function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId, uiaSnapshot) {
   if (!source || typeof source !== 'object') return null;
   const className = String(source.className || source.class || source.widgetType || source.tag || source.tagName || '');
   const text = firstString(source.text, source.value);
@@ -178,23 +211,30 @@ function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId) 
     sourceIndex,
     rawTreeId,
     screenshotId,
+    targetRef: uiaSnapshot ? uia.nodeTargetRef(uiaSnapshot, source) : undefined,
     role,
     text,
     label,
+    ...(provider === 'flutter' ? { hint: source.hint, errorText: source.errorText } : {}),
     bounds: boundsOf(source),
     enabled: source.enabled !== false && source.enabled !== 'false',
-    checked: boolOrNull(source.checked),
+    checked: provider === 'uia' && boolOrNull(source.checkable) !== true
+      ? null : source.checked === 'mixed' ? 'mixed' : boolOrNull(source.checked),
     selected: boolOrNull(source.selected),
     clickable: Boolean(
       source.clickable === true
       || source.clickable === 'true'
       || (Array.isArray(source.actions) && source.actions.includes('tap')),
     ),
-    ...(provider === 'native' ? {
+    ...(['native', 'h5'].includes(provider) ? {
       resourceName: source.resourceName,
       editable: source.editable,
+      interaction: source.interaction,
       visible: source.visible,
       effectiveVisible: source.effectiveVisible,
+      accessibilityId: source.accessibilityId,
+      elementId: source.elementId,
+      elementType: source.elementType,
     } : {}),
   });
 }
@@ -203,8 +243,9 @@ function keepNode(node) {
   return Boolean(
     node.text
     || node.label
+    || node.accessibilityId
     || node.clickable
-    || node.checked === true
+    || node.checked !== null
     || node.selected === true
     || node.role === 'button'
     || node.role === 'input'
@@ -215,6 +256,8 @@ function keepNode(node) {
 function classifyRole(source, className) {
   const lower = className.toLowerCase();
   const role = String(source.role || '').toLowerCase();
+  if (['checkbox', 'menuitemcheckbox', 'radio', 'menuitemradio', 'switch'].includes(role)) return role;
+  if (lower === 'input' && ['checkbox', 'radio'].includes(source.type)) return source.type;
   if (role === 'textbox' || source.editable === true || /edit|input|textfield|textarea|search/.test(lower)) return 'input';
   if (role === 'button' || /button|btn/.test(lower)) return 'button';
   if (role === 'image' || source.src || /image|img|imageview/.test(lower)) return 'image';
@@ -265,11 +308,17 @@ function boolOrNull(value) {
   return null;
 }
 
-function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity }) {
-  const meta = { provider, rawTreeId, screenshotId, visited, truncated, reason, ...(activity === undefined ? {} : { activity }) };
+function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity, page, prioritizeVisibleControls }) {
+  const meta = { ok: true, provider, rawTreeId, screenshotId, visited, truncated, reason, ...(activity === undefined ? {} : { activity }), ...(page === undefined ? {} : { page }) };
   if (byteSize(nodes, meta) <= maxBytes) {
     return { nodes, truncated, reason };
   }
+  // WDA places native toolbars and sheets after potentially long WKWebView text.
+  // Reserve their visible controls before spending the budget on article content;
+  // retain the original identities, visibility and preorder in the final result.
+  const candidates = prioritizeVisibleControls
+    ? [...nodes].sort((a, b) => visibleControlPriority(a) - visibleControlPriority(b))
+    : nodes;
   let low = 0;
   let high = nodes.length;
   while (low < high) {
@@ -279,10 +328,17 @@ function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated
       truncated: true,
       reason: reason || 'max_bytes',
     };
-    if (byteSize(nodes.slice(0, mid), candidate) <= maxBytes) low = mid;
+    if (byteSize(candidates.slice(0, mid), candidate) <= maxBytes) low = mid;
     else high = mid - 1;
   }
-  return { nodes: nodes.slice(0, low), truncated: true, reason: reason || 'max_bytes' };
+  const selected = candidates.slice(0, low);
+  if (prioritizeVisibleControls) selected.sort((a, b) => a.sourceIndex - b.sourceIndex);
+  return { nodes: selected, truncated: true, reason: reason || 'max_bytes' };
+}
+
+function visibleControlPriority(node) {
+  if (node.visible !== true) return 2;
+  return node.role === 'button' || node.role === 'input' || node.clickable ? 0 : 1;
 }
 
 function byteSize(nodes, meta) {

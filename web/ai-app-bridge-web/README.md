@@ -2,14 +2,48 @@
 
 Browser-side SDK for AI App Bridge Web sessions. Use it in debug/test builds
 to let an agent communicate with a running web page through the desktop AI App
-Bridge MCP provider.
+Bridge shared execution runtime, through either CLI or MCP.
 
-Agent-side MCP commands live in the `web` domain: `web-session-start`,
+Agent-side commands live in the `web` domain: `web-session-start`,
 `web-connect-info`, `web-sessions`, `web-status`, `web-dom`, `web-logs`,
 `web-network`, `web-state`, `web-events`, `web-command`, `web-click`,
-`web-input`, `web-wait`, and `web-scroll`. MCP clients should call
+`web-input`, `web-key`, `web-wait`, and `web-scroll`. MCP clients should call
 `capabilities` first, then `run` the selected command with `sessionId` and
-optional `targetId`.
+the exact document `runtimeEpoch` and optional `targetId: "main"`.
+
+Web Intent uses `provider: "h5"` and an explicit Web target. Script admits
+typed DOM controls through the same serving provider. See the desktop
+[Web command contract](../../desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md#web-dom-intent-and-script)
+and [Script authoring guide](../../desktop/ai-app-bridge-cli/docs/SCRIPT_AUTHORING.md).
+
+DOM controls expose normalized `checked` (`true`, `false`, `"mixed"` or `null`)
+and raw `ariaChecked`. Native checkbox/radio observations read live properties;
+ARIA controls retain their explicit state. Unknown state is not reported as
+unchecked. Use the current SDK with the current Host; missing `checked` is an
+invalid snapshot. A semantic click must still be followed by a fresh observation
+and an independent business check where persistence matters.
+
+## Capture windows and network bodies
+
+Network body capture is explicitly enabled with `captureRequestBodies: true`
+and `captureResponseBodies: true`; both default to disabled for automatic fetch
+and XHR capture. Each body includes its `requestBodyState`/`responseBodyState` and
+`requestBodyEncoding`/`responseBodyEncoding`. Read `utf8` directly and decode
+`base64` before applying an App protocol decoder. Binary fetch payloads, including
+Protobuf, retain their original bytes. XHR response types other than text remain
+explicitly unsupported in this version.
+
+Byte bodies are bounded to 12,000 bytes. Oversized requests are marked truncated;
+oversized response streams omit the body with `too-large`. Response capture has a
+one-second deadline, uses a clone and does not delay or consume the App response.
+Disabled, unknown and unavailable bodies are never reported as empty responses.
+
+The current Host and SDK use `aab.web-capture/v1` barriers. Capture sequence,
+loss and pending counters describe what the SDK has emitted through that point.
+Automatic network records freeze the synchronous dispatch origin at request
+initiation; asynchronous origins that cannot be established stay `unattributed`.
+Use an explicit context when the App can supply the real action ID. A later
+active action is never substituted for a missing origin.
 
 ## Install
 

@@ -20,7 +20,7 @@ function codeScript() {
     name: 'p7-restore',
     language: 'javascript',
     source: SOURCE,
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     policy: { restartPolicy: 'checkpoint' },
   };
 }
@@ -45,7 +45,7 @@ test('P7 durable restore treats a prepared marker without receipt as ambiguous',
     operationId: 'amb',
     revision: 1,
     actionId: 'a1',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     actionSpecHash: 'tap',
     planStepId: 'a1',
     state: 'prepared',
@@ -68,7 +68,7 @@ test('P7 durable restore treats an ambiguous receipt as not replayable', async (
     operationId: 'amb-receipt',
     revision: 1,
     actionId: 'a1',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     actionSpecHash: 'tap',
     planStepId: 'a1',
     state: 'prepared',
@@ -86,7 +86,7 @@ test('P7 durable restore treats an ambiguous receipt as not replayable', async (
   assert.equal(loaded.error, 'ambiguous');
 });
 
-test('P7 durable restore keeps steps checkpoints on the dual-run format', async () => {
+test('P7 durable restore rejects removed steps checkpoints', async () => {
   const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   await store.persist('checkpoint', {
     operationId: 'steps',
@@ -97,8 +97,8 @@ test('P7 durable restore keeps steps checkpoints on the dual-run format', async 
   });
   const loaded = loadDurableCheckpoint(store, 'steps');
   const planned = planCodeRestore({ checkpoint: loaded.checkpoint });
-  assert.equal(planned.ok, true);
-  assert.equal(planned.format, 'steps');
+  assert.equal(planned.ok, false);
+  assert.equal(planned.error, 'script_format_removed');
 });
 
 test('P7 durable restore requires frozen source or a matching script', async () => {
@@ -142,7 +142,7 @@ test('P7 durable restore reloads a code checkpoint from a file store', async () 
     source: SOURCE,
     language: 'javascript',
     name: 'p7-restore',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     policy: { restartPolicy: 'checkpoint' },
   });
   const second = createScriptEvidenceStore({ adapter: createFileEvidenceAdapter({ dir }) });
@@ -205,7 +205,7 @@ test('P7 restoreUnknownOperation does not replay an ambiguous prepared marker', 
     operationId: 'amb-restore',
     revision: 1,
     actionId: 'a1',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     actionSpecHash: 'tap',
     planStepId: 'a1',
     state: 'prepared',
@@ -293,9 +293,9 @@ test('P7 durable restore injects the committed user checkpoint into a restarted 
     restored.eventSequence,
   );
   assert.equal(restoredDone.status, 'completed');
-  const completed = restoredDone.events.filter((event) => event.type === 'script_completed');
-  assert.equal(completed.at(-1).result.resumed, true);
-  assert.equal(completed.at(-1).result.step, 1);
+  const completed = restartedSupervisor.handle({ operation: 'result', operationId: first.operationId });
+  assert.equal(completed.result.resumed, true);
+  assert.equal(completed.result.step, 1);
 });
 
 test('P7 Node child does not proceed until its user checkpoint is durably committed', async () => {
@@ -304,6 +304,7 @@ test('P7 Node child does not proceed until its user checkpoint is durably commit
   let checkpointOffered;
   const offered = new Promise((resolve) => { checkpointOffered = resolve; });
   const store = {
+    ...backingStore,
     persist(kind, record) {
       if (kind === 'checkpoint' && record.stepId === 'durable' && record.status === 'running') {
         checkpointOffered();

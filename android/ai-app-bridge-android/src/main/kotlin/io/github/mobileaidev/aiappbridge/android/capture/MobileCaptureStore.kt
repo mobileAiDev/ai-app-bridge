@@ -144,8 +144,17 @@ class MobileCaptureStore(
         if (backend is SegmentedCaptureBackend) return
         synchronized(lock) {
             if (backend is SegmentedCaptureBackend) return
-            backend = SegmentedCaptureBackend(store, directory, targetKey, runtimeEpoch, epochStartSequence, budgets, caps,
-                initialLoss = backend.status().streams.values.any { it.count > 0 || it.gap }, existingRecords = existingRecords)
+            val startup = backend as BoundedMemoryCaptureBackend
+            val pending = startup.pendingRecords()
+            require(pending.all { it.targetKey == targetKey && it.runtimeEpoch == runtimeEpoch }) {
+                "capture_startup_identity_mismatch"
+            }
+            val persistent = SegmentedCaptureBackend(store, directory, targetKey, runtimeEpoch, epochStartSequence, budgets, caps,
+                initialLossStreams = startup.status().streams.filterValues { it.gap }.keys, existingRecords = existingRecords)
+            // This callback runs on the writer. Enqueue without awaiting that same writer; its
+            // query barrier proves commitment, and rejected appends retain their stream loss fence.
+            pending.forEach { persistent.append(it, "async") }
+            backend = persistent
         }
     }
 

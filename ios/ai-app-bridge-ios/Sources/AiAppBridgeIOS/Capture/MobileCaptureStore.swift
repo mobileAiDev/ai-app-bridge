@@ -52,6 +52,10 @@ public struct CaptureQuery {
     public var limit: Int?
     public var platform: String
     public var afterActionId: String?
+    public var cursor: String?
+    public var runtimeEpoch: String?
+    public var targetKey: String?
+    public var mobileFactId: String?
 
     public init(
         view: String,
@@ -60,7 +64,11 @@ public struct CaptureQuery {
         sinceMs: Int64? = nil,
         limit: Int? = nil,
         platform: String = "ios",
-        afterActionId: String? = nil
+        afterActionId: String? = nil,
+        cursor: String? = nil,
+        runtimeEpoch: String? = nil,
+        targetKey: String? = nil,
+        mobileFactId: String? = nil
     ) {
         self.view = view
         self.stream = stream
@@ -69,6 +77,10 @@ public struct CaptureQuery {
         self.limit = limit
         self.platform = platform
         self.afterActionId = afterActionId
+        self.cursor = cursor
+        self.runtimeEpoch = runtimeEpoch
+        self.targetKey = targetKey
+        self.mobileFactId = mobileFactId
     }
 }
 
@@ -82,6 +94,9 @@ public struct CaptureFactRef {
     public var mobileFactId: String
     public var stream: String
     public var captureId: Int64
+    public var targetKey: String? = nil
+    public var runtimeEpoch: String? = nil
+    public var capturedAtMs: Int64? = nil
 }
 
 public struct CapturePage {
@@ -94,6 +109,20 @@ public struct CapturePage {
     public var hasMore: Bool
     public var refs: [CaptureFactRef]
     public var values: [String: Any]
+    public var nextCursor: String? = nil
+    public var watermarkCursor: String? = nil
+    public var runtimeEpoch: String? = nil
+    public var targetKey: String? = nil
+    public var storeGeneration: Int64? = nil
+    public var throughWatermark: Int64? = nil
+    public var reason: String? = nil
+    public var window: [String: Any]? = nil
+
+    static func unavailable(_ stream: String, _ reason: String) -> CapturePage {
+        CapturePage(ok: false, type: stream, items: [], count: 0,
+                    coverage: CaptureCoverage(status: "unavailable", gap: true, committed: false),
+                    gap: true, hasMore: false, refs: [], values: [:], reason: reason)
+    }
 }
 
 public struct CaptureWatermark {
@@ -103,6 +132,7 @@ public struct CaptureWatermark {
 public struct ClearReceipt {
     public var ok: Bool
     public var generation: Int64
+    public var reason: String? = nil
 }
 
 public struct StreamStatus {
@@ -119,6 +149,9 @@ public struct CaptureStoreStatus {
     public var budgetBytes: Int64
     public var dropped: Int64
     public var streams: [String: StreamStatus]
+    public var reason: String? = nil
+    public var pendingRecords: Int = 0
+    public var pendingBytes: Int = 0
 }
 
 public struct ByteBudgets {
@@ -172,40 +205,163 @@ public struct CountCaps {
 }
 
 public final class MobileCaptureStore {
-    private let backend: BoundedMemoryCaptureBackend
+    private struct PendingAppend {
+        let input: CaptureInput
+        let durability: String
+        let completion: (AppendReceipt) -> Void
+    }
+
+    // This queue only bridges store opening; queries never read it. A receipt
+    // is delivered after the persistent backend assigns the original identity.
+    private let maxPendingRecords = 256
+    private let maxPendingBytes = 1024 * 1024
+    private var opening = false
+    private var pending: [PendingAppend] = []
+    private var pendingBytes = 0
+    private var backend: SegmentedCaptureBackend?
+    private let budgets: ByteBudgets
+    private let caps: CountCaps
+    private var attachmentLoss = false
+    private var attachmentVersion = 0
+    private var unavailableReason = "capture_store_unavailable"
     private let lock = NSLock()
 
     public init(budgets: ByteBudgets = ByteBudgets(), caps: CountCaps = CountCaps()) {
-        backend = BoundedMemoryCaptureBackend(budgets: budgets, caps: caps)
+        self.budgets = budgets
+        self.caps = caps
     }
 
-    public func append(_ record: CaptureInput, durability: String = "async") -> AppendReceipt {
+    func beginOpening() {
         lock.lock()
         defer { lock.unlock() }
-        return backend.append(record, durability: durability)
+        precondition(!opening && backend == nil && pending.isEmpty)
+        opening = true
+        unavailableReason = "capture_store_opening"
+    }
+
+    // Lifecycle calls this after each open. The token prevents a late writer
+    // callback from attaching a store that has already been stopped/replaced.
+    func attachPersistentStore(_ store: SegmentedFactStore, directory: URL,
+                               targetKey: String, runtimeEpoch: String) {
+        lock.lock()
+        attachmentVersion += 1
+        let version = attachmentVersion
+        backend?.invalidate()
+        backend = nil
+        opening = true
+        unavailableReason = "capture_store_opening"
+        lock.unlock()
+        store.status { [self] status in
+            lock.lock()
+            guard version == attachmentVersion else { lock.unlock(); return }
+            if status.state == .open, status.operation.isSuccess {
+                do {
+                    backend = try SegmentedCaptureBackend(store: store, directory: directory,
+                        targetKey: targetKey, runtimeEpoch: runtimeEpoch,
+                        epochStartSequence: status.nextSequence > 0 ? status.nextSequence - 1 : 0,
+                        budgets: budgets, caps: caps, initialLoss: attachmentLoss, existingRecords: status.recordCount)
+                    attachmentLoss = false
+                } catch { unavailableReason = "capture_metadata_unavailable" }
+            } else {
+                unavailableReason = "capture_store_unavailable"
+            }
+            let queued = pending
+            pending = []
+            pendingBytes = 0
+            opening = false
+            if backend == nil && !queued.isEmpty { attachmentLoss = true }
+            // Submit all startup writes before publishing the backend to a
+            // concurrent query and its durable watermark barrier.
+            let receipts = queued.map { entry in
+                backend?.append(entry.input, durability: entry.durability) ?? rejected(unavailableReason)
+            }
+            lock.unlock()
+            for (entry, receipt) in zip(queued, receipts) { entry.completion(receipt) }
+        }
+    }
+
+    func detachPersistentStore(reason: String = "capture_store_unavailable") {
+        lock.lock()
+        attachmentVersion += 1
+        backend?.invalidate()
+        backend = nil
+        opening = false
+        unavailableReason = reason
+        let queued = pending
+        pending = []
+        pendingBytes = 0
+        if !queued.isEmpty { attachmentLoss = true }
+        lock.unlock()
+        for entry in queued { entry.completion(rejected(reason)) }
+    }
+
+    // Completion may run on the store writer, like SegmentedFactStore's own
+    // callbacks. It must not synchronously wait for a disk query on that writer.
+    public func append(_ record: CaptureInput, durability: String = "async",
+                       completion: @escaping (AppendReceipt) -> Void) {
+        lock.lock()
+        if let backend {
+            let receipt = backend.append(record, durability: durability)
+            lock.unlock()
+            completion(receipt)
+            return
+        }
+        var reason = unavailableReason
+        if opening {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: record.record, options: [.sortedKeys])
+                let byteCount = data.count + record.stream.utf8.count + record.targetKey.utf8.count
+                    + record.runtimeEpoch.utf8.count + record.source.utf8.count
+                    + (record.actionId?.utf8.count ?? 0) + (record.stateKey?.utf8.count ?? 0)
+                if pending.count >= maxPendingRecords || byteCount > maxPendingBytes - pendingBytes {
+                    reason = "capture_startup_queue_full"
+                } else {
+                    var snapshot = record
+                    snapshot.record = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+                    pending.append(PendingAppend(input: snapshot, durability: durability, completion: completion))
+                    pendingBytes += byteCount
+                    lock.unlock()
+                    return
+                }
+            } catch { reason = "invalid_capture_payload" }
+        }
+        attachmentLoss = true
+        lock.unlock()
+        completion(rejected(reason))
+    }
+
+    private func rejected(_ reason: String) -> AppendReceipt {
+        AppendReceipt(status: "dropped", accepted: false, committed: false, dropped: true,
+                      deduplicated: false, mobileFactId: nil, reason: reason)
     }
 
     public func mark(_ streams: [String]) -> CaptureWatermark {
         lock.lock()
         defer { lock.unlock() }
-        return backend.mark(streams)
+        return backend?.mark(streams) ?? CaptureWatermark(streams: [:])
     }
 
     public func query(_ query: CaptureQuery) -> CapturePage {
         lock.lock()
-        defer { lock.unlock() }
-        return backend.query(query)
+        let selected = backend
+        let reason = unavailableReason
+        lock.unlock()
+        return selected?.query(query) ?? .unavailable(query.stream, reason)
     }
 
     public func status() -> CaptureStoreStatus {
         lock.lock()
         defer { lock.unlock() }
-        return backend.status()
+        return backend?.status() ?? CaptureStoreStatus(persistent: false, generation: 0,
+            ownedBytes: 0, budgetBytes: Int64(budgets.total()), dropped: attachmentLoss ? 1 : 0,
+            streams: Dictionary(uniqueKeysWithValues: ["logs", "network", "events", "state"].map {
+                ($0, StreamStatus(count: 0, ownedBytes: 0, dropped: attachmentLoss ? 1 : 0, gap: attachmentLoss))
+            }), reason: unavailableReason, pendingRecords: pending.count, pendingBytes: pendingBytes)
     }
 
     public func clear(_ scope: String = "all") -> ClearReceipt {
         lock.lock()
         defer { lock.unlock() }
-        return backend.clear(scope)
+        return backend?.clear(scope) ?? ClearReceipt(ok: false, generation: 0, reason: "capture_store_unavailable")
     }
 }

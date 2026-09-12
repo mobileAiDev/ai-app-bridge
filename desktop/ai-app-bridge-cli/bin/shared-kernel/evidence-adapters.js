@@ -114,7 +114,7 @@ function createSegmentedEvidenceAdapter(factStore, { ownsStore = false } = {}) {
     },
     readById(evidenceId) {
       const page = factStore.read({ actionId: evidenceId, limit: 1 });
-      if (!page.ok) return null;
+      if (!page.ok) throw Object.assign(new Error(page.error || 'Evidence store read failed.'), { code: 'evidence_read_failed' });
       const item = page.items?.[0];
       return item?.payload || null;
     },
@@ -127,7 +127,7 @@ function createSegmentedEvidenceAdapter(factStore, { ownsStore = false } = {}) {
           cursor,
           limit: 1_000,
         });
-        if (!page.ok) return [];
+        if (!page.ok) throw Object.assign(new Error(page.error || 'Evidence store read failed.'), { code: 'evidence_read_failed' });
         items.push(...(page.items || []));
         cursor = page.hasMore ? page.cursor : null;
       } while (cursor);

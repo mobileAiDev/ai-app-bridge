@@ -21,3 +21,6 @@ project(":ai-app-bridge-android").projectDir = file("android/ai-app-bridge-andro
 
 include(":ai-app-bridge-gradle-plugin")
 project(":ai-app-bridge-gradle-plugin").projectDir = file("android/ai-app-bridge-gradle-plugin")
+
+include(":ai-app-bridge-uia")
+project(":ai-app-bridge-uia").projectDir = file("android/ai-app-bridge-uia")

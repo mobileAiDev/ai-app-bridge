@@ -27,7 +27,7 @@ test('LocalSend evaluates a fresh settings tree after restore; unchanged titles 
   for (const restoreWorks of [true, false]) {
     let restoreAttempted = false;
     const verdicts = [];
-    const host = createScriptHostPort({ target: { serial: `localsend-${restoreWorks}` }, actions: async (command, args) => {
+    const host = createScriptHostPort({ target: { platform: 'android', serial: `localsend-${restoreWorks}`, packageName: 'org.localsend.localsend_app.debug' }, actions: async (command, args) => {
       if (command === 'tap-uia-text' && args.text === labels.languageRestoreEn) restoreAttempted = true;
       if (command === 'uia-tree') return { ok: true, result: settingsXml(!restoreAttempted || restoreWorks) };
       if (command === 'flutter-tree') return { ok: true, root: { text: labels.about } };
@@ -96,7 +96,7 @@ test('Organic Maps full fixture distinguishes no-save, missing bookmark restore,
       if (page === 'detail') nodes.push(node(labels.route), node(bookmark === 'saved' ? labels.bookmarkDelete : bookmark === 'deleted' ? labels.bookmarkRestore : labels.bookmark));
       return xml(...nodes);
     };
-    const host = createScriptHostPort({ target: { serial: `maps-${fault}` }, actions: async (command, args) => {
+    const host = createScriptHostPort({ target: { platform: 'android', serial: `maps-${fault}`, packageName: 'app.organicmaps' }, actions: async (command, args) => {
       if (command === 'uia-tree') return { ok: true, result: tree() };
       if (command === 'screenshot') return { ok: true, path: '/tmp/maps-postcondition.png' };
       if (command === 'input-text') { query = args.text; page = 'search'; }

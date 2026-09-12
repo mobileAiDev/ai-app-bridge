@@ -1,6 +1,7 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { requestDirectory } = require('./shared-kernel/request-context');
 
 const artifactDirectoryName = 'ai_app_bridge_artifacts';
 const generatedArtifactRetention = 20;
@@ -8,7 +9,7 @@ const generatedArtifactMaxAgeMs = 24 * 60 * 60 * 1000;
 const generatedArtifactMaxBytes = 64 * 1024 * 1024;
 
 function defaultArtifactDirectory(options = {}) {
-  const cwd = path.resolve(options.cwd || process.cwd());
+  const cwd = path.resolve(options.cwd || requestDirectory());
   const gitRoot = gitOutput(cwd, ['rev-parse', '--show-toplevel']);
   if (!gitRoot) {
     return path.join(cwd, 'build', artifactDirectoryName);
@@ -54,7 +55,7 @@ async function pruneGeneratedArtifacts(options = {}) {
     bytesBefore: 0,
     bytesAfter: 0,
   };
-  const directory = path.resolve(options.directory || process.cwd());
+  const directory = path.resolve(options.directory || requestDirectory());
   const prefix = sanitizeArtifactName(options.prefix || 'artifact');
   const extension = sanitizeArtifactExtension(options.extension || 'bin');
   const currentPath = options.currentPath ? path.resolve(options.currentPath) : '';

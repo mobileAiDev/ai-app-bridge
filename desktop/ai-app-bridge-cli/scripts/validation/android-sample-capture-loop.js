@@ -176,7 +176,7 @@ async function main(options) {
     const sourcePath = path.join(options.out, 'script.js');
     fs.writeFileSync(sourcePath, `'use strict';\nmodule.exports.main = ${sampleMain.toString()};\n`);
     const start = await run('script', { operation: 'start', script: { schemaVersion: 'aab.code-script/v1', name: 'native-sample-capture-loop', language: 'javascript', sourcePath,
-      target: report.target, inputs: { out: options.out }, policy: { timeoutMs: 120000, onFailure: 'fail', restartPolicy: 'none' } } });
+      target: { platform: 'android', ...report.target }, inputs: { out: options.out }, policy: { timeoutMs: 120000, restartPolicy: 'none' } } });
     write('script-start.json', start);
     if (start.ok !== true) throw new Error(`script_start:${start.error}`);
     operationId = start.operationId;

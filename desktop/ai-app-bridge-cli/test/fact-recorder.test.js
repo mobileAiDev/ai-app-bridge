@@ -4,8 +4,10 @@ const os = require('os');
 const path = require('path');
 const test = require('node:test');
 
-const { FactCache } = require('../bin/fact-cache');
+const { FactCache } = require('../test-support/fact-cache');
 const { FactRecorder } = require('../bin/fact-recorder');
+const { createFactStore } = require('../bin/fact-store');
+const { createLegacyFactStoreAdapter } = require('../bin/shared-kernel/evidence-adapters');
 
 function createCache(t, budgetBytes = 2 * 1024 * 1024) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-fact-recorder-'));
@@ -24,6 +26,29 @@ function createRecorder(t) {
   const cache = createCache(t);
   return { cache, recorder: new FactRecorder({ cache, now: () => 10_000 }) };
 }
+
+test('completed SDK recovery survives a production segmented store reopen without rewriting the original unknown outcome', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-completion-history-'));
+  let store = createFactStore({ directory, profile: '64mb' });
+  let cache = createLegacyFactStoreAdapter(store);
+  t.after(() => { store.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  const recorder = new FactRecorder({ cache });
+  const target = { serial: 'receipt-device', packageName: 'example.native' };
+  assert.equal(recorder.recordExecution({ command: 'input-text', args: { ...target, requestId: 'original' },
+    result: { ok: false, error: 'native_action_timeout', dispatched: null, ambiguous: true, settled: false, executionReceipt: null } }).ok, true);
+  const identity = { actionId: 'original', runtimeEpoch: 'native-epoch' };
+  const proof = { kind: 'native', ...identity, settled: true, dispatched: true, ambiguous: false, error: 'native_action_cancelled',
+    execution: { schemaVersion: 'aab.native-execution/v1', ...identity, settled: true }, responseSha256: 'a'.repeat(64) };
+  assert.equal(recorder.recordExecution({ command: 'device-ownership', args: { serial: target.serial, requestId: 'recovery' },
+    result: { ok: true, recovered: true, executionReceipt: proof, text: 'private payload must not enter this record' } }).ok, true);
+  store.close();
+  store = createFactStore({ directory, profile: '64mb' });
+  cache = createLegacyFactStoreAdapter(store);
+  const original = cache.query({ partition: 'action', actionId: 'original', limit: 1 }).items[0].payload.result;
+  const recovered = cache.query({ partition: 'action', actionId: 'recovery', limit: 1 }).items[0].payload.result;
+  assert.equal(original.settled, false); assert.equal(original.dispatched, null); assert.equal(original.executionReceipt, null);
+  assert.deepEqual(recovered.executionReceipt, proof); assert.doesNotMatch(JSON.stringify(recovered), /private payload/);
+});
 
 test('records an execution without persisting input, script, or payload contents', (t) => {
   const { cache, recorder } = createRecorder(t);

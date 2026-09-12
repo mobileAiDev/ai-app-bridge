@@ -1,6 +1,7 @@
 'use strict';
 
 const { createFakeHostPort } = require('../bin/script/fake-host-port');
+const { executionSleep } = require('../bin/shared-kernel/execution-scope');
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,6 +14,8 @@ const {
   resetPythonDetection,
 } = require('../bin/script/python-runtime-adapter');
 const { createTestScriptSupervisor: createScriptSupervisor } = require('./helpers/script-supervisor');
+const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
+const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 
 function spec(overrides = {}) {
   return {
@@ -20,10 +23,10 @@ function spec(overrides = {}) {
     name: 'p3',
     language: overrides.language || 'javascript',
     source: overrides.source,
-    target: { serial: 'serial-1', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'serial-1', packageName: 'com.example.app' },
     inputs: overrides.inputs || { n: 3 },
-    permissions: overrides.permissions,
-    policy: overrides.policy,
+    ...(overrides.permissions === undefined ? {} : { permissions: overrides.permissions }),
+    ...(overrides.policy === undefined ? {} : { policy: overrides.policy }),
   };
 }
 
@@ -384,7 +387,7 @@ test('P3 malformed child stdout and pre-ready exit stay on the Host', async () =
       source: JS_RPC_SOURCE,
       policy: { timeoutMs: 200 },
     }),
-    handlers: { network: () => new Promise(() => {}) },
+    handlers: { network: () => executionSleep(10000) },
   });
   const hungDone = await waitDone(hungRpc, hungStarted.operationId, 2000);
   assert.equal(hungDone.status, 'failed');
@@ -457,9 +460,11 @@ test('P3 handshake and empty RPC stay within the published budgets', async () =>
     String(pythonHandshake),
   );
   const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
+  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const started = await supervisor.handle({
     operation: 'start',
     script: spec({ source: JS_RPC_SOURCE }),
+    store,
     handlers: { network: async () => ({ ok: true }) },
   });
   const done = await waitDone(supervisor, started.operationId);
@@ -470,7 +475,9 @@ test('P3 handshake and empty RPC stay within the published budgets', async () =>
     afterSequence: 0,
     eventLimit: 256,
   });
-  const completed = snapshot.events.find((event) => event.type === 'script_completed');
+  await supervisor.registry.get(started.operationId).running;
+  const completed = await supervisor.handle({ operation: 'result', operationId: started.operationId, store });
+  assert.equal(completed.ok, true, JSON.stringify(completed));
   const times = [...completed.result.times].slice(5).sort((a, b) => a - b);
   assert.equal(times[Math.ceil(times.length * 0.95) - 1] <= 10, true, String(times));
 });

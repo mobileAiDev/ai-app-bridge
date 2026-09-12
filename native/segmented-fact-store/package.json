@@ -9,7 +9,9 @@
     "index.js",
     "include",
     "src",
-    "bindings/node/sfs_node.c"
+    "bindings/node/sfs_node.c",
+    "LICENSE",
+    "NOTICE"
   ],
   "scripts": {
     "build": "node-gyp rebuild",

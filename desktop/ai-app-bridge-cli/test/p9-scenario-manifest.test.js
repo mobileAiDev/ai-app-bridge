@@ -22,7 +22,7 @@ test('P9 manifests cover four apps and reject login/Moodle', () => {
   assert.deepEqual(manifest.apps.map((app) => app.packageName), [
     'org.localsend.localsend_app.debug',
     'org.wikipedia.dev',
-    'org.videolan.vlc',
+    'org.videolan.vlc.bridge_sample.debug',
     'app.organicmaps.web',
   ]);
 });

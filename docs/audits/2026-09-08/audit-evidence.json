@@ -1,0 +1,544 @@
+{
+  "head": "4da58fac5a9f8e522e85f7aa2f23cea195d75f95",
+  "date": "2026-09-08",
+  "scope": "Source/packaged-entrypoint/fake-port/disk-contract audit. No phone actions, no npm publication, no production code changes.",
+  "sourceSha256": {
+    "desktop/ai-app-bridge-cli/bin/mcp-server.js": "48b63247656338644ac1fd4d2553e0c27f77b462362e83e13107bfeb73ab2d2e",
+    "desktop/ai-app-bridge-cli/bin/ai-app-bridge.js": "2543f8c524259b811117eed5bba986ae0205e98b56457e3c7dbe79847cfc698c",
+    "desktop/ai-app-bridge-cli/bin/command-router.js": "86134f6121fd4f7b51c98765bf6419dfcc44fa9f711cd052dfb207757334b7d6",
+    "desktop/ai-app-bridge-cli/bin/target-execution.js": "b6bb11afa803876872a5f7819a40d007bef9b3f9e11ca542f9d1411b367cedec",
+    "desktop/ai-app-bridge-cli/bin/ios-provider.js": "defe46aac795a51dcc4cf78291ef8f3a842c28f32eeb3959424526a30e8e8c78",
+    "desktop/ai-app-bridge-cli/bin/web-provider.js": "3c8d0d7c3aa868cf0b3b292c76e2ac3d8535cc05ff2704f7eb9d332a2b705098",
+    "desktop/ai-app-bridge-cli/bin/script/script-spec.js": "710680695d262043b242ca9c05e26ebf75ec524032b14fb6174192dfa2e82b90",
+    "desktop/ai-app-bridge-cli/bin/script/script-host-port.js": "e0609ed162521afcfdc63a05b8296bc99c55a8c6d00d7207ade5c8db464ed3a2",
+    "desktop/ai-app-bridge-cli/bin/script/script-catalog.js": "ab2423d0c75c23a7e48e5ce3563597b2be9aac18514de7d8155f2c4dad1bebd7",
+    "desktop/ai-app-bridge-cli/bin/script/script-supervisor.js": "dd69a7fd1ec302203aa249d63f9f1f32ea2ee3bbb8adab6cc2936249bee09504",
+    "desktop/ai-app-bridge-cli/bin/intent/intent-entry.js": "b00fde995336751061231a843dd99ef8bad2b9190071d0df75b9b73cb2ef88ac",
+    "desktop/ai-app-bridge-cli/bin/intent/intent-action-executor.js": "085fe38b2b15ed2c71f3422e013baa3b9473a3642092593a86af8c8c97bce312",
+    "desktop/ai-app-bridge-cli/bin/intent/intent-production-adapter.js": "b7c8bbfd531988f734c3262c7a5e31e93ea84cc57ef5d969d921355a839a0607",
+    "desktop/ai-app-bridge-cli/bin/shared-kernel/live-capture-query.js": "4464a4df922ff31eec9d848a4e8692176f1fe65d01c96b154e81f339f48afdd2",
+    "desktop/ai-app-bridge-cli/bin/segmented-fact-store.js": "01365d52386dc24bd9105a086ab244f59379b6f0d466d425fd1bc578ad070bcf",
+    "desktop/ai-app-bridge-cli/package.json": "a90afbb5cf8acf3323c3ca9e6e4317265684a646e3158f9a0f49e991f3154d38",
+    "android/ai-app-bridge-android/src/main/kotlin/io/github/mobileaidev/aiappbridge/android/AiAppBridge.kt": "e998486246470405b655c02230271fe0d96228ea501f0d379e3b5c14f8555090",
+    "android/ai-app-bridge-android/src/main/kotlin/io/github/mobileaidev/aiappbridge/android/capture/MobileCaptureStore.kt": "fccca5fb282826b08960f7b8b36aaf49fd57f6e41d3b6ace5360fb6fcb09fd17",
+    "android/ai-app-bridge-android/src/main/kotlin/io/github/mobileaidev/aiappbridge/android/capture/SegmentedCaptureBackend.kt": "cf9fb47c0529bb74cd268fc2bd3454566eff333201e90b1c9d1707871b0249ce",
+    "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/AiAppBridge.swift": "b113476f240f30ea6552077774ddcea27245d5e6a10391f2e81ad94266f67d3a",
+    "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/Capture/MobileCaptureStore.swift": "4244cb7fcb92032227392ba3b4a2e34858b09241ea201121d26b58002208e7ca",
+    "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/Capture/LegacyLiveView.swift": "c707fc59df6a797e9518fc359ebc238f42819b626d93051bfe9bd0405126074b",
+    "flutter/ai_app_bridge_flutter/android/build.gradle": "007a8e11ef31a58529c8e789aa28edf77304cfd4b19db8261a0af60cd94e1cdb"
+  },
+  "pack": {
+    "name": "mobileaidev-ai-app-bridge-0.3.0-rc.1.tgz",
+    "sha256": "76a16302b2673f38ad1682608e1f0fa3be3d5d71b2104b14ce344e4d481052e2",
+    "missingImports": [
+      {
+        "from": "bin/ai-app-bridge.js",
+        "require": "./bridge-forward",
+        "resolved": "bin/bridge-forward"
+      }
+    ],
+    "entrypointChecks": [
+      {
+        "entry": "ai-app-bridge.js",
+        "exitCode": 1,
+        "missingBridgeForward": true
+      },
+      {
+        "entry": "mcp-server.js",
+        "exitCode": 1,
+        "missingBridgeForward": true
+      }
+    ],
+    "scope": "Actual tarball extracted into a fresh directory; NODE_PATH supplies existing external dependencies; this is a packaged-entrypoint smoke, not a fresh npm install."
+  },
+  "probes": [
+    {
+      "name": "null_boolean_tap_coordinates",
+      "result": {
+        "ok": true,
+        "transport": "adb",
+        "x": 0,
+        "y": 1
+      }
+    },
+    {
+      "name": "negative_tap_coordinate",
+      "result": {
+        "ok": true,
+        "transport": "adb",
+        "x": -10,
+        "y": 5
+      }
+    },
+    {
+      "name": "zero_keycode",
+      "result": {
+        "ok": true,
+        "transport": "adb",
+        "keyCode": 4
+      }
+    },
+    {
+      "name": "negative_swipe_duration",
+      "result": {
+        "ok": true,
+        "transport": "adb",
+        "startX": 10,
+        "startY": 10,
+        "endX": 20,
+        "endY": 20,
+        "durationMs": -5
+      }
+    },
+    {
+      "name": "mcp_negative_tap_reaches_dispatch",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": true,\n  \"transport\": \"adb\",\n  \"x\": -10,\n  \"y\": 5\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "name": "unknown_command_error_shape",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "unknown command: audit-no-such-command"
+          }
+        ],
+        "isError": true
+      }
+    },
+    {
+      "name": "missing_package_error_shape",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "clear-app-data: packageName is required in MCP mode so the command cannot clear a default package."
+          }
+        ],
+        "isError": true
+      }
+    },
+    {
+      "name": "bad_flutter_coordinate_error_shape",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"ok\": false,\n  \"error\": \"invalid_flutter_coordinates\"\n}"
+          }
+        ],
+        "isError": true
+      }
+    },
+    {
+      "name": "error_without_ok_tool_flag",
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"error\": \"audit_provider_failure\"\n}"
+          }
+        ],
+        "isError": false
+      }
+    },
+    {
+      "name": "same_request_id_different_command",
+      "result": {
+        "first": {
+          "ok": true,
+          "executedCommand": "tap"
+        },
+        "second": {
+          "ok": true,
+          "executedCommand": "tap"
+        },
+        "actualCalls": [
+          {
+            "command": "tap",
+            "args": {
+              "adb": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/production-readiness-audit-2026-09-08/fake-adb.py",
+              "serial": "audit-virtual",
+              "feedback": "off",
+              "requestId": "audit-reused-id",
+              "tapX": 1,
+              "tapY": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "legacy_dispatch_while_new_device_lease_held",
+      "result": {
+        "dispatched": true,
+        "newLeaseStillHeld": {
+          "serial": "audit-virtual",
+          "active": 1,
+          "maxActive": 1
+        },
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "{\n  \"ok\": true\n}"
+            }
+          ],
+          "isError": false
+        }
+      }
+    },
+    {
+      "name": "install_existing_package_without_apk_identity",
+      "result": {
+        "ok": true,
+        "action": "install-apk",
+        "transport": "adb",
+        "apkPath": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/production-readiness-audit-2026-09-08/not-a-real-apk.txt",
+        "packageName": "audit.fixture",
+        "installMode": "reinstall",
+        "installedBefore": {
+          "known": true,
+          "installed": true,
+          "paths": [
+            "package:/data/app/audit.fixture/base.apk"
+          ]
+        },
+        "installedAfter": {
+          "known": true,
+          "installed": true,
+          "paths": [
+            "package:/data/app/audit.fixture/base.apk"
+          ]
+        },
+        "process": {
+          "code": 0,
+          "signal": null,
+          "error": null,
+          "timedOut": false,
+          "stdout": "Success",
+          "stderr": ""
+        },
+        "installerActions": [],
+        "postInstallActions": [],
+        "error": null
+      }
+    },
+    {
+      "name": "install_package_verification_failure_error",
+      "result": {
+        "ok": false,
+        "action": "install-apk",
+        "transport": "adb",
+        "apkPath": "/Users/macbook/Documents/CompanyProject/ai-app-bridge/build/ai_app_bridge_artifacts/production-readiness-audit-2026-09-08/not-a-real-apk.txt",
+        "packageName": "audit.missing",
+        "installMode": "new_install",
+        "installedBefore": {
+          "known": true,
+          "installed": false,
+          "paths": []
+        },
+        "installedAfter": {
+          "known": true,
+          "installed": false,
+          "paths": []
+        },
+        "process": {
+          "code": 0,
+          "signal": null,
+          "error": null,
+          "timedOut": false,
+          "stdout": "Success",
+          "stderr": ""
+        },
+        "installerActions": [],
+        "postInstallActions": [],
+        "error": null
+      }
+    },
+    {
+      "name": "web_state_retention_and_limit",
+      "result": {
+        "retainedKeys": 1200,
+        "returnedItems": 1,
+        "returnedValues": 1200,
+        "disconnectedQueryOk": true,
+        "connectedFlagInResponse": null
+      }
+    }
+  ],
+  "platformScriptProbes": [
+    {
+      "command": "ios-tap",
+      "requestedTarget": {
+        "deviceId": "audit-ios",
+        "bundleId": "audit.bundle"
+      },
+      "compiledTarget": {
+        "serial": null,
+        "packageName": null
+      },
+      "result": {
+        "ok": false,
+        "command": "ios-tap",
+        "result": null,
+        "error": "serial_required",
+        "ambiguous": false,
+        "execution": {
+          "executionId": "audit",
+          "callId": "call-1",
+          "actionId": null
+        },
+        "evidence": {
+          "window": {
+            "afterActionId": null,
+            "closedAtMs": 0
+          },
+          "coverage": {
+            "status": "unavailable",
+            "gap": true,
+            "committed": false
+          },
+          "refs": []
+        },
+        "timings": {}
+      },
+      "dispatched": false
+    },
+    {
+      "command": "web-click",
+      "requestedTarget": {
+        "sessionId": "audit-web",
+        "targetId": "main"
+      },
+      "compiledTarget": {
+        "serial": null,
+        "packageName": null
+      },
+      "result": {
+        "ok": false,
+        "command": "web-click",
+        "result": null,
+        "error": "serial_required",
+        "ambiguous": false,
+        "execution": {
+          "executionId": "audit",
+          "callId": "call-1",
+          "actionId": null
+        },
+        "evidence": {
+          "window": {
+            "afterActionId": null,
+            "closedAtMs": 0
+          },
+          "coverage": {
+            "status": "unavailable",
+            "gap": true,
+            "committed": false
+          },
+          "refs": []
+        },
+        "timings": {}
+      },
+      "dispatched": false
+    }
+  ],
+  "appLocalForegroundProbe": {
+    "scope": "fake transport, no device access",
+    "expectedPackage": "audit.expected",
+    "actualForeground": "audit.other",
+    "options": {
+      "appLocalAction": true
+    },
+    "result": {
+      "ok": true,
+      "transport": "adb",
+      "x": 10,
+      "y": 20,
+      "target": null,
+      "targetFeedback": {
+        "status": "unavailable",
+        "reason": "foreground_package_mismatch",
+        "foreground": {
+          "ok": true,
+          "packageName": "audit.other"
+        }
+      }
+    },
+    "calls": [
+      {
+        "transport": "adb",
+        "args": [
+          "shell",
+          "input",
+          "tap",
+          "10",
+          "20"
+        ]
+      }
+    ]
+  },
+  "iosMutationRetryProbes": [
+    {
+      "method": "wdaInput",
+      "scope": "mock WDA; first response timeout; no device or network access",
+      "calls": [
+        {
+          "verb": "POST",
+          "url": "/session/audit-wda/keys",
+          "body": {
+            "value": [
+              "a",
+              "u",
+              "d",
+              "i",
+              "t"
+            ],
+            "text": "audit"
+          }
+        },
+        {
+          "verb": "POST",
+          "url": "/session/audit-wda/wda/keys",
+          "body": {
+            "value": [
+              "a",
+              "u",
+              "d",
+              "i",
+              "t"
+            ],
+            "text": "audit"
+          }
+        }
+      ],
+      "result": {
+        "ok": true,
+        "transport": "wda",
+        "action": "input",
+        "session": {
+          "ok": true,
+          "sessionId": "audit-wda"
+        },
+        "textLength": 5,
+        "tapped": null,
+        "firstError": "audit response lost after dispatch",
+        "response": {
+          "value": null
+        }
+      }
+    },
+    {
+      "method": "wdaSwipe",
+      "scope": "mock WDA; first response timeout; no device or network access",
+      "calls": [
+        {
+          "verb": "POST",
+          "url": "/session/audit-wda/actions",
+          "body": {
+            "actions": [
+              {
+                "type": "pointer",
+                "id": "finger1",
+                "parameters": {
+                  "pointerType": "touch"
+                },
+                "actions": [
+                  {
+                    "type": "pointerMove",
+                    "duration": 0,
+                    "origin": "viewport",
+                    "x": 1,
+                    "y": 2
+                  },
+                  {
+                    "type": "pointerDown",
+                    "button": 0
+                  },
+                  {
+                    "type": "pause",
+                    "duration": 80
+                  },
+                  {
+                    "type": "pointerMove",
+                    "duration": 300,
+                    "origin": "viewport",
+                    "x": 3,
+                    "y": 4
+                  },
+                  {
+                    "type": "pointerUp",
+                    "button": 0
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "verb": "POST",
+          "url": "/session/audit-wda/wda/dragfromtoforduration",
+          "body": {
+            "fromX": 1,
+            "fromY": 2,
+            "toX": 3,
+            "toY": 4,
+            "duration": 0.3
+          }
+        }
+      ],
+      "result": {
+        "ok": true,
+        "transport": "wda-drag",
+        "action": "swipe",
+        "session": {
+          "ok": true,
+          "sessionId": "audit-wda"
+        },
+        "startX": 1,
+        "startY": 2,
+        "endX": 3,
+        "endY": 4,
+        "durationMs": 300,
+        "firstError": "audit response lost after dispatch",
+        "response": {
+          "value": null
+        }
+      }
+    }
+  ],
+  "verification": {
+    "host": {
+      "tests": 63,
+      "passed": 63,
+      "failed": 0
+    },
+    "androidDisk": {
+      "tests": "19",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "6.575"
+    },
+    "iosMemoryContract": {
+      "tests": 4,
+      "failed": 0,
+      "scope": "macOS XCTest; no iPhone control or durable capture proof"
+    },
+    "logSha256": {
+      "focused-host-tests.log": "765507046a6611ad4a2aef2e2a8de753c790666219cee6aa7cff3559957613c3",
+      "android-disk-query-tests.log": "e4dc6aad9f3f8a7daa0e258d2acb05307003a81cde53f61046f06f5b23efa4d4",
+      "ios-capture-contract-tests.log": "2f56dd6a86850339fc739ebafa3902fafcc80ecd9aa9ddaa8559433c7101b60a"
+    },
+    "probeSetupFailures": "Two early Web fixtures had not started the provider and failed to inspect a successful query. Final probe starts and closes a loopback provider. Earlier attempts retained under build/; not counted as Bridge failures."
+  },
+  "rawEvidenceDirectory": "build/ai_app_bridge_artifacts/production-readiness-audit-2026-09-08"
+}

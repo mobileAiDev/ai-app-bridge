@@ -1,9 +1,11 @@
 'use strict';
 
+const { targetIdentity } = require('./execution-target');
+
 function androidAppTargetKey(serial, packageName) {
   const serialValue = String(serial || '');
   if (!serialValue) return '';
-  return `android:${JSON.stringify([serialValue, String(packageName || '')])}`;
+  return targetIdentity({ platform: 'android', serial: serialValue, packageName: String(packageName || '') });
 }
 
 function createTargetLease({ maxActive = 1 } = {}) {

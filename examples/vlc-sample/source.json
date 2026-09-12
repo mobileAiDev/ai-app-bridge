@@ -1,0 +1,23 @@
+{
+  "repository": "https://github.com/videolan/vlc-android.git",
+  "tag": "3.7.1",
+  "commit": "baeb1edae0678927ebe16d482d979e9c7e75ead6",
+  "packageName": "org.videolan.vlc.bridge_sample.debug",
+  "libvlcRepository": "https://code.videolan.org/videolan/libvlcjni.git",
+  "libvlcCommit": "7cd0c151da4162aa3052fb6949ddab1436d8fafb",
+  "remoteAccessRepository": "https://code.videolan.org/videolan/remoteaccess.git",
+  "remoteAccessCommit": "d618004a966acf81b9bc8878bcaf43578f69da07",
+  "toolchain": {
+    "gradle": "9.2.1",
+    "gradleSha256": "72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f",
+    "agp": "8.13.2",
+    "kotlin": "2.1.20",
+    "compileSdk": 36,
+    "buildTools": "36.0.0",
+    "ndk": "21.4.7075529"
+  },
+  "nativeDependencies": {
+    "libvlc-all": "3.7.0",
+    "medialibrary-all": "0.13.17"
+  }
+}

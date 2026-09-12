@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { requestDirectory, inRequestDirectory } = require('../shared-kernel/request-context');
 const { createScriptSessionChannel } = require('./script-session-channel');
 
 function jsonBytes(value) {
@@ -45,7 +46,11 @@ function createChildRuntimeAdapter({
     await exited;
   }
 
-  async function start({ spec, host, agent, emit, control }) {
+  function start(args) {
+    return inRequestDirectory(args.spec.cwd ?? requestDirectory(), () => startInDirectory(args));
+  }
+
+  async function startInDirectory({ spec, host, agent, emit, control }) {
     readControl = typeof control === 'function' ? control : () => control || { status: 'running', pauseReason: null };
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-script-'));
     const artifact = path.join(directory, `main${extension}`);
@@ -53,15 +58,19 @@ function createChildRuntimeAdapter({
     const sdk = path.join(__dirname, sdkFile);
     const child = spawn(executable, argsPrefix.concat([sdk, artifact]), {
       shell: false,
+      cwd: requestDirectory(),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    channel = createScriptSessionChannel(child);
+    channel = createScriptSessionChannel(child, {
+      maxFrameBytes: Math.max(spec.policy.maxOutputBytes, spec.policy.maxProgressBytes, 1024 * 1024) + 64 * 1024,
+    });
     exited = childExitPromise(child, onSpawnFailure);
     const finished = exited;
     let timer = null;
     const timedOut = new Promise((resolve) => {
       timer = setTimeout(() => resolve({ type: 'timeout' }), spec.policy.timeoutMs);
     });
+    const rpc = pending => Promise.race([pending, timedOut, finished.then(() => { throw new Error('child_crashed'); })]);
     try {
     const ready = await Promise.race([
       channel.nextMessage(),
@@ -95,10 +104,7 @@ function createChildRuntimeAdapter({
         return { ok: false, error: 'timeout' };
       }
       if (message.type === 'call') {
-        const value = await Promise.race([
-          host.call(message.command, message.args, message.options),
-          timedOut,
-        ]);
+        const value = await rpc(host.call(message.command, message.args, message.options));
         if (value && value.type === 'timeout') {
           await terminate();
           emit('script_failed', { error: 'timeout' });
@@ -108,10 +114,7 @@ function createChildRuntimeAdapter({
         continue;
       }
       if (message.type === 'assert') {
-        const value = await Promise.race([
-          host.assert(message.assertion),
-          timedOut,
-        ]);
+        const value = await rpc(host.assert(message.assertion));
         if (value && value.type === 'timeout') {
           await terminate();
           emit('script_failed', { error: 'timeout' });
@@ -139,10 +142,7 @@ function createChildRuntimeAdapter({
           emit('script_failed', { error: 'checkpoint_too_large' });
           return { ok: false, error: 'checkpoint_too_large' };
         }
-        const receipt = await Promise.race([
-          Promise.resolve(emit('checkpoint', { name: message.name, state: message.state })),
-          timedOut,
-        ]);
+        const receipt = await rpc(Promise.resolve(emit('checkpoint', { name: message.name, state: message.state })));
         if (receipt && receipt.type === 'timeout') {
           await terminate();
           emit('script_failed', { error: 'timeout' });
@@ -158,10 +158,7 @@ function createChildRuntimeAdapter({
         continue;
       }
       if (message.type === 'ask') {
-        const value = await Promise.race([
-          agent.askAgent(message.request),
-          timedOut,
-        ]);
+        const value = await rpc(agent.askAgent(message.request));
         if (value && value.type === 'timeout') {
           await terminate();
           emit('script_failed', { error: 'timeout' });

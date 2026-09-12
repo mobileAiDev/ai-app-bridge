@@ -5,21 +5,23 @@ const { createProductionIntentDeviceAdapter } = require('../bin/intent/intent-pr
 const { handle, resetIntentOperations } = require('../bin/intent/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
-const actualLabels = require('./fixtures/notallyx-labels-native-tree.json');
-const target = { serial: 'native-scope-test', packageName: 'io.github.mobileaidev.notallyx.sample' };
+const { nativeTargetRef, withNativeTargetRefs } = require('../test-support/native-target-fixture');
+// Retain the frozen topology; add synthetic refs only to this Host test copy.
+const actualLabels = withNativeTargetRefs(require('./fixtures/notallyx-labels-native-tree.json'));
+const target = { platform: 'android', serial: 'native-scope-test', packageName: 'io.github.mobileaidev.notallyx.sample' };
 const EDIT = `${target.packageName}:id/EditButton`;
 const scope = () => ({ text: 'AAB扩展标签-01', ancestor: { className: 'android.widget.LinearLayout', parent: { resourceName: `${target.packageName}:id/MainListView` } } });
 const selector = () => ({ resourceName: EDIT, within: scope() });
-function node(extra = {}) { return { visible: true, effectiveVisible: true, enabled: true, className: 'android.view.View', bounds: { left: 10, top: 20, right: 100, bottom: 60 }, children: [], ...extra }; }
+function node(extra = {}) { return { targetRef: nativeTargetRef(), visible: true, effectiveVisible: true, enabled: true, className: 'android.view.View', bounds: { left: 10, top: 20, right: 100, bottom: 60 }, children: [], ...extra }; }
 function row(text = 'AAB扩展标签-01', extra = {}) { return node({ className: 'android.widget.LinearLayout', resourceName: 'id/Row', bounds: { left: 0, top: 10, right: 500, bottom: 180 }, children: [node({ text }), node({ resourceName: EDIT, contentDescription: '编辑', bounds: { left: 150, top: 20, right: 250, bottom: 60 } })], ...extra }); }
 function tree(rows = [row()]) { return { root: node({ resourceName: `${target.packageName}:id/MainListView`, bounds: { left: 0, top: 0, right: 600, bottom: 900 }, children: rows }) }; }
 function harness(extra = {}) {
  const calls=[];
- const record = kind => async (...args) => { calls.push({kind,args}); return {ok:true,transport:kind === 'tap' || kind === 'input' ? 'bridge':'adb'}; };
- const adapter=createProductionIntentDeviceAdapter({ports:{createBridgeContext: args=>args,tap:record('tap'),inputText:record('input'),swipe:record('swipe'),longPress:record('longPress'),...extra}});
+ const record = kind => async (...args) => { calls.push({kind,args}); return {ok:true,transport:'bridge'}; };
+ const adapter=createProductionIntentDeviceAdapter({ports:{createBridgeContext: args=>args,bridgeTree:async()=>adapter.liveTree,tap:record('tap'),inputText:record('input'),nativeGesture:record('gesture'),...extra}});
  return {adapter,calls};
 }
-const dispatch=(h,s=selector(),rawTree=tree(),extra={})=>h.adapter.action({...target,actionId:'scope-host-id',rawTree,spec:{provider:'native',action:'tap',selector:s,...extra}});
+const dispatch=(h,s=selector(),rawTree=tree(),extra={})=>{h.adapter.liveTree=rawTree;return h.adapter.action({...target,actionId:'scope-host-id',rawTree,spec:{provider:'native',action:'tap',selector:s,...extra}});};
 
 test('actual NotallyX label topology rejects global duplicate edit selectors, selects only anchored row',async()=>{
  for(const global of [{resourceName:EDIT},{contentDescription:'编辑'}]){
@@ -76,8 +78,11 @@ test('scoped selection applies consistently to explicit longPress, swipe and edi
  for(const extra of [{action:'longPress',durationMs:700},{action:'swipe',deltaX:50,deltaY:0,durationMs:700},{action:'inputText',value:'Renamed'}]){
   const h=harness();const t=tree([row(undefined,{children:[node({text:'AAB扩展标签-01'}),node({resourceName:EDIT,editable:true,bounds:{left:150,top:20,right:250,bottom:60}})]})]);
   const r=await dispatch(h,selector(),t,extra);assert.equal(r.ok,true);assert.equal(h.calls.length,1);
-  if(extra.action==='inputText'){assert.equal(h.calls[0].args[2].tapX,200);assert.equal(h.calls[0].args[2].tapY,40);}
-  else assert.deepEqual(h.calls[0].args.slice(1,3),[200,40]);
+  if(extra.action==='inputText'){assert.deepEqual(h.calls[0].args[2].nativeTarget,{selector:selector(),targetRef:nativeTargetRef()});assert.equal(h.calls[0].args[2].tapX,undefined);}
+  else {
+   assert.equal(h.calls[0].kind,'gesture');
+   assert.deepEqual(h.calls[0].args[1],{...extra,selector:selector(),targetRef:nativeTargetRef(),actionId:'scope-host-id'});
+  }
  }
 });
 
@@ -117,7 +122,7 @@ test('real Intent executor persists scoped decision and dispatches observed row 
  const start=await handle({operation:'start',operationId:'scoped-label-edit',goal:'Edit one label',target,adapter:h.adapter,store});
  assert.equal(start.status,'waiting_for_decision');const observed=store.latest(start.operationId,'observation');
  const decision={decisionId:'edit-exact-row',agentDecision:'act',basedOnRevision:start.revision,action:{provider:'native',action:'tap',selector:selector()}};
- const next=await handle({operation:'decide',operationId:start.operationId,decision});assert.equal(next.status,'waiting_for_decision');assert.equal(h.calls.length,1);assert.equal(observes,2);
+ const next=await handle({operation:'decide',operationId:start.operationId,decision});assert.equal(next.status,'waiting_for_decision');assert.equal(h.calls.length,1);assert.equal(observes,3);
  const receipt=store.latest(start.operationId,'action-receipt');assert.deepEqual(receipt.action.selector,selector());assert.equal(receipt.rawTreeId,observed.rawTreeId);assert.equal(receipt.mechanicalStatus,'ok');
  const stale=await handle({operation:'decide',operationId:start.operationId,decision:{...decision,decisionId:'stale-edit'}});assert.equal(stale.error,'reobserve_required');assert.equal(h.calls.length,1);
 });

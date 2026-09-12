@@ -12,6 +12,9 @@ AI App Bridge gives autonomous AI agents a runtime interface to running Android,
 
 Its goal is to help AI agents move through an observe -> act -> read results -> verify -> iterate loop, instead of guessing without runtime evidence.
 
+
+Current candidate command contracts and platform limits: [Command contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md). Intent and Script are first-class execution interfaces; individual commands remain shared capabilities.
+
 ## Capability Index
 
 Supported targets:
@@ -24,20 +27,23 @@ Supported targets:
 
 Phone-side `logs` / `network` / `state` / `events` live in `MobileCaptureStore`. Host live commands read the phone; they do not keep a copied payload history for those streams.
 
-MCP command domains: `core` (`status`, `tree`, `uia-tree`, `screenshot`, `logs`, `network`, `state`, `events`), `app` (install, clear data, launch, freeze/thaw, permissions, appops), `action` (tap, input, swipe, keyevent, wait, keyboard), `flutter`, `webview`, `ios`, `web`, `diagnostics`, and `advanced` (`batch`, port forwarding).
+Command domains: `core` (status, UI observations and capture), `app` (installation, lifecycle and permissions), `action`, `flutter`, `webview`, `ios`, `web`, `diagnostics`, `execution` (`intent`, `script`, `runtime`, `device-ownership`), `evidence`, and `advanced` (UIA runtime control and port forwarding).
 
 The default MCP surface is compact: call `capabilities` to discover domains, commands, and options, then call `run` with the chosen command.
 
-Isolated MCP commands `script` and `intent` live under `advanced`. They are generic runtimes, not product workflow verbs such as explore, export-to-script, or assemble-report.
+CLI and MCP use the same independent local execution runtime and command contracts. Intent, Script, installation and permission operations can be started from either client and continued by operation ID from the other. Client exit leaves tasks running; use task `cancel` or `runtime --operation stop` for explicit shutdown.
 
 - `script` runs trusted-local-code JavaScript or Python. `permissions` only gate Bridge SDK calls; this is not an OS sandbox. The default allowlist excludes clear-data, install, permission changes, eval, raw shell, and ADB management. `page-summary` stays internal to Script/Intent.
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
-- Phone `logs` / `network` / `state` / `events` stay in `MobileCaptureStore`. On the updated Android runtime, MCP `history:true` reads retained phone facts while connected; the Host does not keep a copied mobile payload history. The current iOS strong-query backend reports `persistence_unavailable`; its Legacy reads remain available.
+- Android and iOS `logs` / `network` / `state` / `events` use phone-side persistent storage. `history:true` reads retained phone facts while connected; Host stores execution/observation evidence separately. Web capture is committed to the Host FactStore at ingress. Check refs, target, epoch, coverage and retention for each query.
 
-This working tree is preparing a local `0.3.0-rc.1` CLI candidate, not an npm
-release. Script is optional. Execution completion, code assertions and
+This working tree prepares the coordinated `0.3.0-rc.1` candidate for the CLI,
+Android SDK/plugin, Flutter, Web and iOS source tag. It has not been published.
+The versioned installation examples below apply after publication; local build
+and publication order are in [the release guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
+Script is optional. Execution completion, code assertions and
 device-backed outcomes are separate. See the [candidate contracts and
-migration notes](desktop/ai-app-bridge-cli/README.md#optional-script-and-evidence-contracts-in-this-candidate)
+migration notes](desktop/ai-app-bridge-cli/README.md#intent-script-and-evidence)
 for single-page evidence, retention, recovery and platform limits.
 
 ## What It Solves
@@ -68,7 +74,7 @@ docs                                  Design, integration, and test notes
 
 ## Core Capabilities
 
-- Local bridge status on the first available port starting at `127.0.0.1:18080`
+- Android SDK HTTP over a runtime-specific abstract local socket, discovered from the App-private endpoint file and forwarded by ADB
 - Android View tree, window tree, and screenshots
 - Native UI operations, with desktop-side ADB / UIAutomator fallback operations
 - iOS UIKit tree, WKWebView DOM/eval, screenshots, and XCUITest/WebDriverAgent actions
@@ -109,7 +115,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.2.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.0-rc.1")
 }
 ```
 
@@ -142,7 +148,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.2.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.0-rc.1"
 }
 
 aiAppBridge {
@@ -157,7 +163,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", from: "0.2.11")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.0-rc.1")
 ```
 
 Start the runtime once in the debug app process:
@@ -173,12 +179,12 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
 
-Full iOS control requires Xcode, a trusted/unlocked device with Developer Mode enabled, the app debug runtime, and WebDriverAgent/XCUITest signed and reachable. The CLI vendors `appium-webdriveragent` and can start it with `ios-setup --start-wda --team-id <APPLE_TEAM_ID>`, using a unique default WDA bundle id unless `--wda-bundle-id` is supplied. On physical devices, reuse the WDA URL returned by setup; it may be a CoreDevice tunnel such as `http://[fdxx::1]:8100` rather than `127.0.0.1`.
+The iOS stack requires Xcode, a trusted/unlocked device with Developer Mode, the App debug runtime, and the prepared signed WDA Runner. `ios-setup --start-wda --team-id <APPLE_TEAM_ID>` builds a separate copy of pinned WDA 14.1.1 with Bridge identity checks. `--wda-test-bundle-id` sets the test bundle (default `io.github.mobileaidev.aiappbridge.wda`); setup returns its Runner App ID. WDA commands require that `wdaRunnerBundleId` and the exact device; an optional forwarded `wdaUrl` cannot bypass container binding. Create an explicit `ios-wda-session` before reading or acting in an already foreground App. WDA supports queued cancellation and original durable completion recovery through `ios-execution --kind wda`. See [the WDA contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md#ios-wda-target-and-session) for in-flight cancellation, input/focus limits and the pending physical-device gates. iOS Intent and Script support native, H5 and Flutter providers with explicit target binding; capability support and each real-App acceptance result remain separate.
 
 ## Flutter Quick Start
 
@@ -188,7 +194,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.4
+  ai_app_bridge_flutter: 0.3.0-rc.1
 ```
 
 Initialize once:
@@ -204,19 +210,22 @@ void main() {
 }
 ```
 
-For Flutter WebView DOM support, register an H5 adapter because the WebView controller lives in Dart:
+For Flutter WebView DOM support, register an H5 adapter because the WebView controller lives in Dart. Maintain `webViewIsVisible` from the actual route/widget state:
 
 ```dart
 AiAppBridge.instance.registerH5Adapter(
   AiAppBridgeH5Adapter(
     id: 'main-webview',
     source: 'webview_flutter',
+    isVisible: () => webViewIsVisible,
     evaluateJavascript: (script) {
       return controller.runJavaScriptReturningResult(script);
     },
   ),
 );
 ```
+
+Unregister with `AiAppBridge.instance.unregisterH5Adapter('main-webview')` when the view is disposed. Multiple visible adapters require an observed `adapterId`; registration does not select an active view. Replacing a registration requires explicit unregister and invalidates its previous page references.
 
 ## Connect an AI Agent
 
@@ -248,7 +257,7 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 ### Install the MCP server
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
 ```
 
 Add this MCP server to your AI agent, model client, or IDE MCP config.

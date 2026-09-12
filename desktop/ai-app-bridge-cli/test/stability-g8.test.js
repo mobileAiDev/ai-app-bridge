@@ -16,10 +16,11 @@ const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-sto
 const { createAutonomousAgentAdapter, createIntentBudget } = require('../bin/intent/intent-autonomous-adapter');
 const { handle: intentHandle, resetIntentOperations } = require('./helpers/intent-entry');
 const { createCommandRouter } = require('../bin/command-router');
-const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
+const { runBridgeChecked } = require('../test-support/host-client');
+const { executionSleep } = require('../bin/shared-kernel/execution-scope');
 
 const ROUNDS = 100;
-const TARGET = { serial: 'b46093e6', packageName: 'com.example.app' };
+const TARGET = { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' };
 const TREE = {
   root: {
     id: 'root',
@@ -190,7 +191,7 @@ test('G8 Intent supervised and autonomous 100x start, decide, cancel, timeout', 
       store: intentStore(),
       adapter,
     });
-    const result = intentHandle({ operation: 'cancel', operationId });
+    const result = await intentHandle({ operation: 'cancel', operationId });
     assert.equal(result.status, 'cancelled');
     cancelled += 1;
   }
@@ -198,14 +199,14 @@ test('G8 Intent supervised and autonomous 100x start, decide, cancel, timeout', 
     const result = await intentHandle({
       operation: 'start',
       operationId: `g8-intent-timeout-${i}`,
-      timeoutMs: 0,
+      timeoutMs: 1,
       goal: 'home',
       target: TARGET,
       store: intentStore(),
-      adapter,
+      adapter: { observe: async () => { await executionSleep(100); assert.fail('observation must be aborted'); } },
     });
     assert.equal(result.status, 'timeout');
-    assert.equal(result.error, 'timeout');
+    assert.equal(result.error, 'deadline_exceeded');
     timedOut += 1;
   }
   assert.equal(supervised, ROUNDS);
@@ -257,7 +258,7 @@ test('G8 EvidenceStore fault, provider timeout, stale/duplicate decision, and MC
       decisionId: 'stale-1',
       agentDecision: 'act',
       basedOnRevision: started.revision + 9,
-      action: { action: 'tap', text: 'Home' },
+      action: { action: 'tap', selector: { text: 'Home' } },
     },
   });
   assert.equal(stale.error, 'reobserve_required');
@@ -268,7 +269,7 @@ test('G8 EvidenceStore fault, provider timeout, stale/duplicate decision, and MC
       decisionId: 'dup-1',
       agentDecision: 'act',
       basedOnRevision: started.revision,
-      action: { action: 'tap', text: 'Home' },
+      action: { action: 'tap', selector: { text: 'Home' } },
     },
   });
   assert.equal(first.ok, true);
@@ -279,7 +280,7 @@ test('G8 EvidenceStore fault, provider timeout, stale/duplicate decision, and MC
       decisionId: 'dup-1',
       agentDecision: 'act',
       basedOnRevision: first.revision,
-      action: { action: 'tap', text: 'Home' },
+      action: { action: 'tap', selector: { text: 'Home' } },
     },
   });
   assert.equal(dup.error, 'duplicate_decision');
@@ -369,7 +370,7 @@ test('G8 Script continuous vs stepwise trips and leftover IO', async () => {
   );
 });
 
-test('G8 Script/Intent faults leave Legacy usable; Batch still rejects isolated commands', async () => {
+test('G8 Script/Intent faults leave Legacy usable; removed batch is rejected', async () => {
   resetScriptOperations();
   const crashed = await scriptHandle({
     operation: 'start',
@@ -397,35 +398,26 @@ test('G8 Script/Intent faults leave Legacy usable; Batch still rejects isolated 
       throw new Error('status must not reach the runner without packageName or port');
     },
   });
-  assert.match(status.content[0].text, /packageName or explicit port is required/);
-  const batch = JSON.parse((await runBatch({ steps: [{ id: 's1', command: 'script' }] })).content[0].text);
-  assert.equal(batch.error, 'unknown_batch_step_command');
+  assert.match(status.content[0].text, /packageName/);
+  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  assert.equal(batch.error, 'unknown_command');
 });
 
-test('G8 isolated hang returns isolated_timeout and leaves Legacy usable', async () => {
+test('a pending stateful operation leaves independent commands usable without fabricating a terminal result', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
   const router = createCommandRouter({
     loadScript: () => ({
-      handle() {
-        return new Promise((resolve) => {
-          setTimeout(() => resolve({ ok: true, command: 'script' }), 400);
-        });
-      },
+      handle: async () => { await gate; return { ok: true, command: 'script' }; },
     }),
-    loadIntent: () => ({
-      handle() {
-        return new Promise((resolve) => {
-          setTimeout(() => resolve({ ok: true, command: 'intent' }), 400);
-        });
-      },
-    }),
-    legacyDispatch: async (command) => ({
-      content: [{ type: 'text', text: JSON.stringify({ ok: true, command }) }],
-    }),
+    dispatchCommon: async command => ({ value: { ok: true, command } }),
   });
-  const hung = JSON.parse((await router.route('script', { isolatedTimeoutMs: 20 })).content[0].text);
-  assert.equal(hung.ok, false);
-  assert.equal(hung.error, 'isolated_timeout');
-  const legacy = JSON.parse((await router.route('status', { packageName: 'com.example.app' })).content[0].text);
+  let returned = false;
+  const pending = router.route('script', {}).then(value => { returned = true; return value; });
+  const legacy = (await router.route('status', { packageName: 'com.example.app' })).value;
   assert.equal(legacy.ok, true);
   assert.equal(legacy.command, 'status');
+  assert.equal(returned, false);
+  release();
+  assert.equal((await pending).value.ok, true);
 });

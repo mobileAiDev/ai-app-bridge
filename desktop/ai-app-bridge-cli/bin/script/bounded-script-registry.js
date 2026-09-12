@@ -42,6 +42,7 @@ function createBoundedScriptRegistry({
   return {
     put,
     get,
+    values: () => [...operations.values()],
     evict,
     retainedBytes,
     get size() { return operations.size; },

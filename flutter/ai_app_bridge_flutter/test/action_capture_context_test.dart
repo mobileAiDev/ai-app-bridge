@@ -20,7 +20,20 @@ void main() {
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       const channel = MethodChannel('ai_app_bridge');
+      String? runtimeEpoch;
       messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'updateSnapshot')
+          runtimeEpoch = jsonDecode(call.arguments as String)['layout']
+              ['operable']['runtimeEpoch'] as String?;
+        if (call.method == 'checkAction') {
+          final identity = jsonDecode(call.arguments as String) as Map;
+          return jsonEncode({
+            'ok': true,
+            'schemaVersion': 'aab.flutter-execution/v1',
+            ...identity,
+            'remainingMs': 30000
+          });
+        }
         if (call.method.startsWith('record')) {
           captures.add({
             'methodName': call.method,
@@ -69,19 +82,36 @@ void main() {
       final center = tester.getCenter(find.byKey(const Key('target')));
       Future<Map<dynamic, dynamic>> action(Map<String, Object?> request) async {
         final response = Completer<Object?>();
+        if (runtimeEpoch == null) {
+          await tester.pump(const Duration(milliseconds: 1200));
+          await tester.pump(const Duration(milliseconds: 150));
+        }
+        final actionId = request['actionId'];
+        final managed = {
+          ...request,
+          'execution': {
+            'schemaVersion': 'aab.flutter-execution/v1',
+            'actionId': actionId,
+            'runtimeEpoch': runtimeEpoch,
+            'timeoutMs': 30000,
+          }
+        };
         unawaited(messenger.handlePlatformMessage(
             'ai_app_bridge',
-            channel.codec
-                .encodeMethodCall(MethodCall('runAction', jsonEncode(request))),
+            channel.codec.encodeMethodCall(
+                MethodCall('executeAction', jsonEncode(managed))),
             (data) => response.complete(channel.codec.decodeEnvelope(data!))));
         for (var i = 0; i < 30 && !response.isCompleted; i++) {
           await tester.pump(const Duration(milliseconds: 20));
         }
         expect(response.isCompleted, isTrue,
-            reason: 'runAction must finish via actual frames');
+            reason: 'executeAction must finish via actual frames');
         return (await response.future) as Map;
       }
 
+      await tester.pump(const Duration(milliseconds: 1200));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(runtimeEpoch, isNotNull);
       final unrelated =
           Timer(const Duration(milliseconds: 40), () => record('background'));
       addTearDown(unrelated.cancel);
@@ -95,7 +125,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
       expect(
           captures.firstWhere((c) => c['name'] == 'press-1')['actionId'], 'A');
-      expect((await action({...point}))['ok'], true);
+      expect((await action({...point}))['ok'], false);
+      expect((await action({...point, 'actionId': 'C'}))['ok'], true);
       expect((await action({...point, 'actionId': 7}))['ok'], false);
       expect((await action({'action': 'unknown', 'actionId': 'failed'}))['ok'],
           false);
@@ -110,7 +141,7 @@ void main() {
         ('press-2', 'B'),
         ('late-A', 'A'),
         ('background', null),
-        ('press-3', null),
+        ('press-3', 'C'),
         ('press-4', null),
         ('after-failure', null),
       ]) {

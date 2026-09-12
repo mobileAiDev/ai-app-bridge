@@ -13,6 +13,7 @@ const { createFakeIntentDeviceAdapter } = require('../bin/intent/intent-device-a
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createAutonomousAgentAdapter } = require('../bin/intent/intent-autonomous-adapter');
 const { handle } = require('../bin/intent/intent-entry');
+const { validateCommandArguments } = require('../bin/command-registry');
 
 function completePage(stream, extra = {}, request = {}) {
   const runtimeEpoch = request.runtimeEpoch || 'fixture-epoch';
@@ -32,13 +33,26 @@ function completePage(stream, extra = {}, request = {}) {
   };
 }
 
+test('unavailable mobile capture has an explicit reason through the shared query port', async () => {
+  for (const reason of ['capture_not_persistent', undefined]) {
+    const query = createLiveCaptureQuery({ runner: async () => ({
+      ok: true, reason, coverage: { status: 'unavailable', gap: false, committed: false }, items: [], refs: [],
+    }) });
+    const page = await query({ platform: 'android', stream: 'state', view: 'decision-window' });
+    assert.equal(page.ok, false);
+    assert.equal(page.error, reason || 'capture_contract_unavailable');
+    assert.equal(page.coverage.committed, false);
+    assert.deepEqual(page.refs, []);
+  }
+});
+
 test('G7 FakeHost live query never falls back to Host copies', async () => {
   const host = createFakeHostPort({
-    target: { serial: 'fixture-device', packageName: 'pkg' },
+    target: { platform: 'android', serial: 'fixture-device', packageName: 'pkg' },
     query: createLiveCaptureQuery({
       runner: async (command, args) => {
         assert.equal(command, 'network');
-        assert.equal(args.afterActionId, null);
+        assert.equal(args.afterActionId, undefined);
         return completePage('network', { item: { statusCode: 200 } }, args);
       },
     }),
@@ -60,7 +74,7 @@ test('G7 FakeHost live query never falls back to Host copies', async () => {
 test('G7 login tap then network statusCode uses the mutation actionId', async () => {
   const afterActionIds = [];
   const host = createFakeHostPort({
-    target: { serial: 'fixture-device', packageName: 'pkg' },
+    target: { platform: 'android', serial: 'fixture-device', packageName: 'pkg' },
     query: createLiveCaptureQuery({
       runner: async (command, args) => {
         afterActionIds.push(args.afterActionId);
@@ -72,7 +86,7 @@ test('G7 login tap then network statusCode uses the mutation actionId', async ()
   const tap = await host.call('tap-text', { text: 'Login' });
   assert.equal(tap.execution.actionId, 'action-2');
   const network = await host.call('network', { factCursor: before.evidence.capture.watermarkCursor, afterActionId: tap.execution.actionId });
-  assert.deepEqual(afterActionIds, [null, 'action-2']);
+  assert.deepEqual(afterActionIds, [undefined, 'action-2']);
   assert.equal(network.result.items[0].statusCode, 200);
   const next = await host.assert({
     name: 'login-status',
@@ -98,7 +112,7 @@ test('G7 live query login statusCode does not read Host copies', async () => {
   assert.equal(calls[0].command, 'network');
   assert.equal(calls[0].args.afterActionId, 'login-1');
   assert.equal(window.items[0].statusCode, 200);
-  const host = createFakeHostPort({ target: { serial: 'fixture-device', packageName: 'pkg' }, query });
+  const host = createFakeHostPort({ target: { platform: 'android', serial: 'fixture-device', packageName: 'pkg' }, query });
   const result = await host.call('network', {});
   const next = await host.assert({
     name: 'login-status',
@@ -121,7 +135,7 @@ test('G7 live query log state and event assertions pass on a complete window', a
     }, args),
   });
   const port = createIntentCapturePort({ query });
-  const host = createFakeHostPort({ target: { serial: 'fixture-device', packageName: 'pkg' }, query });
+  const host = createFakeHostPort({ target: { platform: 'android', serial: 'fixture-device', packageName: 'pkg' }, query });
   for (const stream of ['logs', 'state', 'events']) {
     const observed = await port.observe({ stream }, { actionId: 'after-1' });
     assert.equal(observed.items.length, 1);
@@ -153,7 +167,7 @@ test('G7 requireCoverage partial cannot fail a partial window', async () => {
 
 test('G7 negative assertion fails only on a complete window', async () => {
   const host = createFakeHostPort({
-    target: { serial: 'fixture-device', packageName: 'pkg' },
+    target: { platform: 'android', serial: 'fixture-device', packageName: 'pkg' },
     query: (request) => completePage('network', { item: { statusCode: 401 } }, request),
   });
   const complete = await host.call('network', {});
@@ -225,7 +239,7 @@ test('G7 live query coverage without status does not invent complete', async () 
 test('G7 FakeHost evidenceWindow afterActionId and timeoutMs reach the live runner', async () => {
   const seen = [];
   const host = createFakeHostPort({
-    target: { serial: 'fixture-device', packageName: 'pkg' },
+    target: { platform: 'android', serial: 'fixture-device', packageName: 'pkg' },
     query: createLiveCaptureQuery({
       runner: async (command, args) => {
         seen.push({ command, args });
@@ -246,13 +260,20 @@ test('G7 FakeHost evidenceWindow afterActionId and timeoutMs reach the live runn
 test('G7 Intent start persist capture refs without four-stream bodies', async () => {
   const store = createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const query = createLiveCaptureQuery({
-    runner: async (command, args) => completePage(command, { item: { message: 'ready' } }, args),
+    runner: async (command, args) => {
+      validateCommandArguments(command, args);
+      assert.equal(args.streams, undefined); assert.equal(args.foregroundPackages, undefined);
+      return completePage(command, { item: { message: 'ready' } }, args);
+    },
   });
+  const routedCapture = await createIntentCapturePort({ query }).observe({ stream: 'logs' },
+    { target: { platform: 'android', serial: 's1', packageName: 'pkg', foregroundPackages: ['com.android.documentsui'] } });
+  assert.equal(routedCapture.coverage.status, 'complete');
   const started = await handle({
     operation: 'start',
     operationId: 'g7-intent-capture',
     goal: 'check logs',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter: createFakeIntentDeviceAdapter({
       trees: { native: { root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] } } },
@@ -274,29 +295,34 @@ test('G7 Intent start persist capture refs without four-stream bodies', async ()
   assert.equal(status.capture.items[0].message, 'ready');
 });
 
-test('G7 Intent post-action observe uses dispatch actionId', async () => {
+test('G7 Intent preserves an earlier gap and uses its issued watermark for the next action window', async () => {
   const afterActionIds = [];
   const store = createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const query = createLiveCaptureQuery({
     runner: async (command, args) => {
+      validateCommandArguments(command, args);
       afterActionIds.push(args.afterActionId);
-      return completePage(command, { item: { message: 'ready' } }, args);
+      const page = completePage(command, { item: { message: 'ready' } }, args);
+      if (!args.afterActionId) return { ...page, coverage: { status: 'partial', gap: true, committed: true }, gap: true, reason: 'capture_gap' };
+      assert.equal(args.factCursor, 'fixture-watermark'); assert.equal(args.runtimeEpoch, 'fixture-epoch');
+      return { ...page, watermarkCursor: `after-action-watermark-${afterActionIds.length}` };
     },
   });
   const started = await handle({
     operation: 'start',
     operationId: 'g7-intent-action-id',
     goal: 'tap home',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter: createFakeIntentDeviceAdapter({
       trees: { native: { root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] } } },
     }),
     capturePort: createIntentCapturePort({ query }),
-    require: { stream: 'logs' },
+    require: { streams: ['logs'] },
   });
   assert.equal(started.status, 'waiting_for_decision');
-  assert.equal(afterActionIds[0], null);
+  assert.equal(afterActionIds[0], undefined);
+  assert.equal(started.capture.coverage.status, 'partial'); assert.equal(started.capture.gap, true);
   const acted = await handle({
     operation: 'decide',
     operationId: 'g7-intent-action-id',
@@ -304,11 +330,22 @@ test('G7 Intent post-action observe uses dispatch actionId', async () => {
       decisionId: 'd1',
       agentDecision: 'act',
       basedOnRevision: started.revision,
-      action: { action: 'tap', text: 'Home' },
+      action: { action: 'tap', selector: { text: 'Home' } },
     },
   });
   assert.equal(acted.ok, true);
+  assert.equal(acted.capture.coverage.status, 'complete');
   assert.equal(afterActionIds.includes('g7-intent-action-id:d1'), true);
+  const observedAgain = await handle({ operation: 'observe', operationId: 'g7-intent-action-id' });
+  assert.equal(observedAgain.ok, true);
+  assert.equal(observedAgain.capture.pages[0].window.factCursor, 'fixture-watermark');
+});
+
+test('capture failures retain the command field and message through the Intent port', async () => {
+  const port = createIntentCapturePort({ query: createLiveCaptureQuery({ runner: async (command, args) => validateCommandArguments(command, args) }) });
+  const result = await port.observe({ stream: 'events', limit: 'forty' }, { target: { platform: 'android', serial: 's', packageName: 'pkg' } });
+  assert.equal(result.error, 'invalid_argument'); assert.equal(result.field, 'limit'); assert.match(result.message, /limit/);
+  assert.equal(result.coverage.status, 'unavailable'); assert.equal(result.refs.length, 0);
 });
 
 test('G7 Intent merge does not invent complete from coverage without status', async () => {
@@ -317,7 +354,7 @@ test('G7 Intent merge does not invent complete from coverage without status', as
     operation: 'start',
     operationId: 'g7-intent-coverage-status',
     goal: 'check network',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter: createFakeIntentDeviceAdapter({
       trees: { native: { root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] } } },
@@ -331,7 +368,7 @@ test('G7 Intent merge does not invent complete from coverage without status', as
         };
       },
     },
-    require: { stream: 'network' },
+    require: { streams: ['network'] },
   });
   assert.equal(started.capture.coverage.status, 'unavailable');
   const observation = (await handle({
@@ -351,7 +388,7 @@ test('G7 Intent Agent decide receives current-round capture items', async () => 
     operationId: 'g7-intent-agent-capture',
     mode: 'autonomous',
     goal: 'login',
-    target: { serial: 's1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     store,
     adapter: createFakeIntentDeviceAdapter({
       trees: { native: { root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] } } },
@@ -361,7 +398,7 @@ test('G7 Intent Agent decide receives current-round capture items', async () => 
         runner: async (_command, args) => completePage('network', { item: { statusCode: 200 } }, args),
       }),
     }),
-    require: { stream: 'network' },
+    require: { streams: ['network'] },
     agent: createAutonomousAgentAdapter({
       decide(input) {
         seen = input;

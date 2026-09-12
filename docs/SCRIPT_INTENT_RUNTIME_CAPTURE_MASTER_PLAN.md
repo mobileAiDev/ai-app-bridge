@@ -1,5 +1,35 @@
 # Script / Intent、JS / Python Runtime 与统一证据总计划
 
+## 当前状态与执行顺序（2026-09-12）
+
+用户最新要求停止主开发反复扩大业务测试，先完成整体工程收尾，再自行推送代码和发布新版依赖。当前优先级以[收尾审查](ENGINEERING_CLOSEOUT_REVIEW_2026-09-12.md)和[唯一执行清单](BRIDGE_NEXT_GATES_2026-09-08.md#2026-09-12-样本收敛与当前顺序)为准。
+
+共享 Runtime、CLI/MCP、Intent/Script、手机真实存查主架构已经成立。主开发已关闭完整 Script result 持久读取、旧 Flutter H5 目标绑定、动作预算合同、公开依赖/接入与发行文档等具体缺口，形成 `0.3.0-rc.1` 候选版本，定向代码检查、干净 npm 包、根 SPM 和 Android 发行产物均已核验；见[发布交接](RELEASE_HANDOFF_2026-09-12.md)。下一步为维护者推送/候选发布，不再重开基础开发轮次。原四 App、现有 iOS 原生/H5/Flutter、跨设备与最终生产范围保持，剩余业务验收移交固定清单，不再不断扩样本或重跑未改变的矩阵。
+
+Wikipedia 07 未通过，下载尚在排队时独立核验拒绝；最新就绪等待修正未执行，新四 App 组合亦未执行。本轮临时收藏已通过原 UI 清理、独立数据库确认，所有自己拥有的运行时已停止。既有成功和失败不合并改写，详细当前状态见收尾审查。
+
+## 历史推进记录
+
+以下日期记录用于追溯当时的证据与合同；旧“下一项”、网络状态和未接线说明不作为当前能力或执行顺序。后续已关闭的定向缺口以以上当前状态和对应业务报告为准，原失败与全量验收范围保留。LocalSend v1.1.0/v1.2.0 的未定结果和旧组合失败见[组合历史](DEVICE_BUSINESS_SUITE_2026-09-12.md)及[证据合同](LOCALSEND_EVIDENCE_CONTRACT_2026-09-12.md)，不改写为后来版本的通过。
+
+> 2026-09-11 入口一致性现状更新：CLI 与 MCP 已连接独立共享运行时，客户端断开不会取消任务；两入口可用同一 operationId 交叉观察、决策和控制。此前的“MCP 常驻进程独占 Intent、CLI 仍被拒绝”是已解决的旧状态。当前目录为 113 个命令，精确 `tap-uia` 也已通过干净安装包的 CLI/MCP/Script 检查。实现见[共享运行时](COMMAND_SYSTEM_REDESIGN_2026-09-08.md#cli-与-mcp-共享执行运行时)，新真实业务与证据见[LocalSend 收发](LOCALSEND_TRANSFER_BUSINESS_2026-09-11.md)。整机和全平台生产验收仍按各自关口推进。
+
+> 2026-09-11 观察目标修复：`intent start/observe.observationTarget` 已将 WebView 选择与设备/App/WDA 绑定分开，并持久保留失败候选。Kiwix 真机同一 Intent 完成原页→新标签→原页显式选择、旧 revision 拒绝、选页失败后阻止旧动作、显式清除及 Host 重开读取终态；18 次成功观察、10 个动作、72 条归档和 16 项审计通过。详见[显式选页结果](IOS_H5_EDITOR_BUSINESS_2026-09-11.md#同一-intent-显式选页)。该入口缺口已关闭；同屏多个 WebView 实机和真实 H5 提交仍开放，既有双标签 Script 未重复执行。
+
+> 2026-09-11 多标签实机补证：Kiwix 原生新建/关闭标签与 H5 阅读已完成同一 Intent；新连续 Script 用两个同 URL、同节点标识、同内容的真实编辑器验证页身份隔离，80.409 秒、28 项设备断言通过，3 次预期拒绝均未派发。外部 Core Data 7 项核对证明准确创建并关闭一个新标签，原标签和书签保留。详情见 [双标签隔离](IOS_H5_EDITOR_BUSINESS_2026-09-11.md#真实双标签隔离)。这一固定流程停止重跑；下一项是实际 H5 提交和同屏多个 WebView 的显式选择，包括同一 Intent 中改选观察目标，不能把单可见标签轮换当成全项通过。
+
+> 2026-09-11 H5 编辑业务补证：Kiwix 内官方 freeCodeCamp Vue/CodeMirror 应用已完成 Intent 多行编辑及原生书签保存，连续 Script 89.306 秒、26 项设备断言通过，包含清空、中文多行输入、编辑器销毁重建、书签保存与真实 App 重启后重新打开。独立 Core Data 核对原记录不变、新课程记录在本轮创建。Bridge 补齐空编辑器资格、DOM 交互状态和视口观察，样本业务未修改。课程 Run 被实际视口限制阻挡，前序失败及 WDA 瞬态目标变化均保留；通过范围不包含题目运行或学习进度持久化。下一项优先补真实 H5 提交结果与多 WebView，不重复已通过的固定编辑/书签流程。详见 [H5 编辑业务结果](IOS_H5_EDITOR_BUSINESS_2026-09-11.md)。
+
+> 2026-09-11 定向补证：Flexify 标准输入字段声明和透明占位内容缺口已关闭。新表单 Intent 与连续 Script 按 Reps / Weight (kg) 的实际声明定位，Script 12.199 秒、6 项设备断言通过，未保存输入后的数据库与冻结基线完全一致，两份归档核验通过。重连后重新触发 WDA，已读取 72 个真实原生 UI 节点。自定义渲染语义和系统遮挡缺口仍保留；后续 H5 编辑结果见上方更新，详情见 [Flexify 业务报告](IOS_FLUTTER_BUSINESS_2026-09-11.md)。
+
+> 2026-09-10 用户纠偏：当前推进顺序以[复杂 App 主线与剩余关口](BRIDGE_NEXT_GATES_2026-09-08.md#2026-09-10-用户纠偏后的当前优先级)为准。核心验收是 Intent 操作复杂 App、生成可验证证据、Agent 编写 Script 并复跑业务任务；不能先无限扩展存储/故障专项，再把业务验收留到最后。LocalSend iOS 已编译但免费团队无法签署其权限，用户允许更换样本；**iOS 原生、WKWebView/H5 混合、Flutter 三类业务均为必测范围**，Flutter 通过不代表整个 iOS 通过。当前先落实可签名的原生＋H5 阅读样本，并保留 Flexify Flutter 样本。原四 App 范围、LocalSend 真实收发缺口及最终生产可靠性要求均保留。下文历史“整个基础 track 先通过才允许业务接线”的排序被本次裁决覆盖，影响当前操作正确性的实际阻塞仍必须修复。
+
+> 当前业务进展（2026-09-11）：[FreeOTP iOS 原生 Intent/Script](IOS_NATIVE_BUSINESS_2026-09-10.md) 已完成固定表单与保存流程、独立 HOTP 算法核验、真实进程重启及错误预期，连续 Script 79.530 秒、17 项通过。[Kiwix 原生＋WKWebView](IOS_HYBRID_BUSINESS_2026-09-11.md) 已完成阅读 Script 17.237 秒、13 项通过，以及 JavaScript 书签混合 Script 81.856 秒、18 项通过，后者包含原生搜索/保存/删除、H5 跳转、取消及重启后读取，实际 Core Data 只有目标书签；错误文章和书签预期均实际失败。Python 同义书签 Script 也已完成，79.210 秒、18 项通过，实际数据库新记录与本轮时间匹配，错误文章预期明确 failed。长文章摘要丢失原生按钮的问题已修正，首轮同名搜索标题失败仍保留。计时均为各自固定流程的公开 start 到 terminal，不含准备和外部数据库复制，不能外推全 App。[Flexify Flutter 真机训练](IOS_FLUTTER_BUSINESS_2026-09-11.md)已完成 Intent 探索和连续 JavaScript Script，公开耗时 116.478 秒、16 项设备断言、13 项独立 SQLite 检查及 5 张截图通过，三次前序失败与错误预期证据均保留；同一 Intent 内 native→H5→native→H5 已在 Kiwix 真机完成，包含旧 revision 拒绝与同链证据核对；H5 固定编辑/书签流程已通过上方补证，真实 H5 提交、同屏多 WebView 显式选择、其他平台业务及最终生产关口仍未完成。下文按日期记录历史状态，不能把历史未接线说明当作当前能力清单。
+
+> Web 当前进展（2026-09-11）：[Memos 真实业务](WEB_MEMOS_BUSINESS_2026-09-11.md) 已完成 Web H5 Intent 创建/编辑和 typed JavaScript Script 的创建、搜索＋Enter、编辑、取消删除；13 项 DOM 断言与 12 项独立 SQLite 核对通过，错误预期实际 failed。1.326 秒仅为已登录固定 Script 的公开 start 到 terminal，不包含准备、截图、oracle 和归档。真实页面/节点绑定、CodeMirror 输入及交互状态已接通；Web Python、勾选状态观察、capture-window/action 关联及一等截图证据仍开放。iOS Flutter 和其他平台/四 App 验收不被 Web 结果替代。下文阶段 U 等旧段落中的“Web 未开放”为历史状态。
+
+[第三阶段 U：WDA 原任务取消与持久恢复](COMMAND_PRODUCTION_PHASE3U_2026-09-10.md)已完成软件关口：WDA 写操作统一受管执行，排队取消不派发，已提交 XCTest 事件只由原回调结束；真实分段存储提交完成记录，Host 重启后只凭原 Runner/action/epoch/目标恢复物理占用。44 项 Host 定向检查、原生真实磁盘故障与冷读检查及实际 arm64 Runner 构建通过。Android 固定矩阵继续冻结。iOS 输入/焦点与真机闭环待设备接入；本机没有可用模拟器运行时。下一项独立开发转向 Web 生命周期与存查合同，不重复 WDA 已通过的软件检查。iOS/Web Intent/Script 仍关闭，整体生产验收未完成。
+
 > 状态：权威执行任务书
 >
 > 当前阶段完成度、收敛后的下一步与实测范围见 `docs/BRIDGE_DEVELOPMENT_STATUS_2026-09-07.md`。以下合同继续有效；后续优先补 Bridge 通用能力缺口，不以样例 App 的功能覆盖清单决定开发范围。
@@ -11,6 +41,24 @@
 > 适用对象：Grok、Cursor Agent、Codex 或其他实现代理
 >
 > 执行规则：同一依赖 track 的 Gate 未通过就停止其下游；第 14 节明确允许的并行 track 不互相空等，汇合 Gate 未通过不得接生产设备链路。
+
+H5 普通执行结束合同见[第三阶段 M](COMMAND_PRODUCTION_PHASE3M_2026-09-09.md)：950 项 Host 检查、165 项 Android 单测、46 个 SDK 真机场景、干净包公开 JS/Python 各 9 条设备断言、Host SIGKILL 后多入口阻断与原回执恢复通过；14 份归档可离线验证。H5 Intent provider 尚未提供，Flutter H5/WKWebView、多页面与四 App 整体覆盖未由此完成。安装和普通 MCP 历史后续已完成[第三阶段 N](COMMAND_PRODUCTION_PHASE3N_2026-09-09.md)的明确范围：968 项 Host、干净包、6 个真机安装场景、真实文件系统历史失败、8 份离线归档及 3 条恢复历史通过；原任务绑定 session 与 APK 身份，真实回执丢失后不重放。这段保留历史结果；实际待办以[固定剩余关口](BRIDGE_NEXT_GATES_2026-09-08.md#固定剩余关口与停止条件)为准，已完成的软件关口与 Android 固定场景不由此重开。iOS 设备接入通知已发出，仍待回复。
+
+## 2026-09-08 命令体系重整裁决
+
+[第三阶段 P：iOS 持久采证](COMMAND_PRODUCTION_PHASE3P_2026-09-10.md)已完成源码接线与本机验证：四类公开采证统一读写分段存储，删除内存后端和旧回执原型；保留原 actionId、返回真实排队回执，查询在同一次写入队列操作中刷盘并固定提交边界。58 项 Swift 检查（其中 17 项真实磁盘采证场景）、12 项 Host 采证接线检查、iOS arm64 App 编译和 Flutter iOS 实际框架类型检查通过。已通知用户接入 iOS 设备，目前只有不可用的历史配对记录；真机公开接口、真实进程重启和跨平台 Intent/Script target 尚未验收。Android 两款样例矩阵维持关闭，不因本批改动重跑；整体生产验收仍未完成。
+
+用户已明确：没有历史兼容包袱，Intent / Script 是一等执行入口，每个旧命令和整体设计都必须重新审视。命令设计当前以 [全量处置表](COMMAND_SYSTEM_REDESIGN_2026-09-08.md) 和 [公开命令合同](../desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md) 为准。本段覆盖下文历史阶段中的 Legacy 零回归、固定 `(serial, packageName)` 并发、不许调整旧入口、只能经 LegacyDispatcher 调用以及固定 permission 集合等条款。
+
+当前只有共享能力层，不保留平行 Legacy 执行器：MCP/CLI、Intent、Script 使用注册表描述的必要能力；变更共用 Android serial 仲裁（同一 OS 用户及共享目录内跨进程）。`batch`、sample 硬编码命令和多工具别名已移除。安装是复用 Intent 的长期操作，一次手机托管任务绑定原 PackageInstaller session，Agent 从真实系统观察决定下一步，原 commit 结果与独立安装物核验共同确定成功。结果未知保持物理占用，恢复只查询原任务并持久保存凭据。JS/Python、独立业务断言、默认不自动恢复、手机存查权威及 Agent 编排边界继续有效。
+
+2026-09-08 嵌套合同重整进一步覆盖下文旧 Script policy/别名条款：删除未参与执行的 `policy.onFailure`，代码自行处理调用与断言结果，未捕获异常使执行失败；暂停使用显式控制。Script 进度统一从 `status/wait` 读取，删除 `progress/intervene` 操作别名；Intent 使用 `observe`，删除 `reobserve` 别名。执行 operation、target、decision、selector、budget 与 Script spec 采用共享严格 schema；业务 JSON 保持明确的开放载荷。其余 SDK 原子动作、跨平台和四 App 验收范围不变。
+
+2026-09-09 Native tap/input 首批执行时校验见 [第三阶段 E](COMMAND_PRODUCTION_PHASE3E_2026-09-09.md)：SDK 引用绑定真实 View/窗口/运行实例，在 UI 线程内验证再执行；缺少新协议不降回坐标。排队取消、已开始动作超时和输入回调重入已通过 13 个 SDK 真机场景；输入连接/选区回调切走焦点或移除编辑框后的继续写入已修复，见[第三阶段 F](COMMAND_PRODUCTION_PHASE3F_2026-09-09.md)。
+
+Native `longPress/swipe/scroll` 的 SDK 绑定、持续触摸和实际取消见[第三阶段 G](COMMAND_PRODUCTION_PHASE3G_2026-09-09.md)。公开 `native-gesture` 与 Intent、JS/Python 共享合同和执行端口；该阶段为 94 个入口。最终通过 898 项 Host 检查、140 项 Android 单测、28 个 SDK 真机场景，干净包完成 Intent 与两种 Script 的同义短流程、执行中取消及 7 份离线归档。真实采证同时修复控制字段泄漏和历史 partial 页之后的新窗口 watermark；已知历史缺失仍保留。Flutter Element/EditableText/Scrollable 执行绑定见[第三阶段 H](COMMAND_PRODUCTION_PHASE3H_2026-09-09.md)：修复输入焦点重入、嵌套容器同矩形去重及文字落到祖先中心的误点。31 项 Flutter 测试、904 项 Host 检查、真机 Intent 与 JS/Python 短流程通过；两种 Script 各 22 条设备断言通过，11 份归档离线可验。Flutter Android 远端取消、期限及引擎交接见[第三阶段 I](COMMAND_PRODUCTION_PHASE3I_2026-09-09.md)：914 项 Host、149 项 Android 单测、45 项 Flutter 测试及 5 项 SDK 真机故障通过，公开 Intent/JS/Python 正常与取消流程和 9 份离线归档通过。跨进程 serial 所有权、未知阻断与 Flutter 回执恢复见[第三阶段 J](COMMAND_PRODUCTION_PHASE3J_2026-09-09.md)，当前 95 个入口，927 项 Host、干净发行包、真机 SIGKILL/多入口阻断与恢复、正常三入口流程及 9 份离线归档通过。Native 点按/输入/手势的共同执行协调、原结束回执恢复及持久 executionReceipt 见[第三阶段 K](COMMAND_PRODUCTION_PHASE3K_2026-09-09.md)：930 项 Host、158 项 Android 单测、35 个 SDK 真机场景、NotallyX 与新 SDK LocalSend 公开三入口、17 份离线归档通过。Android shell/UIA 原任务结束凭据、准入前取消、Host 崩溃恢复及有界留存见[第三阶段 L](COMMAND_PRODUCTION_PHASE3L_2026-09-09.md)：938 项 Host 检查、NotallyX 公开三入口、独立 SQL/偏好不变及 5 份离线归档通过。H5 后续已通过第三阶段 M 的明确范围验证，详见上方更新。安装和普通 MCP 历史已通过第三阶段 N 的明确范围验证，详见上方更新。下一关继续 UIA queued/重启/未知回调与节点/系统页面验证；shell/安装未确认记录的安全退役、其余平台/四 App 及持续运行门禁仍需独立验收；shell 进程结束不代表异步系统服务或业务结果已完成。
+
+以下 Phase/Gate 保留为原实施与验证记录；不能再据其旧兼容条款阻止已授权的重整，或把历史目标误写为当前已实现。新验证见 [本轮结果](COMMAND_PRODUCTION_PHASE1_2026-09-08.md)。
 
 ## 0. 文档优先级
 
@@ -1059,10 +1107,14 @@ Gate P8：
 | VLC Android（native，本地媒体 fixture） | 处理权限/onboarding；扫描固定 fixture；打开媒体；play/pause；seek；返回媒体列表 | 核心覆盖 + 空目录/无结果分支 + 播放恢复状态 + 连续 play/back + 设置页打开并恢复任何修改 | fixture hash；媒体项/播放状态/进度变化；空状态；无 crash；state/events/logs、tree 和截图 |
 | Organic Maps（native，离线地图 fixture） | 处理 onboarding；打开离线地图；搜索固定 POI；打开详情；添加书签；进入 route preview 后取消 | 核心覆盖 + no-result 搜索 + bookmark 删除/恢复 + route cancel/back + Settings 打开并恢复修改 | 离线地图/POI fixture identity；搜索/详情/书签/route 状态；取消后页面归属；state/events/logs、tree 和截图 |
 
+2026-09-12 进度：VLC 使用隔离包 `org.videolan.vlc.bridge_sample.debug` 完成上述固定本地视频场景的三轮真机验收，核心 20.340–21.009 秒、整轮 wall 60.865–62.251 秒，每轮 11 项业务断言通过且证据离线校验通过。首次引导由 Intent 准备；详细证据、失败轮次与计时边界见 [VLC 报告](ANDROID_VLC_INTENT_SCRIPT_2026-09-12.md)。下一业务主线为 Organic Maps；四 App 总门禁仍未完成。
+
+2026-09-12 Organic Maps 固定业务已通过：新的独立 `1gb` 目录完成完整 Intent（revision 64、227 条记录、归档 verified），随后同一源码、APK、地图与 Host 身份连续三轮 Script 通过。核心为 21.883–22.241 秒，公开 start 到 terminal 为 61.873 / 61.053 / 61.410 秒；每轮 13 项断言、33 个动作、7 张截图、40 页持久证据，独立 KML 与设置文件核对通过。覆盖无结果、书签删除/恢复、路线取消、单位恢复和最终清理。早期 `64mb` 淘汰及三次 Script 编写失败保持原样，未修补旧证据；范围和逐轮计时见[地图报告](ANDROID_ORGANIC_MAPS_INTENT_SCRIPT_2026-09-12.md)。本固定正向覆盖停止重跑，下一业务主线为 iOS 剩余复杂场景；Wikipedia、四 App 总门禁和整机组合仍未关闭。
+
 矩阵规则：
 
 - “核心”与“完整验收”是两份固定 scenario manifest；每个步骤、断言、fixture 和 expected terminal page 都版本化，运行时不得把失败项从 manifest 删除。
-- 不要求真实发送文件、写公开账号、下载地图或访问需要 VPN 的服务；所有外部副作用使用本地 fixture、测试列表、preview 或 cancel 路径。
+- 原四 App 清单使用本地 fixture、测试列表、preview 或 cancel 路径，不写公开账号、不依赖 VPN 服务。2026-09-10 业务主线另行增加 LocalSend 在自有设备/本机受控对端之间传输合成文件，要求接收物独立校验；原清单与已有失败保持不变，不能用新场景替换未通过项。
 - 网络不可达、fixture 缺失或本地化文本变化必须报告 `blocked/inconclusive`，不能通过换成更短路径伪造达标。
 - 每个 App 的 core/acceptance 分别记录 `active/provider/business/decision/paused/evidence/wall` 时间；Agent 等待计入 wall。
 

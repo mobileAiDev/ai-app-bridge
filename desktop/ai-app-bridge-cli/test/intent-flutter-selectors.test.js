@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createProductionIntentDeviceAdapter } = require('../bin/intent/intent-production-adapter');
 const { createTargetLease } = require('../bin/shared-kernel/target-lease-protocol');
+const { flutterRef } = require('../test-support/flutter-target-fixture');
 
 function fixture() {
   const taps = [];
@@ -11,8 +12,9 @@ function fixture() {
     lease: createTargetLease(),
     ports: {
       createBridgeContext: options => options,
-      flutterNodes: async () => { throw new Error('must use the committed observation'); },
-      flutterAction: async (_ctx, payload) => { taps.push(payload); return { ok: true }; },
+      flutterNodes: async () => rawTree,
+      bridgeTree: async () => ({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }),
+      flutterAction: async (_ctx, payload, context) => { taps.push({ payload, context }); return { ok: true }; },
     },
   });
   const rawTree = { nodes: [
@@ -21,6 +23,7 @@ function fixture() {
     { id: 15, text: 'System', tap: { bounds: { left: 200, top: 320, right: 380, bottom: 360 } } },
     { id: 17, text: 'Hidden', bounds: { left: 0, top: 0, right: 10, bottom: 10 } },
   ] };
+  for (const node of rawTree.nodes) node.targetRef = flutterRef(node.id);
   const act = spec => adapter.action({
     serial: 'test-device', packageName: 'test.app', actionId: 'intent:language', rawTree,
     spec: { provider: 'flutter', action: 'tap', ...spec },
@@ -38,7 +41,7 @@ test('ambiguous Flutter text never dispatches; an observed node ID picks the int
 
   const selected = await act({ selector: { nodeId: '15' } });
   assert.equal(selected.ok, true);
-  assert.deepEqual(taps, [{ action: 'tapAt', x: 290, y: 340, actionId: 'intent:language' }]);
+  assert.deepEqual(taps, [{ payload: { action: 'tapTarget', selector: { nodeId: '15' }, targetRef: flutterRef(15) }, context: { runtimeActionId: 'intent:language' } }]);
 });
 
 test('Flutter selectors reject missing, non-operable and malformed targets before dispatch', async () => {
@@ -66,5 +69,13 @@ test('exact Flutter text matches one actionable target while ignoring offstage t
   rawTree.nodes[2].text = 'Language';
   rawTree.nodes.push({ id: 20, text: 'Language' });
   assert.equal((await act({ selector: { text: 'Language' } })).ok, true);
-  assert.deepEqual(taps, [{ action: 'tapAt', x: 290, y: 340, actionId: 'intent:language' }]);
+  assert.deepEqual(taps, [{ payload: { action: 'tapTarget', selector: { text: 'Language' }, targetRef: flutterRef(15) }, context: { runtimeActionId: 'intent:language' } }]);
+});
+
+test('Flutter Intent hides the keyboard only by an explicit managed action', async () => {
+  const { act, taps } = fixture();
+  assert.equal((await act({ action: 'hideKeyboard' })).ok, true);
+  assert.deepEqual(taps, [{ payload: { action: 'hideKeyboard' }, context: { runtimeActionId: 'intent:language' } }]);
+  assert.equal((await act({ action: 'hideKeyboard', provider: 'native' })).error, 'unsupported_action');
+  assert.equal(taps.length, 1);
 });

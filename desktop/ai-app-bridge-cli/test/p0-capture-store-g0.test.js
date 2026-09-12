@@ -7,9 +7,9 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { ObservationCollector } = require('../bin/observation-collector');
-const { FactCache } = require('../bin/fact-cache');
+const { FactCache } = require('../test-support/fact-cache');
 const { FactRecorder } = require('../bin/fact-recorder');
-const { runBridgeChecked } = require('../bin/mcp-server');
+const { runBridgeChecked } = require('../test-support/host-client');
 const { TargetExecution } = require('../bin/target-execution');
 const contract = require('./fixtures/p0-mobile-capture-contract.json');
 
@@ -123,49 +123,12 @@ test('G0 Android capture contract stays platform-specific', () => {
   assert.deepEqual(contract.android.postEnvelope, 'ok+event');
 });
 
-test('G0 iOS capture contract keeps its own key, limit, and overflow behavior', () => {
-  const source = readRepo(contract.ios.source);
-  assert.match(source, /private let bridgeVersion = "0\.2\.11"/);
-  assert.match(source, /CountCaps\(logs: 300, network: 200, events: 300, state: 200\)/);
-  assert.match(source, /let stateKey = "\\\(namespace\):\\\(key\)"/);
-  assert.equal(source.includes('logEntries'), false);
-  assert.equal(source.includes('networkEntries'), false);
-  assert.equal(source.includes('eventEntries'), false);
-  assert.equal(source.includes('stateEntries'), false);
-  assert.equal(source.includes('shadowCapture'), false);
-  assert.match(source, /CaptureAppend\.appendSanitized\(/);
-  assert.match(source, /liveCapture\("logs"/);
-  assert.match(source, /liveCapture\("network"/);
-  assert.match(source, /liveCapture\("state"/);
-  assert.match(source, /liveCapture\("events"/);
-  assert.match(source, /LegacyLiveView.fromHttp\(store: captureStore/);
-  const liveView = readRepo(contract.ios.liveView);
-  assert.match(liveView, /query.platform == "ios" \? 1_000 : 500/);
-  assert.match(liveView, /query.limit \?\? 200/);
-  assert.match(liveView, /http\["sinceId"\] \?\? \(platform == "ios" \? http\["since-id"\] : nil\)/);
-  assert.match(liveView, /http\["sinceMs"\] \?\? \(platform == "ios" \? http\["since-ms"\] : nil\)/);
-  const backend = readRepo(contract.ios.storeBackend);
-  assert.match(backend, /fact.captureId <= sinceId/);
-  assert.match(backend, /fact.timestampMs < sinceMs/);
-  assert.match(backend, /filtered.suffix\(limit\)/);
-  for (const route of contract.ios.getPaths) {
-    assert.match(source, new RegExp(`"GET", "${route}"`));
-    assert.match(source, new RegExp(`"POST", "${route}"`));
-  }
-  assert.match(source, /"POST", "\/v1\/app\/clear-data"/);
-  assert.match(source, /"action": "clear-app-data"/);
-  assert.match(source, /"ok": true, "record": event/);
-  assert.match(source, /"value": redactJsonValue\(payload\["value"\] \?\? NSNull\(\)\)/);
-  assert.match(source, /"data": redactJsonValue\(payload\["data"\] \?\? NSNull\(\)\)/);
-  assert.notEqual(contract.ios.stateKey, contract.android.stateKey);
-  assert.notEqual(contract.ios.query.maxLimit, contract.android.query.maxLimit);
-  assert.notEqual(contract.ios.stateOverflow, contract.android.stateOverflow);
-  assert.notEqual(contract.ios.postEnvelope, contract.android.postEnvelope);
-});
+// iOS capture's G0 memory/source-shape assertions were retired in phase 3P.
+// PersistentCaptureTests.swift covers the public HTTP adapter and real C storage.
 
 test('G0 Flutter MethodChannel and HTTP fallback call shape stay frozen', () => {
   const pubspec = readRepo('flutter/ai_app_bridge_flutter/pubspec.yaml');
-  assert.match(pubspec, /version: 0\.2\.4/);
+  assert.equal(pubspec.match(/^version: (\S+)$/m)?.[1], require('../package.json').version);
   const dart = readRepo(contract.flutter.source);
   assert.match(dart, /static const MethodChannel _channel = MethodChannel\('ai_app_bridge'\);/);
   assert.match(dart, /static const String _baseEndpoint = 'http:\/\/127\.0\.0\.1:18080';/);
@@ -192,7 +155,8 @@ test('G0 Flutter MethodChannel and HTTP fallback call shape stay frozen', () => 
     'flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/ai_app_bridge_flutter/AiAppBridgeFlutterPlugin.swift',
   );
   assert.match(iosPlugin, /private static let channelName = "ai_app_bridge"/);
-  assert.match(iosPlugin, /case "recordLog":/);
+  assert.match(iosPlugin, /case "recordLog", "recordNetwork", "recordState", "recordEvent":/);
+  assert.match(iosPlugin, /recordFlutterCapture\(method: call.method, payloadJson: payload\)/);
 
   const iosVendor = readRepo(
     'flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/AiAppBridgeIOS/AiAppBridge.swift',
@@ -200,7 +164,7 @@ test('G0 Flutter MethodChannel and HTTP fallback call shape stay frozen', () => 
   assert.equal(iosVendor.includes('logEntries'), false);
   assert.equal(iosVendor.includes('shadowCapture'), false);
   assert.match(iosVendor, /CaptureAppend\.appendSanitized\(/);
-  assert.match(iosVendor, /LegacyLiveView\.fromHttp\(store: captureStore/);
+  assert.match(iosVendor, /CaptureHttpView\.fromHttp\(store: captureStore/);
   assert.equal(/class\s+\w*CaptureStore|Map<String,\s*.*>\s+(logs|network|events)/.test(dart), false);
 });
 
@@ -271,7 +235,7 @@ test('G0 history:true does not return Host-copied payload when live provider fai
     targetExecution: new TargetExecution(),
     rawRunner: async () => {
       liveCalls += 1;
-      throw new Error('target_disconnected');
+      throw Object.assign(new Error('The phone is disconnected.'), { code: 'target_disconnected' });
     },
   });
   const payload = payloadOf(result);
@@ -327,7 +291,7 @@ test('G0 Host collector defaults remain 1s poll and 30 minute target TTL', () =>
   const source = fs.readFileSync(path.join(__dirname, '../bin/observation-collector.js'), 'utf8');
   assert.match(source, /pollIntervalMs = 1_000/);
   assert.match(source, /inactiveTargetTtlMs = 30 \* 60 \* 1_000/);
-  assert.match(source, /const evidenceStreams = \['logs', 'network', 'state', 'events'\]/);
+  assert.doesNotMatch(source, /pullEvidence|evidenceStreams/);
   assert.equal(contract.hostCopy.feedbackOffStopsCopy, true);
   assert.equal(contract.hostCopy.historyTrueReadsHostOnDisconnect, false);
 });

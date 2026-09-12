@@ -1,7 +1,7 @@
 const assert = require('assert/strict');
 const test = require('node:test');
 
-const { requiredInputString: androidInputString } = require('../bin/ai-app-bridge');
+const { requiredInputString: androidInputString } = require('../bin/device-provider');
 const { requiredInputString: iosInputString } = require('../bin/ios-provider');
 
 for (const [platform, requiredInputString] of [

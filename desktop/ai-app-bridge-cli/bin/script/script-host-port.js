@@ -3,7 +3,10 @@
 const { createLiveCaptureQuery } = require('../shared-kernel/live-capture-query');
 const { summarizeTree } = require('../shared-kernel/summary-transformer');
 const { createDeviceMutationLease } = require('../shared-kernel/device-mutation-lease');
-const { authorizeCommand, PERMISSIONS } = require('./script-catalog');
+const { admitExecutionMutation } = require('../shared-kernel/execution-admission');
+const { authorizeCommand } = require('./script-catalog');
+const { isMutationCommand } = require('../command-registry');
+const { normalizeExecutionTarget, bindCommandTarget, targetFingerprint } = require('../shared-kernel/execution-target');
 const { createScriptCapturePort, isCaptureReadCommand } = require('./script-capture-port');
 const { judgeAssertion, issueObservation, createObservationRegistry } = require('./script-assert');
 
@@ -12,13 +15,14 @@ function createScriptHostPort({
   actions,
   query,
   mutationLease = createDeviceMutationLease(),
-  target = {},
+  target = null,
   permissions,
   executionId,
 } = {}) {
   if (typeof actions !== 'function') {
     throw new TypeError('actions');
   }
+  const defaultTarget = normalizeExecutionTarget(target, { nullable: true });
   const liveQuery = query || (typeof runner === 'function' ? createLiveCaptureQuery({ runner }) : null);
   const capture = liveQuery ? createScriptCapturePort({ query: liveQuery }) : null;
   const observations = createObservationRegistry();
@@ -39,14 +43,25 @@ function createScriptHostPort({
     if (!gate.ok) {
       return unavailableEnvelope({ command, error: gate.error, executionId, callId });
     }
+    if ((command === 'logcat' && args.clear === true) || (['webview-network', 'webview-console'].includes(command) && args.script !== undefined)) {
+      return unavailableEnvelope({ command, error: 'capture_mutation_not_allowed', executionId, callId });
+    }
     if (command === 'page-summary') {
       return pageSummaryResult(args, { executionId, callId });
     }
+    let binding;
+    try { binding = bindCommandTarget(command, args, defaultTarget, options.target); }
+    catch (error) {
+      return { ...unavailableEnvelope({ command, error: error.code || 'invalid_target', executionId, callId }),
+        field: error.field, message: error.message, dispatched: false, ambiguous: false };
+    }
+    args = binding.args;
+    const boundTarget = binding.target;
+    const stamp = result => { result.execution.target = structuredClone(boundTarget); return result; };
     const observed = { afterActionId, mutationRevision, pendingMutation: pendingMutations > 0 };
     if (isCaptureReadCommand(command)) {
-      const result = await captureResult(command, args, options, { executionId, callId, capture, target });
-      const boundTarget = bindDispatchArgs(args, options, target);
-      const queryTarget = targetIdentity(boundTarget);
+      const result = await captureResult(command, args, options, { executionId, callId, capture, target: boundTarget });
+      const queryTarget = targetFingerprint(boundTarget);
       const boundaryKey = `${command}:${queryTarget}`;
       const metadata = result.evidence.capture;
       const window = result.evidence.window;
@@ -60,10 +75,11 @@ function createScriptHostPort({
         && window.runtimeEpoch === metadata.runtimeEpoch
         && typeof metadata.targetKey === 'string' && metadata.targetKey.length > 0
         && window.targetKey === metadata.targetKey
-        && (boundTarget.packageName == null || boundTarget.packageName === metadata.targetKey)
+        && ((boundTarget.packageName ?? boundTarget.bundleId) == null || (boundTarget.packageName ?? boundTarget.bundleId) === metadata.targetKey)
         && ((options.runtimeEpoch ?? args.runtimeEpoch) == null || (options.runtimeEpoch ?? args.runtimeEpoch) === metadata.runtimeEpoch)
         && result.evidence.refs.every((ref) => ref.runtimeEpoch === metadata.runtimeEpoch && ref.targetKey === metadata.targetKey);
-      observed.captureValid = Boolean(matchesQuery && metadata.hasMore === false
+      // A continuation page alone cannot prove a whole decision window.
+      observed.captureValid = Boolean(matchesQuery && metadata.hasMore === false && args.cursor === undefined
         && (afterActionIdOf(args, options) === null || afterActionIdOf(args, options) === observed.afterActionId)
         && (observed.mutationRevision === 0 || (
         queryTarget === mutationTarget && preAction
@@ -83,29 +99,29 @@ function createScriptHostPort({
         });
       }
       issueObservation(observations, result.evidence, observed, { command, payload: result.result });
-      return result;
+      return stamp(result);
     }
-    if (isMutation(command)) {
-      return mutationResult(command, args, options, {
+    if (isMutationCommand(command, args)) {
+      return stamp(await mutationResult(command, args, options, {
         actions,
         mutationLease,
-        target,
+        target: boundTarget,
         executionId,
         callId,
         onAction: (id) => {
           actionCalls += 1;
           afterActionId = id;
-          mutationTarget = targetIdentity(bindDispatchArgs(args, options, target));
+          mutationTarget = targetFingerprint(boundTarget);
           preActionWatermarks = new Map(watermarks.entries().filter(([, item]) => item.mutationRevision === mutationRevision));
           mutationRevision += 1;
           pendingMutations += 1;
         },
         onSettled: () => { pendingMutations -= 1; },
-      });
+      }));
     }
     const result = await actionOnce(command, args, options, {
       actions,
-      target,
+      target: boundTarget,
       executionId,
       callId,
       actionId: null,
@@ -115,9 +131,9 @@ function createScriptHostPort({
     issueObservation(observations, result.evidence, observed, {
       command,
       payload: result.result,
-      tree: result.ok && ['tree', 'uia-tree', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'ios-uia-tree', 'web-dom'].includes(command),
+      tree: result.ok && ['tree', 'uia-tree', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'flutter-h5-dom', 'ios-tree', 'ios-uia-tree', 'ios-flutter-tree', 'ios-flutter-nodes', 'ios-h5-dom', 'web-dom'].includes(command),
     });
-    return result;
+    return stamp(result);
   }
 
   async function assert(assertion = {}) {
@@ -174,7 +190,7 @@ async function captureResult(command, args, options, { executionId, callId, capt
     return result;
   }
   const afterActionId = afterActionIdOf(args, options);
-  const window = await capture.query(command, bindDispatchArgs(args, options, target), {
+  const window = await capture.query(command, dispatchArgs(args), {
     actionId: afterActionId,
     timeoutMs: timeoutMsOf(options),
     evidenceWindow: options.evidenceWindow,
@@ -204,38 +220,27 @@ async function captureResult(command, args, options, { executionId, callId, capt
     watermarkCursor: window.watermarkCursor ?? null,
     nextCursor: window.nextCursor ?? null,
     hasMore: window.hasMore ?? null,
+    ...(window.barrier === undefined ? {} : { barrier: structuredClone(window.barrier) }),
   };
   return result;
 }
 
-function targetIdentity(target) {
-  return JSON.stringify([target.serial ?? null, target.packageName ?? null]);
-}
-
 async function mutationResult(command, args, options, ctx) {
   const actionId = options.dispatchActionId || mutationActionId(ctx.executionId, ctx.callId);
-  const bound = bindDispatchArgs(args, options, ctx.target, actionId);
-  const held = ctx.mutationLease.acquire(bound.serial);
-  if (!held.ok) {
-    return unavailableEnvelope({
-      command,
-      error: held.error,
-      executionId: ctx.executionId,
-      callId: ctx.callId,
-    });
-  }
+  const bound = dispatchArgs(args, actionId);
   try {
-    return await actionOnce(command, bound, options, {
+    return await admitExecutionMutation(ctx.target, ctx.mutationLease, async () => {
+      try { return await actionOnce(command, bound, options, {
       actions: ctx.actions,
       target: ctx.target,
       executionId: ctx.executionId,
       callId: ctx.callId,
       actionId,
       onAction: ctx.onAction,
+      }); } finally { ctx.onSettled(); }
     });
-  } finally {
-    ctx.onSettled();
-    held.release();
+  } catch (error) {
+    return unavailableEnvelope({ command, error: error.code || error.message, executionId: ctx.executionId, callId: ctx.callId });
   }
 }
 
@@ -243,14 +248,15 @@ async function actionOnce(command, args, options, { actions, target, executionId
   onAction(actionId);
   let raw;
   try {
-    raw = await actions(command, bindDispatchArgs(args, options, target, actionId), options);
+    raw = await actions(command, dispatchArgs(args, actionId), options);
   } catch (error) {
     return envelope({
       ok: false,
       command,
       result: null,
-      error: (error && error.message) || String(error),
-      ambiguous: actionId !== null,
+      error: error?.code || error?.message || String(error),
+      dispatched: error?.dispatched,
+      ambiguous: error?.ambiguous ?? actionId !== null,
       executionId,
       callId,
       actionId,
@@ -266,6 +272,9 @@ async function actionOnce(command, args, options, { actions, target, executionId
       result: raw,
       error: raw.error || 'ambiguous',
       ambiguous: true,
+      dispatched: raw.dispatched,
+      executionReceipt: raw.executionReceipt ?? null,
+      executionReceipts: raw.executionReceipts,
       executionId,
       callId,
       actionId,
@@ -279,6 +288,9 @@ async function actionOnce(command, args, options, { actions, target, executionId
     command,
     result: raw && raw.result !== undefined ? raw.result : raw,
     error: raw && raw.error ? raw.error : null,
+    dispatched: raw?.dispatched,
+    executionReceipt: raw?.executionReceipt ?? null,
+    executionReceipts: raw?.executionReceipts,
     executionId,
     callId,
     actionId,
@@ -293,12 +305,13 @@ async function actionOnce(command, args, options, { actions, target, executionId
 function actionRefs(command, raw) {
   if (raw?.ok === false) return [];
   if (Array.isArray(raw?.refs)) return raw.refs;
+  const screenshotPath = command === 'ios-screenshot' ? raw?.outFile : raw?.path;
   if (
     (command === 'screenshot' || command === 'ios-screenshot')
-    && typeof raw?.path === 'string'
-    && raw.path.length > 0
+    && typeof screenshotPath === 'string'
+    && screenshotPath.length > 0
   ) {
-    return [{ stream: 'screenshot', screenshotId: raw.path,
+    return [{ stream: 'screenshot', screenshotId: screenshotPath,
       ...(/^[a-f0-9]{64}$/.test(raw.artifact?.sha256 || '') ? { sha256: raw.artifact.sha256 } : {}) }];
   }
   return [];
@@ -313,6 +326,9 @@ function envelope({
   executionId,
   callId,
   actionId,
+  dispatched = actionId !== null,
+  executionReceipt = null,
+  executionReceipts,
   coverage,
   refs,
   afterActionId,
@@ -324,6 +340,9 @@ function envelope({
     result,
     error: error || null,
     ambiguous: ambiguous === true,
+    dispatched,
+    executionReceipt,
+    ...(executionReceipts === undefined ? {} : { executionReceipts }),
     execution: { executionId, callId, actionId },
     evidence: {
       window: { afterActionId: afterActionId === undefined ? actionId : afterActionId, closedAtMs: 0 },
@@ -355,18 +374,8 @@ function mutationActionId(executionId, callId) {
   return `${executionId}:${suffix}`;
 }
 
-function bindDispatchArgs(args, options, target = {}, actionId) {
-  const bound = { ...args };
-  if (bound.serial == null && target.serial != null) {
-    bound.serial = target.serial;
-  }
-  if (bound.packageName == null && target.packageName != null) {
-    bound.packageName = target.packageName;
-  }
-  if (actionId != null) {
-    bound.requestId = actionId;
-  }
-  return bound;
+function dispatchArgs(args, actionId) {
+  return { ...args, ...(actionId == null ? {} : { requestId: actionId }) };
 }
 
 function afterActionIdOf(args, options) {
@@ -385,8 +394,4 @@ function timeoutMsOf(options) {
   return null;
 }
 
-function isMutation(command) {
-  return PERMISSIONS['app.interact'].includes(command) && !command.includes('wait');
-}
-
-module.exports = { createScriptHostPort };
+module.exports = { createScriptHostPort, unavailableEnvelope };

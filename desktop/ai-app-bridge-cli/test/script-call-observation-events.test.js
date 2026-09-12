@@ -13,7 +13,7 @@ async function execute({ requests, actions, permissions = ['app.read', 'app.inte
   const started = await supervisor.handle({
     operation: 'start', operationId: 'observation-events',
     script: { schemaVersion: 'aab.code-script/v1', name: 'observation-events', language: 'javascript',
-      source: 'exports.main = async () => {};', target: { serial: 'serial', packageName: 'sample.app' }, permissions },
+      source: 'exports.main = async () => {};', target: { platform: 'android', serial: 'serial', packageName: 'sample.app' }, permissions },
     actions,
     runtime: { async start({ host }) {
       for (const [command, args = {}, options = {}] of requests) {
@@ -87,7 +87,7 @@ test('denied calls export no invented observation or source metadata', async () 
     checkAssertions: true, actions: async () => { dispatches += 1; return { ok: true }; } });
   assert.equal(dispatches, 0);
   const envelope = result.envelopes[0], event = matchingEvent(result, envelope);
-  assert.equal(event.callId, 'call-1');
+  assert.equal(event.callId, null, 'pre-admission rejection has no issued Host call ID');
   assert.equal(Object.hasOwn(event, 'observationId'), false); assert.equal(Object.hasOwn(event, 'source'), false);
   assert.deepEqual(event.evidenceRefs, []);
   assert.equal(result.assertions[0].verdict, 'inconclusive');

@@ -20,7 +20,7 @@ test('P0 Script start of old steps returns script_format_removed immediately', a
     operation: 'start',
     script: {
       name: 'p0-script',
-      target: { serial: 'serial-1', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'serial-1', packageName: 'com.example.app' },
       steps: [{ id: 'o1', type: 'observe', provider: 'native' }],
     },
   }).then((result) => {
@@ -34,10 +34,7 @@ test('P0 Script start of old steps returns script_format_removed immediately', a
   assert.equal(result.error, 'script_format_removed');
 });
 
-test('P0 isolated timeout defaults to 120s and does not cancel the in-flight handle', async () => {
-  const mcpSource = fs.readFileSync(path.join(__dirname, '../bin/mcp-server.js'), 'utf8');
-  assert.match(mcpSource, /else if \(args\.isolatedTimeoutMs == null\) \{\n        args\.isolatedTimeoutMs = 120000;/);
-
+test('stateful routing waits for the runtime result without an outer timeout race', async () => {
   let handleFinished = false;
   const router = createCommandRouter({
     loadScript: () => ({
@@ -48,19 +45,19 @@ test('P0 isolated timeout defaults to 120s and does not cancel the in-flight han
       },
     }),
     loadIntent: () => ({ handle: async () => ({ ok: true }) }),
-    legacyDispatch: async () => ({
-      content: [{ type: 'text', text: JSON.stringify({ ok: true }) }],
-    }),
+    dispatchCommon: async () => ({ value: { ok: true } }),
   });
-  const timedOut = JSON.parse((await router.route('script', { isolatedTimeoutMs: 20 })).content[0].text);
-  assert.equal(timedOut.ok, false);
-  assert.equal(timedOut.error, 'isolated_timeout');
+  let returned = false;
+  const pending = router.route('script', {}).then(result => { returned = true; return result; });
+  await delay(20);
+  assert.equal(returned, false);
   assert.equal(handleFinished, false);
-  await delay(80);
+  const result = (await pending).value;
+  assert.equal(result.status, 'completed');
   assert.equal(handleFinished, true);
 });
 
-test('P0 capabilities(command=script) exposes trusted-local-code catalog; CLI has no Script surface', () => {
+test('P0 Script discovery exposes trusted local code through both CLI and MCP', () => {
   const payload = capabilityPayload({ command: 'script', includeOptions: true });
   assert.equal(payload.ok, true);
   assert.equal(payload.command, 'script');
@@ -70,6 +67,6 @@ test('P0 capabilities(command=script) exposes trusted-local-code catalog; CLI ha
   assert.equal(payload.options.includes('operation'), true);
   assert.equal(payload.options.includes('waitMs'), true);
 
-  const cli = fs.readFileSync(path.join(__dirname, '../bin/ai-app-bridge.js'), 'utf8');
-  assert.equal(/^ {2}script\s/m.test(cli), false);
+  assert.equal(payload.entrypoints.cli, true);
+  assert.match(require('../bin/ai-app-bridge').helpText, /script\s/);
 });

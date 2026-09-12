@@ -40,6 +40,9 @@ internal class BoundedMemoryCaptureBackend(
             StoredFact(
                 identity = identity,
                 stream = record.stream,
+                targetKey = record.targetKey,
+                runtimeEpoch = record.runtimeEpoch,
+                source = record.source,
                 stateKey = record.stateKey,
                 captureId = record.captureId,
                 timestampMs = record.timestampMs,
@@ -83,6 +86,12 @@ internal class BoundedMemoryCaptureBackend(
         return CaptureWatermark(marked)
     }
 
+    /** The bounded startup journal retains state changes; Legacy reads still project latest values. */
+    fun pendingRecords(): List<CaptureInput> = streams.values.flatMap { it.facts }.sortedBy { it.globalSequence }.map {
+        CaptureInput(it.stream, it.targetKey, it.runtimeEpoch, it.captureId, it.timestampMs,
+            JSONObject(String(it.bytes, Charsets.UTF_8)), it.actionId, it.source, it.stateKey)
+    }
+
     override fun query(query: CaptureQuery): CapturePage {
         val stream = streams[query.stream]
             ?: return CapturePage(
@@ -117,15 +126,16 @@ internal class BoundedMemoryCaptureBackend(
         }
         val gap = stream.gap
         return CapturePage(
-            ok = true,
+            ok = query.view == "legacy-live",
             type = query.stream,
             items = items,
             count = items.size,
-            coverage = CaptureCoverage(if (gap) "partial" else "unavailable", gap = gap, committed = false),
+            coverage = CaptureCoverage("unavailable", gap = gap, committed = false),
             gap = gap,
             hasMore = filtered.size > limited.size,
             refs = refs,
             values = values,
+            reason = if (query.view == "legacy-live") null else "capture_not_persistent",
         )
     }
 
@@ -174,12 +184,7 @@ internal class BoundedMemoryCaptureBackend(
             if (fact.bytes.size > budgets.forStream(name)) return false
             if (name == "state") {
                 val key = fact.stateKey ?: return false
-                val existing = stateOrder.remove(key)
-                if (existing != null) {
-                    facts.remove(existing)
-                    ownedBytes -= existing.bytes.size
-                    ids.remove(existing.identity)
-                }
+                stateOrder.remove(key)
             }
             evictWhileNeeded(fact.bytes.size)
             if (facts.size >= caps.forStream(name) || ownedBytes + fact.bytes.size > budgets.forStream(name)) {
@@ -219,15 +224,8 @@ internal class BoundedMemoryCaptureBackend(
         private fun evictOldest() {
             gap = true
             dropped += 1
-            if (name == "state") {
-                val eldest = stateOrder.entries.firstOrNull() ?: return
-                stateOrder.remove(eldest.key)
-                facts.remove(eldest.value)
-                ownedBytes -= eldest.value.bytes.size
-                ids.remove(eldest.value.identity)
-                return
-            }
             val first = facts.removeFirst()
+            if (first.stateKey != null && stateOrder[first.stateKey] === first) stateOrder.remove(first.stateKey)
             ownedBytes -= first.bytes.size
             ids.remove(first.identity)
         }
@@ -237,6 +235,9 @@ internal class BoundedMemoryCaptureBackend(
 internal class StoredFact(
     val identity: String,
     val stream: String,
+    val targetKey: String,
+    val runtimeEpoch: String,
+    val source: String,
     val stateKey: String?,
     val captureId: Long,
     val timestampMs: Long,

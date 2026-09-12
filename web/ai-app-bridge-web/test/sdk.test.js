@@ -7,6 +7,7 @@ function fakeElement(overrides = {}) {
   const attrs = overrides.attrs || {};
   return {
     tagName: overrides.tagName || 'BUTTON',
+    type: attrs.type || 'text',
     id: overrides.id || '',
     innerText: overrides.innerText || '',
     value: overrides.value || '',
@@ -66,6 +67,10 @@ function createFakeWebSocket() {
     open() {
       this.readyState = 1;
       this.onopen && this.onopen();
+      const hello = this.sent.find(message => message.type === 'hello');
+      this.binding = { schemaVersion: 'aab.web/v2', providerEpoch: 'test-provider', connectionId: 'test-connection',
+        sessionId: hello.sessionId, runtimeEpoch: hello.runtimeEpoch, targetId: hello.targetId };
+      this.onmessage({ data: JSON.stringify({ type: 'helloAck', ok: true, binding: this.binding }) });
     }
 
     send(payload) {
@@ -76,7 +81,47 @@ function createFakeWebSocket() {
       this.readyState = 3;
       this.onclose && this.onclose();
     }
+
+    async command(name, args, actionId = 'action-1') {
+      const target = { sessionId: this.binding.sessionId, runtimeEpoch: this.binding.runtimeEpoch, targetId: this.binding.targetId };
+      this.onmessage({ data: JSON.stringify({ type: 'command', requestId: 'request-1', binding: this.binding,
+        payload: { actionId, target, command: { name, args }, execution: {
+          schemaVersion: 'aab.web-execution/v1', runtimeEpoch: target.runtimeEpoch, actionId, timeoutMs: 1000 } } }) });
+      await wait(5);
+      return this.sent.find(message => message.type === 'completion' && message.result.actionId === actionId)?.result;
+    }
+
+    async barrier(stream) {
+      const requestId = `barrier-${this.sent.length}`;
+      this.onmessage({ data: JSON.stringify({ type: 'read', requestId, binding: this.binding,
+        payload: { name: 'captureBarrier', args: { stream } } }) });
+      await wait(0);
+      return this.sent.find(message => message.type === 'response' && message.requestId === requestId)?.result;
+    }
   };
+}
+
+function installDocument(t, elements, url) {
+  const original = { document: globalThis.document, window: globalThis.window, location: globalThis.location };
+  class Input {
+    get value() { return this._value; }
+    set value(value) { this._value = value; }
+  }
+  const window = fakeEventTarget({ HTMLInputElement: Input, HTMLTextAreaElement: Input,
+    Event: class Event {}, InputEvent: class InputEvent {}, innerWidth: 1024, innerHeight: 768,
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) });
+  const document = { title: 'Controls', defaultView: window, activeElement: null,
+    querySelectorAll: css => css.startsWith('#') ? elements.filter(element => element.id === css.slice(1)) : elements,
+    elementFromPoint: () => elements[0] };
+  for (const element of elements) {
+    element.ownerDocument = document; element.isConnected = true; element.contains = () => false;
+    element.focus = () => { document.activeElement = element; }; element.dispatchEvent = () => {};
+    if (element.tagName === 'INPUT') {
+      element._value = element.value; delete element.value; Object.setPrototypeOf(element, Input.prototype);
+    }
+  }
+  globalThis.document = document; globalThis.window = window; globalThis.location = new URL(url);
+  t.after(() => Object.assign(globalThis, original));
 }
 
 function createFakeMutationObserver() {
@@ -165,36 +210,52 @@ test('snapshotDom shapes controls from a supplied document', () => {
   assert.equal(JSON.stringify(dom).includes('snapshot-secret-marker'), false);
 });
 
+test('DOM checked state reads live native properties and explicit ARIA state without inventing unchecked values', t => {
+  const native = fakeElement({ tagName: 'INPUT', attrs: { type: 'checkbox', checked: 'checked' } });
+  native.checked = false; native.indeterminate = false;
+  const radio = fakeElement({ tagName: 'INPUT', attrs: { type: 'radio' } }); radio.checked = true;
+  const tri = fakeElement({ tagName: 'INPUT', attrs: { type: 'checkbox' } }); tri.checked = false; tri.indeterminate = true;
+  const custom = fakeElement({ tagName: 'SPAN', attrs: { role: 'checkbox', 'aria-checked': 'false' } });
+  const mixed = fakeElement({ tagName: 'SPAN', attrs: { role: 'checkbox', 'aria-checked': 'mixed' } });
+  const missing = fakeElement({ tagName: 'SPAN', attrs: { role: 'checkbox' } });
+  const invalid = fakeElement({ tagName: 'SPAN', attrs: { role: 'checkbox', 'aria-checked': 'yes' } });
+  const switchMixed = fakeElement({ tagName: 'SPAN', attrs: { role: 'switch', 'aria-checked': 'mixed' } });
+  const textInput = fakeElement({ tagName: 'INPUT', attrs: { type: 'text', 'aria-checked': 'true' } });
+  installDocument(t, [native, radio, tri, custom, mixed, missing, invalid, switchMixed, textInput], 'https://example.test/');
+  const initial = snapshotDom();
+  assert.deepEqual(initial.controls.map(node => node.checked), [false, true, 'mixed', false, 'mixed', null, null, false, null]);
+  assert.equal(initial.controls[6].ariaChecked, 'yes');
+  assert.equal(initial.controls[7].ariaChecked, 'mixed');
+  native.checked = true;
+  const changed = snapshotDom();
+  assert.equal(changed.controls[0].checked, true);
+  assert.equal(changed.controls[0].elementId, initial.controls[0].elementId);
+});
+
+test('a managed checkbox click observes the actual resulting property', async t => {
+  const checkbox = fakeElement({ tagName: 'INPUT', id: 'task', attrs: { type: 'checkbox' } });
+  checkbox.checked = false; checkbox.indeterminate = false;
+  checkbox.click = () => { checkbox.checked = !checkbox.checked; };
+  installDocument(t, [checkbox], 'https://example.test/');
+  const FakeWebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', token: 'test-token', WebSocket: FakeWebSocket,
+    sessionId: 'checkbox-page', capture: { console: false, errors: false, fetch: false, xhr: false, ui: false } });
+  t.after(() => bridge.stop());
+  bridge.start(); const socket = FakeWebSocket.instances[0]; socket.open();
+  const before = bridge.snapshotDom();
+  const result = await socket.command('click', { selector: { elementId: before.controls[0].elementId } });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.settled, true);
+  assert.equal(bridge.snapshotDom().controls[0].checked, true);
+});
+
 test('password input command returns only length metadata', async (t) => {
   const password = fakeElement({
     tagName: 'INPUT',
     id: 'password',
     attrs: { name: 'password', type: 'password' },
   });
-  password.focus = () => {};
-  password.dispatchEvent = () => {};
-  const originalDocument = globalThis.document;
-  const originalWindow = globalThis.window;
-  const originalLocation = globalThis.location;
-  globalThis.document = {
-    title: 'Sensitive Input',
-    querySelector(selector) {
-      return selector === '#password' ? password : null;
-    },
-  };
-  globalThis.window = { Event: class FakeEvent {} };
-  globalThis.location = {
-    href: 'https://example.test/login',
-    origin: 'https://example.test',
-    pathname: '/login',
-    search: '',
-    hash: '',
-  };
-  t.after(() => {
-    globalThis.document = originalDocument;
-    globalThis.window = originalWindow;
-    globalThis.location = originalLocation;
-  });
+  installDocument(t, [password], 'https://example.test/login');
   const WebSocket = createFakeWebSocket();
   const bridge = createAiAppBridge({
     endpoint: 'ws://127.0.0.1:18180/ai-app-bridge-web',
@@ -205,23 +266,11 @@ test('password input command returns only length metadata', async (t) => {
   bridge.start();
   const socket = WebSocket.instances[0];
   socket.open();
-  await socket.onmessage({
-    data: JSON.stringify({
-      type: 'command',
-      commandId: 'input-1',
-      command: {
-        name: 'input',
-        args: { selector: '#password', value: 'command-secret-marker' },
-      },
-    }),
-  });
-  await wait(0);
-
-  const commandResult = socket.sent.find((message) => message.type === 'commandResult');
+  const commandResult = await socket.command('input', { selector: { css: '#password' }, value: 'command-secret-marker' });
   assert.equal(commandResult.ok, true);
-  assert.equal(commandResult.result.sensitive, true);
-  assert.equal(commandResult.result.valueLength, 21);
-  assert.equal(commandResult.result.value, undefined);
+  assert.equal(commandResult.sensitive, true);
+  assert.equal(commandResult.valueLength, 21);
+  assert.equal(commandResult.value, undefined);
   assert.equal(JSON.stringify(commandResult).includes('command-secret-marker'), false);
   bridge.stop();
 });
@@ -234,25 +283,7 @@ test('click command returns the component that received the click', async (t) =>
   });
   let clickCount = 0;
   button.click = () => { clickCount += 1; };
-  const originalDocument = globalThis.document;
-  const originalLocation = globalThis.location;
-  globalThis.document = {
-    title: 'Order',
-    querySelector(selector) {
-      return selector === '#save-order' ? button : null;
-    },
-  };
-  globalThis.location = {
-    href: 'https://example.test/order',
-    origin: 'https://example.test',
-    pathname: '/order',
-    search: '',
-    hash: '',
-  };
-  t.after(() => {
-    globalThis.document = originalDocument;
-    globalThis.location = originalLocation;
-  });
+  installDocument(t, [button], 'https://example.test/order');
   const WebSocket = createFakeWebSocket();
   const bridge = createAiAppBridge({
     endpoint: 'ws://127.0.0.1:18180/ai-app-bridge-web',
@@ -263,21 +294,12 @@ test('click command returns the component that received the click', async (t) =>
   bridge.start();
   const socket = WebSocket.instances[0];
   socket.open();
-  await socket.onmessage({
-    data: JSON.stringify({
-      type: 'command',
-      commandId: 'click-1',
-      command: { name: 'click', args: { selector: '#save-order' } },
-    }),
-  });
-  await wait(0);
-
-  const commandResult = socket.sent.find((message) => message.type === 'commandResult');
+  const commandResult = await socket.command('click', { selector: { css: '#save-order' } });
   assert.equal(commandResult.ok, true);
   assert.equal(clickCount, 1);
-  assert.equal(commandResult.result.target.id, 'save-order');
-  assert.equal(commandResult.result.target.role, 'button');
-  assert.equal(commandResult.result.target.bounds.width, 100);
+  assert.equal(commandResult.resolved.element.id, 'save-order');
+  assert.equal(commandResult.resolved.element.role, 'button');
+  assert.equal(commandResult.resolved.pageRef.url, 'https://example.test/order');
   bridge.stop();
 });
 
@@ -326,6 +348,135 @@ test('recordNetwork reports redaction truthfully', () => {
   assert.equal(captures[0].item.redacted, false);
   assert.equal(captures[1].item.redacted, true);
   bridge.stop();
+});
+
+test('fetch capture keeps its dispatch origin when a slower response arrives after another action', async t => {
+  const button = fakeElement({ id: 'save' });
+  installDocument(t, [button], 'https://example.test/memos');
+  let finishSlow;
+  window.fetch = url => url === '/slow'
+    ? new Promise(resolve => { finishSlow = resolve; }) : Promise.resolve(new Response('fast'));
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'causal-fetch', WebSocket,
+    capture: { fetch: true }, captureRequestBodies: true, captureResponseBodies: true }).start();
+  t.after(() => bridge.stop());
+  const socket = WebSocket.instances[0]; socket.open();
+  button.click = () => { void window.fetch('/slow', { method: 'POST', body: '{"memo":"first"}' }); };
+  assert.equal((await socket.command('click', { selector: { css: '#save' } }, 'first')).ok, true);
+  assert.equal((await socket.barrier('network')).pending, 1);
+  socket.onmessage({ data: JSON.stringify({ type: 'completionAck', binding: socket.binding, actionId: 'first', stored: true }) });
+  button.click = () => { void window.fetch('/fast'); };
+  assert.equal((await socket.command('click', { selector: { css: '#save' } }, 'second')).ok, true);
+  finishSlow(new Response('slow'));
+  await wait(20);
+  const captures = socket.sent.filter(message => message.type === 'capture' && message.stream === 'network');
+  assert.equal(captures.length, 2);
+  assert.deepEqual(captures.map(value => [value.item.url, value.actionId, value.item.association]),
+    [['/fast', 'second', 'synchronous'], ['/slow', 'first', 'synchronous']]);
+  assert.equal(captures[1].item.requestBody, '{"memo":"first"}');
+  assert.equal(captures[1].item.responseBody, 'slow');
+  assert.deepEqual(captures.map(value => value.sequence), [1, 2]);
+  assert.equal((await socket.barrier('network')).pending, 0);
+});
+
+test('binary request and response bytes survive capture without consuming the App response', async t => {
+  installDocument(t, [], 'https://example.test/memos');
+  const bytes = Uint8Array.from({ length: 12000 }, (_, index) => index % 256);
+  window.fetch = async () => new Response(bytes);
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'binary-fetch', WebSocket,
+    capture: { fetch: true }, captureRequestBodies: true, captureResponseBodies: true }).start();
+  t.after(() => bridge.stop());
+  const socket = WebSocket.instances[0]; socket.open();
+  const response = await window.fetch('/protobuf', { method: 'POST', body: bytes });
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), bytes);
+  await wait(20);
+  const captured = socket.sent.find(message => message.type === 'capture' && message.stream === 'network').item;
+  for (const side of ['request', 'response']) {
+    assert.equal(captured[`${side}BodyState`], 'complete');
+    assert.equal(captured[`${side}BodyEncoding`], 'base64');
+    assert.deepEqual(new Uint8Array(Buffer.from(captured[`${side}Body`], 'base64')), bytes);
+  }
+});
+
+test('XHR body capture is opt-in and retains the request origin', async t => {
+  const button = fakeElement({ id: 'save' });
+  installDocument(t, [button], 'https://example.test/memos');
+  class Xhr {
+    constructor() { fakeEventTarget(this); this.responseType = ''; this.responseText = 'saved'; this.status = 200; }
+    open() {}
+    send() {}
+  }
+  window.XMLHttpRequest = Xhr;
+  for (const enabled of [false, true]) {
+    const WebSocket = createFakeWebSocket();
+    const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'xhr-bodies', WebSocket,
+      capture: { xhr: true }, captureRequestBodies: enabled, captureResponseBodies: enabled }).start();
+    const socket = WebSocket.instances[0]; socket.open();
+    let request;
+    button.click = () => { request = new Xhr(); request.open('PATCH', '/memo'); request.send('draft'); };
+    assert.equal((await socket.command('click', { selector: { css: '#save' } }, 'xhr-save')).ok, true);
+    assert.equal((await socket.barrier('network')).pending, 1);
+    request.dispatch('loadend');
+    await wait(1);
+    const capture = socket.sent.find(message => message.type === 'capture' && message.stream === 'network');
+    assert.equal(capture.actionId, 'xhr-save');
+    assert.equal(capture.item.association, 'synchronous');
+    assert.equal(capture.item.requestBody, enabled ? 'draft' : undefined);
+    assert.equal(capture.item.responseBody, enabled ? 'saved' : undefined);
+    assert.equal(capture.item.requestBodyState, enabled ? 'complete' : 'disabled');
+    assert.equal((await socket.barrier('network')).pending, 0);
+    bridge.stop();
+  }
+});
+
+test('native await continuations and unrelated fetches remain unattributed', async t => {
+  const button = fakeElement({ id: 'save' });
+  installDocument(t, [button], 'https://example.test/memos');
+  window.fetch = () => Promise.resolve(new Response('ok'));
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'async-fetch', WebSocket,
+    capture: { fetch: true } }).start();
+  t.after(() => bridge.stop());
+  const socket = WebSocket.instances[0]; socket.open();
+  button.click = () => { void (async () => { await Promise.resolve(); await window.fetch('/awaited'); })(); };
+  assert.equal((await socket.command('click', { selector: { css: '#save' } })).ok, true);
+  await window.fetch('/background'); await wait(5);
+  const captures = socket.sent.filter(message => message.type === 'capture');
+  assert.equal(captures.length, 2);
+  assert.equal(captures.every(value => value.actionId === null && value.item.association === 'unattributed'), true);
+});
+
+test('capture barriers expose rejected records and queue loss instead of silently reporting completeness', async t => {
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'capture-loss', WebSocket }).start();
+  t.after(() => bridge.stop());
+  for (let index = 0; index < 101; index++) bridge.recordEvent('test', 'queued', { index });
+  const cyclic = {}; cyclic.self = cyclic;
+  assert.equal(bridge.recordEvent('test', 'invalid', cyclic).accepted, false);
+  const socket = WebSocket.instances[0]; socket.open();
+  const barrier = await socket.barrier('events');
+  assert.equal(barrier.sequence, 102);
+  assert.equal(barrier.losses, 2);
+  assert.equal(barrier.pending, 0);
+  assert.equal(socket.sent.filter(message => message.type === 'capture').length, 100);
+});
+
+test('response-body capture is bounded and does not consume the App response', async t => {
+  installDocument(t, [], 'https://example.test/memos');
+  const content = 'a'.repeat(20000);
+  window.fetch = () => Promise.resolve(new Response(content));
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'body-limit', WebSocket,
+    capture: { fetch: true }, captureResponseBodies: true }).start();
+  t.after(() => bridge.stop());
+  const socket = WebSocket.instances[0]; socket.open();
+  assert.equal(await (await window.fetch('/large')).text(), content);
+  await wait(10);
+  const capture = socket.sent.find(message => message.type === 'capture');
+  assert.equal(capture.item.responseBody, undefined);
+  assert.equal(capture.item.responseBodyState, 'too-large');
+  assert.equal((await socket.barrier('network')).pending, 0);
 });
 
 test('capture.ui emits batched clicks and redacts password input', async () => {

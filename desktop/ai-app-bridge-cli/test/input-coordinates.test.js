@@ -2,7 +2,8 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { inputText, inputTextBridgePayload, parseArgs } = require('../bin/ai-app-bridge');
+const { inputText, inputTextBridgePayload } = require('../bin/device-provider');
+const { parseArgs } = require('../bin/ai-app-bridge');
 
 const invalidCases = [
   [{ tapX: 10 }, 'x_y_must_be_provided_together'],

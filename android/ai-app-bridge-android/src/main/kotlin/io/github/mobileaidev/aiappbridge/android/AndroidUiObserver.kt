@@ -136,6 +136,13 @@ internal class AndroidUiObserver(
         }
     }
 
+    fun noteGesture(data: JSONObject) {
+        onMain {
+            emit(category = "ui", name = "ui.interaction", data = data)
+            requestSample("interaction.gesture")
+        }
+    }
+
     fun stop() {
         onMain {
             stopOnMain()

@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { canonicalJson, validateRecord, verifyChecksum } = require('./evidence-schema');
+const { checksumOf, canonicalJson, validateArchivedRecord, verifyChecksum } = require('./evidence-schema');
 const { analyzeRecordedPayloads } = require('./recorded-payload-archive');
 const { readRegularFile: readRecordedFile } = require('./evidence-recording');
 
@@ -135,7 +135,8 @@ function analyzeFacts(facts, { namespace, operationId, throughGlobalSeq }) {
   let previousSequence = 0;
   function target(role, value) {
     if (value === undefined) return;
-    requireValue(value !== null && typeof value === 'object' && !Array.isArray(value), 'invalid_record_target');
+    requireValue((value === null && namespace === 'script')
+      || (value !== null && typeof value === 'object' && !Array.isArray(value)), 'invalid_record_target');
     const item = { role, value };
     targets.set(canonicalJson(item), item);
   }
@@ -150,7 +151,7 @@ function analyzeFacts(facts, { namespace, operationId, throughGlobalSeq }) {
     requireValue(record.persisted === true && typeof record.evidenceId === 'string' && record.evidenceId.length > 0,
       'invalid_evidence_record');
     requireValue(!ids.has(record.evidenceId), 'duplicate_evidence_id');
-    requireValue(validateRecord(namespace, record.kind, record).ok, 'invalid_evidence_record');
+    requireValue(validateArchivedRecord(namespace, record.kind, record).ok, 'invalid_evidence_record');
     requireValue(verifyChecksum(record).ok, 'record_checksum_mismatch', record.evidenceId);
     ids.set(record.evidenceId, record);
     positions.set(record.evidenceId, fact.globalSeq);
@@ -158,7 +159,10 @@ function analyzeFacts(facts, { namespace, operationId, throughGlobalSeq }) {
     target(namespace === 'script' && record.kind === 'dispatch-marker' ? 'dispatch' : 'owner', record.target);
     target('owner', record.requestedTarget);
     target('foreground', record.foreground);
-    if (record.kind === 'observation') target('observed', { serial: record.serial, packageName: record.packageName });
+    if (record.kind === 'observation') {
+      if (record.schemaVersion === undefined) target('observed', { serial: record.serial, packageName: record.packageName });
+      else target('observed', record.observedTarget);
+    }
   }
   const missingReferences = [];
   const externalReferences = [];
@@ -209,6 +213,18 @@ function analyzeFacts(facts, { namespace, operationId, throughGlobalSeq }) {
           'invalid_reference_binding', record.evidenceId);
       }
     }
+    if (record.kind === 'checkpoint' && record.resultRef) {
+      const ref = record.resultRef, result = ids.get(ref.evidenceId);
+      if (!result) missing(record, 'resultRef', ref.evidenceId);
+      else {
+        precedes(result, record);
+        requireValue(result.kind === 'result' && result.revision === record.revision
+          && result.bytes === ref.bytes && result.sha256 === ref.sha256 && checksumOf(result.result) === ref.sha256
+          && Buffer.byteLength(canonicalJson(result.result)) === ref.bytes
+          && result.originalSha256 === ref.originalSha256 && result.representation === ref.representation,
+          'invalid_reference_binding', record.evidenceId);
+      }
+    }
     if (record.kind === 'action-receipt') {
       const marker = markers.get(record.actionId);
       if (!marker) missing(record, 'actionId', record.actionId);
@@ -243,7 +259,7 @@ function analyzeFacts(facts, { namespace, operationId, throughGlobalSeq }) {
       externalReferences,
       executionStatus: 'not-inferred',
       businessVerdict: 'not-evaluated',
-      exclusions: ['external-screenshots', 'mobile-capture-items', 'script-call-results-and-assertions', 'in-memory-events'],
+      exclusions: ['external-screenshots', 'mobile-capture-items', 'intermediate-script-call-results-and-assertions', 'in-memory-events'],
     },
   };
 }

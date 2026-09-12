@@ -18,6 +18,7 @@ function createRollingSummary({ operationId, startedAtMs }) {
   let agentRequest = null;
   let pausedAtMs = null;
   let pausedMs = 0;
+  let terminalAtMs = null;
 
   function apply(event) {
     if (event.kind === 'heartbeat') {
@@ -86,11 +87,14 @@ function createRollingSummary({ operationId, startedAtMs }) {
     if (event.kind === 'script_ambiguous') {
       status = 'ambiguous';
     }
+    if (['script_completed', 'script_failed', 'script_cancelled', 'script_ambiguous'].includes(event.kind)
+      && terminalAtMs === null) terminalAtMs = event.timestampMs;
     return snapshot(event.timestampMs);
   }
 
   function snapshot(nowMs) {
-    const holdMs = pausedAtMs === null ? 0 : nowMs - pausedAtMs;
+    const endAtMs = terminalAtMs ?? nowMs;
+    const holdMs = pausedAtMs === null ? 0 : endAtMs - pausedAtMs;
     return {
       operationId,
       status,
@@ -105,9 +109,9 @@ function createRollingSummary({ operationId, startedAtMs }) {
       },
       assertionScopes: { code: { ...assertionScopes.code }, device: { ...assertionScopes.device } },
       lastCheckpoint,
-      elapsedMs: nowMs - startedAtMs,
-      activeMs: nowMs - startedAtMs - pausedMs - holdMs,
-      decisionWaitMs: agentRequest === null ? 0 : nowMs - lastEventAtMs,
+      elapsedMs: endAtMs - startedAtMs,
+      activeMs: endAtMs - startedAtMs - pausedMs - holdMs,
+      decisionWaitMs: agentRequest === null ? 0 : endAtMs - lastEventAtMs,
       latestEvidenceRefs,
       agentRequest,
     };
@@ -117,7 +121,7 @@ function createRollingSummary({ operationId, startedAtMs }) {
     return {
       kind: 'heartbeat',
       timestampMs: nowMs,
-      elapsedMs: nowMs - startedAtMs,
+      elapsedMs: (terminalAtMs ?? nowMs) - startedAtMs,
       lastEventAtMs,
       lastKind,
       childHealth,

@@ -13,7 +13,7 @@ const { createProductionHost, handle } = require('../bin/script/script-entry');
 function spec(source, policy = {}) {
   return {
     schemaVersion: 'aab.code-script/v1', name: 'production-recovery', language: 'javascript', source,
-    target: { serial: 'host-only-device', packageName: 'example.host.only' },
+    target: { platform: 'android', serial: 'host-only-device', packageName: 'example.host.only' },
     policy: { restartPolicy: 'checkpoint', timeoutMs: 2000, ...policy },
   };
 }
@@ -26,7 +26,8 @@ function supervisor() { return createScriptSupervisor({ createHost: createProduc
 async function run(sup, args) {
   const started = await handle({ supervisor: sup, operation: 'start', operationId: 'recovery', ...args });
   assert.equal(started.ok, true, JSON.stringify(started));
-  const result = await sup.registry.get(started.operationId).running;
+  await sup.registry.get(started.operationId).running;
+  const result = await sup.handle({ operation: 'result', operationId: started.operationId, store: args.store });
   return { result, status: await handle({ supervisor: sup, operation: 'status', operationId: started.operationId }) };
 }
 const checkpointCrash = `module.exports.main = async ctx => {
@@ -63,7 +64,8 @@ test('real child restart through script entry preserves provider, query, target 
   const fresh = supervisor();
   const restored = await handle({ supervisor:fresh, operation:'resume', operationId:'recovery', store:restoredStore, actions, query, script:spec(checkpointCrash) });
   assert.equal(restored.ok, true, JSON.stringify(restored));
-  const result = await fresh.registry.get('recovery').running;
+  await fresh.registry.get('recovery').running;
+  const result = await fresh.handle({ operation: 'result', operationId: 'recovery', store: restoredStore });
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(result.result.status.provider, 'real-wired');
   assert.equal(queries.length, 1);
@@ -163,6 +165,41 @@ test('receipt after last user checkpoint requires reconciliation instead of repe
   assert.equal(effects,1);
 });
 
+for (const [command, args, permission] of [
+  ['permission-grant', { permission: 'android.permission.CAMERA' }, 'app.permissions'],
+  ['permission-revoke', { permission: 'android.permission.CAMERA' }, 'app.permissions'],
+  ['appops-set', { op: 'CAMERA', mode: 'allow' }, 'app.permissions'],
+  ['clear-app-data', {}, 'app.lifecycle'],
+]) {
+  test(`${command} persists its effect before crash and cannot replay from an earlier checkpoint`, async (t) => {
+    const { reopen } = fixture(t);
+    let effects = 0;
+    const actions = async (_command, bound) => {
+      effects++;
+      assert.equal(bound.requestId, 'recovery:action-1');
+      assert.equal(reopen().latest('recovery', 'dispatch-marker').state, 'prepared');
+      return { ok: true, dispatched: true };
+    };
+    const script = {
+      ...spec(`module.exports.main = async ctx => {
+        await ctx.checkpoint('before', {});
+        await ctx.call(${JSON.stringify(command)}, ${JSON.stringify(args)});
+        process.exit(31);
+      };`),
+      permissions: [permission],
+    };
+    const done = await run(supervisor(), { store: reopen(), script, actions });
+    assert.equal(done.status.status, 'failed');
+    const receipt = reopen().latest('recovery', 'action-receipt');
+    assert.equal(receipt.actionId, 'recovery:action-1');
+    assert.equal(receipt.dispatched, true);
+    assert.equal(receipt.ambiguous, false);
+    const restored = await handle({ supervisor: supervisor(), operation: 'resume', operationId: 'recovery', store: reopen(), actions });
+    assert.equal(restored.error, 'ambiguous');
+    assert.equal(effects, 1);
+  });
+}
+
 test('terminal disk write must complete before completed can be observed', async (t) => {
   const {reopen}=fixture(t); const backing=reopen(); let release; let observed;
   const pending=new Promise(resolve=>{observed=resolve;});
@@ -195,20 +232,24 @@ test('recovery freezes sourcePath contents and permissions and rejects changing 
   t.after(()=>fs.rmSync(path.dirname(sourceFile),{recursive:true,force:true}));
   const source=`module.exports.main=async ctx=>{if(!ctx.resume()){await ctx.checkpoint('read',{});process.exit(31);}return (await ctx.call('tap-text',{text:'Denied'})).error;};`;
   fs.writeFileSync(sourceFile,source);
-  const script={...spec(source), source:undefined, sourcePath:sourceFile, permissions:['app.read']};
+  const { source: ignoredSource, ...base } = spec(source);
+  const script={...base, sourcePath:sourceFile, permissions:['app.read']};
   await run(supervisor(),{store:reopen(),script,actions:async()=>({ok:true})});
   fs.writeFileSync(sourceFile,'throw new Error("mutated_source_must_never_execute");');
   for (const changed of [
-    {...spec(source),target:{serial:'other',packageName:'example.host.only'},permissions:['app.read']},
+    {...spec(source),target:{platform: 'android', serial:'other',packageName:'example.host.only'},permissions:['app.read']},
     {...spec(source),permissions:['app.read','app.interact']},
   ]) {
     const rejected=await handle({supervisor:supervisor(),operation:'resume',operationId:'recovery',store:reopen(),script:changed,actions:async()=>({ok:true})});
     assert.equal(['script_target_mismatch','script_permissions_mismatch'].includes(rejected.error),true);
   }
   const fresh=supervisor(); let dispatched=0;
-  const restored=await handle({supervisor:fresh,operation:'resume',operationId:'recovery',store:reopen(),actions:async()=>{dispatched++;return{ok:true};}});
+  const restoredStore=reopen();
+  const restored=await handle({supervisor:fresh,operation:'resume',operationId:'recovery',store:restoredStore,actions:async()=>{dispatched++;return{ok:true};}});
   assert.equal(restored.ok,true,JSON.stringify(restored));
-  const done=await fresh.registry.get('recovery').running;
+  await fresh.registry.get('recovery').running;
+  const done=await fresh.handle({operation:'result',operationId:'recovery',store:restoredStore});
+  assert.equal(done.ok,true,JSON.stringify(done));
   assert.equal(done.result,'permission_not_granted');
   assert.equal(dispatched,0);
 });
@@ -233,7 +274,7 @@ test('code assertion counts stay separate from device acceptance in summary and 
   assert.equal(assertion.payloadSummary.scope,'code');
 });
 
-test('timeout during prepared durability never dispatches late after the child is stopped', async (t) => {
+test('timeout during prepared durability never dispatches late after the child is stopped', { timeout: 10000 }, async (t) => {
   const {reopen}=fixture(t); const backing=reopen(); let release; let offered; let effects=0;
   const pending=new Promise(resolve=>{offered=resolve;});
   const store={...backing,persist:(kind,record)=>{
@@ -241,9 +282,13 @@ test('timeout during prepared durability never dispatches late after the child i
     return backing.persist(kind,record);
   }};
   const sup=supervisor();
-  const running=run(sup,{store,script:spec(`module.exports.main=async ctx=>ctx.call('tap-text',{text:'Late'});`,{timeoutMs:150}),actions:async()=>{effects++;return{ok:true};}});
+  const running=run(sup,{store,script:spec(`module.exports.main=async ctx=>ctx.call('tap-text',{text:'Late'});`,{timeoutMs:1500}),actions:async()=>{effects++;return{ok:true};}});
+  t.after(() => release?.());
   await pending;
-  await new Promise(resolve=>setTimeout(resolve,200));
+  const deadline=Date.now()+3000;
+  while(Date.now()<deadline && (await sup.handle({operation:'status',operationId:'recovery'})).status!=='finishing') {
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
   assert.equal((await sup.handle({operation:'status',operationId:'recovery'})).status,'finishing');
   await release();
   const done=await running;

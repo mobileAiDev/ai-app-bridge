@@ -12,7 +12,7 @@ function spec(source) {
     name: 'p8-spawn',
     language: 'javascript',
     source,
-    target: { serial: 'p8', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
   };
 }
 
@@ -61,7 +61,7 @@ test('P8 Python complete leaves a later start usable', async () => {
       name: 'p8-py',
       language: 'python',
       source: 'def main(ctx):\n    return {"ok": True}\n',
-      target: { serial: 'p8', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
     },
   });
   if (started.error === 'runtime_unavailable') {

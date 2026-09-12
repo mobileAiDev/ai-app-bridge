@@ -77,6 +77,26 @@ final class ObservationFactStoreLifecycleTests: XCTestCase {
         XCTAssertEqual(first.options.partitionQuotas, second.options.partitionQuotas)
     }
 
+    func testCaptureAttachmentFollowsOnlyTheCurrentOpenAndEveryStop() {
+        let store = FakeLifecycleStore()
+        var opened: [URL] = []
+        var stopped = 0
+        let lifecycle = ObservationFactStoreLifecycle(store: store,
+            onOpened: { opened.append($0.options.directory) }, onStopped: { stopped += 1 })
+        let first = configuration("first"), second = configuration("second")
+        lifecycle.start(first)
+        lifecycle.stop()
+        lifecycle.start(second)
+        store.completeOpen()
+        XCTAssertTrue(opened.isEmpty, "cancelled open must not attach capture")
+        store.completeClose()
+        store.completeOpen()
+        XCTAssertEqual(opened, [second.options.directory])
+        lifecycle.stop()
+        XCTAssertEqual(stopped, 2)
+        store.completeClose()
+    }
+
     func testLifecycleCoalescesOpenAndReopensOnlyAfterInflightClose() {
         let store = FakeLifecycleStore()
         let lifecycle = ObservationFactStoreLifecycle(store: store)

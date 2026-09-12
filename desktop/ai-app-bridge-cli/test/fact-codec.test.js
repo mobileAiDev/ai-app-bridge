@@ -8,6 +8,38 @@ const {
   sanitizePersistentValue,
 } = require('../bin/fact-codec');
 
+test('nonsecret JSON captured as text retains its exact whitespace, escapes and duplicate-free bytes', () => {
+  for (const raw of [
+    String.raw`{"resourceName":"sample:id\/next","actionId":"intent:\u8282\u70b9","text":"{\"x\":1}"}`,
+    '  { "number": 1.000, "nested": [{"same":1},{"same":2}] }\n',
+    '["colon: brace} key\\\"", {"number": 9007199254740993}]',
+  ]) {
+    assert.equal(sanitizePersistentValue({ receiptJson: raw }).receiptJson, raw);
+    assert.equal(sanitizePersistentValue(sanitizePersistentValue({ receiptJson: raw })).receiptJson, raw);
+  }
+});
+
+test('preserving JSON text never retains a secret hidden by duplicate or escaped keys', () => {
+  for (const raw of [
+    String.raw`{"tok\u0065n":"hidden-secret","token":"[REDACTED]"}`,
+    String.raw`{"nested":{"password":"hidden-secret"},"nested":{}}`,
+    String.raw`[{"to\u006ben":"hidden-secret","token":"[REDACTED]"}]`,
+  ]) {
+    const result = sanitizePersistentValue({ receiptJson: raw });
+    assert.doesNotMatch(result.receiptJson, /hidden-secret/);
+    assert.doesNotThrow(() => JSON.parse(result.receiptJson));
+    assert.deepEqual(sanitizePersistentValue(result), result);
+  }
+});
+
+test('JSON receipt text still applies nested credential and inline token redaction', () => {
+  const raw = String.raw`{"binding":{"text":"password=private-value"},"token":"private-token","safe":"sample:id\/next"}`;
+  const result = sanitizePersistentValue({ receiptJson: raw }).receiptJson;
+  assert.doesNotMatch(result, /private-value|private-token/);
+  assert.equal(JSON.parse(result).safe, 'sample:id/next');
+  assert.notEqual(result, raw);
+});
+
 test('canonical fact normalization keeps bodies and only redacts password and token', () => {
   const normalized = normalizePersistentFact({
     partition: 'network',

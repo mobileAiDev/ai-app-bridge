@@ -5,6 +5,9 @@ const MAX_FRAME_BYTES = 1024 * 1024;
 function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } = {}) {
   let buffer = '';
   let closed = false;
+  let failure = null;
+  let killTimer;
+  child.once('exit', () => clearTimeout(killTimer));
   const waiters = [];
   const pending = [];
   const replies = new Map();
@@ -73,12 +76,12 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
 
   function nextMessage() {
     return new Promise((resolve) => {
-      if (pending.length > 0) {
-        resolve(pending.shift());
+      if (closed) {
+        resolve(failure);
         return;
       }
-      if (closed) {
-        resolve({ type: 'fail', error: 'channel_closed' });
+      if (pending.length > 0) {
+        resolve(pending.shift());
         return;
       }
       waiters.push(resolve);
@@ -87,6 +90,10 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
 
   function waitReply(id) {
     return new Promise((resolve) => {
+      if (closed) {
+        resolve(failure);
+        return;
+      }
       if (replies.size >= maxPending) {
         fail(new Error('channel_backlog'));
         resolve({ type: 'fail', error: 'channel_backlog' });
@@ -100,6 +107,9 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
     if (closed) return;
     closed = true;
     const frame = { type: 'fail', error: error.message || String(error) };
+    failure = frame;
+    pending.length = 0;
+    buffer = '';
     while (waiters.length > 0) waiters.shift()(frame);
     for (const resolve of replies.values()) resolve(frame);
     replies.clear();
@@ -108,7 +118,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
   function stop() {
     fail(new Error('stopped'));
     if (!child.pid) return;
-    child.kill('SIGTERM');
+    if (child.kill('SIGTERM') && !killTimer) killTimer = setTimeout(() => child.kill('SIGKILL'), 250);
   }
 
   return { send, nextMessage, waitReply, stop };

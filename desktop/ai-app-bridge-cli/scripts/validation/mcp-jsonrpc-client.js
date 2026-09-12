@@ -3,10 +3,13 @@
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
-function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 120_000, env = {} }) {
+function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 120_000, env = {}, cwd }) {
+  const transcript = fs.openSync(transcriptPath, 'a');
+  const diagnostics = fs.openSync(stderrPath, 'a');
   const child = spawn(process.execPath, [serverPath], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, ...env, AI_APP_BRIDGE_MCP_SURFACE: 'compact' },
+    ...(cwd ? { cwd } : {}),
+    env: { ...process.env, ...env },
   });
   const pending = new Map();
   let buffer = '';
@@ -14,7 +17,7 @@ function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 1
   let requests = 0;
   let notifications = 0;
   let closed = false;
-  const log = (direction, message) => fs.appendFileSync(transcriptPath, `${JSON.stringify({ at: new Date().toISOString(), direction, message })}\n`);
+  const log = (direction, message) => fs.writeSync(transcript, `${JSON.stringify({ at: new Date().toISOString(), direction, message })}\n`);
   function fail(error) {
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
@@ -30,7 +33,8 @@ function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 1
     });
     child.once('error', (error) => { closed = true; fail(error); resolve({ error: error.message }); });
   });
-  child.stderr.on('data', (chunk) => fs.appendFileSync(stderrPath, chunk));
+  child.once('close', () => { fs.closeSync(transcript); fs.closeSync(diagnostics); });
+  child.stderr.on('data', (chunk) => fs.writeSync(diagnostics, chunk));
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
     buffer += chunk;
@@ -73,6 +77,7 @@ function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 1
   }
   return {
     request,
+    get pid() { return child.pid; },
     counts: () => ({ requests, notifications }),
     async initialize() {
       await request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'localsend-route-comparison', version: '1' } });
@@ -81,11 +86,20 @@ function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 1
       log('notification', message);
       child.stdin.write(`${JSON.stringify(message)}\n`);
     },
-    async close() {
+    // This validation harness normally owns its isolated runtime as well as
+    // its MCP subprocess. Connection-lifetime tests explicitly opt out.
+    async close({ stdinEof = false, stopRuntime = true } = {}) {
       if (closed) return exited;
-      child.kill('SIGTERM');
+      let failure;
+      try {
+        if (stopRuntime) {
+          const result = payloadOf(await request('tools/call', { name: 'run', arguments: { command: 'runtime', arguments: { operation: 'stop' } } }));
+          if (result.ok !== true) throw new Error(`Validation runtime shutdown failed: ${JSON.stringify(result)}`);
+        }
+      } catch (error) { failure = error; }
+      if (stdinEof) child.stdin.end(); else child.kill('SIGTERM');
       const timer = setTimeout(() => child.kill('SIGKILL'), 3000);
-      try { return await exited; } finally { clearTimeout(timer); }
+      try { const result = await exited; if (failure) throw failure; return result; } finally { clearTimeout(timer); }
     },
   };
 }

@@ -12,6 +12,9 @@ async function runWithFeedbackProbe({
   if (!isFullFeedback(args.feedback) || !isMutationCommand(command)) {
     return { result: await runner(command, args), observation: null, evidence: [] };
   }
+  if (command === 'launch-app' || command === 'launch-activity') {
+    return captureLaunchFeedback(command, args, runner);
+  }
 
   const eventCommand = eventCommandFor(command);
   const before = await safeRun(runner, eventCommand, { ...args, limit: 1 });
@@ -94,6 +97,30 @@ async function runWithFeedbackProbe({
       fallback,
     },
   };
+}
+
+async function captureLaunchFeedback(command, args, runner) {
+  // Launch must work without a running App SDK. Observe the system only after
+  // the original launch has settled, without claiming a before/after UI change.
+  const result = await runner(command, args);
+  if (result?.ok !== true) return { result, observation: null, evidence: [] };
+  const evidence = [];
+  const current = { foreground: result.foreground ?? null };
+  const targetArgs = pick(args, ['serial', 'adb', 'adbPath', 'packageName']);
+  const reads = [['uia-tree', { ...targetArgs, compact: true }, 'tree', summarizeTree]];
+  if (args.feedbackScreenshot !== false) reads.push(['screenshot', targetArgs, 'screenshot', summarizeScreenshot]);
+  for (const [readCommand, readArgs, key, summarize] of reads) {
+    let captured;
+    try { captured = await runner(readCommand, readArgs); }
+    catch (error) { captured = { ok: false, error: error.code || 'feedback_capture_failed', message: String(error.message || error) }; }
+    evidence.push({ command: readCommand, result: captured });
+    current[key] = summarize(captured);
+  }
+  return { result, evidence, observation: {
+    mode: 'full', basis: 'post-launch-system-snapshot', changed: false,
+    semanticChanged: false, renderChanged: false, interactionObserved: false,
+    inconclusive: true, events: [], current,
+  } };
 }
 
 function isFullFeedback(value) {

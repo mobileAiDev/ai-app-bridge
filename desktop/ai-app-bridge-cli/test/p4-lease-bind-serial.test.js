@@ -32,7 +32,7 @@ test('P4 mutation lease follows the dispatched serial, not options.serial', asyn
   let starts = 0;
   const first = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-1' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     actions: async () => {
       starts += 1;
       await gate.promise;
@@ -42,7 +42,7 @@ test('P4 mutation lease follows the dispatched serial, not options.serial', asyn
   });
   const second = createScriptHostPort({
     mutationLease: lease,
-    target: { serial: 'phone-1' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     actions: async () => ({ ok: true }),
     runner: async () => completePage('logs'),
   });
@@ -63,7 +63,7 @@ test('P4 Host actionId is unique per execution so target idempotency cannot reus
     providerRuns += 1;
     return { ok: true, providerRun: providerRuns };
   });
-  const target = { serial: 'same', packageName: 'pkg' };
+  const target = { platform: 'android', serial: 'same', packageName: 'pkg' };
   const first = createScriptHostPort({ executionId: 'script-A', target, actions });
   const second = createScriptHostPort({ executionId: 'script-B', target, actions });
   const a = await first.call('tap', {});
@@ -76,7 +76,7 @@ test('P4 mutation requestId is the Host actionId, not a caller requestId', async
   let seen = null;
   const host = createScriptHostPort({
     executionId: 'script-force',
-    target: { serial: 'phone-1', packageName: 'pkg' },
+    target: { platform: 'android', serial: 'phone-1', packageName: 'pkg' },
     actions: async (_command, args) => {
       seen = args;
       return { ok: true };

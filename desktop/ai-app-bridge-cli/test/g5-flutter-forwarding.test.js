@@ -39,10 +39,8 @@ test('G5 Flutter plugins map record* onto the native SDK record methods', () => 
   assert.match(android, /recordCapture\(call\.method, call\.arguments as String\)/);
   assert.match(android, /getMethod\("recordFlutterCapture", String::class\.java, String::class\.java\)/);
   assert.match(android, /\.invoke\(null, method, payloadJson\)/);
-  assert.match(ios, /AiAppBridge\.shared\.recordLog\(/);
-  assert.match(ios, /AiAppBridge\.shared\.recordNetwork\(/);
-  assert.match(ios, /AiAppBridge\.shared\.recordState\(/);
-  assert.match(ios, /AiAppBridge\.shared\.recordEvent\(/);
+  assert.match(ios, /case "recordLog", "recordNetwork", "recordState", "recordEvent":/);
+  assert.match(ios, /AiAppBridge\.shared\.recordFlutterCapture\(method: call.method, payloadJson: payload\) \{ response in\s*DispatchQueue\.main\.async \{ result\(response\) \}/);
 });
 
 test('G5 does not add a Dart cache or edit pubspec.lock', () => {

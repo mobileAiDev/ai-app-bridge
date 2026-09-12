@@ -75,6 +75,11 @@ typedef struct sfs_partition {
     uint64_t evicted_segments;
     uint64_t evicted_records;
     uint64_t evicted_payload_bytes;
+    /* Global scans merge partitions by sequence. Retain only the proven read
+       position, never payloads or results; rewinds start from segment metadata. */
+    uint64_t scan_after_sequence;
+    uint64_t scan_segment_id;
+    uint64_t scan_offset;
 } sfs_partition_t;
 
 struct sfs_store {
@@ -1689,6 +1694,8 @@ static sfs_result_t candidate_in_partition(sfs_store_t *store,
 {
     sfs_partition_t *partition = &store->partitions[partition_id];
     size_t segment_index;
+    bool resume = partition->scan_segment_id != 0u &&
+                  after_sequence >= partition->scan_after_sequence;
     memset(candidate, 0, sizeof(*candidate));
     for (segment_index = 0u; segment_index < partition->segment_count;
          ++segment_index) {
@@ -1700,6 +1707,9 @@ static sfs_result_t candidate_in_partition(sfs_store_t *store,
         sfs_result_t result;
         if (meta->record_count == 0u || meta->last_sequence <= after_sequence) {
             continue;
+        }
+        if (resume && meta->id == partition->scan_segment_id) {
+            offset = partition->scan_offset;
         }
         result = map_segment_for_read(store,
                                       partition_id,
@@ -1729,6 +1739,9 @@ static sfs_result_t candidate_in_partition(sfs_store_t *store,
                            : (sfs_result_t)decoded;
             }
             if (frame.sequence > after_sequence) {
+                partition->scan_after_sequence = after_sequence;
+                partition->scan_segment_id = meta->id;
+                partition->scan_offset = offset;
                 candidate->present = true;
                 candidate->partition_id = partition_id;
                 candidate->segment_index = segment_index;
@@ -1911,6 +1924,41 @@ static sfs_result_t scan_partition_cursor(sfs_store_t *store,
         return result;
     }
     return SFS_END;
+}
+
+/* A sequence-only partition cursor seeks once, then becomes an ordinary
+   physical cursor. The hint only avoids re-decoding excluded prefixes. */
+static sfs_result_t seek_partition_cursor(sfs_store_t *store,
+                                          sfs_cursor_t *cursor,
+                                          void *buffer,
+                                          uint32_t buffer_capacity,
+                                          sfs_record_info_t *out_record,
+                                          sfs_error_t *error)
+{
+    sfs_partition_t *partition = &store->partitions[cursor->partition_id];
+    sfs_candidate_t candidate;
+    sfs_result_t result;
+    if (!partition->enabled) {
+        return set_error(error, SFS_ERR_PARTITION_DISABLED, 0,
+                         "partition %u is disabled", cursor->partition_id);
+    }
+    result = candidate_in_partition(store, cursor->partition_id,
+                                    cursor->after_sequence, &candidate, error);
+    if (result != SFS_OK) { return result; }
+    if (!candidate.present) { return SFS_END; }
+    result = copy_candidate(store, &candidate, buffer, buffer_capacity, out_record, error);
+    if (result == SFS_OK) {
+        if (partition->evicted_records != 0u && cursor->after_sequence < partition->first_sequence &&
+            candidate.frame.sequence > cursor->after_sequence + 1u) {
+            out_record->flags |= SFS_RECORD_GAP_BEFORE;
+            out_record->gap_first_sequence = cursor->after_sequence + 1u;
+            out_record->gap_last_sequence = candidate.frame.sequence - 1u;
+        }
+        cursor->after_sequence = candidate.frame.sequence;
+        cursor->segment_id = out_record->segment_id;
+        cursor->offset = candidate.frame_offset + candidate.frame.total_length;
+    }
+    return result;
 }
 
 static void cleanup_store(sfs_store_t *store)
@@ -2148,7 +2196,10 @@ sfs_result_t sfs_scan(sfs_store_t *store,
                          "invalid scan arguments");
     }
     (void)pthread_mutex_lock(&store->mutex);
-    if (cursor->partition_id != SFS_PARTITION_ALL) {
+    if (cursor->partition_id != SFS_PARTITION_ALL && cursor->segment_id == 0u &&
+        cursor->offset == 0u && cursor->after_sequence != 0u) {
+        result = seek_partition_cursor(store, cursor, buffer, buffer_capacity, out_record, error);
+    } else if (cursor->partition_id != SFS_PARTITION_ALL) {
         result = scan_partition_cursor(store,
                                        cursor,
                                        buffer,

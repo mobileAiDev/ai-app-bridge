@@ -15,7 +15,7 @@ const {
 } = require('../bin/shared-kernel/evidence-adapters');
 const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
-const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
+const { runBridgeChecked } = require('../test-support/host-client');
 
 function payloadOf(result) {
   return JSON.parse(result.content[0].text);
@@ -25,8 +25,7 @@ function observation(operationId, extras = {}) {
   return {
     operationId,
     revision: extras.revision || 1,
-    serial: 'b46093e6',
-    packageName: 'com.example.app',
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     provider: extras.provider || 'native',
     capturedAtMs: 1_700_000_000_000,
     foregroundTarget: 'com.example.app/.Main',
@@ -47,7 +46,7 @@ async function persistReadyAction(store, operationId) {
     actionId: `${operationId}-action-1`,
     operationId,
     planStepId: `${operationId}-step-1`,
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     actionSpecHash: 'hash-1',
     state: 'prepared',
   });
@@ -61,9 +60,9 @@ async function legacyStillWorks() {
     },
   });
   assert.equal(status.isError, true);
-  assert.match(status.content[0].text, /status: packageName or explicit port is required in MCP mode/);
-  const batch = payloadOf(await runBatch({ steps: [{ id: 's1', command: 'script' }] }));
-  assert.equal(batch.error, 'unknown_batch_step_command');
+  assert.match(status.content[0].text, /packageName is required/);
+  const batch = payloadOf(await runBridgeChecked('batch', {}));
+  assert.equal(batch.error, 'unknown_command');
 }
 
 test('G2 unified FactStore supports synchronous commit and bounded asynchronous offer', async () => {
@@ -191,7 +190,7 @@ test('G2 huge tree, serialize failure, and corrupt manifest have explicit result
   assert.equal(huge.ok, false);
   assert.equal(huge.error, 'payload_too_large');
 
-  const circular = { operationId: 'circ-op', revision: 1, serial: 'b46093e6', packageName: 'com.example.app', provider: 'native', capturedAtMs: 1 };
+  const circular = { operationId: 'circ-op', revision: 1, target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' }, provider: 'native', capturedAtMs: 1 };
   circular.self = circular;
   const serialized = await large.persist('observation', circular);
   assert.equal(serialized.ok, false);

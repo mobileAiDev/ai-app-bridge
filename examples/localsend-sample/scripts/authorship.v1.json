@@ -14894,6 +14894,60 @@
       "sha256": "e193188913c89c76cd30769e09c70887cec74c2df5bed60475cf8937a29aa985",
       "status": "frozen-for-independent-controller-core-first-full-matrix",
       "change": "Require exact matching relevant node, tap and scroll geometry and viewport across strictly advancing SDK updatedAtMs generations; separate these from Host observation IDs. Retain both generation/evidence references. Before every app tap, resolve the current unique target after a bounded read-only wait and require complete node and actionable bounds inside the current viewport. Preserve existing action routes, mobile gaps, strict Settings geometry and no-mutation-retry behavior."
+    },
+    {
+      "version": "1.0.6",
+      "sha256": "6ef02aebf87ebd1c1ad8b895db55c3ab62bf238637ba80c4d62df0f96245c4d3",
+      "status": "current-target-contract-revision",
+      "maintainer": "Current production-hardening agent; not a new independent author",
+      "change": "Replace the retired SingleChildScrollView assumption with one fresh vertical scrollable target, exact anchor/node/targetRef identity and explicit nodeId selector. Business assertions and gates remain unchanged.",
+      "evidence": "build/ai_app_bridge_artifacts/command-production-phase3o-2026-09-09/localsend-scroll-contract-evidence.json",
+      "evidenceSha256": "7ac6c4fe3a3fdae01a9463b8cffc8bceabe562024c98d53d85c5f7832c364d98",
+      "priorFailure": "command-production-phase3o-2026-09-09/localsend-transport-matrix-01 retains the unchanged 1.0.5 source and its failed scroll-container assertion.",
+      "validation": "Public Intent action-linked scroll events and post-action snapshots show 300 -> 600 -> 300, settings equal. Full Script matrix is recorded separately."
+    },
+    {
+      "version": "1.0.7",
+      "sha256": "fa9d0db4201d1e8e26e49c91bc62c87371d9fa10bd6b1fbcabd2bcc30d2a74e0",
+      "status": "preserved-failed-receipt-check",
+      "maintainer": "Current production-hardening agent; not a new independent author",
+      "change": "System picker Cancel uses explicit tap-uia-text, retaining exact picker UI preconditions and empty-selection postcondition; additionally verifies original UIA completion actionId and bound button. App SDK taps remain unchanged.",
+      "evidence": "build/ai_app_bridge_artifacts/command-production-phase3o-2026-09-09/localsend-current-contract-evidence.json",
+      "evidenceSha256": "5aadb4028e3362b37a339c691bbf3f6bc18464e66668df618e19d978f860ad74",
+      "priorFailure": "localsend-transport-matrix-03 preserves the 1.0.6 App-scope tap refusal with dispatched=false.",
+      "validation": "Foreground-routed Intent original callback and empty Send/prefs verified; full Script matrix is recorded separately.",
+      "result": "Original public UIA Cancel completed; the maintainer incorrectly passed null to a device-evidence assertion helper, causing Script failure. Preserved in localsend-transport-matrix-04."
+    },
+    {
+      "version": "1.0.8",
+      "sha256": "6788d0afd8661aab4c574ef9389b8d9f3b4749e0a2fd9e0f9852e35ba0913721",
+      "status": "preserved-failed-language-ancestor-geometry",
+      "maintainer": "Current production-hardening agent",
+      "change": "Validate completion metadata with explicit stop guards, matching the existing transport guard contract. A receipt is not passed as device tree evidence. Original UI, preference, timing and cancellation expectations are unchanged.",
+      "evidence": "build/ai_app_bridge_artifacts/command-production-phase3o-2026-09-09/localsend-current-contract-evidence.json",
+      "validation": "Full matrix recorded separately; runtime and assertion failures retained.",
+      "result": "Matrix-05 completed core and system picker cancellation, then rejected language selection because it assumed identical text and checkmark tap bounds. Dark settings remained explicitly recorded and were restored outside the failed Script."
+    },
+    {
+      "version": "1.0.9",
+      "sha256": "9f8fa9f0bec97fc497c9404692f6382f106321a87563aa513640af2897772299",
+      "status": "preserved-two-positive-runs-and-transient-read-stop",
+      "maintainer": "Current production-hardening agent; not a new independent author",
+      "change": "Bind the unique language checkmark to the visible selected label row and shared current scroll node. Independent settings requirements and all action routes remain unchanged.",
+      "evidence": "build/ai_app_bridge_artifacts/command-production-phase3o-2026-09-09/localsend-current-contract-evidence-02.json",
+      "evidenceSha256": "d1b6831257183779f4f62c492a2fcff97e9ddf84dc6195b1871ea8b50190355c",
+      "validation": "Public two-action Intent completed English then System selection, with three observed checkmark states and independent stored settings. A separate failed Flutter Back probe remains an open gate; no fallback was added to this Script.",
+      "result": "Matrix-06 core and two acceptance positives passed; third stopped on incomplete uia_tree_changed observation before any picker tap. The entire matrix did not pass."
+    },
+    {
+      "version": "1.0.10",
+      "sha256": "37b25c6091f8829a625c7aa1aa35a5e0c224b3d0713e5084bed94c3f52028453",
+      "status": "explicit-bounded-picker-reobservation",
+      "maintainer": "Current production-hardening agent; not a new independent author",
+      "change": "Within the existing picker observation budget, retain uia_tree_changed reads and reobserve the same provider. Only the exact undispatched nonambiguous read error qualifies. The archive reviewer requires fresh complete picker proof before any action and reports failed-read recoveries. Business/UI conditions and action-failure stop rules remain unchanged.",
+      "evidence": "build/ai_app_bridge_artifacts/command-production-phase3o-2026-09-09/localsend-current-contract-evidence-03.json",
+      "evidenceSha256": "3b9799f7f71eba8b599f66d50c51ae782296eaaf1ec46634cfa851d67f829249",
+      "validation": "Five observation control-flow checks use archived real failed/complete envelopes; original failed matrix remains nonpassing. Fresh full matrix recorded separately."
     }
   ],
   "evidenceDerivedChoices": [

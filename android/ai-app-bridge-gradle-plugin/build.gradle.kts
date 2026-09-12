@@ -18,7 +18,7 @@ group = if (
 } else {
     "io.github.mobileaidev.aiappbridge"
 }
-version = jitpackVersion ?: "0.2.8"
+version = jitpackVersion ?: "0.3.0-rc.1"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -52,4 +52,3 @@ gradlePlugin {
         }
     }
 }
-

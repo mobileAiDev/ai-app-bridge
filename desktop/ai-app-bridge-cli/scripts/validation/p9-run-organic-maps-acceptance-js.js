@@ -29,7 +29,7 @@ async function main(freezePath, outputPath) {
   const startedAt = Date.now();
   const started = await handle({ operation: 'start', actions, script: {
     schemaVersion: 'aab.code-script/v1', language: 'javascript', sourcePath: path.join(__dirname, '../../test/fixtures/p9-organic-maps-acceptance.js'),
-    target: { serial: freeze.serial, packageName: app.packageName }, inputs: { labels: app.labels },
+    target: { platform: 'android', serial: freeze.serial, packageName: app.packageName }, inputs: { labels: app.labels },
   } });
   if (!started.ok) throw new Error(started.error);
   let current = started;

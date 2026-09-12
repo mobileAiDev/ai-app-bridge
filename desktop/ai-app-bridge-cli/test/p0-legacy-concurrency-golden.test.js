@@ -33,7 +33,7 @@ test('P0 Legacy Android target key stays (serial, packageName)', () => {
   );
 });
 
-test('P0 Legacy same-serial different-package commands still run in parallel', async () => {
+test('P0 Legacy same-serial different-package mutations serialize', async () => {
   const execution = new TargetExecution();
   const gate = deferred();
   const starts = [];
@@ -55,7 +55,7 @@ test('P0 Legacy same-serial different-package commands still run in parallel', a
   });
   await nextTurn();
   try {
-    assert.deepEqual(new Set(starts), new Set(['com.example.first', 'com.example.second']));
+    assert.deepEqual(new Set(starts), new Set(['com.example.first']));
   } finally {
     gate.resolve();
     await Promise.allSettled([first, second]);
@@ -66,7 +66,7 @@ test('P0 Legacy HTTP/JSON four-stream command names and query keys stay frozen',
   for (const command of ['logs', 'network', 'state', 'events']) {
     assert.equal(snapshot.commands.includes(command), true, command);
   }
-  const cli = fs.readFileSync(path.join(__dirname, '../bin/ai-app-bridge.js'), 'utf8');
+  const cli = fs.readFileSync(path.join(__dirname, '../bin/device-provider.js'), 'utf8');
   assert.match(cli, /case 'logs':\n\s+return bridgeGet\(ctx, withQuery\('\/v1\/logs', captureQuery\(options\)\)\)/);
   assert.match(cli, /withQuery\('\/v1\/network', captureQuery\(options\)\)/);
   assert.match(cli, /case 'state':\n\s+return bridgeGet\(ctx, withQuery\('\/v1\/state', captureQuery\(options\)\)\)/);
@@ -80,5 +80,5 @@ test('P0 Legacy HTTP/JSON four-stream command names and query keys stay frozen',
   assert.match(ios, /withQuery\('\/v1\/events', captureQuery\(args\)\)/);
 
   const targetSource = fs.readFileSync(path.join(__dirname, '../bin/target-execution.js'), 'utf8');
-  assert.match(targetSource, /key: targetKey\('android', serial, packageName\)/);
+  assert.equal(require('../bin/target-execution').targetFor('tree', { serial: 's', packageName: 'pkg' }).key, 'android:["s","pkg"]');
 });

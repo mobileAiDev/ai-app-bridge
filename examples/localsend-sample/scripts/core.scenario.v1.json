@@ -1,6 +1,6 @@
 {
   "schemaVersion": "localsend.scenario/v1",
-  "version": "1.0.5",
+  "version": "1.3.0",
   "authority": {
     "document": "docs/SCRIPT_INTENT_RUNTIME_CAPTURE_MASTER_PLAN.md",
     "row": "Phase 9 / LocalSend (Flutter)",
@@ -8,7 +8,7 @@
   },
   "source": {
     "path": "examples/localsend-sample/scripts/localsend-flow.v1.js",
-    "sha256": "e193188913c89c76cd30769e09c70887cec74c2df5bed60475cf8937a29aa985",
+    "sha256": "9f194b39ed3f5dd0d590d04c2301a52789861d34a689834cc702d87ad418f483",
     "language": "javascript",
     "entrypoint": "main",
     "scriptSchemaVersion": "aab.code-script/v1"
@@ -17,7 +17,9 @@
     "handoff": "build/ai_app_bridge_artifacts/localsend-evidence-2026-09-08/handoff-manifest.json",
     "handoffSha256": "4065fa0de414fbcc1c6dd00f028c101af8de366f5fc9de04a0d9d72d96f71efe",
     "additional": "build/ai_app_bridge_artifacts/localsend-script-2026-09-08-intent/additional-evidence-manifest.json",
-    "additionalSha256": "ea2349456f9fa342631f7c930f0971e5b346b9455beae81a0de63640133abe67"
+    "additionalSha256": "ea2349456f9fa342631f7c930f0971e5b346b9455beae81a0de63640133abe67",
+    "targetContract": "build/ai_app_bridge_artifacts/command-production-phase3o-2026-09-09/localsend-current-contract-evidence-03.json",
+    "targetContractSha256": "3b9799f7f71eba8b599f66d50c51ae782296eaaf1ec46634cfa851d67f829249"
   },
   "target": {
     "packageName": "org.localsend.localsend_app.bridge_sample",
@@ -60,12 +62,12 @@
     "recordingDir": "Required at script start; fresh directory; no reopening existing recording.",
     "mutations": "No blind retries. Reobserve without mutation while awaiting declared page conditions; every further scroll requires fresh confirmed movement.",
     "deviceIO": "Only ctx.call, no arbitrary host/ADB/process/file scripting in the worker.",
-    "appTap": "Before every app tap, read-only wait for the exact unique target with complete node and actionable bounds inside the current viewport, across advancing stable SDK generations. Re-resolve from the final qualifying tree; convert current tap.bounds center using current validated DPR. Explicit app package must return transport=bridge; stop without mutation retry on any different transport.",
-    "systemPickerTap": "Current unique UIA physical bounds; explicit com.coloros.filemanager plus feedback=off deliberately dispatches ADB input.",
+    "appTap": "Before every app tap, read-only wait for the exact unique target with complete node and actionable bounds inside the current viewport across advancing stable SDK generations. Select its nodeId from the final observation and call tap-flutter. Require the original settled flutter receipt with the matching execution actionId; do not retry a failed or uncertain mutation.",
+    "systemPickerTap": "Call tap-uia with the exact observed resourceName in explicit com.coloros.filemanager. Require the original settled UIA callback bound to the observed resource name and text; no coordinate dispatch or feedback flag.",
     "scrollObservation": "A changed stable tree must contain a current unique scrollable content Text anchor or the actual destination. A navigation-only transition tree cannot authorize another swipe. Subsequent anchors are uniquely topmost/leftmost among current individually unique text nodes, never reused IDs.",
     "scrollRoutes": {
       "settings": "Explicit observed physical swipe using current scroll bounds and DPR.",
-      "about": "Explicit primary scroll-flutter delta=min(450,current visible logical scroll extent*0.6), preceded by one unique matching SingleChildScrollView assertion. One action per observed movement; no scrollUntilText or fallback."
+      "about": "Explicit primary scroll-flutter delta=min(450,current visible logical scroll extent*0.6), preceded by one unique vertical role=scrollable node with matching id, scroll.nodeId and targetRef.elementId, passed as an explicit nodeId selector. One action per observed movement; no scrollUntilText or fallback."
     },
     "flutterObservationStability": "Require exact relevant label/node/tap/scroll geometry and viewport to match across distinct advancing finite positive SDK updatedAtMs values. Different Host observation IDs for one cached generation are insufficient. Wait read-only up to 10 seconds; missing, regressed or nonadvancing generations remain inconclusive."
   },
@@ -119,9 +121,12 @@
   "evidenceRules": {
     "pageAssertions": "Each page and target assertion uses the unchanged evidence from its current read before the next mutation.",
     "screenshots": "Fresh current-run screenshots with returned hashes and nearby trees; separate captures, never described as atomic.",
-    "mobile": "Immediately before the declared mutation, request each stream with sinceMs=Date.now()-1000 and limit=200; require complete committed gap-free hasMore=false current watermark/epoch/target. Refresh UI selector, mutate once, query same stream using that factCursor, runtimeEpoch and afterActionId. Retain unavailable/missing/partial/unbound facts as nonpassing mobile assertions. Picker package cannot establish app-local capture association. Existence is separate from business semantics.",
+    "mobile": "Capture complete committed pre-action watermarks and retain post-action events/state/logs unchanged. For app actions, assert exact ordered Flutter started/target.tap/settled facts bound to the original action, runtime, target and mobile refs; restoring System theme additionally requires the real HomePage pop with semanticChanged=true. Pair these with fresh UI and independent persisted settings. State/logs are supporting diagnostics: zero records do not prove a business outcome and are not rewritten into synthetic facts. System Cancel is proved by its original UIA callback plus the fresh empty Send page; no cross-package app-local actionId is claimed. Missing or incomplete queries remain open.",
     "archive": "Opt-in recording plus public evidence export(includeRecordedPayloads=true), separately pinned manifest SHA256, separate offline MCP evidence verify. Retain failed runs.",
-    "snapshotIdentity": "Retain each qualifying snapshot pair with SDK updatedAtMs, both Host observation IDs and evidence references under stableObservations. Current ctx.assert receives unchanged latest evidence; Host call identity does not prove a new Flutter generation."
+    "snapshotIdentity": "Retain each qualifying snapshot pair with SDK updatedAtMs, both Host observation IDs and evidence references under stableObservations. Current ctx.assert receives unchanged latest evidence; Host call identity does not prove a new Flutter generation.",
+    "pickerObservation": "Within the existing 10000 ms observation budget, retain uia_tree_changed with dispatched=false, ambiguous=false and no actionId, then explicitly read the same UIA target again. A complete Cancel/Add(0) observation is required before any mutation. Other read errors and all action errors stop. Archive reports retain failed reads and prove recovery ordering.",
+    "diagnosticCoverage": "Widget inspector depth is diagnostic and remains bounded. Empty discovery uses the declared primary complete flutter-nodes visible-region predicate; no diagnostic fallback or missing-widget inference.",
+    "emptyDiscovery": "Require the exact empty selection, unique fully visible Nearby and Troubleshoot anchors in the same scroll container at scroll offset zero, and exactly one visible 46px RichText device icon with no other text in the entire intervening region. Require two matching advancing complete SDK snapshots, a screenshot and external network checks before and after."
   },
   "timing": {
     "fields": [
@@ -141,17 +146,6 @@
   },
   "requiredExternalGates": [
     {
-      "id": "required-mobile-business-evidence",
-      "statusAtAuthoring": "inconclusive",
-      "requirement": "Key business-correlated state/events/logs and screenshot evidence for navigation/cancel/settings outcomes.",
-      "missing": "Frozen action-filtered event pages are empty. No reliable business predicates or Rust transport coverage contract supplied. Script retains fresh capture calls/assertions and leaves this gate open.",
-      "appliesTo": [
-        "core",
-        "acceptance"
-      ],
-      "requiredInThisScenario": true
-    },
-    {
       "id": "final-independent-fixture-equality",
       "statusAtAuthoring": "external-required",
       "requirement": "Fresh final allowlisted preferences equal the controller-verified initial map exactly.",
@@ -165,8 +159,8 @@
   ],
   "verdictRules": {
     "executionCompleted": "Only means the worker returned.",
-    "uiReplayPassed": "Every UI/page/selector/screenshot assertion passed and flowCompleted=true.",
-    "fullScenarioPassed": "UI replay passed, applicable changed/restored/final independent oracles passed, every external gate marked requiredInThisScenario resolved with current evidence, archive verified, timing gate met.",
+    "uiReplayPassed": "Every UI/page/selector/screenshot assertion passed, flowCompleted=true, and no required UI coverage gate remains open.",
+    "fullScenarioPassed": "UI replay passed, all applicable requiredScriptGates and requiredExternalGates resolved with current evidence, changed/restored/final independent oracles passed, archive verified, timing gate met. Preserve the original Script result separately from the controller final assessment.",
     "missingEvidence": "inconclusive; never passed.",
     "negative": "Deliberately wrong business expectation must produce a failed ctx.assert from fresh tree; execution may still be completed because the worker returns the recorded failure."
   },
@@ -229,7 +223,7 @@
       ],
       "assertions": [
         "Each scroll movement observed before another step",
-        "One current matching SingleChildScrollView before each Flutter scroll",
+        "One current vertical role=scrollable node with matching id, scroll.nodeId and targetRef.elementId before each explicit nodeId Flutter scroll",
         "License Notices current action bounds"
       ]
     },
@@ -301,5 +295,51 @@
     "framework-license-body",
     "settings-scroll-restored",
     "final-fixture"
-  ]
+  ],
+  "authoringStatus": "v1.3.0 current fixed acceptance flow has one complete successful controller run. Core and earlier-version trial matrices are not newly rerun. Preserve earlier failures and their frozen manifests.",
+  "additionalAuthoringEvidence": {
+    "path": "build/ai_app_bridge_artifacts/localsend-combined-prep-20260912-01/05-flutter-tree.json",
+    "sha256": "1c030855bc46c028a57f633e381be9c3bb14cf2e3a0bb39da07588d06e7c7fac",
+    "finding": "widgetInspector has a bounded root and truncated=true; absence is inconclusive."
+  },
+  "requiredScriptGates": [
+    {
+      "id": "required-mobile-business-evidence",
+      "statusAtAuthoring": "specified; current-source device replay pending",
+      "requirement": "Retain current real events/state/logs and screenshots. Prove the original Cancel callback and fresh empty-selection page; require exact original Flutter action facts, the theme-menu route outcome, fresh Receive content, and separately verified persisted settings. Record absence of state/log producers explicitly.",
+      "appliesTo": [
+        "core",
+        "acceptance"
+      ],
+      "requiredInThisScenario": true,
+      "predicateReview": {
+        "path": "build/ai_app_bridge_artifacts/localsend-evidence-contract-20260912-01/predicate-review.json",
+        "sha256": "95f73e958046254fd64fab6d55d5dc64955d1d2b5fdc120f7a6e7512c82e1ff0",
+        "scope": "Two preserved real event pages satisfy the stronger predicates; 14 altered negative cases are rejected in software. Original verdicts remain unchanged."
+      },
+      "transportBoundary": "This navigation scenario makes no Rust transport or file-transfer claim. Original transfer/cancellation/disconnect requirements remain in the separate real-transfer scenarios and suite scope."
+    }
+  ],
+  "businessEvidenceContractVersion": "localsend.business-evidence/v2",
+  "additionalNoPeerAuthoringEvidence": {
+    "path": "build/ai_app_bridge_artifacts/localsend-no-peer-contract-20260912-02/review.json",
+    "sha256": "95f24c515d670bf0d44474555869bddbdb23fabd0c2f8edfdc994ca374505e98",
+    "scope": "New Intent plus raw Flutter nodes, screenshot and recorded OS before/disconnected/restored conditions. Both SIM slots absent; only Wi-Fi is changed. Three positive offline checks and 15 altered negative conditions; actual Script replay follows separately."
+  },
+  "controllerFinalAssessment": "Preserve original Script businessVerdict. Only the controller can resolve final-independent-fixture-equality after terminal; full scenario passes only when every requirement, artifact integrity and wall-time gate also passes.",
+  "controllerFixtureReplies": "Compact metadata plus a hashed companion artifact. Raw OS dumps stay in that file, not duplicated into Script result/events.",
+  "latestObservedAcceptance": {
+    "report": "build/ai_app_bridge_artifacts/android-combined-localsend-20260912-08/report.json",
+    "serial": "b46093e6",
+    "executionWallMs": 132939,
+    "assertions": {
+      "passed": 148,
+      "failed": 0,
+      "inconclusive": 0
+    },
+    "controllerFinalVerdict": "passed",
+    "scriptVerdict": "inconclusive",
+    "reasonForSeparateFinalVerdict": "The controller resolves final independent preference equality after Script terminal and verifies the archive; original Script return is retained.",
+    "scope": "One fixed navigation acceptance run; not full App or whole-device acceptance."
+  }
 }

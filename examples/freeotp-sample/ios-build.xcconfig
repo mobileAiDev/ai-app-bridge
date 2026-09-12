@@ -1,0 +1,2 @@
+// Xcode 27's oldest supported iOS deployment target for these source builds.
+IPHONEOS_DEPLOYMENT_TARGET = 15.0

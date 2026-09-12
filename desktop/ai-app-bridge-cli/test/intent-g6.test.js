@@ -11,7 +11,7 @@ const { handle } = require('./helpers/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { handle: scriptHandle } = require('../bin/script/script-entry');
-const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
+const { runBridgeChecked } = require('../test-support/host-client');
 
 const tree = {
   root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] },
@@ -26,7 +26,7 @@ function tapDecision(decisionId, revision) {
     decisionId,
     agentDecision: 'act',
     basedOnRevision: revision,
-    action: { action: 'tap', text: 'Home' },
+    action: { action: 'tap', selector: { text: 'Home' } },
   };
 }
 
@@ -73,7 +73,7 @@ test('G6 business terminal states come only from the Agent', async () => {
     operationId: 'g6-terminal',
     mode: 'autonomous',
     goal: 'finish',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter,
     agent: createAutonomousAgentAdapter({
@@ -92,7 +92,7 @@ test('G6 business terminal states come only from the Agent', async () => {
     operationId: 'g6-no-invent-terminal',
     mode: 'autonomous',
     goal: 'never complete',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
     agent: createAutonomousAgentAdapter({
@@ -115,7 +115,7 @@ test('G6 risk and budget gates enter intervention_required', async () => {
     operationId: 'g6-budget-calls',
     mode: 'autonomous',
     goal: 'budget',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
     agent: createAutonomousAgentAdapter({
@@ -134,7 +134,7 @@ test('G6 risk and budget gates enter intervention_required', async () => {
     operationId: 'g6-allowlist',
     mode: 'autonomous',
     goal: 'swipe blocked',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
     agent: createAutonomousAgentAdapter({
@@ -143,7 +143,7 @@ test('G6 risk and budget gates enter intervention_required', async () => {
           decisionId: 'swipe-1',
           agentDecision: 'act',
           basedOnRevision: revision,
-          action: { action: 'swipe', text: 'Home' },
+          action: { action: 'swipe', selector: { text: 'Home' }, deltaX: 0, deltaY: -50, durationMs: 300 },
         };
       },
     }),
@@ -162,7 +162,7 @@ test('G6 autonomous mode can be paused, cancelled, and intervened by the Agent',
     operationId: 'g6-pause',
     mode: 'autonomous',
     goal: 'pause me',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
     agent: createAutonomousAgentAdapter({
@@ -189,7 +189,7 @@ test('G6 autonomous mode can be paused, cancelled, and intervened by the Agent',
     operationId: 'g6-cancel',
     mode: 'autonomous',
     goal: 'cancel me',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
     agent: createAutonomousAgentAdapter({
@@ -202,7 +202,7 @@ test('G6 autonomous mode can be paused, cancelled, and intervened by the Agent',
     budget: createIntentBudget({ maxSteps: 8, maxAgentCalls: 8 }),
   });
   await waitUntil(() => enteredCancel);
-  const cancelled = handle({ operation: 'cancel', operationId: 'g6-cancel' });
+  const cancelled = await handle({ operation: 'cancel', operationId: 'g6-cancel' });
   assert.equal(cancelled.status, 'cancelled');
   releaseCancel();
   assert.equal((await cancelStarted).status, 'cancelled');
@@ -215,7 +215,7 @@ test('G6 autonomous mode can be paused, cancelled, and intervened by the Agent',
     operationId: 'g6-intervene',
     mode: 'autonomous',
     goal: 'intervene me',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
     agent: createAutonomousAgentAdapter({
@@ -228,7 +228,7 @@ test('G6 autonomous mode can be paused, cancelled, and intervened by the Agent',
     budget: createIntentBudget({ maxSteps: 8, maxAgentCalls: 8 }),
   });
   await waitUntil(() => enteredIntervene);
-  const intervened = handle({ operation: 'intervene', operationId: 'g6-intervene', reason: 'agent_stop' });
+  const intervened = await handle({ operation: 'intervene', operationId: 'g6-intervene', reason: 'agent_stop' });
   assert.equal(intervened.status, 'intervention_required');
   assert.equal(intervened.error, 'agent_stop');
   releaseIntervene();
@@ -242,7 +242,7 @@ test('G6 Agent adapter crash does not corrupt Intent, Script, or Legacy', async 
     operationId: 'g6-crash',
     mode: 'autonomous',
     goal: 'crash',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter,
     agent: createAutonomousAgentAdapter({
@@ -268,7 +268,7 @@ test('G6 Agent adapter crash does not corrupt Intent, Script, or Legacy', async 
       name: 'g6-reg',
       language: 'javascript',
       source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
-      target: { serial: 'android-1', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'android-1', packageName: 'com.example.app' },
     },
   });
   const deadline = Date.now() + 5000;
@@ -292,9 +292,9 @@ test('G6 Agent adapter crash does not corrupt Intent, Script, or Legacy', async 
   const legacy = await runBridgeChecked('status', { serial: 'android-1' }, {
     rawRunner: async () => { throw new Error('no runner'); },
   });
-  assert.match(legacy.content[0].text, /packageName or explicit port is required/);
-  const batch = JSON.parse((await runBatch({ steps: [{ id: 's1', command: 'intent' }] })).content[0].text);
-  assert.equal(batch.error, 'unknown_batch_step_command');
+  assert.match(legacy.content[0].text, /packageName/);
+  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  assert.equal(batch.error, 'unknown_command');
 });
 
 test('G6 same flow in supervised and autonomous modes with segmented comparison', async () => {
@@ -305,7 +305,7 @@ test('G6 same flow in supervised and autonomous modes with segmented comparison'
     operationId: 'g6-supervised-flow',
     mode: 'supervised',
     goal: 'three taps',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: supervisedAdapter,
   });
@@ -335,7 +335,7 @@ test('G6 same flow in supervised and autonomous modes with segmented comparison'
     operationId: 'g6-autonomous-flow',
     mode: 'autonomous',
     goal: 'three taps',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter: autonomousAdapter,
     agent: threeActThenCompleteAgent(),

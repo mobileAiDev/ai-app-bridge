@@ -6,12 +6,12 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { handle, resetScriptOperations } = require('../bin/script/script-entry');
-const { runBatch, runBridgeChecked, runGeneric } = require('../bin/mcp-server');
+const { runBridgeChecked, runGeneric } = require('../test-support/host-client');
 
 function scriptDoc() {
   return {
     name: 'g4a',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     steps: [
       { id: 'o1', type: 'observe', provider: 'native' },
       { id: 'a1', type: 'action', action: 'tap', text: 'About' },
@@ -59,9 +59,9 @@ test('G4-A rejected steps leave Legacy and Intent usable', async () => {
       throw new Error('status must not reach the runner without packageName or port');
     },
   });
-  assert.match(status.content[0].text, /packageName or explicit port is required/);
+  assert.match(status.content[0].text, /packageName/);
   const intent = JSON.parse((await runGeneric({ command: 'intent', arguments: { operation: 'status' } })).content[0].text);
   assert.equal(intent.command, 'intent');
-  const batch = JSON.parse((await runBatch({ steps: [{ id: 's1', command: 'script' }] })).content[0].text);
-  assert.equal(batch.error, 'unknown_batch_step_command');
+  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  assert.equal(batch.error, 'unknown_command');
 });

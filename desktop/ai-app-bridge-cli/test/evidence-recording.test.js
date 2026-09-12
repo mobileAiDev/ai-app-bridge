@@ -13,7 +13,7 @@ const { analyzeRecordedPayloads } = require('../bin/shared-kernel/recorded-paylo
 const { createScriptSupervisor } = require('../bin/script/script-supervisor');
 const { createIntentWorker } = require('../bin/intent/intent-worker');
 
-const TARGET = { serial: 'phone', packageName: 'example.notes' };
+const TARGET = { platform: 'android', serial: 'phone', packageName: 'example.notes' };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64');
 
 function setup(t, namespace = 'script') {
@@ -156,6 +156,36 @@ function mobilePage() {
     coverage: { status: 'complete', gap: false, committed: true }, gap: false, committed: true };
 }
 
+test('Web capture archives retain binary bodies and bind Host refs to the exact document', async t => {
+  const f = setup(t);
+  const target = { platform: 'web', sessionId: 'browser', runtimeEpoch: 'document', targetId: 'main' };
+  const targetKey = 'web:["browser","main","network"]';
+  const ref = { source: 'host-fact-store', stream: 'network', globalSeq: 16, runtimeEpoch: 'document', targetKey };
+  const item = { ...target, id: 16, ref, captureId: 'capture-1', sourceSequence: 1,
+    association: 'unattributed', actionId: null, requestBody: 'AP8=', requestBodyEncoding: 'base64', requestBodyState: 'complete' };
+  const data = callData(f.operationId, { items: [item] }, 'web-network', [ref]);
+  data.envelope.evidence.capture = { runtimeEpoch: 'document', targetKey };
+  await f.recording.record({ kind: 'script-call', revision: 1, target, data });
+  const exported = await f.exportArchive();
+  assert.equal(exported.ok, true, JSON.stringify(exported));
+  assert.equal(exported.recordedPayloads.counts.boundWebItems, 1);
+  assert.equal(exported.recordedPayloads.counts.mobileItems, 0);
+  fs.rmSync(f.directory, { recursive: true });
+  assert.equal((await verify(exported.archiveDir, exported.manifestSha256)).ok, true);
+});
+
+test('Web capture archives reject a ref from another browser document', async t => {
+  const f = setup(t);
+  const target = { platform: 'web', sessionId: 'browser', runtimeEpoch: 'document', targetId: 'main' };
+  const targetKey = 'web:["browser","main","network"]';
+  const ref = { source: 'host-fact-store', stream: 'network', globalSeq: 16, runtimeEpoch: 'another', targetKey };
+  const item = { ...target, id: 16, ref, captureId: 'capture-1', sourceSequence: 1, association: 'unattributed', actionId: null };
+  const data = callData(f.operationId, { items: [item] }, 'web-network', [ref]);
+  data.envelope.evidence.capture = { runtimeEpoch: 'document', targetKey };
+  await f.recording.record({ kind: 'script-call', revision: 1, target, data });
+  assert.equal((await f.exportArchive()).error, 'web_capture_ref_binding_mismatch');
+});
+
 test('Intent recording retains original pages and old-epoch refs without an extra device query', async t => {
   const f = setup(t, 'intent');
   let queries = 0;
@@ -168,6 +198,18 @@ test('Intent recording retains original pages and old-epoch refs without an extr
   assert.equal(exported.ok, true, JSON.stringify(exported));
   assert.equal(queries, 1);
   assert.equal(exported.recordedPayloads.counts.boundMobileItems, 1);
+  assert.equal((await verify(exported.archiveDir, exported.manifestSha256)).ok, true);
+});
+
+test('Intent recording preserves structured capture errors through portable verification', async t => {
+  const f = setup(t, 'intent');
+  const worker = createIntentWorker({ operationId: f.operationId, target: TARGET, store: f.store, recording: f.recording,
+    adapter: { observe: async () => ({ ok: true, rawTreeId: 'tree-1', rawTree: { nodes: [] } }) },
+    captureRequirements: { streams: ['events'] },
+    capturePort: { observe: async () => ({ ok: false, error: 'invalid_argument', field: 'limit', message: 'limit must be an integer',
+      coverage: { status: 'unavailable', gap: true, committed: false }, gap: true, committed: false, refs: [], items: [] }) } });
+  const started = await worker.start(); assert.equal(started.ok, true); assert.equal(started.capture.coverage.status, 'unavailable');
+  const exported = await f.exportArchive(); assert.equal(exported.ok, true, JSON.stringify(exported));
   assert.equal((await verify(exported.archiveDir, exported.manifestSha256)).ok, true);
 });
 

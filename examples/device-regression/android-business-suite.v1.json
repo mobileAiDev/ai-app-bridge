@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "aab.android-business-suite/v1",
+  "status": "authoring",
+  "deviceLocale": "zh-Hans-CN",
+  "runtimeProfile": "1gb",
+  "scope": "Run the four fixed Wikipedia, VLC, Organic Maps and LocalSend business Scripts sequentially in one runtime. Preserve raw Script verdicts and independently verify original business data and declared network fixtures.",
+  "timing": {
+    "maximumLiveWallMs": 600000,
+    "includes": "All four App preflights, Script execution, independent business checks and live archive exports; offline verification is reported separately."
+  },
+  "cases": [
+    {
+      "id": "wikipedia",
+      "packageName": "org.wikipedia.dev.bridge_sample",
+      "source": "examples/wikipedia-sample/validation/wikipedia-business.v1.js",
+      "manifest": "examples/wikipedia-sample/validation/wikipedia-business.manifest.v1.json",
+      "databaseReader": "examples/wikipedia-sample/validation/read-reading-lists.py",
+      "preferencesReader": "examples/wikipedia-sample/validation/read-business-preferences.py",
+      "oracleFactory": "examples/wikipedia-sample/validation/business-oracle.js",
+      "oracleFactorySha256": "1687a2e95562dacdab176cb8e59956b24af300482d784f9ecb046ab74a36c582"
+    },
+    {
+      "id": "vlc",
+      "packageName": "org.videolan.vlc.bridge_sample.debug",
+      "activity": "org.videolan.vlc.StartActivity",
+      "source": "examples/vlc-sample/validation/vlc-local-media.v1.js",
+      "manifest": "examples/vlc-sample/validation/vlc-local-media.manifest.v1.json",
+      "oracle": "examples/vlc-sample/validation/independent-oracle.py"
+    },
+    {
+      "id": "organic-maps",
+      "packageName": "app.organicmaps.bridge_sample.web.debug",
+      "activity": "app.organicmaps.SplashActivity",
+      "source": "examples/organic-maps-sample/validation/offline-business.v1.js",
+      "manifest": "examples/organic-maps-sample/validation/offline-business.manifest.v1.json",
+      "oracle": "examples/organic-maps-sample/validation/independent-oracle.py"
+    },
+    {
+      "id": "localsend",
+      "packageName": "org.localsend.localsend_app.bridge_sample",
+      "source": "examples/localsend-sample/scripts/localsend-flow.v1.js",
+      "manifest": "examples/localsend-sample/scripts/acceptance.scenario.v1.json",
+      "oracle": "examples/localsend-sample/settings-oracle.py",
+      "oracleSha256": "c86cb42e32e000f8275d149b4286545f68d425e34d67d04947c04284a3b6af13",
+      "apkSha256": "96eae94329c2b08aeec008447af0c5ab5c1608ef95c37f0c603e2194278a2132",
+      "networkFixture": "examples/device-regression/no-peer-fixture.js",
+      "networkFixtureSha256": "3b63f38da68a26dce12803973668a47f9ce684fb39be9d68afb3841fdc20a5f5"
+    }
+  ],
+  "notExecuted": [],
+  "remainingScope": [
+    "A passing full run closes only this fixed four-App composition. Repeated reliability and a second authorized device retain their own evidence requirements.",
+    "LocalSend transfer, send-side cancellation and disconnect cases retain their own requirements.",
+    "Existing FreeOTP, Kiwix and Flexify iOS business scenarios and remaining native/H5/Flutter gaps remain required.",
+    "Whole-device 5-10 minute acceptance requires a complete frozen scope and actual end-to-end timing."
+  ]
+}

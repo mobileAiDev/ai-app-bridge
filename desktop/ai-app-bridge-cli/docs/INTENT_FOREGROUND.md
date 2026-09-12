@@ -22,9 +22,22 @@ Use packages actually resolved on the device for the requested flow. `foreground
 
 Each observation checks the foreground component before and after acquiring a fresh tree. In the original app it uses the selected primary provider (`native`, `flutter`, or `uia`); in a listed external package it uses UIA. Provider failures remain errors, and never trigger a substitute tree. A UIA dump must identify the same foreground package.
 
+`uia_tree_changed` means the tree changed during traversal; that read supplies no
+complete tree. A caller may make another explicit read within its observation
+budget, retaining the failed read. It must obtain a complete current tree before
+choosing any action. The Host does not retry the read or substitute a provider.
+
 The summary contains `provider` and `foreground` (`packageName`, `activity`, `component`, probe source and timestamps). Observation, decision, dispatch marker and receipt records preserve that route. The original `target` continues to identify the business operation and its app capture streams. System UIA observations do not imply that system-app network/state/event capture is available.
 
-Actions inherit the provider of their committed observation. An explicit conflicting provider is rejected. Before dispatch, the adapter checks the foreground component again; a changed component returns `reobserve_required` without dispatching a tap. System taps use the existing direct ADB input path and carry no fabricated SDK action ID.
+Actions inherit the provider of their committed observation. An explicit conflicting provider is rejected. Before dispatch, the adapter checks the foreground component again; a changed component returns `reobserve_required` without dispatching a tap. Exact UIA taps use the API 33+ phone node runtime. Its `uia-node` execution receipt binds the Intent action ID, original request hash, runtime epoch, node/window attributes and original callback. The selected node is revalidated on the same automation connection before dispatch. A callback still requires a fresh observation and business checks; it does not create system-app SDK events.
+
+Device-scoped physical taps remain managed Android shell input. Cancellation
+and recovery follow the selected executor's admission and completion contract.
+If a dispatched action's terminal receipt is unavailable, durable device
+ownership blocks later mutations until `device-ownership reconcile` verifies
+that original receipt.
+Intent records retain both the original unknown result and any separate recovery
+history. A completed tap still requires a fresh observation and business checks.
 
 For exact UIA taps, use one of these selectors:
 
@@ -39,8 +52,8 @@ The selector must identify exactly one enabled node in the observed package. Dup
 If the foreground changes during observation, the operation enters `waiting_for_observation`. Call `operation: "observe"` with the same `operationId`; the operation returns to `waiting_for_decision` only after a new observation commits. Acting or completing from `waiting_for_observation` is rejected. Existing evidence-store failures retain their separate blocked state.
 
 Flutter taps accept one exact selector: `{ "text": "Settings" }` or
-`{ "nodeId": "15" }`. The top-level `text` shorthand remains supported; do not
-combine it with `selector`. Text must identify one actionable node. Repeated
+`{ "nodeId": "15" }`. Put the identity inside `action.selector`.
+Text must identify one actionable node. Repeated
 labels such as three settings rows displaying "System" return
 `flutter_selector_not_unique` without dispatch. Select the intended row's
 `nodeId` from the current committed observation instead. IDs are local to that

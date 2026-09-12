@@ -12,6 +12,7 @@ const { createFactStore } = require('../bin/fact-store');
 const { createSegmentedEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
+const { createUiaRuntimeFixture } = require('../test-support/uia-runtime-fixture');
 
 const MCP_SERVER = path.join(__dirname, '..', 'bin', 'mcp-server.js');
 const OPERATION_ID = 'archive-mcp-intent';
@@ -20,7 +21,7 @@ test('public Script recording exports actual child calls and all assertion verdi
   const root = temporaryDirectory(t);
   const client = await openMcp(t, path.join(root, 'facts'));
   const script = { schemaVersion: 'aab.code-script/v1', language: 'javascript',
-    target: { serial: 'no-device', packageName: 'offline.fixture' }, source: `
+    target: { platform: 'android', serial: 'no-device', packageName: 'offline.fixture' }, source: `
       exports.main = async ctx => {
         await ctx.call('page-summary', { provider: 'native', rawTreeId: 'fixture-tree', rawTree: { nodes: [] } });
         await ctx.assert({ name: 'positive', scope: 'code', condition: true });
@@ -57,6 +58,87 @@ test('public Script recording exports actual child calls and all assertion verdi
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
+
+test('public Script agent decisions preserve JSON values and retry structured answers by content', async t => {
+  const root = temporaryDirectory(t);
+  const client = await openMcp(t, path.join(root, 'facts'));
+  const answers = [{ verdict: 'passed', observedSettings: { theme: 'dark', color: 'system' } },
+    ['one', 2, null], null, false, 0, ''];
+  const started = await client.call('run', { command: 'script', arguments: { operation: 'start', script: {
+    schemaVersion: 'aab.code-script/v1', language: 'javascript',
+    target: { platform: 'android', serial: 'no-device', packageName: 'offline.fixture' }, source: `
+      exports.main = async ctx => {
+        const answers = [];
+        for (let index = 0; index < ${answers.length}; index++) {
+          answers.push(await ctx.askAgent({ question: 'Return a JSON value', context: { index } }));
+        }
+        return { answers };
+      };
+    `,
+  } } });
+  assert.equal(started.ok, true, JSON.stringify(started));
+  const script = args => client.call('run', { command: 'script', arguments: { operationId: started.operationId, ...args } });
+  let state = started;
+  const deadline = Date.now() + 20000;
+  for (let index = 0; index < answers.length; index++) {
+    let question;
+    while (!(question = state.events.find(event => event.type === 'agent_question_created' && event.request.context.index === index))) {
+      assert(Date.now() < deadline, JSON.stringify(state));
+      assert(!['completed', 'failed', 'cancelled'].includes(state.status), JSON.stringify(state));
+      state = await script({ operation: 'wait', afterSequence: state.eventSequence, waitMs: 1000 });
+    }
+    const request = { operation: 'decide', requestId: question.requestId, revision: question.revision };
+    if (index === 0) {
+      const missing = await script(request);
+      assert.equal(missing.ok, false);
+      assert.equal(missing.field, 'decision');
+    }
+    const decided = await script({ ...request, decision: answers[index] });
+    assert.equal(decided.ok, true, JSON.stringify(decided));
+    if (index === 0) {
+      const again = await script({ ...request, decision: {
+        observedSettings: { color: 'system', theme: 'dark' }, verdict: 'passed',
+      } });
+      assert.equal(again.ok, true, JSON.stringify(again));
+      const conflict = await script({ ...request, decision: { ...answers[index], verdict: 'failed' } });
+      assert.equal(conflict.ok, false);
+      assert.equal(conflict.field, 'decision');
+    }
+    state = await script({ operation: 'status' });
+  }
+  while (!['completed', 'failed', 'cancelled'].includes(state.status)) {
+    assert(Date.now() < deadline, JSON.stringify(state));
+    state = await script({ operation: 'wait', afterSequence: state.eventSequence, waitMs: 1000 });
+  }
+  state = await script({ operation: 'status' });
+  assert.equal(state.status, 'completed', JSON.stringify(state));
+  assert.deepEqual((await script({ operation: 'result' })).result, { answers });
+  assert.equal(state.events.filter(event => event.type === 'agent_decision').length, answers.length);
+});
+
+test('public UIA reads honor maxDepth and reject limits outside the actual compaction range', async t => {
+  const root = temporaryDirectory(t);
+  const client = await openMcp(t, path.join(root, 'facts'));
+  const xml = '<hierarchy><node text="Root" bounds="[0,0][100,100]"><node text="Child" bounds="[0,0][20,20]"/></node></hierarchy>';
+  const uia = await createUiaRuntimeFixture({ directory: path.join(root, 'uia'), serial: 'depth-contract-device', xml });
+  t.after(() => uia.close());
+  const log = path.join(uia.directory, 'adb.jsonl');
+  const args = { serial: uia.serial, adb: uia.adb, compact: true, maxNodes: 1000 };
+  for (const [maxDepth, expected] of [[0, ['Root']], [1, ['Root', 'Child']]]) {
+    const tree = await client.call('run', { command: 'uia-tree', arguments: { ...args, maxDepth } });
+    assert.equal(tree.ok, true, JSON.stringify(tree));
+    assert.deepEqual(tree.nodes.map(node => node.text), expected);
+    assert.equal(tree.options.maxDepth, maxDepth);
+  }
+  const before = fs.readFileSync(log, 'utf8');
+  for (const invalid of [{ maxDepth: 201 }, { maxNodes: 1001 }, { maxNodes: 0 }]) {
+    const result = await client.call('run', { command: 'uia-tree', arguments: { ...args, ...invalid } });
+    assert.equal(result.ok, false, JSON.stringify(result));
+    assert.equal(result.dispatched, false);
+    assert.equal(result.field, Object.keys(invalid)[0]);
+  }
+  assert.equal(fs.readFileSync(log, 'utf8'), before, 'invalid limits must not contact ADB');
+});
 
 function temporaryDirectory(t) {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'evidence-archive-mcp-')));
@@ -172,8 +254,7 @@ async function seedEvidence(directory) {
       operationId: OPERATION_ID,
       evidenceId: 'intent-observation-1',
       revision: 1,
-      serial: 'test-serial',
-      packageName: 'com.example.test',
+      target: { platform: 'android', serial: 'test-serial', packageName: 'com.example.test' },
       provider: 'native',
       capturedAtMs: 1_700_000_000_000,
       rawTreeId: 'intent-raw-tree-1',
@@ -211,10 +292,10 @@ test('evidence MCP discovery and invalid requests do not initialize FactStore', 
   fs.writeFileSync(blockedDirectory, 'FactStore must not be opened here');
   const mcp = await openMcp(t, blockedDirectory);
 
-  const capabilities = await mcp.call('capabilities', { domain: 'advanced', includeOptions: true });
-  const command = capabilities.domains.advanced.find((item) => item.command === 'evidence');
+  const capabilities = await mcp.call('capabilities', { domain: 'evidence', includeOptions: true });
+  const command = capabilities.domains.evidence.find((item) => item.command === 'evidence');
   assert.ok(command);
-  assert.equal(command.targetKind, 'none');
+  assert.equal(command.targetKind, 'operation');
   assert.deepEqual(command.options, ['operation', 'namespace', 'operationId', 'outputDir', 'includeRecordedPayloads', 'archiveDir', 'manifestSha256']);
   assert.equal((await mcp.call('capabilities', { command: 'evidence' })).ok, true);
 
@@ -228,12 +309,13 @@ test('evidence MCP discovery and invalid requests do not initialize FactStore', 
     const result = await mcp.evidence(args);
     assert.equal(result.ok, false);
     assert.equal(typeof result.error, 'string');
-    assert.equal(result.error, 'invalid_argument');
+    assert.equal(result.error, Object.hasOwn(args, field) ? 'invalid_argument' : 'missing_argument');
     assert.equal(result.field, field);
   }
   const unknown = await mcp.evidence({ operation: 'erase', namespace: 'intent', operationId: 'op' });
   assert.equal(unknown.ok, false);
-  assert.equal(unknown.error, 'invalid_operation');
+  assert.equal(unknown.error, 'invalid_argument');
+  assert.equal(unknown.field, 'operation');
   assert.equal(fs.readFileSync(blockedDirectory, 'utf8'), 'FactStore must not be opened here');
   assert.deepEqual(fs.readdirSync(root), ['not-a-directory']);
   await mcp.close();

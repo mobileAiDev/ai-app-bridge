@@ -18,12 +18,12 @@ function spec(overrides = {}) {
   return {
     schemaVersion: 'aab.code-script/v1',
     name: 'p2',
-    language: overrides.language || 'js',
+    language: overrides.language || 'javascript',
     source: overrides.source || 'async function main(ctx) { return { passed: true }; }\nmodule.exports = { main };',
-    target: { serial: 'serial-1', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'serial-1', packageName: 'com.example.app' },
     inputs: overrides.inputs || {},
-    permissions: overrides.permissions,
-    policy: overrides.policy,
+    ...(overrides.permissions === undefined ? {} : { permissions: overrides.permissions }),
+    ...(overrides.policy === undefined ? {} : { policy: overrides.policy }),
   };
 }
 
@@ -31,9 +31,9 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-test('P2 ScriptSpec aliases language and defaults restartPolicy to none', () => {
-  const js = compileScriptSpec(spec({ language: 'js' }));
-  const py = compileScriptSpec(spec({ language: 'py' }));
+test('ScriptSpec uses explicit language names and defaults restartPolicy to none', () => {
+  const js = compileScriptSpec(spec({ language: 'javascript' }));
+  const py = compileScriptSpec(spec({ language: 'python' }));
   assert.equal(js.ok, true);
   assert.equal(js.spec.language, 'javascript');
   assert.equal(py.spec.language, 'python');
@@ -93,20 +93,18 @@ test('P2 wait expires with timedOut and does not accept isolatedTimeoutMs from t
   assert.equal(blocked.error, 'unsupported_argument');
 });
 
-test('P2 wrapIsolatedEntry uses waitMs+5000 and rejects caller isolatedTimeoutMs', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../bin/mcp-server.js'), 'utf8');
-  assert.match(source, /args\.isolatedTimeoutMs = resolved\.waitMs \+ 5000/);
-  assert.match(source, /unsupported_argument/);
-  const { commandRouter } = require('../bin/mcp-server');
+test('Script wait retains its own wait budget and rejects an outer isolatedTimeoutMs', async () => {
+  const { commandRouter } = require('../bin/execution-host');
   const waitArgs = { operation: 'wait', waitMs: 1000 };
-  const routed = JSON.parse((await commandRouter.route('script', waitArgs)).content[0].text);
-  assert.equal(waitArgs.isolatedTimeoutMs, 6000);
+  const routed = (await commandRouter.route('script', waitArgs)).value;
+  assert.equal(waitArgs.waitMs, 1000);
+  assert.equal(Object.hasOwn(waitArgs, 'isolatedTimeoutMs'), false);
   assert.equal(routed.ok, false);
-  const rejected = JSON.parse((await commandRouter.route('script', {
+  const rejected = (await commandRouter.route('script', {
     operation: 'wait',
     waitMs: 1000,
     isolatedTimeoutMs: 12,
-  })).content[0].text);
+  })).value;
   assert.equal(rejected.ok, false);
   assert.equal(rejected.error, 'unsupported_argument');
 });
@@ -114,7 +112,7 @@ test('P2 wrapIsolatedEntry uses waitMs+5000 and rejects caller isolatedTimeoutMs
 test('P2 ctx.call envelope and assert distinguish coverage from condition', async () => {
   const host = createFakeHostPort({
     executionId: 'exec-1',
-    target: { serial: 'p2-device', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p2-device', packageName: 'com.example.app' },
     handlers: {
       network: async (request) => captureFixture(request, 'network', [{ statusCode: 200 }]),
     },
@@ -268,9 +266,6 @@ test('P2 ten-minute fake clock run is not gated by a 120s isolated timeout', asy
   const status = await supervisor.handle({ operation: 'status', operationId: started.operationId });
   assert.equal(status.status, 'completed');
   assert.equal(clock, 1_600_000);
-  const wrap = fs.readFileSync(path.join(__dirname, '../bin/mcp-server.js'), 'utf8');
-  assert.match(wrap, /args\.isolatedTimeoutMs = 120000/);
-  assert.doesNotMatch(wrap, /isolatedTimeoutMs = 600000/);
 });
 
 test('P2 wait wakes on the next event without polling', async () => {
@@ -318,11 +313,11 @@ test('P2 wait rejects invalid waitMs instead of substituting 30000', async () =>
   });
   assert.equal(rejected.ok, false);
   assert.equal(rejected.error, 'invalid_argument');
-  const { commandRouter } = require('../bin/mcp-server');
-  const routed = JSON.parse((await commandRouter.route('script', {
+  const { commandRouter } = require('../bin/execution-host');
+  const routed = (await commandRouter.route('script', {
     operation: 'wait',
     waitMs: -1,
-  })).content[0].text);
+  })).value;
   assert.equal(routed.ok, false);
   assert.equal(routed.error, 'invalid_argument');
 });
@@ -359,7 +354,7 @@ test('P2 pause resume decide and cancel stay on the supervisor', async () => {
 });
 
 test('P2 interact catalog commands receive an actionId', async () => {
-  const host = createFakeHostPort({ executionId: 'exec-2', target: { serial: 'test-serial' } });
+  const host = createFakeHostPort({ executionId: 'exec-2', target: { platform: 'android', serial: 'test-serial', packageName: 'pkg' } });
   const tap = await host.call('tap-flutter-text', { text: 'Go' });
   const scroll = await host.call('h5-scroll', {});
   assert.equal(tap.execution.actionId, 'exec-2:action-1');
@@ -369,6 +364,7 @@ test('P2 interact catalog commands receive an actionId', async () => {
   const h5Wait = await host.call('h5-wait', {});
   assert.equal(tree.execution.actionId, null);
   assert.equal(waiting.execution.actionId, null);
+  // Native H5 wait polls observations without submitting a managed mutation.
   assert.equal(h5Wait.execution.actionId, null);
 });
 
@@ -428,9 +424,9 @@ test('P2 start freezes sourcePath contents and rejects oversized inputs', async 
   fs.writeFileSync(file, 'module.exports = { main() { return { n: 1 }; } };');
   const first = compileScriptSpec({
     schemaVersion: 'aab.code-script/v1',
-    language: 'js',
+    language: 'javascript',
     sourcePath: file,
-    target: { serial: 's', packageName: 'p' },
+    target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
   });
   assert.equal(first.ok, true);
   assert.match(first.spec.source, /n: 1/);
@@ -439,9 +435,9 @@ test('P2 start freezes sourcePath contents and rejects oversized inputs', async 
     operation: 'start',
     script: {
       schemaVersion: 'aab.code-script/v1',
-      language: 'js',
+      language: 'javascript',
       sourcePath: file,
-      target: { serial: 's', packageName: 'p' },
+      target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
     },
     program: async () => ({ passed: true }),
   });
@@ -451,17 +447,17 @@ test('P2 start freezes sourcePath contents and rejects oversized inputs', async 
   assert.equal(record.hash, first.hash);
   const second = compileScriptSpec({
     schemaVersion: 'aab.code-script/v1',
-    language: 'js',
+    language: 'javascript',
     sourcePath: file,
-    target: { serial: 's', packageName: 'p' },
+    target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
   });
   assert.notEqual(second.hash, first.hash);
   fs.unlinkSync(file);
   const missing = compileScriptSpec({
     schemaVersion: 'aab.code-script/v1',
-    language: 'js',
+    language: 'javascript',
     sourcePath: file,
-    target: { serial: 's', packageName: 'p' },
+    target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
   });
   assert.equal(missing.ok, false);
   const huge = compileScriptSpec(spec({
@@ -484,7 +480,7 @@ test('P2 runtime-status is routed to the supervisor without a script payload', a
 test('P2 assert is inconclusive when requiredEvidence refs are missing', async () => {
   const host = createFakeHostPort({
     executionId: 'exec-3',
-    target: { serial: 'p2-device', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p2-device', packageName: 'com.example.app' },
     handlers: {
       network: async (request) => captureFixture(request, 'network', [{ statusCode: 200 }]),
     },

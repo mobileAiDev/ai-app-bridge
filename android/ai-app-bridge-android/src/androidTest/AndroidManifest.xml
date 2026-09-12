@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:versionCode="1" android:versionName="native-execution-tests">
+    <application android:usesCleartextTraffic="true">
+        <activity
+            android:name="io.github.mobileaidev.aiappbridge.android.NativeGestureActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name="io.github.mobileaidev.aiappbridge.android.NativeFaultActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name="io.github.mobileaidev.aiappbridge.android.H5FaultActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>

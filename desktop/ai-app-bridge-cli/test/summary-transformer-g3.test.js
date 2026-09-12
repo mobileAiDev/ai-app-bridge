@@ -37,6 +37,36 @@ test('G3 Native, UIA, Flutter, and H5 fixtures summarize to mapped nodes', () =>
   assert.equal(h5.nodes.find((node) => node.nodeId === 'logo').role, 'image');
 });
 
+test('Native preference switches remain observable in both checked states', () => {
+  for (const checked of [false, true, false]) {
+    const result = summarizeTree({ provider: 'native', rawTreeId: 'settings-now', rawTree: {
+      root: { className: 'android.widget.LinearLayout', children: [
+        { id: 'title', className: 'android.widget.TextView', text: 'Automatic download' },
+        { id: 'switch', className: 'androidx.appcompat.widget.SwitchCompat',
+          resourceName: 'sample:id/switchWidget', text: '', clickable: false, checked },
+      ] },
+    } });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.nodes.map(node => node.nodeId), ['title', 'switch']);
+    assert.equal(result.nodes[1].checked, checked);
+    assert.equal(result.nodes[1].resourceName, 'sample:id/switchWidget');
+    assert.equal(result.nodes[1].rawTreeId, 'settings-now');
+  }
+});
+
+test('UIA checkable state retains an unchecked control without retaining ordinary layout defaults', () => {
+  const result = summarizeTree({ provider: 'uia', rawTreeId: 'uia-settings-now', rawTree: `<hierarchy>
+    <node resource-id="layout" class="android.widget.FrameLayout" checkable="false" checked="false">
+      <node resource-id="title" class="android.widget.TextView" text="Automatic download" checkable="false" checked="false"/>
+      <node resource-id="switch" class="android.widget.Switch" clickable="false" checkable="true" checked="false"/>
+    </node>
+  </hierarchy>` });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.nodes.map(node => node.nodeId), ['title', 'switch']);
+  assert.equal(result.nodes[0].checked, null);
+  assert.equal(result.nodes[1].checked, false);
+});
+
 test('G3 identical input is deterministic and each node maps back', () => {
   const first = summarizeTree(nativeFixture);
   const second = summarizeTree(nativeFixture);
@@ -45,6 +75,28 @@ test('G3 identical input is deterministic and each node maps back', () => {
   for (const node of first.nodes) {
     assert.equal(sourceIds.includes(node.nodeId), true, node.nodeId);
   }
+});
+
+test('Flutter editor summaries retain each field declaration independently of its value', () => {
+  const summary = summarizeTree({ provider: 'flutter', rawTreeId: 'form-now', rawTree: { nodes: [
+    { id: 'reps', widgetType: 'EditableText', text: '', label: 'Reps',
+      hint: '次数', errorText: 'Enter a positive number' },
+    { id: 'weight', widgetType: 'EditableText', text: '42.5', label: 'Weight (kg)' },
+    { id: 'search', widgetType: 'EditableText', text: '', hint: 'Search exercises...' },
+  ] } });
+  const [reps, weight, search] = summary.nodes;
+  assert.equal(reps.nodeId, 'reps');
+  assert.equal(reps.label, 'Reps');
+  assert.equal(reps.hint, '次数');
+  assert.equal(reps.errorText, 'Enter a positive number');
+  assert.equal(reps.text, null);
+  assert.equal(weight.label, 'Weight (kg)');
+  assert.equal(weight.text, '42.5');
+  assert.equal(Object.hasOwn(weight, 'hint'), false);
+  assert.equal(Object.hasOwn(weight, 'errorText'), false);
+  assert.equal(search.label, null, 'a placeholder is not a declared label');
+  assert.equal(search.hint, 'Search exercises...');
+  assert.ok(summary.nodes.every(node => node.role === 'input' && node.rawTreeId === 'form-now'));
 });
 
 test('G3 Native blank custom inputs retain SDK locators and exact visibility facts', () => {

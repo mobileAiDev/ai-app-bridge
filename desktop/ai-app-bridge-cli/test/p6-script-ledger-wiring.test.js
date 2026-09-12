@@ -10,9 +10,9 @@ function spec() {
   return {
     schemaVersion: 'aab.code-script/v1',
     name: 'p6',
-    language: 'js',
+    language: "javascript",
     source: 'async function main() { return { passed: true }; }\nmodule.exports = { main };',
-    target: { serial: 's', packageName: 'p' },
+    target: { platform: 'android', serial: 's', packageName: 'com.example.app' },
   };
 }
 

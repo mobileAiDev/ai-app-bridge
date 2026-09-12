@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/laurent22/joplin",
+  "tag": "ios-v13.7.5",
+  "commit": "7ff01914f9f29f897e65af300c27e8f15cec8647",
+  "sourceArchive": "https://api.github.com/repos/laurent22/joplin/tarball/7ff01914f9f29f897e65af300c27e8f15cec8647",
+  "sourceArchiveSha256": "0b64a7f1b252ace08b6e57a4bc1073939041ec4809f1b4a4bb829a9024940a72",
+  "targetBundleId": "io.github.mobileaidev.joplin.sample",
+  "scope": "Candidate for real iOS React Native/WKWebView note editing, save, independent private-data verification and restart. Unsigned arm64 build passed; signing failed and device acceptance has not started. Integration is paused while existing app scripts are consolidated."
+}

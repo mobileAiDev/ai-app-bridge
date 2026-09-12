@@ -2,6 +2,7 @@
 
 // Authored from frozen Intent artifacts. Device I/O only uses ctx.call.
 // The controller must opt into recordingDir and independently verify its archive.
+const { isDeepStrictEqual } = require('node:util');
 const PACKAGE = 'org.localsend.localsend_app.bridge_sample';
 const PICKER = 'com.coloros.filemanager';
 const BASELINE = { 'flutter.ls_theme': 'system', 'flutter.ls_color': 'system' };
@@ -71,12 +72,35 @@ function emptySelection(nodes) {
     && n.bounds.bottom < nearby.bounds.top).map(n => n.text).sort();
   return JSON.stringify(text) === JSON.stringify([...SELECTION].sort());
 }
+function emptyDiscovery(nodes, view) {
+  if (!emptySelection(nodes)) return false;
+  const nearby = label(nodes, '附近的设备'), end = label(nodes, '故障排除');
+  if (!end || !fullyVisibleTarget(nearby, view) || !fullyVisibleTarget(end, view)
+    || !validBounds(nearby.scroll?.bounds) || nearby.scroll.pixels !== 0
+    || typeof nearby.scroll.nodeId !== 'string' || end.scroll?.nodeId !== nearby.scroll.nodeId
+    || nearby.bounds.bottom >= end.bounds.top || end.bounds.bottom > nearby.scroll.bounds.bottom) return false;
+  // In the fixed upstream App, real cards have visible aliases and HTTP/WebRTC
+  // badges. Its placeholder has one 46px device icon and transparent text.
+  // Both list anchors must be visible, so an offscreen peer is not accepted.
+  const region = nodes.filter(n => ['Text', 'RichText', 'EditableText'].includes(n.widgetType)
+    && validBounds(n.bounds) && n.bounds.bottom > nearby.bounds.bottom && n.bounds.top < end.bounds.top);
+  const icon = unique(region, n => n.widgetType === 'RichText' && typeof n.text === 'string' && n.text.trim()
+    && Math.abs(n.bounds.right - n.bounds.left - 46) < GEOMETRY_TOLERANCE
+    && Math.abs(n.bounds.bottom - n.bounds.top - 46) < GEOMETRY_TOLERANCE);
+  return !!icon && region.length === 1 && icon.scroll?.nodeId === nearby.scroll.nodeId
+    && fullyVisibleTarget(icon, view) && icon.bounds.top >= nearby.bounds.bottom && icon.bounds.bottom <= end.bounds.top;
+}
 function language(nodes, title, selected) {
   const chosen = label(nodes, selected);
   const check = unique(nodes, n => n.widgetType === 'RichText' && n.text === '\ue159');
   return !!label(nodes, title) && !!label(nodes, 'English') && !!chosen && !!check
-    && validBounds(chosen.tap?.bounds) && validBounds(check.tap?.bounds)
-    && JSON.stringify(chosen.tap.bounds) === JSON.stringify(check.tap.bounds);
+    && validBounds(chosen.bounds) && validBounds(check.bounds)
+    && validBounds(chosen.scroll?.bounds) && validBounds(check.scroll?.bounds)
+    && typeof chosen.scroll.nodeId === 'string' && chosen.scroll.nodeId === check.scroll.nodeId
+    && Math.abs(center(chosen.bounds).y - center(check.bounds).y) < GEOMETRY_TOLERANCE
+    && check.bounds.left > chosen.bounds.right
+    && [chosen, check].every(n => n.bounds.top >= n.scroll.bounds.top
+      && n.bounds.bottom <= n.scroll.bounds.bottom);
 }
 function signature(nodes) {
   // Ignore animated icon glyphs; retain exact node and actionable geometry.
@@ -109,6 +133,36 @@ function exactSettings(actual, expected) {
     && Object.keys(expected).every(k => actual[k] === expected[k]);
 }
 
+// Record existence alone is insufficient. Bind the actual mobile events to the
+// original Flutter receipt and target; UI and persisted settings are checked separately.
+function flutterActionEvidence(read, action, route = null) {
+  const receipt = action?.executionReceipt, id = action?.execution?.actionId;
+  if (!read.ok || !action?.ok || action.command !== 'tap-flutter'
+    || receipt?.kind !== 'flutter' || receipt.settled !== true || receipt.actionId !== id
+    || receipt.dispatched !== true || receipt.ambiguous !== false
+    || read.evidence.window.afterActionId !== id
+    || !isDeepStrictEqual(read.execution.target, action.execution.target)) return false;
+  const items = read.result.items;
+  if (!items.every(item => item.type === 'event' && item.source === 'flutter-sdk' && item.actionId === id)) return false;
+  const started = unique(items, item => item.name === 'flutter.action.started' && item.category === 'execution');
+  const tapped = unique(items, item => item.name === 'target.tap' && item.category === 'ui.interaction');
+  const settled = unique(items, item => item.name === 'flutter.action.settled' && item.category === 'execution');
+  if (!started || !tapped || !settled || !(started.id < tapped.id && tapped.id < settled.id)
+    || ![started, settled].every(item => item.data.actionId === id && item.data.runtimeEpoch === receipt.runtimeEpoch)
+    || tapped.data.ok !== true || tapped.data.dispatched !== true || tapped.data.ambiguous !== false
+    || tapped.data.targetValidation !== 'aab.flutter-target/v1'
+    || !isDeepStrictEqual(tapped.data.targetRef, action.result.request.targetRef)
+    || settled.data.dispatched !== true || settled.data.stopReason !== null) return false;
+  const proofs = [started, tapped, settled];
+  if (route !== null) {
+    const changed = unique(items, item => item.name === 'ui.route.changed' && item.category === 'ui'
+      && item.data.location === route.location && item.data.action === route.action && item.data.semanticChanged === true);
+    if (!changed || !(started.id < changed.id && changed.id < settled.id)) return false;
+    proofs.push(changed);
+  }
+  return proofs.every(item => read.evidence.refs.some(ref => ref.stream === 'events' && ref.captureId === item.id));
+}
+
 async function main(ctx) {
   const { serial, outputDir, scenario = 'acceptance', expectedDeviceName = '好的椰子',
     cancelBeforeSettings = false } = ctx.inputs;
@@ -119,7 +173,7 @@ async function main(ctx) {
     || typeof cancelBeforeSettings !== 'boolean') throw new Error('invalid scenario inputs');
   const started = Date.now();
   const target = { serial, packageName: PACKAGE };
-  const assertions = [], externalOracles = [], checkpoints = [], actions = [], screenshots = [], openGates = [], mobileCaptures = [], stableObservations = [];
+  const assertions = [], externalOracles = [], checkpoints = [], actions = [], screenshots = [], openGates = [], mobileCaptures = [], stableObservations = [], businessEvidence = [];
   let lastActionId = null, lastPage = 'unknown', imageIndex = 0, flowCompleted = false;
   let geometryBaseline = null, geometryRestored = null;
 
@@ -130,19 +184,22 @@ async function main(ctx) {
   async function check(name, condition, read, requiredEvidence = ['tree'], fatal = true) {
     const verdict = await ctx.assert({ name, predicateSummary: name, condition,
       requiredEvidence, evidence: read.evidence, requireCoverage: 'complete' });
-    assertions.push({ ...verdict, observationId: read.evidence?.observationId,
+    assertions.push({ ...verdict, evidenceKind: requiredEvidence.some(stream => ['events', 'state', 'logs', 'network'].includes(stream)) ? 'capture' : 'ui',
+      observationId: read.evidence?.observationId,
       evidenceRefs: read.evidence?.refs });
     if (fatal && verdict.verdict !== 'passed') throw new Stop(verdict.verdict, `${name}: ${verdict.reason || verdict.verdict}`);
     return verdict;
   }
-  async function call(command, args = {}, packageName = PACKAGE, options = {}) {
-    const response = await ctx.call(command, { ...target, packageName, ...args }, options);
+  async function requireCall(command, response) {
     if (!response.ok) {
       await check(`${command}: successful fresh observation or dispatch`, false, response,
         ['tree'], false);
       throw new Stop('inconclusive', `${command}: ${response.error || 'provider_call_failed'}; mutation is never retried`);
     }
     return response;
+  }
+  async function call(command, args = {}, packageName = PACKAGE, options = {}) {
+    return requireCall(command, await ctx.call(command, { ...target, packageName, ...args }, options));
   }
   function windowOptions() {
     return lastActionId ? { evidenceWindow: { afterActionId: lastActionId, timeoutMs: 1000 } } : {};
@@ -207,7 +264,15 @@ async function main(ctx) {
     const deadline = Date.now() + 10000;
     let read;
     do {
-      read = await call('uia-tree', { compact: true, maxNodes: 1000, maxDepth: 100 }, PICKER);
+      read = await ctx.call('uia-tree', { ...target, packageName: PICKER, compact: true, maxNodes: 1000, maxDepth: 100 });
+      if (!read.ok && read.error === 'uia_tree_changed' && read.dispatched === false
+        && read.ambiguous === false && read.execution.actionId === null) {
+        await ctx.progress({ stage: 'picker-tree-reobserve', error: read.error,
+          callId: read.execution.callId, observationId: read.evidence.observationId });
+        await new Promise(resolve => setTimeout(resolve, 180));
+        continue;
+      }
+      await requireCall('uia-tree', read);
       const { cancel, add } = pickerControls(read);
       if (read.result.source === 'uiautomator' && read.result.truncated === false && cancel && add) {
         await check('Actual OPPO picker has Cancel and disabled Add(0)', true, read);
@@ -241,8 +306,9 @@ async function main(ctx) {
     actions.push({ name, command, callId: r.execution?.callId, actionId: r.execution?.actionId,
       sourceObservationId: read.evidence.observationId, selected: chosen, arguments: args,
       transport: r.result?.transport });
-    if (command === 'tap' && packageName === PACKAGE && r.result.transport !== 'bridge') {
-      throw new Stop('inconclusive', `${name}: unexpected tap transport ${r.result.transport}; stop after receipt, no retry`);
+    if (command === 'tap-flutter' && (r.executionReceipt?.kind !== 'flutter'
+      || r.executionReceipt.settled !== true || r.executionReceipt.actionId !== r.execution?.actionId)) {
+      throw new Stop('inconclusive', `${name}: original bound Flutter receipt unavailable; no retry`);
     }
     if (typeof r.execution?.actionId !== 'string') throw new Stop('inconclusive', `${name}: actionId missing`);
     lastActionId = r.execution.actionId;
@@ -254,8 +320,7 @@ async function main(ctx) {
     const n = selector(current.result.nodes), v = viewport(current), point = center(n.tap.bounds);
     await check(`${name}: one observed actionable target`, !!n && validBounds(n.tap?.bounds), current);
     await check(`${name}: complete logical target is within current viewport`, fullyVisibleTarget(n, v), current);
-    return mutate(name, 'tap', { tapX: Math.round(point.x * v.devicePixelRatio),
-      tapY: Math.round(point.y * v.devicePixelRatio) }, current,
+    return mutate(name, 'tap-flutter', { selector: { nodeId: n.id } }, current,
     { nodeId: n.id, text: n.text, widgetType: n.widgetType, logicalBounds: n.tap.bounds,
       logicalPoint: point, devicePixelRatio: v.devicePixelRatio, sdkSnapshotUpdatedAtMs: current.result.updatedAtMs });
   }
@@ -273,11 +338,15 @@ async function main(ctx) {
       const top = Math.max(0, b.top), bottom = Math.min(v.logicalHeight, b.bottom);
       let args;
       if (command === 'scroll-flutter') {
-        const container = unique(current.result.nodes, n => n.widgetType === 'SingleChildScrollView'
+        const container = unique(current.result.nodes, n => n.role === 'scrollable'
+          && n.scroll?.axis === 'vertical' && n.id === anchor.scroll.nodeId
+          && n.scroll.nodeId === n.id && n.targetRef?.schemaVersion === 'aab.flutter-target/v1'
+          && n.targetRef.elementId === n.id
           && validBounds(n.scroll?.bounds)
           && ['left', 'top', 'right', 'bottom'].every(k => n.scroll.bounds[k] === b[k]));
         await check(`${name}-${i + 1}: unique observed About scroll container`, !!container, current);
-        args = { delta: (direction === 'down' ? 1 : -1) * Math.min(450, (bottom - top) * 0.6) };
+        args = { selector: { nodeId: container.id },
+          delta: (direction === 'down' ? 1 : -1) * Math.min(450, (bottom - top) * 0.6) };
       } else if (command === 'swipe') {
         const x = (Math.max(0, b.left) + Math.min(v.logicalWidth, b.right)) / 2;
         const high = top + (bottom - top) * 0.2, low = top + (bottom - top) * 0.8;
@@ -331,7 +400,8 @@ async function main(ctx) {
     }
     return boundaries;
   }
-  async function mobileEvidence(name, boundaries, mutationPackage = PACKAGE) {
+  async function mobileEvidence(name, boundaries, action, route = null) {
+    const mutationPackage = action.execution.target.packageName;
     for (const stream of ['events', 'state', 'logs']) {
       const { before, ready } = boundaries[stream];
       const c = before.evidence.capture;
@@ -340,40 +410,50 @@ async function main(ctx) {
       const r = ready ? await ctx.call(stream, { ...target, factCursor: c.watermarkCursor,
         runtimeEpoch: c.runtimeEpoch, afterActionId: lastActionId, limit: 200 }, windowOptions()) : before;
       const applicable = ready && mutationPackage === PACKAGE;
-      await check(`${name}: ${stream} facts recorded in the current action window`,
-        r.ok && applicable && Array.isArray(r.result.items) && r.result.items.length > 0
-        && r.evidence.window?.afterActionId === lastActionId, r, [stream], false);
+      if (stream === 'events' && mutationPackage === PACKAGE) {
+        await check(`${name}: original Flutter target and completion events${route ? ' with the expected route transition' : ''}`,
+          ready && applicable && flutterActionEvidence(r, action, route), r, ['events'], false);
+      }
       mobileCaptures.push({ name, stream, phase: ready ? 'after' : 'after-unavailable',
         applicable, mutationPackage, afterActionId: lastActionId, error: r.error,
+        purpose: stream === 'events' && mutationPackage === PACKAGE ? 'original-action-facts' : 'supporting-diagnostics',
+        association: mutationPackage === PACKAGE ? 'app-action-window' : 'system-action-has-no-app-local-context',
         evidence: r.evidence, itemCount: r.result.items.length });
-      if (!ready || !r.ok || !applicable) openGates.push({
+      if (!ready || !r.ok) openGates.push({
         id: `${name}-${stream}-capture-boundary`, verdict: 'inconclusive',
         reason: !ready ? 'Current complete committed pre-action mobile watermark unavailable.'
-          : !applicable ? 'System picker mutation has no app-local capture association across packages.'
-            : `Post-action capture unavailable: ${r.error}`,
+          : `Post-action capture unavailable: ${r.error}`,
         observationId: r.evidence.observationId,
       });
     }
   }
-  async function placeholder(name) {
-    // A positive diagnostic widget presence establishes this UI branch only.
-    // It does not establish network discovery completeness or peer isolation.
-    for (let sample = 1; sample <= 2; sample += 1) {
-      const r = await call('flutter-tree', {}, PACKAGE, windowOptions());
-      const all = [], stack = [r.result.widgetInspector];
-      while (stack.length) {
-        const n = stack.pop();
-        if (!n || typeof n !== 'object') continue;
-        all.push(n);
-        if (Array.isArray(n.children)) stack.push(...n.children);
-      }
-      const send = all.filter(n => n.widgetRuntimeType === 'SendTab');
-      const placeholders = all.filter(n => n.widgetRuntimeType === 'DevicePlaceholderListTile');
-      await check(`${name}-${sample}: Send empty-discovery placeholder branch`, send.length === 1
-        && placeholders.length === 1 && r.result.operable?.truncated === false
-        && emptySelection(r.result.operable.nodes), r);
-      if (sample === 1) await new Promise(resolve => setTimeout(resolve, 500));
-    }
+  async function networkOracle(name, phase, read) {
+    const reply = await ctx.askAgent({ question: `Record the ${phase} phase of the explicit no-SIM, Wi-Fi-disconnected fixture at ${name}. Restore the original network on any exit.`,
+      options: [{ id: 'recorded', label: 'Network fixture recorded' }],
+      context: { kind: 'localsend.no-peer-fixture/v1', checkpoint: name, phase, serial,
+        observationId: read.evidence.observationId, evidenceRefs: read.evidence.refs } });
+    const valid = reply?.kind === 'localsend.no-peer-fixture-result/v1' && reply.checkpoint === name
+      && reply.phase === phase && reply.serial === serial && reply.condition === 'no-sim-wifi-disconnected'
+      && ['passed', 'failed', 'inconclusive'].includes(reply.verdict)
+      && typeof reply.artifact?.path === 'string' && reply.artifact.path.startsWith('/')
+      && /^[a-f0-9]{64}$/.test(reply.artifact.sha256);
+    const verdict = valid ? reply.verdict : 'inconclusive';
+    externalOracles.push({ checkpoint: name, phase, verdict, controllerResult: reply,
+      scope: 'external-controller-network-fixture; not device ctx.assert evidence' });
+    if (verdict !== 'passed') throw new Stop(verdict, `${name}: ${phase} network fixture did not pass`);
+    return reply;
+  }
+  async function placeholder(name, page, imageName) {
+    const isolated = await networkOracle(name, 'isolate', page);
+    const observed = await observe(`${name}: complete visible empty-discovery region`, emptyDiscovery);
+    const captured = await screenshot(imageName);
+    const verified = await networkOracle(name, 'verify', observed);
+    const restored = await networkOracle(name, 'restore', observed);
+    businessEvidence.push({ name, observationId: observed.evidence.observationId,
+      evidenceRefs: observed.evidence.refs, screenshot: captured.result.artifact,
+      network: { isolated, verified, restored },
+      claim: 'Complete empty discovery UI under independently checked disconnected network conditions; no discovery-completion or transport claim.' });
+    return observed;
   }
 
   let stop = null;
@@ -395,10 +475,7 @@ async function main(ctx) {
       page = await back('return-from-link', page, receive);
       await tap('open-send', page, ns => label(ns, '发送', 'NavigationDestination'));
       page = await observe('send-empty-selection', emptySelection);
-      await screenshot('send-empty-selection');
-      await placeholder('before-picker');
-      openGates.push({ id: 'controlled-no-peer-fixture', verdict: 'inconclusive',
-        reason: 'Fresh repeated DevicePlaceholderListTile UI branch is asserted; no frozen network isolation or discovery-completeness oracle establishes that the network has no peers.' });
+      page = await placeholder('before-picker', page, 'send-empty-selection');
       page = await observe('send-before-picker', emptySelection);
       await tap('open-files-picker', page, ns => label(ns, '文件'));
       await observePicker();
@@ -406,12 +483,27 @@ async function main(ctx) {
       const pickerBoundary = await mobileBoundary('picker-cancel');
       const picker = await observePicker();
       const { cancel } = pickerControls(picker);
-      const point = center(cancel.bounds);
-      await mutate('cancel-files-picker', 'tap', { tapX: Math.round(point.x), tapY: Math.round(point.y), feedback: 'off' }, picker,
+      const cancelled = await mutate('cancel-files-picker', 'tap-uia', { selector: { resourceName: cancel.resourceId } }, picker,
         { resourceId: cancel.resourceId, text: cancel.text, physicalBounds: cancel.bounds }, PICKER);
+      const receipt = cancelled.executionReceipt;
+      if (receipt?.kind !== 'uia-node' || receipt.settled !== true
+        || receipt.actionId !== cancelled.execution.actionId) {
+        throw new Stop('inconclusive', 'Picker Cancel original UIA completion is unavailable');
+      }
+      const completion = JSON.parse(receipt.receiptJson);
+      if (completion.completion !== 'original_callback'
+        || completion.binding.actionTarget.packageName !== PICKER
+        || completion.binding.actionTarget.resourceName !== cancel.resourceId
+        || completion.binding.actionTarget.text !== cancel.text || completion.callback.handled !== true) {
+        throw new Stop('inconclusive', 'Picker Cancel original callback does not bind the observed system button');
+      }
       page = await observe('send-after-picker-cancel', emptySelection);
+      businessEvidence.push({ name: 'picker-cancel', actionCallId: cancelled.execution.callId,
+        actionId: cancelled.execution.actionId, receipt: cancelled.executionReceipt,
+        resultObservationId: page.evidence.observationId, resultEvidenceRefs: page.evidence.refs,
+        claim: 'The original system Cancel callback completed and a fresh App page has no selected files; no app-local actionId is claimed.' });
       await screenshot('send-after-picker-cancel');
-      await mobileEvidence('picker-cancel', pickerBoundary, PICKER);
+      await mobileEvidence('picker-cancel', pickerBoundary, cancelled);
       page = await observe('send-before-settings', emptySelection);
     }
 
@@ -453,11 +545,15 @@ async function main(ctx) {
       await tap('open-dark-theme-row', page, ns => row(ns, '主题', '深色'));
       const restoredBoundary = await mobileBoundary('settings-restored');
       page = await observe('theme-restoration-menu', ns => ['跟随系统', '浅色', '深色'].every(t => label(ns, t)) && !navigation(ns));
-      await tap('restore-system-theme', page, ns => label(ns, '跟随系统'));
+      const restoredAction = await tap('restore-system-theme', page, ns => label(ns, '跟随系统'));
       page = await observe('settings-restored', ns => settings(ns));
       await screenshot('settings-restored');
       await oracle('settings-restored', BASELINE, page);
-      await mobileEvidence('settings-restored', restoredBoundary);
+      await mobileEvidence('settings-restored', restoredBoundary, restoredAction, { location: 'HomePage', action: 'pop' });
+      businessEvidence.push({ name: 'settings-restored', actionCallId: restoredAction.execution.callId,
+        actionId: restoredAction.execution.actionId, resultObservationId: page.evidence.observationId,
+        resultEvidenceRefs: page.evidence.refs, externalOracleCheckpoint: 'settings-restored',
+        claim: 'The theme menu closed, the settings page displays System, and the external controller read the exact persisted settings.' });
       page = await observe('settings-before-about-scroll', ns => settings(ns));
     }
 
@@ -489,19 +585,21 @@ async function main(ctx) {
     if (scenario === 'acceptance') {
       await tap('final-visit-send', page, ns => label(ns, '发送', 'NavigationDestination'));
       page = await observe('final-send-empty-selection', emptySelection);
-      await placeholder('final-send');
+      page = await placeholder('final-send', page, 'final-send-empty-discovery');
       page = await observe('final-send-before-receive', emptySelection);
     }
     const finalBoundary = await mobileBoundary('final-receive');
     page = await observe('before-final-visit-receive', scenario === 'acceptance' ? emptySelection : settingsAtBaseline);
-    await tap('final-visit-receive', page, ns => label(ns, '接收', 'NavigationDestination'));
+    const finalAction = await tap('final-visit-receive', page, ns => label(ns, '接收', 'NavigationDestination'));
     page = await observe('final-receive', receive);
     await check('Final Receive preserves fixture device name', !!label(page.result.nodes, expectedDeviceName), page);
     await screenshot('final-receive');
     await checkpoint('final-fixture', page, { expectedSettings: BASELINE, settingsScroll: 'top', selectedFiles: 0 });
-    await mobileEvidence('final-receive', finalBoundary);
-    openGates.push({ id: 'required-mobile-business-evidence', verdict: 'inconclusive',
-      reason: 'Recorded fresh action-window events/state/logs are retained. Frozen evidence does not define reliable business event/state/log predicates or demonstrate Rust transport coverage. Capture existence is not a business oracle.' });
+    await mobileEvidence('final-receive', finalBoundary, finalAction);
+    businessEvidence.push({ name: 'final-receive', actionCallId: finalAction.execution.callId,
+      actionId: finalAction.execution.actionId, resultObservationId: page.evidence.observationId,
+      resultEvidenceRefs: page.evidence.refs,
+      claim: 'The original Receive target action completed and the fresh page has Receive content and the fixture name; tab selection is not a route push.' });
     openGates.push({ id: 'final-independent-fixture-equality', verdict: 'inconclusive',
       reason: 'Controller must capture final persisted preferences after execution and compare exactly with its independently verified initial fixture; final checkpoint is not that external observation.' });
     flowCompleted = true;
@@ -509,14 +607,16 @@ async function main(ctx) {
     if (!(error instanceof Stop)) throw error;
     stop = { verdict: error.verdict, reason: error.message };
   }
-  const ui = assertions.filter(a => a.name.indexOf('facts recorded in the current action window') === -1);
+  const ui = assertions.filter(a => a.evidenceKind === 'ui');
   const uiVerdict = ui.some(a => a.verdict === 'failed') ? 'failed'
-    : stop?.verdict || (flowCompleted && ui.every(a => a.verdict === 'passed') ? 'passed' : 'inconclusive');
-  const businessVerdict = uiVerdict === 'failed' || externalOracles.some(o => o.verdict === 'failed') ? 'failed'
+    : stop?.verdict || (flowCompleted && ui.every(a => a.verdict === 'passed')
+      && !openGates.some(gate => gate.scope === 'ui') ? 'passed' : 'inconclusive');
+  const businessVerdict = uiVerdict === 'failed' || assertions.some(a => a.verdict === 'failed')
+    || externalOracles.some(o => o.verdict === 'failed') ? 'failed'
     : !flowCompleted || openGates.length || assertions.some(a => a.verdict !== 'passed') ? 'inconclusive' : 'passed';
   const result = { schemaVersion: 'localsend.script-result/v1', scenario, flowCompleted,
     uiVerdict, businessVerdict, assertions, externalOracles, openGates, checkpoints, actions,
-    screenshots, mobileCaptures, stableObservations, settingsGeometry: { baseline: geometryBaseline, restored: geometryRestored,
+    screenshots, mobileCaptures, businessEvidence, stableObservations, settingsGeometry: { baseline: geometryBaseline, restored: geometryRestored,
       toleranceLogicalPixels: GEOMETRY_TOLERANCE, comparison: 'strict-less-than' }, lastPage, stop, wallMs: Date.now() - started,
     timingSource: 'Use Host per-run active/provider/business/decision/paused/evidence/wall timings; oracle waits count in wall time.',
     executionStatusMeaning: 'completed only means this function returned; inspect businessVerdict and every assertion.' };
@@ -524,4 +624,4 @@ async function main(ctx) {
   return result;
 }
 
-module.exports = { main };
+module.exports = { main, flutterActionEvidence, emptyDiscovery };

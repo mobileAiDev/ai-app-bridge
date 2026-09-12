@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/kiwix/kiwix-apple",
+  "commit": "c78d229dac2b836eaeeb7137c0852f54b10b2a7b",
+  "archiveUrl": "https://codeload.github.com/kiwix/kiwix-apple/tar.gz/c78d229dac2b836eaeeb7137c0852f54b10b2a7b",
+  "archiveSha256": "bd9087b4d8e1d2fca9a57aa1e82a727899d336349ae9cefc4038cd81433b19c5",
+  "bundleId": "io.github.mobileaidev.kiwix.sample",
+  "license": "GPL-3.0",
+  "selectionReason": "Upstream uses native SwiftUI APIs instead of the Backports dependency that crashes Swift 6.4. This commit still pins CoreKiwix 13.1.0-4 and has no Apple Pay, push, multicast or app-group entitlement. No business features are removed.",
+  "purpose": "Validate native and H5 Intent evidence, Script replay, explicit cross-surface targeting and independently persisted business outcomes on iOS. Flutter remains a separate required sample.",
+  "upstreamVersion": "3.6.0 development, before libkiwix 14.0.0 update"
+}

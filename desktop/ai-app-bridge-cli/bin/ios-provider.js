@@ -1,26 +1,86 @@
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
-const http = require('http');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
+const { createHash } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { defaultArtifactPath, pruneGeneratedArtifacts } = require('./artifact-paths');
+const { execFileBounded, httpRequestBounded } = require('./shared-kernel/execution-io');
+const { runExecution, checkExecution, currentExecution, executionSleep, markExecutionDispatched } = require('./shared-kernel/execution-scope');
+const { getProcessDeviceMutationLease, runDeviceEffect } = require('./shared-kernel/device-mutation-lease');
+const { iosDeviceKey, executeIOSAction, lookupCompletion, reconcileIOS } = require('./ios-execution');
+const { isMutationCommand, executionTimeoutMs } = require('./command-registry');
+const { normalizeExecutionTarget } = require('./shared-kernel/execution-target');
+const { descriptorBinding, bindingHeaders, assertRuntimeResponse, bindingFailure } = require('./ios-runtime-binding');
+const { openWdaPort, target: wdaTarget } = require('./ios-wda-port');
+const { prepareWdaProject, wdaBuildEnvironment } = require('./ios-wda-project');
+const { executeWDAAction, reconcileWDA, completionPort } = require('./ios-wda-execution');
+const { deviceCommandRejection } = require('./ios-device-outcome');
+const { bindFlutterAction } = require('./shared-kernel/flutter-target');
+const nativeTarget = require('./shared-kernel/ios-native-target');
+const h5Target = require('./shared-kernel/ios-h5-target');
+const h5Controls = new Map([['ios-h5-click','click'], ['ios-h5-input','input'], ['ios-h5-scroll','scroll']]);
 
-const defaultRuntimePort = 18080;
-const runtimePortSearchCount = 50;
+const nativeControls = new Map([['ios-tap-native', 'native-tap'], ['ios-input-native-text', 'native-input']]);
+
+const flutterControls = new Map([
+  ['ios-tap-flutter', 'tapTarget'], ['ios-input-flutter-text', 'inputText'],
+  ['ios-scroll-flutter', 'scrollBy'], ['ios-flutter-back', 'back'],
+  ['ios-flutter-hide-keyboard', 'hideKeyboard'],
+]);
+
 const defaultHttpTimeoutMs = 5000;
-const defaultProbeTimeoutMs = 700;
 const defaultDeviceTimeoutSec = 30;
-const defaultWdaBundleId = 'io.github.mobileaidev.aiappbridge.wda';
+const defaultWdaTestBundleId = 'io.github.mobileaidev.aiappbridge.wda';
 
 class IOSBridgeProvider {
   constructor(options = {}) {
     this.execFile = options.execFile || execFile;
     this.httpRequest = options.httpRequest || requestJson;
+    this.lease = options.lease;
   }
 
   async run(command, args = {}) {
     try {
+      return await runExecution({ timeoutMs: executionTimeoutMs(command, args) ?? 30000,
+        mutation: isMutationCommand(command, args) }, async () => {
+        if (!isMutationCommand(command, args)) return this.dispatch(command, args);
+        const device = await this.requireDevice(args);
+        const key = iosDeviceKey(device);
+        const lease = this.lease || getProcessDeviceMutationLease();
+        return lease.run(key, async () => {
+          if (command === 'ios-h5-eval' || h5Controls.has(command) || command === 'ios-flutter-action' || flutterControls.has(command) || nativeControls.has(command)
+              || ['ios-wda-session', 'ios-tap', 'ios-input', 'ios-swipe', 'ios-set-orientation'].includes(command)) return this.dispatch(command, args, { device });
+          return runDeviceEffect({ kind: 'ios-command', command, target: { deviceId: device.udid, bundleId: args.bundleId ?? null } }, async () => {
+            let result;
+            try { result = await this.dispatch(command, args, { device }); }
+            catch (error) {
+              if (!error.deviceOutcome) throw error;
+              result = { ...error.deviceOutcome, command };
+            }
+            return currentExecution()?.dispatched ? result : { ...result, dispatched: false, ambiguous: false };
+          });
+        });
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        error: iosErrorCode(command, error),
+        command,
+        message: firstErrorLine(error.message || String(error)),
+        details: truncateText(error.message || String(error), 4000),
+        ...(error.field ? { field: error.field } : {}),
+        dispatched: typeof error.dispatched === 'boolean' ? error.dispatched : null,
+        ambiguous: error.ambiguous !== false,
+        ...(error.devicectlReply ? { deviceOutcome: error.devicectlReply } : {}),
+      };
+    }
+  }
+
+  async dispatch(command, args, context = {}) {
+      if (flutterControls.has(command)) return this.flutterControl(command, args, context);
+      if (nativeControls.has(command)) return this.nativeControl(command, args, context);
       switch (command) {
         case 'ios-devices':
           return await this.devices(args);
@@ -45,19 +105,25 @@ class IOSBridgeProvider {
         case 'ios-events':
           return await this.runtimeGet(args, withQuery('/v1/events', captureQuery(args)));
         case 'ios-h5-dom':
-          return await this.runtimeGet(args, '/v1/h5/dom');
+          return await this.runtimeGet(args, withQuery('/v1/h5/dom', args.webViewId === undefined ? {} : { webViewId: args.webViewId }));
         case 'ios-h5-eval':
-          return await this.runtimePost(args, '/v1/h5/eval', { script: requiredString(args.script, 'script') });
+          return await this.runtimePost(args, '/v1/h5/action', { payload: { action: 'eval', pageRef: args.expectedPage, script: requiredString(args.script, 'script') } }, context);
+        case 'ios-h5-click': case 'ios-h5-input': case 'ios-h5-scroll':
+          return await this.h5Control(command, args, context);
         case 'ios-flutter-tree':
           return await this.flutterTree(args);
         case 'ios-flutter-nodes':
           return await this.flutterNodes(args);
         case 'ios-flutter-action':
-          return await this.runtimePost(args, '/v1/flutter/action', parsePayload(args));
+          return await this.runtimePost(args, '/v1/flutter/action', parsePayload(args), context);
+        case 'ios-execution':
+          return await this.executionControl(args);
         case 'ios-screenshot':
           return await this.screenshot(args);
         case 'ios-wda-status':
           return await this.wdaStatus(args);
+        case 'ios-wda-session':
+          return await this.wdaSession(args, context);
         case 'ios-uia-tree':
           return await this.wdaSource(args);
         case 'ios-tap':
@@ -66,18 +132,11 @@ class IOSBridgeProvider {
           return await this.wdaInput(args);
         case 'ios-swipe':
           return await this.wdaSwipe(args);
+        case 'ios-set-orientation':
+          return await this.wdaSetOrientation(args, context);
         default:
           return { ok: false, error: 'unknown_ios_command', command };
       }
-    } catch (error) {
-      return {
-        ok: false,
-        error: iosErrorCode(command, error),
-        command,
-        message: firstErrorLine(error.message || String(error)),
-        details: truncateText(error.message || String(error), 4000),
-      };
-    }
   }
 
   context(args = {}) {
@@ -85,7 +144,7 @@ class IOSBridgeProvider {
       devicectl: stringArg(args.devicectl, process.env.AI_APP_BRIDGE_DEVICECTL || 'xcrun'),
       xcodebuild: stringArg(args.xcodebuild, process.env.XCODEBUILD || 'xcodebuild'),
       deviceTimeoutSec: numberArg(args.deviceTimeoutSec, defaultDeviceTimeoutSec),
-      httpTimeoutMs: numberArg(args.httpTimeoutMs, defaultHttpTimeoutMs),
+      httpTimeoutMs: numberArg(args.timeoutMs, defaultHttpTimeoutMs),
     };
   }
 
@@ -136,15 +195,16 @@ class IOSBridgeProvider {
     }
     checks.push({ name: 'runtime', ok: runtime.ok === true, endpoint: runtime.endpoint || null, error: runtime.error || null });
 
-    let wda = { ok: false, error: 'wda_url_required' };
-    if (args.wdaUrl || process.env.AI_APP_BRIDGE_WDA_URL) {
+    let wda = { ok: false, error: 'ios_wda_target_required' };
+    if (args.wdaRunnerBundleId) {
       wda = await this.wdaStatus(args);
     }
     checks.push({ name: 'wda', ok: wda.ok === true, url: wda.url || null, error: wda.error || null });
 
     const developerModeReady = selected ? selected.developerModeStatus === 'enabled' : false;
-    const ddiReady = selected ? selected.ddiServicesAvailable !== false : false;
-    const ready = Boolean(xcode.ok && selected && developerModeReady && ddiReady && wda.ok === true);
+    const ddiReady = selected?.ddiServicesAvailable === true;
+    const deviceConnected = selected?.tunnelState === 'connected';
+    const ready = Boolean(xcode.ok && deviceConnected && developerModeReady && ddiReady && runtime.ok === true && wda.ok === true);
     return {
       ok: true,
       ready,
@@ -154,7 +214,7 @@ class IOSBridgeProvider {
       selectedDevice: selected,
       requirements: {
         xcode: xcode.ok,
-        deviceConnected: Boolean(selected),
+        deviceConnected,
         developerModeEnabled: developerModeReady,
         ddiServicesAvailable: ddiReady,
         runtimeReachable: runtime.ok === true,
@@ -206,23 +266,14 @@ class IOSBridgeProvider {
       steps.push({ name: 'install-app', ...install });
       if (install.ok === false) return { ok: false, error: 'ios_app_install_failed', device, steps };
     }
-    if (args.bundleId) {
-      const launch = await this.launchApp({ ...args, deviceId: device.identifier || device.udid });
-      steps.push({ name: 'launch-app', ...launch });
-      if (launch.ok === false) return { ok: false, error: 'ios_app_launch_failed', device, steps };
-    }
-
-    const runtime = args.bundleId || args.runtimeUrl || args.iosHost || args.host
-      ? await this.runtimeGet(args, '/v1/status', { allowUnavailable: true, device })
-      : { ok: false, error: 'bundle_id_or_runtime_endpoint_required' };
-    steps.push({ name: 'runtime', ok: runtime.ok === true, endpoint: runtime.endpoint || null, error: runtime.error || null });
-
     let wda = await this.wdaStatus(args);
     if (wda.ok !== true && booleanArg(args.startWda)) {
       const start = await this.startWda({ ...args, deviceId: device.identifier || device.udid });
       steps.push({ name: 'start-wda', ...start });
       if (start.ok === true) {
         wda = start.status || await this.wdaStatus(args);
+      } else {
+        return { ok: false, error: start.error, message: start.message, device, steps };
       }
     }
     steps.push({ name: 'wda', ok: wda.ok === true, url: wda.url || null, error: wda.error || null });
@@ -233,16 +284,27 @@ class IOSBridgeProvider {
         error: 'ios_wda_required',
         device,
         steps,
-        message: 'Full iOS control requires WebDriverAgent/XCUITest to be built, signed, installed, and reachable. Pass --wda-url for an existing WDA, or pass --wda-project-path, --team-id, and --start-wda to let setup run xcodebuild.',
+        message: 'Full iOS control requires the prepared, signed WDA Runner. Pass --wda-runner-bundle-id for an existing bound Runner, or --team-id and --start-wda to build and start it. An optional --wda-url must match the selected Runner container identity.',
       };
     }
+    // Starting the XCTest Runner changes the foreground App. Launch the target
+    // afterwards and verify a fresh SDK response, not its pre-WDA snapshot.
+    if (args.bundleId) {
+      const launch = await this.launchApp({ ...args, deviceId: device.identifier || device.udid });
+      steps.push({ name: 'launch-app', ...launch });
+      if (launch.ok === false) return { ok: false, error: 'ios_app_launch_failed', device, steps };
+    }
+    const runtime = args.bundleId || args.runtimeUrl || args.iosHost || args.host
+      ? await this.runtimeGet(args, '/v1/status', { allowUnavailable: true, device })
+      : { ok: false, error: 'bundle_id_or_runtime_endpoint_required' };
+    steps.push({ name: 'runtime', ok: runtime.ok === true, endpoint: runtime.endpoint || null, error: runtime.error || null });
     if (runtime.ok !== true) {
       return {
         ok: false,
         error: 'ios_runtime_required',
         device,
         steps,
-        message: 'WDA is reachable, but the in-app iOS runtime is not reachable. Launch a debug app that includes AiAppBridgeIOS and pass bundleId/iosHost/iosPort if auto-discovery cannot find it.',
+        message: 'The bound WDA Runner is reachable, but the App SDK is not. Launch a debug App with AiAppBridgeIOS and supply its exact deviceId and bundleId; runtimeUrl or iosHost/iosPort may specify an explicitly forwarded endpoint.',
       };
     }
 
@@ -253,6 +315,7 @@ class IOSBridgeProvider {
       device,
       runtimeEndpoint: runtime.endpoint,
       wdaUrl: wda.url,
+      wdaRunnerBundleId: wda.runtimeBinding.bundleId,
       steps,
     };
   }
@@ -269,7 +332,7 @@ class IOSBridgeProvider {
       '--device',
       device.identifier || device.udid,
       resolvedPath,
-    ]);
+    ], { mutation: true });
     return {
       ok: true,
       device,
@@ -291,7 +354,7 @@ class IOSBridgeProvider {
     ];
     if (args.terminateExisting !== false) launchArgs.push('--terminate-existing');
     launchArgs.push(bundleId);
-    const raw = await this.devicectlJson(ctx, launchArgs);
+    const raw = await this.devicectlJson(ctx, launchArgs, { mutation: true });
     return {
       ok: true,
       device,
@@ -323,6 +386,7 @@ class IOSBridgeProvider {
       path: outFile,
       generatedDefault,
       directory: path.dirname(outFile),
+      sha256: createHash('sha256').update(await fs.promises.readFile(outFile)).digest('hex'),
     };
     if (generatedDefault) {
       artifact.retention = await pruneGeneratedArtifacts({
@@ -342,38 +406,99 @@ class IOSBridgeProvider {
   }
 
   async runtimeGet(args, endpointPath, options = {}) {
-    const endpoint = await this.resolveRuntimeEndpoint(args, options);
-    if (!endpoint.ok) return endpoint;
     try {
-      const response = await this.httpRequest('GET', `${endpoint.baseUrl}${endpointPath}`, null, {
-        timeoutMs: numberArg(args.httpTimeoutMs, defaultHttpTimeoutMs),
-      });
-      return {
-        ...(response && typeof response === 'object' ? response : { value: response }),
-        ok: response?.ok === false ? false : true,
-        endpoint: endpoint.baseUrl,
-        device: endpoint.device || null,
-      };
+      return await this.runtimeRequest('GET', args, endpointPath, null, options);
     } catch (error) {
-      if (options.allowUnavailable) {
-        return { ok: false, error: 'ios_runtime_unreachable', endpoint: endpoint.baseUrl, message: error.message };
-      }
-      throw error;
+      if (!options.allowUnavailable) throw error;
+      return { ok: false, error: iosErrorCode(null, error), message: error.message,
+        dispatched: error.dispatched ?? false, ambiguous: error.ambiguous === true };
     }
   }
 
-  async runtimePost(args, endpointPath, body) {
-    const endpoint = await this.resolveRuntimeEndpoint(args);
-    if (!endpoint.ok) return endpoint;
-    const response = await this.httpRequest('POST', `${endpoint.baseUrl}${endpointPath}`, body, {
-      timeoutMs: numberArg(args.httpTimeoutMs, defaultHttpTimeoutMs),
-    });
-    return {
-      ...(response && typeof response === 'object' ? response : { value: response }),
-      ok: response?.ok === false ? false : true,
-      endpoint: endpoint.baseUrl,
-      device: endpoint.device || null,
+  async runtimePost(args, endpointPath, body, options = {}) {
+    return this.runtimeRequest('POST', args, endpointPath, body, options);
+  }
+
+  async runtimePort(args, options = {}) {
+    const endpoint = await this.resolveRuntimeEndpoint(args, options);
+    const httpOptions = { timeoutMs: this.context(args).httpTimeoutMs, headers: bindingHeaders(endpoint.runtimeBinding) };
+    const request = async (method, endpointPath, payload) => {
+      let response;
+      try {
+        response = await this.httpRequest(method, `${endpoint.baseUrl}${endpointPath}`, payload, httpOptions);
+      } catch (error) {
+        if (!error.response) throw error;
+        assertRuntimeResponse(error.response, endpoint.runtimeBinding);
+        if (error.response.ok !== false || typeof error.response.error !== 'string' || !/^[a-z][a-z0-9_]*$/.test(error.response.error)) {
+          throw bindingFailure('invalid_ios_runtime_response', 'The bound runtime HTTP error has no structured rejection reason.');
+        }
+        // A validated SDK rejection is still a protocol response. Preserve its
+        // candidates, receipt and dispatch status instead of replacing it with
+        // an exception containing only the error string.
+        return error.response;
+      }
+      assertRuntimeResponse(response, endpoint.runtimeBinding);
+      return response;
     };
+    return { endpoint, get: endpointPath => request('GET', endpointPath, null), post: (endpointPath, payload) => request('POST', endpointPath, payload) };
+  }
+
+  async runtimeRequest(method, args, endpointPath, body, options = {}) {
+    return runExecution({ timeoutMs: args.timeoutMs ?? 30000, mutation: method === 'POST' }, async () => {
+      const port = await this.runtimePort(args, options);
+      const endpoint = port.endpoint;
+      let response;
+      if (method === 'POST') {
+        const status = await port.get('/v1/status');
+        if (status.ok === false) return { ...status, dispatched: false, ambiguous: false };
+        const kind = endpointPath === '/v1/h5/action' ? 'h5' : 'flutter';
+        const target = { platform: 'ios', deviceId: endpoint.device.udid, bundleId: args.bundleId,
+          ...Object.fromEntries(['runtimeUrl', 'iosHost', 'iosPort', 'devicectl'].filter(key => args[key] !== undefined).map(key => [key, args[key]])) };
+        response = await executeIOSAction({ port, kind, payload: body, status, target, timeoutMs: args.timeoutMs ?? 30000,
+          actionId: args.runtimeActionId ?? args.requestId });
+      } else { response = await port.get(endpointPath); checkExecution(); }
+      return { ...response, endpoint: endpoint.baseUrl, device: endpoint.device, runtimeBinding: endpoint.runtimeBinding };
+    });
+  }
+
+  async executionControl(args) {
+    const device = await this.requireDevice(args);
+    const lease = this.lease || getProcessDeviceMutationLease();
+    const key = iosDeviceKey(device);
+    if (args.kind === 'wda') {
+      if (args.operation === 'reconcile') return reconcileWDA({ lease, device, args,
+        createPort: target => openWdaPort(this, target, device) });
+      const port = await openWdaPort(this, args, device);
+      if (args.operation === 'status') return { ok: true, device, ownership: lease.status(key), runtime: port.status,
+        runtimeBinding: port.runtimeBinding };
+      const identity = { actionId: args.actionId, runtimeEpoch: args.runtimeEpoch };
+      const cancelled = args.operation === 'cancel' ? await port.request('POST', '/aab/execution/cancel', identity) : undefined;
+      if (cancelled && cancelled.ok !== true) return cancelled;
+      return lookupCompletion(completionPort(port), 'wda', identity, cancelled);
+    }
+    if (args.operation === 'reconcile') return reconcileIOS({ lease, device, args,
+      createPort: target => this.runtimePort(target, { device }) });
+    if (args.operation === 'status') return {
+      ok: true, device, ownership: lease.status(key),
+      runtime: await this.runtimeGet(args, '/v1/execution/status', { device, allowUnavailable: true }),
+    };
+    const port = await this.runtimePort(args, { device });
+    const identity = { actionId: args.actionId, runtimeEpoch: args.runtimeEpoch };
+    if (args.operation === 'cancel') {
+      const response = await port.post(`/v1/${args.kind}/cancel`, identity);
+      if (response.ok !== true) return response;
+      return lookupCompletion(port, args.kind, identity, response);
+    }
+    return lookupCompletion(port, args.kind, identity);
+  }
+
+  async h5Control(command, args, context) {
+    const tree = await this.runtimeGet(args, withQuery('/v1/h5/dom', args.webViewId === undefined ? {} : { webViewId: args.webViewId }), context);
+    if (tree.ok !== true) return tree;
+    const selected = h5Target.selectH5Node(tree, args.selector, args.expectedTarget);
+    if (!selected.ok) return selected;
+    return this.runtimePost(args, '/v1/h5/action', { payload: { action: h5Controls.get(command),
+      ...selected.targetRef, ...(command === 'ios-h5-input' ? { text: args.text } : {}) } }, context);
   }
 
   async flutterTree(args = {}) {
@@ -382,6 +507,7 @@ class IOSBridgeProvider {
     return {
       ok: true,
       endpoint: status.endpoint,
+      runtimeBinding: status.runtimeBinding,
       device: status.device || null,
       flutter: status.flutter || null,
       layout: status.flutter?.layout || null,
@@ -393,8 +519,10 @@ class IOSBridgeProvider {
     if (tree.ok === false) return tree;
     const operable = tree.layout?.operable || null;
     return {
+      ...operable,
       ok: Boolean(operable),
       endpoint: tree.endpoint,
+      runtimeBinding: tree.runtimeBinding,
       device: tree.device || null,
       operable,
       nodes: operable?.nodes || [],
@@ -403,422 +531,261 @@ class IOSBridgeProvider {
     };
   }
 
-  async resolveRuntimeEndpoint(args = {}, options = {}) {
-    if (args.runtimeUrl) {
-      return { ok: true, baseUrl: stripTrailingSlash(String(args.runtimeUrl)), device: options.device || null };
+  async flutterControl(command, args, context = {}) {
+    const port = await this.runtimePort(args, context);
+    const status = await port.get('/v1/status');
+    if (status.ok !== true) return { ...status, dispatched: false, ambiguous: false };
+    const action = flutterControls.get(command);
+    let payload = { action };
+    if (!['back', 'hideKeyboard'].includes(action)) {
+      const bound = bindFlutterAction(status.flutter?.layout?.operable, {
+        action, selector: args.selector,
+        ...(action === 'inputText' ? { text: args.text } : {}),
+        ...(action === 'scrollBy' ? { delta: args.delta } : {}),
+      });
+      if (!bound.ok) return bound;
+      payload = bound.payload;
     }
-    const explicitHost = args.iosHost || args.host;
-    const explicitPort = args.iosPort || args.port;
-    const device = options.device || await this.optionalDevice(args);
-    if (
-      !explicitHost
-      && device
-      && (
-        device.developerModeStatus === 'disabled'
-        || device.ddiServicesAvailable === false
-        || device.tunnelState === 'unavailable'
-      )
-    ) {
-      return {
-        ok: false,
-        error: 'ios_tunnel_unavailable',
-        device,
-        message: 'The selected iPhone cannot expose a debug runtime tunnel. Enable Developer Mode, unlock/trust the device, and let Xcode finish preparing it; or pass an explicit runtimeUrl/iosHost.',
-      };
-    }
-    let port = explicitPort ? Number(explicitPort) : null;
-    let portSource = explicitPort ? 'explicit' : '';
-    if (!port && args.bundleId && device) {
-      const copied = await this.readRuntimePortFile(args, device);
-      if (copied.ok && copied.port) {
-        port = copied.port;
-        portSource = 'app-container-port-file';
-      }
-    }
-
-    const hosts = runtimeHostCandidates(explicitHost, device);
-    if (port && hosts.length) {
-      return {
-        ok: true,
-        baseUrl: `http://${formatHostForUrl(hosts[0])}:${port}`,
-        device,
-        port,
-        portSource,
-        hostSource: explicitHost ? 'explicit' : 'device',
-      };
-    }
-
-    if (hosts.length) {
-      const probe = await this.probeRuntimeHosts(hosts, args, device);
-      if (probe.ok) return probe;
-    }
-
-    if (!hosts.length) {
-      return {
-        ok: false,
-        error: 'ios_tunnel_unavailable',
-        device,
-        message: 'No iOS runtime host is available. Pass --runtime-url or --ios-host, or enable Developer Mode/unlock the device so devicectl exposes a tunnel IP.',
-      };
-    }
-    return {
-      ok: false,
-      error: 'ios_runtime_port_unavailable',
-      device,
-      message: 'Could not discover the AiAppBridgeIOS runtime port. Pass --ios-port or launch an app that writes ai_app_bridge_port.json through the iOS runtime.',
-    };
+    const endpoint = port.endpoint;
+    const target = { platform: 'ios', deviceId: endpoint.device.udid, bundleId: args.bundleId,
+      ...Object.fromEntries(['runtimeUrl', 'iosHost', 'iosPort', 'devicectl'].filter(key => args[key] !== undefined).map(key => [key, args[key]])) };
+    const result = await executeIOSAction({ port, kind: 'flutter', payload, status, target,
+      timeoutMs: args.timeoutMs ?? 30000, actionId: args.runtimeActionId ?? args.requestId });
+    return { ...result, endpoint: endpoint.baseUrl, device: endpoint.device, runtimeBinding: endpoint.runtimeBinding };
   }
 
-  async probeRuntimeHosts(hosts, args, device) {
-    const timeoutMs = numberArg(args.probeTimeoutMs, defaultProbeTimeoutMs);
-    const start = Number(args.portStart || defaultRuntimePort);
-    const count = Number(args.portSearchCount || runtimePortSearchCount);
-    for (const host of hosts) {
-      for (let offset = 0; offset < count; offset += 1) {
-        const port = start + offset;
-        const baseUrl = `http://${formatHostForUrl(host)}:${port}`;
-        try {
-          const status = await this.httpRequest('GET', `${baseUrl}/v1/status`, null, { timeoutMs });
-          if (status && status.debugBridge) {
-            return { ok: true, baseUrl, device, port, portSource: 'runtime-probe', hostSource: 'probe' };
-          }
-        } catch (_) {
-          // Probe failures are expected while scanning.
-        }
-      }
+  async resolveRuntimeEndpoint(args = {}, options = {}) {
+    const target = normalizeExecutionTarget({ platform: 'ios', deviceId: args.deviceId, bundleId: args.bundleId,
+      ...Object.fromEntries(['runtimeUrl', 'iosHost', 'iosPort'].filter(key => args[key] !== undefined).map(key => [key, args[key]])) });
+    const device = options.device ?? await this.requireDevice(args);
+    if (![device.identifier, device.udid].includes(target.deviceId)) {
+      throw bindingFailure('ios_device_not_found', 'deviceId must match the selected devicectl identifier or UDID.');
     }
-    return { ok: false };
+    if (device.developerModeStatus !== 'enabled' || device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') {
+      throw bindingFailure('ios_tunnel_unavailable', 'The selected iPhone must expose a connected developer tunnel. Unlock/trust the device and let Xcode prepare it.');
+    }
+    const runtimeBinding = await this.readRuntimePortFile(args, device);
+    const host = target.iosHost ?? device.tunnelIPAddress;
+    if (!target.runtimeUrl && !host) {
+      throw bindingFailure('ios_tunnel_unavailable', 'The selected device has no tunnel IP. Supply runtimeUrl or iosHost for an explicitly forwarded endpoint.');
+    }
+    const port = target.iosPort ?? runtimeBinding.port;
+    const baseUrl = target.runtimeUrl ?? `http://${formatHostForUrl(host)}:${port}`;
+    // Validate the constructed URL too; a host cannot smuggle a path or query.
+    let url;
+    try { url = new URL(baseUrl); }
+    catch { throw bindingFailure('invalid_argument', 'The iOS runtime endpoint is not a valid URL.'); }
+    if (url.username || url.password || url.search || url.hash || (!target.runtimeUrl && url.pathname !== '/')) {
+      throw bindingFailure('invalid_argument', 'iosHost must be a hostname or IP address. runtimeUrl must have no credentials, query or fragment.');
+    }
+    checkExecution();
+    return { ok: true, baseUrl: stripTrailingSlash(url.href), device, runtimeBinding };
   }
 
   async readRuntimePortFile(args, device) {
-    const ctx = {
-      ...this.context(args),
-      deviceTimeoutSec: numberArg(args.portFileTimeoutSec, 5),
-    };
+    return descriptorBinding(await this.readContainerDescriptor(args, device, args.bundleId, 'ai_app_bridge_port.json'), args.bundleId);
+  }
+
+  async readContainerDescriptor(args, device, bundleId, filename) {
+    const ctx = { ...this.context(args), deviceTimeoutSec: 5 };
     const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ai-app-bridge-ios-port-'));
     try {
       await this.devicectlJson(ctx, [
-        'device',
-        'copy',
-        'from',
-        '--device',
-        device.identifier || device.udid,
-        '--domain-type',
-        'appDataContainer',
-        '--domain-identifier',
-        requiredString(args.bundleId, 'bundleId'),
-        '--source',
-        'Documents/ai_app_bridge_port.json',
-        '--destination',
-        tempDir,
+        'device', 'copy', 'from', '--device', device.identifier,
+        '--domain-type', 'appDataContainer', '--domain-identifier', bundleId,
+        '--source', `Documents/${filename}`, '--destination', path.join(tempDir, filename),
       ]);
-      const portFile = findFileByName(tempDir, 'ai_app_bridge_port.json');
-      if (!portFile) return { ok: false, error: 'ios_runtime_port_file_absent' };
-      const payload = JSON.parse(await fs.promises.readFile(portFile, 'utf8'));
-      const port = Number(payload.port);
-      return Number.isFinite(port) ? { ok: true, port, payload } : { ok: false, error: 'invalid_ios_runtime_port_file', payload };
-    } catch (error) {
-      return { ok: false, error: 'ios_runtime_port_file_unavailable', message: error.message };
+      checkExecution();
+      const portFile = path.join(tempDir, filename);
+      let data;
+      try {
+        const handle = await fs.promises.open(portFile, 'r');
+        try {
+          const buffer = Buffer.alloc(4097);
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+          if (bytesRead > 4096) throw bindingFailure('invalid_ios_runtime_descriptor', 'Runtime descriptor exceeds 4096 bytes.');
+          data = buffer.subarray(0, bytesRead).toString('utf8');
+        } finally { await handle.close(); }
+      } catch (error) {
+        if (error.code === 'ENOENT') throw bindingFailure('ios_runtime_descriptor_absent', `The selected App container has no ${filename}. Start the matching runtime before querying it.`);
+        throw error;
+      }
+      let descriptor;
+      try { descriptor = JSON.parse(data); }
+      catch { throw bindingFailure('invalid_ios_runtime_descriptor', 'The selected App runtime descriptor is not valid JSON.'); }
+      return descriptor;
     } finally {
       await fs.promises.rm(tempDir, { recursive: true, force: true });
     }
   }
 
   async wdaStatus(args = {}) {
-    const url = wdaBaseUrl(args);
     try {
-      const response = await this.httpRequest('GET', `${url}/status`, null, {
-        timeoutMs: numberArg(args.httpTimeoutMs, defaultHttpTimeoutMs),
-      });
-      return {
-        ok: true,
-        url,
-        value: response?.value || response,
-      };
+      const port = await openWdaPort(this, args);
+      return { ok: true, url: port.baseUrl, device: port.device, runtimeBinding: port.runtimeBinding, value: port.status };
     } catch (error) {
-      return {
-        ok: false,
-        error: 'ios_wda_unreachable',
-        url,
-        message: error.message,
-      };
+      return { ok: false, error: iosErrorCode(null, error), message: error.message,
+        dispatched: error.dispatched ?? false, ambiguous: error.ambiguous === true };
     }
+  }
+
+  async wdaSession(args, context = {}) {
+    const port = await openWdaPort(this, args, context.device);
+    if (args.operation === 'status') return { ok: true, runtimeBinding: port.runtimeBinding, ...(await port.session(false)) };
+    if (args.operation === 'create') {
+      const state = await port.session(false);
+      if (state.session !== null) return { ok: false, error: 'ios_wda_session_busy', dispatched: false, ambiguous: false };
+      const foreground = wdaTarget(state.foreground);
+      if (foreground.bundleId !== args.bundleId) return { ok: false, error: 'ios_wda_target_changed', dispatched: false, ambiguous: false };
+      const result = await executeWDAAction({ port, args, operation: 'session-create', selected: foreground });
+      if (result.ok !== true) return { ...result, runtimeBinding: port.runtimeBinding };
+      const selected = wdaTarget(result.value, true);
+      if (selected.bundleId !== foreground.bundleId || selected.processId !== foreground.processId) {
+        throw bindingFailure('ios_wda_target_changed', 'The App process changed while the WDA session was being created.');
+      }
+      return { ...result, session: selected, runtimeBinding: port.runtimeBinding, device: port.device };
+    }
+    const selected = await port.session();
+    const result = await executeWDAAction({ port, args, operation: 'session-close', selected });
+    return { ...result, ...(result.ok ? { closedSession: selected } : {}), runtimeBinding: port.runtimeBinding };
   }
 
   async wdaSource(args = {}) {
-    const session = await this.ensureWdaSession(args);
-    if (!session.ok) return session;
-    const response = await this.wdaRequest(args, 'GET', `/session/${session.sessionId}/source?format=json`);
-    return { ok: true, session, source: response?.value || response };
+    const port = await openWdaPort(this, args);
+    return this.nativeObservation(port);
+  }
+
+  async nativeObservation(port) {
+    const session = await port.session();
+    const source = await port.request('GET', `/session/${encodeURIComponent(session.sessionId)}/source?format=json`, null, session);
+    if (!source || typeof source !== 'object' || Array.isArray(source)) throw bindingFailure('invalid_ios_wda_tree', 'WDA must return its JSON UI tree.');
+    return { ok: true, session, source, device: port.device, runtimeBinding: port.runtimeBinding,
+      nativeTargetSchema: port.status.nativeTargetSchema };
+  }
+
+  async nativeControl(command, args, context = {}) {
+    const port = await openWdaPort(this, args, context.device);
+    if (port.status.nativeTargetSchema !== nativeTarget.schema) return {
+      ok: false, error: 'ios_native_target_schema_required', dispatched: false, ambiguous: false,
+    };
+    const observation = await this.nativeObservation(port);
+    const selected = nativeTarget.bindNativeTarget(observation, args.selector, args.expectedTarget);
+    if (!selected.ok) return selected;
+    const operation = nativeControls.get(command);
+    const payload = { targetRef: selected.targetRef.element,
+      ...(operation === 'native-input' ? { text: args.text, clearFirst: true } : {}) };
+    const result = await executeWDAAction({ port, args, operation, selected: observation.session, payload });
+    return { ...result, transport: 'wda-managed-native', action: operation, session: observation.session,
+      resolved: selected.targetRef, matched: 1, runtimeBinding: port.runtimeBinding };
   }
 
   async wdaTap(args = {}) {
-    const x = requiredNumber(args.tapX ?? args.x, 'tapX');
-    const y = requiredNumber(args.tapY ?? args.y, 'tapY');
-    const session = await this.ensureWdaSession(args);
-    if (!session.ok) return session;
-    const body = { x, y };
-    try {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/wda/tap/0`, body);
-      return { ok: true, transport: 'wda', action: 'tap', session, x, y, response };
-    } catch (firstError) {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/actions`, pointerAction(x, y));
-      return { ok: true, transport: 'wda-actions', action: 'tap', session, x, y, firstError: firstError.message, response };
-    }
+    const port = await openWdaPort(this, args);
+    const session = await port.session();
+    const x = requiredNumber(args.tapX, 'tapX'), y = requiredNumber(args.tapY, 'tapY');
+    const result = await executeWDAAction({ port, args, operation: 'tap', selected: session, payload: { x, y } });
+    return { ...result, transport: 'wda', action: 'tap', session, x, y, runtimeBinding: port.runtimeBinding };
   }
 
   async wdaInput(args = {}) {
-    const text = requiredInputString(args.text ?? args.value, 'text');
-    const session = await this.ensureWdaSession(args);
-    if (!session.ok) return session;
-    const tapped = args.tapX !== undefined && args.tapY !== undefined
-      ? await this.wdaTap({ ...args, wdaSessionId: session.sessionId })
-      : null;
-    const body = { value: [...text], text };
-
-    const elementTarget = await this.resolveInputElement(args, session, tapped);
-    if (elementTarget.elementId) {
-      const elementPath = `/session/${session.sessionId}/element/${encodeURIComponent(elementTarget.elementId)}`;
-      const clickResponse = await this.wdaRequest(args, 'POST', `${elementPath}/click`, {});
-      const clearResponse = booleanArg(args.clearFirst)
-        ? await this.wdaRequest(args, 'POST', `${elementPath}/clear`, {})
-        : null;
-      const response = await this.wdaRequest(args, 'POST', `${elementPath}/value`, body);
-      return {
-        ok: true,
-        transport: 'wda-element-value',
-        action: 'input',
-        session,
-        textLength: text.length,
-        tapped,
-        element: elementTarget,
-        clicked: Boolean(clickResponse),
-        cleared: Boolean(clearResponse),
-        response,
-      };
+    const port = await openWdaPort(this, args);
+    const session = await port.session();
+    const text = requiredInputString(args.text, 'text');
+    const prefix = `/session/${encodeURIComponent(session.sessionId)}`;
+    let elementId = args.elementId;
+    if (args.accessibilityId !== undefined) {
+      const matches = await port.request('POST', `${prefix}/elements`, { using: 'accessibility id', value: args.accessibilityId }, session, false);
+      if (!Array.isArray(matches)) throw bindingFailure('invalid_ios_wda_elements', 'WDA must return an array of matching elements.');
+      if (matches.length !== 1) return { ok: false, error: matches.length ? 'ios_wda_target_ambiguous' : 'ios_wda_target_not_found', dispatched: false, ambiguous: false };
+      elementId = matches[0]?.['element-6066-11e4-a52e-4f735466cecf'];
     }
-
-    try {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/keys`, body);
-      return { ok: true, transport: 'wda', action: 'input', session, textLength: text.length, tapped, response };
-    } catch (firstError) {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/wda/keys`, body);
-      return { ok: true, transport: 'wda', action: 'input', session, textLength: text.length, tapped, firstError: firstError.message, response };
-    }
-  }
-
-  async resolveInputElement(args, session, tapped) {
-    if (args.elementId) {
-      return { elementId: String(args.elementId), source: 'explicit-element-id' };
-    }
-    if (args.accessibilityId) {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/element`, {
-        using: 'accessibility id',
-        value: String(args.accessibilityId),
-      });
-      return {
-        elementId: wdaElementIdFromResponse(response),
-        source: 'accessibility-id',
-        accessibilityId: String(args.accessibilityId),
-        response,
-      };
-    }
-    if (tapped?.ok === true) {
-      try {
-        const response = await this.wdaRequest(args, 'GET', `/session/${session.sessionId}/element/active`);
-        return {
-          elementId: wdaElementIdFromResponse(response),
-          source: 'active-element-after-tap',
-          response,
-        };
-      } catch (_) {
-        return { elementId: '', source: 'active-element-unavailable' };
-      }
-    }
-    return { elementId: '', source: 'none' };
+    if (typeof elementId !== 'string' || !elementId) throw bindingFailure('invalid_ios_wda_element', 'WDA must return the exact W3C element identity.');
+    const result = await executeWDAAction({ port, args, operation: 'input', selected: session,
+      payload: { elementId, text, clearFirst: args.clearFirst === true } });
+    return { ...result, transport: 'wda-managed-input', action: 'input', session, elementId, textLength: text.length,
+      runtimeBinding: port.runtimeBinding };
   }
 
   async wdaSwipe(args = {}) {
-    const startX = requiredNumber(args.startX, 'startX');
-    const startY = requiredNumber(args.startY, 'startY');
-    const endX = requiredNumber(args.endX, 'endX');
-    const endY = requiredNumber(args.endY, 'endY');
-    const durationMs = numberArg(args.durationMs, 500);
-    const session = await this.ensureWdaSession(args);
-    if (!session.ok) return session;
-    const actions = swipeAction(startX, startY, endX, endY, durationMs);
-    try {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/actions`, actions);
-      return { ok: true, transport: 'wda-actions', action: 'swipe', session, startX, startY, endX, endY, durationMs, response };
-    } catch (firstError) {
-      const response = await this.wdaRequest(args, 'POST', `/session/${session.sessionId}/wda/dragfromtoforduration`, {
-        fromX: startX,
-        fromY: startY,
-        toX: endX,
-        toY: endY,
-        duration: Math.max(durationMs / 1000, 0.05),
-      });
-      return { ok: true, transport: 'wda-drag', action: 'swipe', session, startX, startY, endX, endY, durationMs, firstError: firstError.message, response };
-    }
+    const port = await openWdaPort(this, args);
+    const session = await port.session();
+    const startX = requiredNumber(args.startX, 'startX'), startY = requiredNumber(args.startY, 'startY');
+    const endX = requiredNumber(args.endX, 'endX'), endY = requiredNumber(args.endY, 'endY');
+    const durationMs = args.durationMs ?? 500;
+    const result = await executeWDAAction({ port, args, operation: 'swipe', selected: session,
+      payload: { startX, startY, endX, endY, durationMs } });
+    return { ...result, transport: 'wda-actions', action: 'swipe', session, startX, startY, endX, endY, durationMs,
+      runtimeBinding: port.runtimeBinding };
   }
 
-  async ensureWdaSession(args = {}) {
-    if (args.wdaSessionId) {
-      return { ok: true, sessionId: String(args.wdaSessionId), reused: true };
-    }
-    const bundleId = args.bundleId ? String(args.bundleId) : undefined;
-    const body = {
-      capabilities: {
-        alwaysMatch: {
-          platformName: 'iOS',
-          automationName: 'XCUITest',
-          ...(bundleId ? { bundleId } : {}),
-        },
-        firstMatch: [{}],
-      },
-      desiredCapabilities: {
-        platformName: 'iOS',
-        automationName: 'XCUITest',
-        ...(bundleId ? { bundleId } : {}),
-      },
+  async wdaSetOrientation(args, context = {}) {
+    if (!nativeTarget.orientationSchema.enum.includes(args.orientation)) return {
+      ok: false, error: 'invalid_ios_wda_orientation', dispatched: false, ambiguous: false,
     };
-    try {
-      const response = await this.wdaRequest(args, 'POST', '/session', body);
-      const sessionId = wdaSessionIdFromResponse(response);
-      if (!sessionId) {
-        return { ok: false, error: 'ios_wda_session_missing', response };
-      }
-      return { ok: true, sessionId, created: true, bundleId: bundleId || null };
-    } catch (error) {
-      return {
-        ok: false,
-        error: 'ios_wda_session_failed',
-        message: error.message,
-        suggestion: 'Ensure WebDriverAgentRunner is installed, signed, running, and reachable; pass --wda-url if it is not on http://127.0.0.1:8100.',
-      };
-    }
-  }
-
-  async wdaRequest(args, method, endpointPath, body) {
-    return this.httpRequest(method, `${wdaBaseUrl(args)}${endpointPath}`, body, {
-      timeoutMs: numberArg(args.httpTimeoutMs, defaultHttpTimeoutMs),
-    });
+    const port = await openWdaPort(this, args, context.device);
+    if (port.status.orientationSchema !== 'aab.ios-orientation/v1') return {
+      ok: false, error: 'ios_wda_orientation_schema_required', dispatched: false, ambiguous: false,
+    };
+    const session = await port.session();
+    const resolved = nativeTarget.sessionRef({ session, runtimeBinding: port.runtimeBinding });
+    if (args.expectedSession !== undefined && !isDeepStrictEqual(args.expectedSession, resolved)) return {
+      ok: false, error: 'reobserve_required', dispatched: false, ambiguous: false,
+    };
+    const result = await executeWDAAction({ port, args, operation: 'set-orientation', selected: session,
+      payload: { orientation: args.orientation } });
+    return { ...result, transport: 'wda-managed-orientation', action: 'set-orientation', session,
+      resolved, runtimeBinding: port.runtimeBinding };
   }
 
   async startWda(args = {}) {
-    const wdaProjectPath = resolveWdaProjectPath(args);
-    if (!wdaProjectPath) {
-      return {
-        ok: false,
-        error: 'ios_wda_project_required',
-        message: 'Cannot start WDA because no WebDriverAgent.xcodeproj was found. Pass --wda-project-path or install a package that vendors appium-webdriveragent.',
-      };
-    }
-    const teamId = args.teamId || process.env.DEVELOPMENT_TEAM || process.env.AI_APP_BRIDGE_IOS_TEAM_ID;
-    if (!teamId) {
-      return {
-        ok: false,
-        error: 'ios_team_id_required',
-        message: 'Cannot sign WebDriverAgentRunner without a DEVELOPMENT_TEAM. Add an Apple account in Xcode and pass --team-id.',
-      };
-    }
-    const wdaBundleId = stringArg(args.wdaBundleId, process.env.AI_APP_BRIDGE_WDA_BUNDLE_ID || defaultWdaBundleId);
-    const ctx = this.context(args);
     const device = await this.requireDevice(args);
-    const xcodeArgs = [
-      '-project',
-      wdaProjectPath,
-      '-scheme',
-      'WebDriverAgentRunner',
-      '-destination',
-      `id=${device.udid || device.identifier}`,
-      'DEVELOPMENT_TEAM=' + teamId,
-      'PRODUCT_BUNDLE_IDENTIFIER=' + wdaBundleId,
-      '-allowProvisioningUpdates',
-      'test',
-    ];
-    const logFile = path.join(os.tmpdir(), `ai-app-bridge-wda-${Date.now()}-${Math.random().toString(36).slice(2)}.log`);
-    const out = fs.openSync(logFile, 'a');
-    const child = spawn(ctx.xcodebuild, xcodeArgs, {
-      detached: true,
-      stdio: ['ignore', out, out],
-      windowsHide: true,
-    });
-    fs.closeSync(out);
-    let spawnError = null;
-    let exited = false;
-    child.once('error', (error) => { spawnError = error; });
-    child.once('exit', () => { exited = true; });
-    child.unref();
-    await sleep(1200);
-    if (spawnError) {
-      return { ok: false, error: 'ios_wda_xcodebuild_spawn_failed', message: spawnError.message, logFile };
+    const wdaTestBundleId = args.wdaTestBundleId ?? defaultWdaTestBundleId;
+    const wdaRunnerBundleId = `${wdaTestBundleId}.xctrunner`;
+    if (args.wdaRunnerBundleId !== undefined && args.wdaRunnerBundleId !== wdaRunnerBundleId) {
+      return { ok: false, error: 'ios_wda_runner_bundle_mismatch', message: 'Starting WDA uses the Runner application ID <wdaTestBundleId>.xctrunner.' };
     }
-    const deadline = Date.now() + numberArg(args.wdaStartupTimeoutMs, 60000);
-    while (Date.now() < deadline) {
-      const status = await this.bestWdaStatus(args, device, logFile);
-      if (status.ok) {
-        return {
-          ok: true,
-          device,
-          wdaProjectPath,
-          wdaBundleId,
-          teamId,
-          pid: child.pid,
-          logFile,
-          status,
-        };
-      }
-      if (exited) {
-        return {
-          ok: false,
-          error: 'ios_wda_xcodebuild_exited',
-          device,
-          wdaProjectPath,
-          wdaBundleId,
-          teamId,
-          pid: child.pid,
-          logFile,
-          message: 'xcodebuild exited before WebDriverAgent became reachable. Check the log file for signing or provisioning errors.',
-        };
-      }
-      await sleep(1000);
-    }
-    return {
-      ok: false,
-      error: 'ios_wda_start_timeout',
-      device,
-      wdaProjectPath,
-      wdaBundleId,
-      teamId,
-      pid: child.pid,
-      logFile,
-      message: 'Timed out waiting for WebDriverAgent /status. If Xcode is showing a signing, trust, or device prompt, resolve it and rerun ios-setup.',
-    };
-  }
-
-  async bestWdaStatus(args, device, logFile) {
-    const urls = [
-      args.wdaUrl || process.env.AI_APP_BRIDGE_WDA_URL || '',
-      device?.tunnelIPAddress ? `http://${formatHostForUrl(device.tunnelIPAddress)}:8100` : '',
-      parseWdaServerUrlFromLog(logFile),
-      'http://127.0.0.1:8100',
-    ].filter(Boolean);
-    const uniqueUrls = [...new Set(urls.map(stripTrailingSlash))];
-    let last = null;
-    for (const url of uniqueUrls) {
-      const status = await this.wdaStatus({ ...args, wdaUrl: url });
-      if (status.ok) return status;
-      last = status;
-    }
-    return last || { ok: false, error: 'ios_wda_unreachable', url: 'http://127.0.0.1:8100' };
-  }
-
-  async optionalDevice(args = {}) {
+    const existing = await this.wdaStatus({ ...args, deviceId: device.udid, wdaRunnerBundleId });
+    if (existing.ok) return { ok: true, reused: true, device, wdaTestBundleId, wdaRunnerBundleId, status: existing };
+    const teamId = args.teamId || process.env.DEVELOPMENT_TEAM || process.env.AI_APP_BRIDGE_IOS_TEAM_ID;
+    if (!teamId) return { ok: false, error: 'ios_team_id_required', message: 'Signing WDA requires an explicit teamId or configured DEVELOPMENT_TEAM.' };
+    checkExecution();
+    const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'aab-wda-runtime-'));
+    const prepared = prepareWdaProject({ destination: path.join(directory, 'source') });
+    const ctx = this.context(args);
+    const xcodeArgs = ['-project', prepared.projectPath, '-scheme', 'WebDriverAgentRunner', '-sdk', 'iphoneos', '-destination', `id=${device.udid}`,
+      '-derivedDataPath', path.join(directory, 'build'), `DEVELOPMENT_TEAM=${teamId}`, `PRODUCT_BUNDLE_IDENTIFIER=${wdaTestBundleId}`,
+      'ENABLE_DEFAULT_HEADER_SEARCH_PATHS=NO', '-allowProvisioningUpdates'];
+    // Compile/sign on the Host before starting any remote test operation.
+    // A local compiler failure or cancellation cannot leave a phone task unknown.
+    const buildLogFile = path.join(directory, 'xcodebuild-build.log');
+    const build = spawnWdaProcess(ctx.xcodebuild, [...xcodeArgs, 'build-for-testing'], buildLogFile, false);
     try {
-      return await this.requireDevice(args);
-    } catch (_) {
-      return null;
+      while (!build.terminal) { checkExecution(); await executionSleep(100); }
+      if (build.spawnError || build.exitCode !== 0) return {
+        ok: false, error: build.spawnError ? 'ios_wda_xcodebuild_spawn_failed' : 'ios_wda_build_failed',
+        message: build.spawnError?.message ?? 'WDA compilation/signing failed before device test execution.',
+        phase: 'build', exitCode: build.exitCode, logFile: buildLogFile, prepared,
+      };
+    } finally { await build.stop(); }
+    const logFile = path.join(directory, 'xcodebuild.log');
+    const runtime = spawnWdaProcess(ctx.xcodebuild, [...xcodeArgs, 'test-without-building'], logFile, true);
+    const child = runtime.child;
+    let ready = false;
+    try {
+      while (!runtime.terminal) {
+        checkExecution();
+        const status = await this.wdaStatus({ ...args, deviceId: device.udid, wdaRunnerBundleId });
+        if (status.ok) {
+          ready = true; child.unref();
+          return { ok: true, device, wdaTestBundleId, wdaRunnerBundleId, pid: child.pid, logFile, buildLogFile, prepared, status };
+        }
+        await executionSleep(1000);
+      }
+      return { ok: false, error: runtime.spawnError ? 'ios_wda_xcodebuild_spawn_failed' : 'ios_wda_xcodebuild_exited',
+        message: runtime.spawnError?.message ?? 'xcodebuild closed before the selected Runner published a bound endpoint.',
+        phase: 'device-test', exitCode: runtime.exitCode, logFile, buildLogFile, prepared };
+    } finally {
+      if (!ready) await runtime.stop();
     }
   }
 
@@ -842,7 +809,7 @@ class IOSBridgeProvider {
     }
   }
 
-  async devicectlJson(ctx, args) {
+  async devicectlJson(ctx, args, { mutation = false } = {}) {
     const jsonPath = path.join(os.tmpdir(), `ai-app-bridge-devicectl-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
     const allArgs = [
       ...devicectlPrefix(ctx.devicectl),
@@ -854,12 +821,48 @@ class IOSBridgeProvider {
     ];
     try {
       const command = devicectlBinary(ctx.devicectl);
-      await execFileText(this.execFile, command, allArgs, { timeoutMs: (ctx.deviceTimeoutSec * 1000) + 5000 });
+      try { await execFileText(this.execFile, command, allArgs, { timeoutMs: (ctx.deviceTimeoutSec * 1000) + 5000, mutation }); }
+      catch (error) {
+        if (mutation) {
+          let reply;
+          try { reply = JSON.parse(await fs.promises.readFile(jsonPath, 'utf8')); } catch { /* No complete original reply: retain unknown ownership. */ }
+          if (reply) error.devicectlReply = reply;
+          const outcome = deviceCommandRejection(reply, allArgs.slice(devicectlPrefix(ctx.devicectl).length), error);
+          if (outcome) error.deviceOutcome = outcome;
+        }
+        throw error;
+      }
       return JSON.parse(await fs.promises.readFile(jsonPath, 'utf8'));
     } finally {
       await fs.promises.rm(jsonPath, { force: true });
     }
   }
+}
+
+function spawnWdaProcess(executable, args, logFile, mutation) {
+  checkExecution();
+  const out = fs.openSync(logFile, 'a');
+  let child;
+  try {
+    child = spawn(executable, args, { detached: true, stdio: ['ignore', out, out], windowsHide: true, env: wdaBuildEnvironment() });
+    if (mutation) child.once('spawn', () => markExecutionDispatched());
+  } finally { fs.closeSync(out); }
+  const state = { child, terminal: false, spawnError: null, exitCode: null };
+  const closed = new Promise(resolve => {
+    child.once('error', error => { state.spawnError = error; });
+    child.once('close', code => { state.terminal = true; state.exitCode = code; resolve(); });
+  });
+  state.stop = async () => {
+    if (state.terminal) return;
+    const signalGroup = signal => {
+      if (child.pid === undefined) return;
+      try { process.kill(-child.pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    };
+    signalGroup('SIGTERM');
+    const escalation = setTimeout(() => signalGroup('SIGKILL'), 1500);
+    try { await closed; } finally { clearTimeout(escalation); }
+  };
+  return state;
 }
 
 function parseDevicectlDevices(payload) {
@@ -922,92 +925,18 @@ function devicectlPrefix(value) {
   return path.basename(String(value || 'xcrun')) === 'xcrun' ? ['devicectl'] : [];
 }
 
-function runtimeHostCandidates(explicitHost, device) {
-  const hosts = [];
-  if (explicitHost) hosts.push(String(explicitHost));
-  if (device?.tunnelIPAddress) hosts.push(device.tunnelIPAddress);
-  if (Array.isArray(device?.potentialHostnames)) hosts.push(...device.potentialHostnames);
-  return [...new Set(hosts.filter(Boolean))];
-}
-
 function formatHostForUrl(host) {
   const value = String(host || '').trim();
   if (value.includes(':') && !value.startsWith('[')) return `[${value}]`;
   return value;
 }
 
-function wdaBaseUrl(args = {}) {
-  return stripTrailingSlash(String(args.wdaUrl || process.env.AI_APP_BRIDGE_WDA_URL || 'http://127.0.0.1:8100'));
-}
-
 function stripTrailingSlash(value) {
   return String(value).replace(/\/+$/, '');
 }
 
-function wdaSessionIdFromResponse(response) {
-  return response?.sessionId
-    || response?.value?.sessionId
-    || response?.value?.session_id
-    || response?.value?.capabilities?.sessionId
-    || '';
-}
-
-function wdaElementIdFromResponse(response) {
-  return response?.value?.ELEMENT
-    || response?.value?.['element-6066-11e4-a52e-4f735466cecf']
-    || response?.ELEMENT
-    || response?.['element-6066-11e4-a52e-4f735466cecf']
-    || '';
-}
-
-function parseWdaServerUrlFromLog(logFile) {
-  if (!logFile) return '';
-  try {
-    const text = fs.readFileSync(logFile, 'utf8');
-    const matches = [...text.matchAll(/ServerURLHere->(http:\/\/[^<\s]+)<-ServerURLHere/g)];
-    return matches.length ? matches[matches.length - 1][1] : '';
-  } catch (_) {
-    return '';
-  }
-}
-
-function pointerAction(x, y) {
-  return {
-    actions: [{
-      type: 'pointer',
-      id: 'finger1',
-      parameters: { pointerType: 'touch' },
-      actions: [
-        { type: 'pointerMove', duration: 0, origin: 'viewport', x, y },
-        { type: 'pointerDown', button: 0 },
-        { type: 'pause', duration: 60 },
-        { type: 'pointerUp', button: 0 },
-      ],
-    }],
-  };
-}
-
-function swipeAction(startX, startY, endX, endY, durationMs) {
-  return {
-    actions: [{
-      type: 'pointer',
-      id: 'finger1',
-      parameters: { pointerType: 'touch' },
-      actions: [
-        { type: 'pointerMove', duration: 0, origin: 'viewport', x: startX, y: startY },
-        { type: 'pointerDown', button: 0 },
-        { type: 'pause', duration: 80 },
-        { type: 'pointerMove', duration: durationMs, origin: 'viewport', x: endX, y: endY },
-        { type: 'pointerUp', button: 0 },
-      ],
-    }],
-  };
-}
-
 function parsePayload(args = {}) {
-  if (args.payload && typeof args.payload === 'object') return args.payload;
-  if (args.payload) return JSON.parse(String(args.payload));
-  return { action: requiredString(args.action, 'action') };
+  return args.payload;
 }
 
 function captureQuery(args = {}) {
@@ -1035,13 +964,14 @@ function withQuery(endpointPath, query) {
 function iosSetupSuggestion(device, runtime, wda) {
   if (!device) return 'Connect one iPhone, trust this Mac on the device, then rerun ios-doctor.';
   if (device.developerModeStatus !== 'enabled') return 'Enable Developer Mode on the iPhone and rerun ios-setup.';
-  if (device.ddiServicesAvailable === false) return 'Unlock/trust the iPhone and let Xcode finish preparing developer services.';
-  if (wda?.ok !== true) return 'Start or build WebDriverAgentRunner, then pass --wda-url if it is not on http://127.0.0.1:8100.';
-  if (runtime?.ok !== true) return 'Launch a debug app that includes AiAppBridgeIOS, then pass bundleId/iosHost/iosPort if needed.';
+  if (device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') return 'Unlock/trust the iPhone and let Xcode finish preparing a connected developer tunnel.';
+  if (wda?.ok !== true) return 'Start the prepared Runner with ios-setup --start-wda --team-id, or supply its exact wdaRunnerBundleId. An optional wdaUrl still requires container binding.';
+  if (runtime?.ok !== true) return 'Launch a debug App with AiAppBridgeIOS and supply its exact deviceId and bundleId.';
   return 'Rerun ios-setup after resolving the failing check.';
 }
 
 function iosErrorCode(command, error) {
+  if (typeof error?.code === 'string' && /^[a-z][a-z0-9_]*$/.test(error.code)) return error.code;
   const stderr = String(error?.stderr || '');
   const stdout = String(error?.stdout || '');
   const message = String(error?.message || error || '');
@@ -1079,91 +1009,37 @@ function truncateText(value, maxChars) {
   return text.length <= maxChars ? text : `${text.slice(0, maxChars)}...`;
 }
 
-function resolveWdaProjectPath(args = {}) {
-  const explicit = args.wdaProjectPath || process.env.AI_APP_BRIDGE_WDA_PROJECT;
-  if (explicit && fs.existsSync(explicit)) return path.resolve(explicit);
-  const candidates = [
-    path.join(process.cwd(), 'node_modules', 'appium-webdriveragent', 'WebDriverAgent.xcodeproj'),
-    path.join(process.cwd(), 'node_modules', 'appium-xcuitest-driver', 'node_modules', 'appium-webdriveragent', 'WebDriverAgent.xcodeproj'),
-    path.join(__dirname, '..', 'node_modules', 'appium-webdriveragent', 'WebDriverAgent.xcodeproj'),
-    path.join(__dirname, '..', 'node_modules', 'appium-xcuitest-driver', 'node_modules', 'appium-webdriveragent', 'WebDriverAgent.xcodeproj'),
-  ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) || '';
-}
-
-function requestJson(method, rawUrl, body, options = {}) {
-  const url = new URL(rawUrl);
-  const payload = body === undefined || body === null ? null : Buffer.from(JSON.stringify(body), 'utf8');
-  return new Promise((resolve, reject) => {
-    const request = http.request({
-      method,
-      protocol: url.protocol,
-      hostname: url.hostname.replace(/^\[|\]$/g, ''),
-      port: url.port,
-      path: `${url.pathname}${url.search}`,
-      timeout: options.timeoutMs || defaultHttpTimeoutMs,
-      headers: {
-        Accept: 'application/json',
-        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {}),
-      },
-    }, (response) => {
-      let text = '';
-      response.setEncoding('utf8');
-      response.on('data', (chunk) => { text += chunk; });
-      response.on('end', () => {
-        let parsed = null;
-        try {
-          parsed = text ? JSON.parse(text) : {};
-        } catch (_) {
-          parsed = { raw: text };
-        }
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          const error = new Error(`HTTP ${response.statusCode}: ${text.slice(0, 500)}`);
-          error.response = parsed;
-          reject(error);
-          return;
-        }
-        resolve(parsed);
-      });
-    });
-    request.on('timeout', () => {
-      request.destroy(new Error(`HTTP timeout: ${rawUrl}`));
-    });
-    request.on('error', reject);
-    if (payload) request.write(payload);
-    request.end();
-  });
-}
-
-function execFileText(execFileImpl, command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    execFileImpl(command, args, {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-      timeout: options.timeoutMs || 30000,
-      windowsHide: true,
-    }, (error, stdout, stderr) => {
-      if (error) {
-        error.message = `${error.message}${stderr ? `\n${stderr}` : ''}`;
-        reject(error);
-        return;
+async function requestJson(method, rawUrl, body, options = {}) {
+  return runExecution({ mutation: options.mutation ?? method !== 'GET' }, async () => {
+    let text;
+    try {
+      text = await httpRequestBounded(rawUrl, { method, payload: body === null ? undefined : body,
+        headers: { Accept: 'application/json', ...options.headers }, timeoutMs: options.timeoutMs ?? defaultHttpTimeoutMs,
+        maxBytes: 8 * 1024 * 1024 });
+    } catch (error) {
+      if (error.responseBody) {
+        try { error.response = JSON.parse(error.responseBody); } catch { /* preserve the transport failure */ }
       }
-      resolve({ stdout, stderr });
-    });
+      throw error;
+    }
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch { throw bindingFailure('invalid_ios_json_response', 'The iOS endpoint returned invalid JSON.'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw bindingFailure('invalid_ios_json_response', 'The iOS endpoint must return a JSON object.');
+    }
+    return parsed;
   });
 }
 
-function findFileByName(root, fileName) {
-  const entries = fs.readdirSync(root, { withFileTypes: true });
-  for (const entry of entries) {
-    const candidate = path.join(root, entry.name);
-    if (entry.isFile() && entry.name === fileName) return candidate;
-    if (entry.isDirectory()) {
-      const found = findFileByName(candidate, fileName);
-      if (found) return found;
-    }
+async function execFileText(execFileImpl, command, args, options = {}) {
+  try {
+    return await execFileBounded(command, args, { execFileImpl, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+      timeoutMs: options.timeoutMs ?? 30000, mutation: options.mutation === true, windowsHide: true });
+  } catch (error) {
+    if (error.stderr) error.message += `\n${error.stderr}`;
+    throw error;
   }
-  return '';
 }
 
 function normalizedObjectEnum(value) {
@@ -1203,10 +1079,6 @@ function booleanArg(value) {
   return value === true || value === 'true' || value === '1' || value === 1;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 module.exports = {
   IOSBridgeProvider,
   formatHostForUrl,
@@ -1214,5 +1086,4 @@ module.exports = {
   selectDeviceFromList,
   shapeDevice,
   requiredInputString,
-  wdaSessionIdFromResponse,
 };

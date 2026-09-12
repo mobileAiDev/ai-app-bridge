@@ -1,0 +1,1904 @@
+{
+  "schemaVersion": "aab.command/v1",
+  "phase": 3,
+  "scope": "A: Host execution budget and cancellation",
+  "commands": [
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": "clear=true",
+        "arbitration": null
+      }
+    },
+    {
+      "role": "execution",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "operation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.lifecycle"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.permissions"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.permissions"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "execution",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "operation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.permissions"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "app.interact"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": "script is supplied",
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": true
+      },
+      "script": {
+        "supported": true,
+        "permission": "capture.read"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": "script is supplied",
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "ios",
+      "targetKind": "ios-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "ios",
+      "targetKind": "ios-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "host",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "host",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "host",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "host",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "capability",
+      "platform": "web",
+      "targetKind": "web-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null,
+        "reason": "platform_target_not_implemented"
+      },
+      "execution": {
+        "kind": "mutation",
+        "mutation": true,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-app",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "expert",
+      "platform": "android",
+      "targetKind": "android-device",
+      "entrypoints": {
+        "mcp": true,
+        "cli": true,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    },
+    {
+      "role": "execution",
+      "platform": "android",
+      "targetKind": "android-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "operation",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "execution",
+      "platform": "android",
+      "targetKind": "android-target",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "operation",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": "single-process-physical-android-device"
+      }
+    },
+    {
+      "role": "evidence",
+      "platform": "host",
+      "targetKind": "operation",
+      "entrypoints": {
+        "mcp": true,
+        "cli": false,
+        "script": false
+      },
+      "script": {
+        "supported": false,
+        "permission": null
+      },
+      "execution": {
+        "kind": "query",
+        "mutation": false,
+        "conditionalMutation": null,
+        "arbitration": null
+      }
+    }
+  ]
+}

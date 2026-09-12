@@ -14,9 +14,9 @@ const { timingsFromScriptEvents } = require('../../../desktop/ai-app-bridge-cli/
 const ROOT = path.resolve(__dirname, '../../..');
 const SAMPLE = path.dirname(__dirname);
 const PACKAGE = 'org.localsend.localsend_app.bridge_sample';
-const SERIAL = 'FYZLAU49X8OVQGJ7';
+const SERIAL = process.env.AAB_VALIDATION_SERIAL || 'FYZLAU49X8OVQGJ7';
 const FROZEN = path.join(ROOT, 'build/ai_app_bridge_artifacts/localsend-evidence-2026-09-08');
-const BASELINE = path.join(FROZEN, 'settings-fixture-baseline.json');
+const BASELINE = process.env.AAB_VALIDATION_BASELINE || path.join(FROZEN, 'settings-fixture-baseline.json');
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 const write = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -68,6 +68,12 @@ function archiveReview(trial, directory, events) {
   for (const event of assertionEvents) counts[event.type.slice('assertion_'.length)] += 1;
   const uiAssertions = assertionEvents.filter(event => event.requiredEvidence.every(kind => ['tree', 'screenshot'].includes(kind)));
   const mobileAssertions = assertionEvents.filter(event => !uiAssertions.includes(event));
+  if (trial.kind === 'positive') {
+    const executionFailure = events.findLast(event => event.type === 'script_failed');
+    assert.equal(executionFailure, undefined, 'positive_script_failed:' + executionFailure?.error);
+    const rejected = uiAssertions.filter(event => event.type !== 'assertion_passed');
+    assert.equal(rejected.length, 0, 'positive_ui_assertions_not_passed:' + JSON.stringify(rejected.map(event => ({ name: event.name, verdict: event.verdict }))));
+  }
   assert.deepEqual(archive.recordedPayloads.counts.assertions, counts, 'archived_assertion_count_mismatch');
   assert.equal(calls.length, archive.recordedPayloads.counts.scriptCalls, 'archived_call_count_mismatch');
   assert.equal(assertions.length, assertionEvents.length, 'recorded_assertions_missing');
@@ -75,7 +81,29 @@ function archiveReview(trial, directory, events) {
   assert(calls.length > 0, 'script_calls_missing');
   const failures = calls.filter(call => !call.ok || call.error || call.ambiguous);
   const mobileCommands = ['events', 'logs', 'state', 'network'];
-  const uiFailures = failures.filter(call => !mobileCommands.includes(call.command));
+  const pickerReadRecoveries = [];
+  const changingPickerReads = failures.filter(call => call.command === 'uia-tree'
+    && call.error === 'uia_tree_changed' && call.dispatched === false
+    && call.ambiguous === false && call.execution.actionId === null);
+  for (const failed of changingPickerReads) {
+    const failure = events.find(event => event.type === 'call_failed' && event.callId === failed.execution.callId);
+    const notice = events.find(event => event.type === 'progress' && event.stage === 'picker-tree-reobserve'
+      && event.callId === failed.execution.callId && event.observationId === failed.evidence.observationId);
+    assert(failure && notice && notice.sequence > failure.sequence, 'unrecorded_picker_reobservation');
+    const accepted = events.find(event => event.sequence > notice.sequence && event.type === 'assertion_passed'
+      && event.name === 'Actual OPPO picker has Cancel and disabled Add(0)');
+    assert(accepted && accepted.atMs - failure.atMs <= 10000, 'picker_reobservation_not_completed_within_budget');
+    const following = calls.slice(calls.indexOf(failed) + 1);
+    const index = following.findIndex(call => call.evidence.observationId === accepted.observationId);
+    assert(index >= 0, 'picker_reobservation_payload_missing');
+    assert(following.slice(0, index + 1).every(call => call.command === 'uia-tree' && call.execution.actionId === null), 'action_before_picker_reobservation');
+    const recovered = following[index];
+    assert(recovered.ok && recovered.result.source === 'uiautomator' && recovered.result.truncated === false, 'picker_reobservation_incomplete');
+    pickerReadRecoveries.push({ callId: failed.execution.callId, error: failed.error,
+      observationId: failed.evidence.observationId, recoveredObservationId: accepted.observationId,
+      elapsedMs: accepted.atMs - failure.atMs, failedReadRetained: true });
+  }
+  const uiFailures = failures.filter(call => !mobileCommands.includes(call.command) && !changingPickerReads.includes(call));
   assert.equal(uiFailures.length, 0, 'ui_call_failed:' + JSON.stringify(uiFailures.map(call => ({ command: call.command, error: call.error }))));
   const mutations = calls.filter(call => call.execution.actionId);
   assert(mutations.every(call => call.execution.executionId === trial.operationId), 'action_operation_mismatch');
@@ -148,7 +176,7 @@ function archiveReview(trial, directory, events) {
     stableSnapshotPairs = pairs.length;
   }
   const data = { counts, calls: calls.length, actions: mutations.length, mechanicalFailures: failures.length,
-    keyPages, stableSnapshotPairs,
+    keyPages, stableSnapshotPairs, pickerReadRecoveries,
     captureReadFailures: failures.filter(call => mobileCommands.includes(call.command))
       .map(call => ({ callId: call.execution.callId, command: call.command, error: call.error, coverage: call.evidence.coverage })),
     ui: { passed: uiAssertions.filter(event => event.verdict === 'passed').length,
@@ -209,6 +237,16 @@ async function main({ out, mode, apkSha256 }) {
       assert.equal(manifest.scenarioInput, scenario);
       assert.equal(hash(path.join(ROOT, manifest.frozenEvidence.handoff)), manifest.frozenEvidence.handoffSha256);
       assert.equal(hash(path.join(ROOT, manifest.frozenEvidence.additional)), manifest.frozenEvidence.additionalSha256);
+      const targetContract = path.join(ROOT, manifest.frozenEvidence.targetContract);
+      assert.equal(hash(targetContract), manifest.frozenEvidence.targetContractSha256);
+      const currentEvidence = read(targetContract);
+      assert.equal(currentEvidence.schemaVersion, 'localsend.current-target-evidence/v1');
+      assert.equal(currentEvidence.ok, true);
+      for (const item of currentEvidence.files) {
+        const file = path.resolve(ROOT, item.path);
+        assert(file.startsWith(ROOT + path.sep), 'target_contract_evidence_outside_root');
+        assert.equal(fs.statSync(file).size, item.bytes); assert.equal(hash(file), item.sha256);
+      }
     }
   }
   const authoringContract = path.join(ROOT, 'desktop/ai-app-bridge-cli/docs/SCRIPT_AUTHORING.md');
@@ -244,7 +282,7 @@ async function main({ out, mode, apkSha256 }) {
       write(path.join(directory, 'initial-screenshot.json'), screen); assert.equal(screen.foregroundMatchesPackage, true, 'initial_foreground_mismatch');
       const inputs = { serial: SERIAL, outputDir, scenario, cancelBeforeSettings: kind === 'cancel' };
       if (kind === 'wrong-expectation') inputs.expectedDeviceName = 'AAB deliberately wrong device';
-      const spec = { schemaVersion: 'aab.code-script/v1', name, language: 'javascript', sourcePath: frozenSource, target: report.target,
+      const spec = { schemaVersion: 'aab.code-script/v1', name, language: 'javascript', sourcePath: frozenSource, target: { platform: 'android', ...report.target },
         inputs, permissions: ['app.read', 'app.interact', 'capture.read'], policy: { timeoutMs: 660000, restartPolicy: 'none' } };
       write(path.join(directory, 'spec.json'), spec);
       const events = []; let cursor = 0, page = 0;
@@ -305,7 +343,9 @@ async function main({ out, mode, apkSha256 }) {
       const post = settings(path.join(directory, 'settings-after.json')); trial.settingsRestored = JSON.stringify(post.settings) === JSON.stringify(baseline.settings);
       const finalTree = await run('flutter-nodes', report.target); write(path.join(directory, 'final-tree.json'), finalTree);
       const finalScreen = await run('screenshot', { ...report.target, outFile: path.join(directory, 'final.png') }); write(path.join(directory, 'final-screenshot.json'), finalScreen);
-      trial.result = events.findLast(event => event.type === 'script_completed')?.result || null;
+      const resultEnvelope = state.status === 'completed' ? await run('script', { operation: 'result', operationId: trial.operationId }) : null;
+      if (resultEnvelope) { assert.equal(resultEnvelope.ok, true, JSON.stringify(resultEnvelope)); assert.equal(resultEnvelope.persisted, true); }
+      trial.result = resultEnvelope?.result ?? null;
       trial.review = archiveReview(trial, directory, events); save();
       assert.deepEqual(post.settings, baseline.settings, 'final_settings_changed');
       assert.equal(finalScreen.foregroundMatchesPackage, true, 'final_foreground_mismatch');

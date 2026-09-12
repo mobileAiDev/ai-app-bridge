@@ -2,7 +2,8 @@
 
 Discover the public MCP command with `capabilities {"command":"evidence"}`.
 It works for both Intent operation IDs and Script execution IDs, including
-records retained after the MCP process has restarted. It does not require a
+records retained after the execution runtime has restarted. CLI and MCP use the
+same operation IDs and export command. Export does not require a
 connected phone or a live worker.
 
 ```json
@@ -18,7 +19,7 @@ connected phone or a live worker.
 ```
 
 Use `namespace: "script"` for a Script operation. Export reads the current
-MCP Host's configured FactStore (`AI_APP_BRIDGE_FACT_STORE_DIR`), drains its
+execution runtime's configured FactStore (`AI_APP_BRIDGE_FACT_STORE_DIR`), drains its
 queued writes, and freezes the retained records for exactly that namespace
 and operation. The parent directory must exist; the output directory must
 not exist. No existing directory is replaced.
@@ -92,25 +93,42 @@ reference set merely because the IDs exist.
 The archive preserves already persisted, sanitized values byte-for-value as
 JSON values. It does not change recorded serials or infer missing targets
 from the currently connected phone. `owner` retains the declared context,
-`observed` retains each observation's serial/package, and `foreground`
+`observed` retains each observation's declared device/App identity, and `foreground`
 retains explicit Intent route data. Script marker targets use `dispatch`
 and can contain explicit target overrides, including another serial when
 the Script supplies it. These roles preserve the current execution contract;
 the archive does not apply a new device allowlist or infer an absent target.
 
+New execution envelopes declare `schemaVersion: "aab.execution-evidence/v1"`.
+Their targets use an explicit platform discriminator; observations carry both
+`target` and `observedTarget` when the latter was actually observed. A pure
+Script call can have a null target. Archive verification also understands the
+original unversioned record format already frozen in archive v1/v2. It checks
+those original fields and hashes without adding a platform or rewriting bytes.
+New execution writes do not accept an old observation in place of a platform target.
+
 Currently persisted Intent content includes observations with raw trees,
 summaries, decisions, dispatch markers, and action receipts. Script content
 includes durable checkpoints, dispatch markers, and action receipts.
+Completed Scripts also persist their final JSON as a `result` record, with a
+terminal checkpoint `resultRef` binding its evidence ID, canonical byte count,
+persisted SHA256, original SHA256 and `original-json`/`redacted-json`
+representation. Export includes this retained record without requiring
+`includeRecordedPayloads`; it is independent of progress-event retention.
+Verification checks the checkpoint's binding to that result. An evicted result
+leaves partial reference closure rather than a reconstructed value. For a direct
+checked read, use `script {operation:"result",operationId:"…"}`.
 
 Without recorded payload inclusion, `externalPayloads` is `not-included`. External screenshot files, phone
-logs/network capture items, Script call results/assertions, and in-memory
+logs/network capture items, individual Script call results/assertions, and in-memory
 events are outside this archive. Existing external references are listed
 but not downloaded or dereferenced. Preserve those artifacts separately
 when the intended check requires them.
 
 `executionStatus` is `not-inferred` and `businessVerdict` is `not-evaluated`.
-The caller can inspect recorded decisions/checkpoints, but Intent cancellation
-and other in-memory state cannot be recovered from a successful export.
+The caller can inspect recorded terminal decisions/checkpoints, including a
+persisted cancellation. Export verification does not infer missing lifecycle
+state or reconstruct evicted records.
 Archive integrity alone does not establish a passed business assertion.
 
 ## Explicit recording for one execution

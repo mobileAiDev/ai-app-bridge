@@ -8,6 +8,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createTestScriptSupervisor: createScriptSupervisor } = require('./helpers/script-supervisor');
 const { createScriptCapturePort } = require('../bin/script/script-capture-port');
+const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
+const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 
 const ARTIFACT = path.join(
   __dirname,
@@ -41,7 +43,7 @@ function spec() {
     name: 'p8-overhead',
     language: 'javascript',
     source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
-    target: { serial: 'p8', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
   };
 }
 
@@ -83,9 +85,11 @@ test('P8 start receipt p95 stays at or under 500 ms', async () => {
 
 test('P8 Supervisor call overhead p95 stays at or under 25 ms', async () => {
   const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
+  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const started = await supervisor.handle({
     operation: 'start',
     script: spec(),
+    store,
     program: async (ctx) => {
       const samples = [];
       for (let i = 0; i < 40; i += 1) {
@@ -103,8 +107,10 @@ test('P8 Supervisor call overhead p95 stays at or under 25 ms', async () => {
     operationId: started.operationId,
     afterSequence: 0,
   });
-  const completed = status.events.find((event) => event.type === 'script_completed');
-  const fromProgram = completed && completed.result && completed.result.samples;
+  await supervisor.registry.get(started.operationId).running;
+  const completed = await supervisor.handle({ operation: 'result', operationId: started.operationId, store });
+  assert.equal(completed.ok, true, JSON.stringify(completed));
+  const fromProgram = completed.result.samples;
   assert.equal(Array.isArray(fromProgram) && fromProgram.length > 0, true);
   const summary = stats(fromProgram);
   writeArtifact('supervisorCall', summary);

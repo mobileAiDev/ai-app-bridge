@@ -1,0 +1,16 @@
+{
+  "exercise": "Barbell bench press",
+  "days": "Friday",
+  "initialSets": [
+    { "weight": 42.5, "reps": 8, "unit": "kg" },
+    { "weight": 45, "reps": 6, "unit": "kg" }
+  ],
+  "edit": { "setIndex": 1, "weight": 47.5 },
+  "expectedSets": [
+    { "weight": 42.5, "reps": 8, "unit": "kg" },
+    { "weight": 47.5, "reps": 6, "unit": "kg" }
+  ],
+  "expectedRepetitions": 14,
+  "expectedVolumeKg": 625,
+  "cancellation": "Cancel the existing set's Confirm Delete dialog; both sets must remain."
+}

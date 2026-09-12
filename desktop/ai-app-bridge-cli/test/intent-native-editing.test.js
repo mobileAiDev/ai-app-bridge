@@ -5,34 +5,38 @@ const { handle, resetIntentOperations } = require('../bin/intent/intent-entry');
 const { createProductionIntentDeviceAdapter } = require('../bin/intent/intent-production-adapter');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
-const { inputTextBridgePayload } = require('../bin/ai-app-bridge');
-const target = { serial: 'native-edit-test', packageName: 'example.edit' };
-function node(extra = {}) { return { visible: true, effectiveVisible: true, enabled: true, className: 'android.widget.EditText', resourceName: 'example.edit:id/title', text: 'Title', bounds: { left: 20, top: 40, right: 220, bottom: 100 }, children: [], ...extra }; }
+const { inputTextBridgePayload } = require('../bin/device-provider');
+const { nativeTargetRef } = require('../test-support/native-target-fixture');
+const target = { platform: 'android', serial: 'native-edit-test', packageName: 'example.edit' };
+function node(extra = {}) { return { targetRef: nativeTargetRef(), visible: true, effectiveVisible: true, enabled: true, editable: true, className: 'android.widget.EditText', resourceName: 'example.edit:id/title', text: 'Title', bounds: { left: 20, top: 40, right: 220, bottom: 100 }, children: [], ...extra }; }
 function tree(children = [node()]) { return { root: node({ className: 'android.view.ViewGroup', text: '', resourceName: 'root', bounds: { left: 0, top: 0, right: 400, bottom: 800 }, children }) }; }
-function adapter(calls = []) { return createProductionIntentDeviceAdapter({ ports: {
+function adapter(calls = []) { const device = createProductionIntentDeviceAdapter({ ports: {
+  bridgeTree: async () => device.liveTree,
   createBridgeContext: (args) => args,
   inputText: async (...args) => { calls.push(['inputText', ...args]); return { ok: true }; },
   tap: async (...args) => { calls.push(['tap', ...args]); return { ok: true }; },
-  swipe: async (...args) => { calls.push(['swipe', ...args]); return { ok: true }; },
+  nativeGesture: async (...args) => { calls.push(['nativeGesture', ...args]); return { ok: true }; },
   parseUiaViewport: () => { throw new Error('native JSON must not use UIA parser'); },
-} }); }
-function dispatch(device, action, rawTree = tree()) { return device.action({ ...target, actionId: 'edit:d1', spec: { provider: 'native', ...action }, rawTree }); }
+} }); return device; }
+function dispatch(device, action, rawTree = tree()) { device.liveTree = rawTree; return device.action({ ...target, actionId: 'edit:d1', spec: { provider: 'native', ...action }, rawTree }); }
 
 test('native input uses unique visible editable selector and real runtime action options', async () => {
   const calls = [];
   const result = await dispatch(adapter(calls), { action: 'inputText', selector: { resourceName: 'example.edit:id/title' }, value: '新标题' });
   assert.equal(result.ok, true); assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'inputText'); assert.equal(calls[0][2], '新标题');
-  assert.deepEqual(calls[0][3], { tapX: 120, tapY: 70, feedback: 'off', appLocalAction: true, runtimeActionId: 'edit:d1', requestId: 'edit:d1' });
-  assert.deepEqual(inputTextBridgePayload('新标题', calls[0][3]), { text: '新标题', x: 120, y: 70, actionId: 'edit:d1' });
+  const nativeTarget = { selector: { resourceName: 'example.edit:id/title' }, targetRef: nativeTargetRef() };
+  assert.deepEqual(calls[0][3], { nativeTarget, feedback: 'off', appLocalAction: true, runtimeActionId: 'edit:d1', requestId: 'edit:d1' });
+  assert.deepEqual(inputTextBridgePayload('新标题', calls[0][3]), { text: '新标题', ...nativeTarget, actionId: 'edit:d1' });
 });
 test('native selector rejects duplicate, invisible, noneditable and outside viewport without dispatch', async () => {
   const cases = [
     [tree([node(), node()]), 'native_selector_ambiguous'],
     [tree([node({ effectiveVisible: false })]), 'native_selector_not_found'],
-    [tree([node({ className: 'android.widget.TextView' })]), 'native_target_not_editable'],
+    [tree([node({ className: 'android.widget.TextView', editable: false })]), 'native_target_not_editable'],
+    [tree([node({ editable: undefined })]), 'native_target_not_editable'],
     [tree([node({ editable: false })]), 'native_target_not_editable'],
-    [tree([node({ className: 'com.philkes.notallyx.presentation.view.StylableEditTextWithHistory' })]), 'native_target_not_editable'],
+    [tree([node({ className: 'com.philkes.notallyx.presentation.view.StylableEditTextWithHistory', editable: undefined })]), 'native_target_not_editable'],
     [tree([node({ bounds: { left: 500, top: 10, right: 600, bottom: 100 } })]), 'native_selector_not_found'],
   ];
   for (const [rawTree, error] of cases) {
@@ -79,9 +83,15 @@ test('contentDescription selectors match the exact accessible name uniquely in t
   assert.equal(obscured.error, 'native_selector_not_found');
   assert.equal(calls.length, 1, 'ambiguous, partial and background matches never dispatch');
 });
-test('native scroll takes viewport from the current foreground root', async () => {
-  const calls = []; const result = await dispatch(adapter(calls), { action: 'scroll', direction: 'down', durationMs: 250 });
-  assert.equal(result.ok, true); assert.deepEqual(calls[0].slice(2), [200, 608, 200, 176, 250]);
+test('native scroll requires an explicit observed container and delegates geometry to the SDK', async () => {
+  const calls = [];
+  const spec = { action: 'scroll', direction: 'down', durationMs: 250 };
+  assert.equal((await dispatch(adapter(calls), spec)).error, 'explicit_native_selector_required');
+  const result = await dispatch(adapter(calls), { ...spec, selector: { resourceName: 'example.edit:id/title' } });
+  assert.equal(result.ok, true); assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'nativeGesture');
+  assert.equal(calls[0][1].serial, target.serial); assert.equal(calls[0][1].packageName, target.packageName);
+  assert.deepEqual(calls[0][2], { ...spec, selector: { resourceName: 'example.edit:id/title' }, targetRef: nativeTargetRef(), actionId: 'edit:d1' });
 });
 test('Intent observe acquires and commits a fresh revision without a decision or mutation', async () => {
   resetIntentOperations(); let reads = 0; let actions = 0;
@@ -92,7 +102,7 @@ test('Intent observe acquires and commits a fresh revision without a decision or
   assert.equal(next.ok, true); assert.equal(next.revision, 2); assert.notEqual(next.evidenceId, start.evidenceId); assert.equal(reads, 2); assert.equal(actions, 0);
   assert.equal(store.latest(start.operationId, 'observation').rawTree.root.children[0].text, 'read-2');
   assert.equal(store.latest(start.operationId, 'dispatch-marker'), null);
-  const stale = await handle({ operation: 'decide', operationId: start.operationId, decision: { decisionId: 'old', basedOnRevision: 1, agentDecision: 'act', action: { action: 'tap', text: 'Title' } } });
+  const stale = await handle({ operation: 'decide', operationId: start.operationId, decision: { decisionId: 'old', basedOnRevision: 1, agentDecision: 'act', action: { action: 'tap', selector: { text: 'Title' } } } });
   assert.equal(stale.error, 'reobserve_required'); assert.equal(actions, 0);
   handle({ operation: 'pause', operationId: start.operationId });
   const denied = await handle({ operation: 'observe', operationId: start.operationId });

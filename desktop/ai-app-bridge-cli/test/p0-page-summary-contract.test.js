@@ -7,8 +7,9 @@ const test = require('node:test');
 
 const { isolatedCommandDefinitions } = require('../bin/command-router');
 const { summarizeTree } = require('../bin/shared-kernel/summary-transformer');
-const { capabilityPayload, runGeneric } = require('../bin/mcp-server');
-const { executeCommand } = require('../bin/ai-app-bridge');
+const { capabilityPayload } = require('../bin/mcp-server');
+const { runGeneric } = require('../test-support/host-client');
+const { executeCommand } = require('../test-support/host-client');
 const snapshot = require('./fixtures/legacy-surface-g0.json');
 const nativeFixture = require('./fixtures/summary-native.json');
 
@@ -23,12 +24,10 @@ test('P0 page-summary is not a top-level MCP, CLI, or isolated command', async (
 
   const routed = await runGeneric({ command: 'page-summary' });
   assert.equal(routed.isError, true);
-  assert.match(routed.content[0].text, /unknown command: page-summary/);
+  assert.match(routed.content[0].text, /Unknown command: page-summary/);
 
-  await assert.rejects(
-    executeCommand('page-summary', {}),
-    /unknown command: page-summary/,
-  );
+  const rejected = await executeCommand('page-summary', {});
+  assert.equal(rejected.error, 'unknown_command'); assert.equal(rejected.dispatched, false);
 });
 
 test('P0 page-summary remains an internal summarizeTree transformer', () => {

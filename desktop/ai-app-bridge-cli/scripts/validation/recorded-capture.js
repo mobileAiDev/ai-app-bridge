@@ -70,7 +70,7 @@ async function main({ server, serial, packageName, out }) {
     };`;
     fs.writeFileSync(path.join(root, 'capture-script.js'), source);
     let state = await run('script', { operation: 'start', recordingDir: path.join(root, 'script-recording'), script: {
-      schemaVersion: 'aab.code-script/v1', language: 'javascript', source, target,
+      schemaVersion: 'aab.code-script/v1', language: 'javascript', source, target: { platform: 'android', ...target },
       inputs: { query, ref, item }, permissions: ['app.read', 'capture.read'], policy: { restartPolicy: 'none', timeoutMs: 30000 },
     } });
     assert.equal(state.ok, true); scriptId = state.operationId;
@@ -87,7 +87,7 @@ async function main({ server, serial, packageName, out }) {
     assert.equal(scriptArchive.recordedPayloads.counts.mobilePages, 2);
     assert.equal(scriptArchive.recordedPayloads.counts.boundMobileItems, 1);
     report.archives.push(scriptArchive); scriptId = null;
-    const intent = await run('intent', { operation: 'start', goal: 'Observe current UI and retain one real SDK event', target,
+    const intent = await run('intent', { operation: 'start', goal: 'Observe current UI and retain one real SDK event', target: { platform: 'android', ...target },
       provider: 'native', recordingDir: path.join(root, 'intent-recording'), require: { ...query, streams: ['events'] } });
     write('intent-start.json', intent); intentId = intent.operationId; assert.equal(intent.ok, true, JSON.stringify(intent));
     assert.deepEqual(intent.capture.items, [item]); assert.deepEqual(intent.capture.refs, [ref]);

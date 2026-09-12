@@ -1,0 +1,4 @@
+module AiAppBridgeFactStoreC {
+    header "AiAppBridgeFactStoreC.h"
+    export *
+}

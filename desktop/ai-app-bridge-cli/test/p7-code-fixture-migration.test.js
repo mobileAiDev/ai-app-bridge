@@ -27,13 +27,13 @@ function spec(language, source) {
     name: 'p7-g4a',
     language,
     source,
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
   };
 }
 
 function host() {
   return createFakeHostPort({
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     handlers: {
       tree: async () => ({
         ok: true,
@@ -162,7 +162,7 @@ test('P7 G4-A ambiguous host action is not retried', async () => {
     operation: 'start',
     script: spec('javascript', JS_SOURCE),
     host: createFakeHostPort({
-      target: { serial: 'b46093e6', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
       handlers: {
         tree: async () => ({ ok: true, result: nativeTree }),
         'tap-text': async () => {
@@ -401,12 +401,10 @@ test('P7 command-router starts a code script without loading Intent or Legacy', 
   const router = createCommandRouter({
     loadScript: () => ({ handle }),
     loadIntent: () => ({ handle: async () => ({ ok: true, command: 'intent' }) }),
-    legacyDispatch: async (command) => ({
-      content: [{ type: 'text', text: JSON.stringify({ ok: true, command }) }],
-    }),
+    dispatchCommon: async command => ({ value: { ok: true, command } }),
   });
   function payloadOf(result) {
-    return JSON.parse(result.content[0].text);
+    return result.value;
   }
   const started = payloadOf(await router.route('script', {
     operation: 'start',

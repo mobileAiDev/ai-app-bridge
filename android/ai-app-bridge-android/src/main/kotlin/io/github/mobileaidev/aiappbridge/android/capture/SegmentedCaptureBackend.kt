@@ -1,5 +1,6 @@
 package io.github.mobileaidev.aiappbridge.android.capture
 
+import android.util.Log
 import io.github.mobileaidev.aiappbridge.android.*
 import org.json.JSONObject
 import java.io.File
@@ -24,7 +25,7 @@ internal class SegmentedCaptureBackend(
     private val epochStartSequence: Long,
     private val budgets: ByteBudgets,
     private val caps: CountCaps,
-    initialLoss: Boolean = false,
+    initialLossStreams: Set<String> = emptySet(),
     existingRecords: Long = 0,
 ) : CaptureBackend {
     private val metadataFile = File(directory, "capture-store-v2.json")
@@ -67,8 +68,9 @@ internal class SegmentedCaptureBackend(
             generation = 1
             saveMetadata()
         }
-        if (initialLoss || (!existingMetadata && existingRecords > 0)) {
-            streams.forEach { lossThroughMs[it] = System.currentTimeMillis() }
+        val lostStreams = if (!existingMetadata && existingRecords > 0) streams.toSet() else initialLossStreams
+        if (lostStreams.isNotEmpty()) {
+            lostStreams.forEach { lossThroughMs[it] = System.currentTimeMillis() }
             saveMetadata()
         }
     }
@@ -108,6 +110,9 @@ internal class SegmentedCaptureBackend(
             if (durability == "sync") SegmentedFactStoreDurability.SYNC else SegmentedFactStoreDurability.MEMORY,
         ) { receipt ->
             if (!receipt.operation.isSuccess || receipt.sequence <= 0) {
+                Log.w("AiAppBridge", "capture writer loss: stream=${record.stream} captureId=${record.captureId} " +
+                    "bytes=${payload.size} code=${receipt.operation.code} systemCode=${receipt.operation.systemCode} " +
+                    "message=${receipt.operation.message}")
                 noteLoss(record.stream, record.timestampMs, record.captureId)
             } else synchronized(metadataLock) {
                 if (streamGenerations.getValue(record.stream) == streamGeneration) {
@@ -116,6 +121,8 @@ internal class SegmentedCaptureBackend(
             }
         }
         if (enqueue != SegmentedFactRecordEnqueueResult.ACCEPTED) {
+            Log.w("AiAppBridge", "capture enqueue loss: stream=${record.stream} captureId=${record.captureId} " +
+                "bytes=${payload.size} reason=${enqueue.name}")
             // Schedule the small loss fence behind the writer, never perform file I/O on App callbacks.
             scheduleLoss(record.stream, record.timestampMs, record.captureId)
             return rejected(enqueue.name.lowercase().replace('_', '-'))

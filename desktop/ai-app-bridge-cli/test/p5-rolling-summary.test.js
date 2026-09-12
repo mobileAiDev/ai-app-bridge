@@ -6,6 +6,26 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createRollingSummary } = require('../bin/script/rolling-summary');
 
+test('terminal duration is frozen for completed, failed, cancelled and ambiguous runs', () => {
+  for (const status of ['completed', 'failed', 'cancelled', 'ambiguous']) {
+    const summary = createRollingSummary({ operationId: `terminal-${status}`, startedAtMs: 1000 });
+    const terminal = summary.apply({ kind: `script_${status}`, timestampMs: 2326 });
+    assert.equal(terminal.elapsedMs, 1326);
+    assert.equal(terminal.activeMs, 1326);
+    assert.deepEqual(summary.snapshot(100000), terminal);
+    assert.equal(summary.heartbeat(100000, {}).elapsedMs, 1326);
+  }
+});
+
+test('cancellation while paused counts the wait only until the terminal event', () => {
+  const summary = createRollingSummary({ operationId: 'paused-cancel', startedAtMs: 1000 });
+  summary.apply({ kind: 'paused', timestampMs: 1200 });
+  summary.apply({ kind: 'script_cancelled', timestampMs: 1500 });
+  const later = summary.snapshot(100000);
+  assert.equal(later.elapsedMs, 500);
+  assert.equal(later.activeMs, 200);
+});
+
 test('P5 RollingSummary merges call-level events and business progress', () => {
   const summary = createRollingSummary({ operationId: 'script-1', startedAtMs: 1000 });
   summary.apply({ kind: 'call_started', timestampMs: 1100, command: 'network' });

@@ -32,6 +32,7 @@ test('G7 ScriptCapturePort network statusCode uses decision-window coverage', as
   assert.equal(window.committed, true);
   assert.equal(window.items[0].statusCode, 200);
   const host = createFakeHostPort({
+    target: { platform: 'android', serial: 'capture-port-fixture', packageName: 'pkg' },
     query: (request) => page({
       runtimeEpoch: 'epoch-1', targetKey: 'pkg', watermarkCursor: 'cursor-1', hasMore: false,
       window: { afterActionId: request.afterActionId, factCursor: request.factCursor ?? null,
@@ -99,6 +100,7 @@ test('G7 ScriptCapturePort gap drop restart and disconnect are inconclusive', as
 
 test('G7 FakeHostPort capture.read uses injected query and does not invent complete coverage', async () => {
   const host = createFakeHostPort({
+    target: { platform: 'android', serial: 'capture-port-fixture', packageName: 'pkg' },
     query: (request) => {
       assert.equal(request.view, 'decision-window');
       assert.equal(request.stream, 'network');

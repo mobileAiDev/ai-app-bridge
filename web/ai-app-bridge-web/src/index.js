@@ -5,290 +5,374 @@
   }
   root.AiAppBridgeWeb = factory();
 }(typeof globalThis !== 'undefined' ? globalThis : this, function factory() {
-  const defaultControlSelector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
+  const defaultControlSelector = 'a,button,input,textarea,select,[contenteditable="true"],[role],[onclick],[aria-label]';
   const dialogLikeSelector = 'dialog,[role="dialog"],[role="alertdialog"],[aria-modal="true"]';
   const maxCaptureText = 12000;
 
+  const webProtocol = 'aab.web/v2';
+  const executionSchema = 'aab.web-execution/v1';
+  const domTargetSchema = 'aab.web-dom-target/v1';
+  const captureSchema = 'aab.web-capture/v1';
+  const captureStreams = ['logs', 'network', 'state', 'events'];
+  const documentTargets = new WeakMap();
+  const elementKeys = ['elementId', 'tag', 'id', 'name', 'type', 'role', 'ariaLabel', 'placeholder', 'href', 'text'];
+  const textInputTypes = ['text', 'search', 'url', 'tel', 'email', 'password', 'number'];
+  const checkedRoles = ['checkbox', 'menuitemcheckbox', 'radio', 'menuitemradio', 'switch', 'option', 'treeitem'];
+  const transportLimits = { messageBytes: 256 * 1024, queueBytes: 1024 * 1024, queueCount: 100, queueTtlMs: 60000 };
+
   function createAiAppBridge(options = {}) {
     const state = {
-      options,
-      socket: null,
-      reconnectTimer: null,
-      queue: [],
-      started: false,
-      connected: false,
-      sessionId: options.sessionId || storedSessionId(options.storageKey || 'ai_app_bridge_web_session_id'),
-      actions: new Map(),
-      stateProviders: new Map(),
-      restores: [],
+      options, socket: null, binding: null, reconnectTimer: null, queue: [], queueBytes: 0,
+      started: false, connected: false, runtimeEpoch: newIdentity(),
+      sessionId: options.sessionId ?? storedSessionId(options.storageKey ?? 'ai_app_bridge_web_session_id'),
+      actions: new Map(), stateProviders: new Map(), restores: [], active: null, completion: null,
+      dropped: 0, rejected: 0, lastReceipt: null, lastError: null, reconnectDelay: 1000,
+      captureActionId: null, flushUi: null,
+      captures: Object.fromEntries(captureStreams.map(stream => [stream, { sequence: 0, losses: 0, pending: 0 }])),
     };
-
-    const api = {
-      start,
-      stop: disconnect,
-      disconnect,
-      recordLog,
-      recordNetwork,
-      recordState,
-      recordEvent,
-      registerAction,
-      unregisterAction,
-      registerStateProvider,
-      snapshotDom: (snapshotOptions) => snapshotDom(snapshotOptions),
-      sessionId: () => state.sessionId,
+    if (typeof state.sessionId !== 'string' || !state.sessionId || state.sessionId.length > 1024)
+      throw new Error('invalid_web_session_id');
+    const api = { start, stop: disconnect, disconnect, recordLog, recordNetwork, recordState, recordEvent,
+      registerAction, unregisterAction, registerStateProvider, snapshotDom: observeDom,
+      sessionId: () => state.sessionId, runtimeEpoch: () => state.runtimeEpoch,
       isConnected: () => state.connected,
+      transportStatus: () => ({ connected: state.connected, queuedRecords: state.queue.length, queuedBytes: state.queueBytes,
+        droppedRecords: state.dropped, rejectedRecords: state.rejected, lastReceipt: state.lastReceipt, lastError: state.lastError,
+        activeActionId: state.active?.actionId ?? null, completionPending: Boolean(state.completion) }),
     };
 
     function start() {
       if (state.started) return api;
-      state.started = true;
-      installCaptures();
-      connect();
-      return api;
+      if (typeof options.endpoint !== 'string' || !options.endpoint) throw new Error('AiAppBridge endpoint is required');
+      state.started = true; state.restores.push(trackDocument()); installCaptures(); connect(); return api;
     }
-
     function disconnect() {
-      state.started = false;
-      state.connected = false;
-      if (state.reconnectTimer !== null) {
-        clearTimeout(state.reconnectTimer);
-        state.reconnectTimer = null;
+      state.active?.cancel('web_sdk_stopped');
+      for (const restore of state.restores.splice(0).reverse()) {
+        try { restore(); } catch (error) { state.lastError = error.message; }
       }
-      for (const restore of state.restores.splice(0)) {
-        try {
-          restore();
-        } catch (_) {
-          // Best-effort cleanup only.
-        }
-      }
-      const socket = state.socket;
-      state.socket = null;
-      if (socket) {
-        try {
-          socket.close();
-        } catch (_) {
-          // Ignore close failures.
-        }
-      }
+      state.started = false; state.connected = false; state.binding = null;
+      clearTimeout(state.reconnectTimer); state.reconnectTimer = null;
+      const socket = state.socket; state.socket = null;
+      if (socket) socket.close();
     }
-
     function connect() {
       if (!state.started) return;
-      const endpoint = options.endpoint;
-      if (!endpoint) throw new Error('AiAppBridge endpoint is required');
-      const WebSocketCtor = options.WebSocket || globalValue('WebSocket');
+      const WebSocketCtor = options.WebSocket ?? globalValue('WebSocket');
       if (!WebSocketCtor) throw new Error('WebSocket is not available');
-      const socket = new WebSocketCtor(withToken(endpoint, options.token));
-      state.socket = socket;
+      const socket = new WebSocketCtor(withToken(options.endpoint, options.token)); state.socket = socket;
       socket.onopen = () => {
         if (state.socket !== socket || !state.started) return;
-        state.connected = true;
-        send({
-          type: 'hello',
-          sessionId: state.sessionId,
-          appName: options.appName || documentTitle(),
-          url: locationHref(),
-          origin: locationOrigin(),
-          route: locationPath(),
-          targetId: 'main',
-          capabilities: {
-            logs: true,
-            network: true,
-            state: true,
-            events: true,
-            dom: true,
-            command: true,
-          },
-        });
-        flushQueue();
+        socket.send(JSON.stringify({ type: 'hello', schemaVersion: webProtocol, sessionId: state.sessionId,
+          runtimeEpoch: state.runtimeEpoch, targetId: 'main', executionSchema, domTargetSchema, captureSchema,
+          appName: options.appName ?? documentTitle(), url: locationHref(), origin: locationOrigin(), route: locationPath() }));
       };
-      socket.onmessage = (event) => handleServerMessage(event.data);
-      socket.onclose = () => {
+      socket.onmessage = event => {
+        if (state.socket !== socket || !state.started) return;
+        void handleServerMessage(event.data).catch(error => { state.lastError = error.message; disconnect(); });
+      };
+      socket.onclose = event => {
         if (state.socket !== socket) return;
-        state.connected = false;
-        state.socket = null;
+        state.connected = false; state.binding = null; state.socket = null;
+        if (event?.code === 1008) { state.lastError = 'web_protocol_rejected'; disconnect(); return; }
         if (state.started && options.reconnect !== false && state.reconnectTimer === null) {
-          state.reconnectTimer = setTimeout(() => {
-            state.reconnectTimer = null;
-            if (state.started) connect();
-          }, Number(options.reconnectDelayMs || 1000));
+          state.reconnectTimer = setTimeout(() => { state.reconnectTimer = null; connect(); }, state.reconnectDelay);
+          state.reconnectDelay = Math.min(state.reconnectDelay * 2, 30000);
         }
       };
-      socket.onerror = () => {
-        if (state.socket !== socket) return;
-        state.connected = false;
-      };
+      socket.onerror = () => { if (state.socket === socket) state.lastError = 'web_transport_error'; };
     }
-
-    function send(payload) {
-      const text = JSON.stringify(payload);
-      if (state.socket && state.socket.readyState === 1) {
-        state.socket.send(text);
-        return;
-      }
-      state.queue.push(text);
-      while (state.queue.length > 100) state.queue.shift();
+    function sendWire(payload) {
+      if (!state.connected || !state.binding || state.socket?.readyState !== 1) return false;
+      const wire = JSON.stringify({ ...payload, binding: state.binding });
+      if (utf8Bytes(wire) > transportLimits.messageBytes) throw new Error('web_message_too_large');
+      if ((state.socket.bufferedAmount ?? 0) > transportLimits.queueBytes) { state.lastError = 'web_socket_backpressure'; state.socket.close(); return false; }
+      state.socket.send(wire); return true;
     }
-
     function flushQueue() {
-      while (state.queue.length && state.socket && state.socket.readyState === 1) {
-        state.socket.send(state.queue.shift());
+      while (state.queue.length) {
+        const entry = state.queue[0];
+        if (Date.now() - entry.atMs >= transportLimits.queueTtlMs) {
+          state.dropped++; state.captures[entry.payload.stream].losses++;
+        }
+        else if (!sendWire(entry.payload)) break;
+        state.queue.shift(); state.queueBytes -= entry.bytes;
       }
     }
-
-    function capture(stream, item) {
-      send({
-        type: 'capture',
-        stream,
-        item: {
-          source: 'web-sdk',
-          timestampMs: Date.now(),
-          url: locationHref(),
-          route: locationPath(),
-          ...item,
-        },
-      });
+    function capture(stream, item, context) {
+      const captureId = newIdentity();
+      const explicit = Object.hasOwn(context, 'actionId');
+      const actionId = explicit ? context.actionId : state.captureActionId;
+      const association = actionId == null ? 'unattributed' : context.association ?? (explicit ? 'explicit' : 'synchronous');
+      const counters = state.captures[stream];
+      const payload = { type: 'capture', captureId, stream, sequence: ++counters.sequence, actionId,
+        item: { source: 'web-sdk', timestampMs: Date.now(), url: locationHref(), route: locationPath(), ...item,
+          ...(context.pageRef === undefined ? {} : { pageRef: context.pageRef }), association } };
+      let bytes;
+      try { bytes = utf8Bytes(JSON.stringify(payload)); }
+      catch { state.rejected++; counters.losses++; return { accepted: false, stored: false, captureId, error: 'invalid_web_capture_json' }; }
+      if (bytes > 128 * 1024 - 4096) { state.rejected++; counters.losses++; return { accepted: false, stored: false, captureId, error: 'web_record_too_large' }; }
+      while (state.queue.length && (state.queue.length >= transportLimits.queueCount || state.queueBytes + bytes > transportLimits.queueBytes)) {
+        const dropped = state.queue.shift();
+        state.queueBytes -= dropped.bytes; state.dropped++; state.captures[dropped.payload.stream].losses++;
+      }
+      state.queue.push({ payload, bytes, atMs: Date.now() }); state.queueBytes += bytes; flushQueue();
+      return { accepted: true, stored: false, captureId, runtimeEpoch: state.runtimeEpoch };
     }
-
-    function recordLog(level, tag, message, data) {
-      capture('logs', {
-        level: level || 'info',
-        tag: tag || 'web',
-        message: trimText(message),
-        data,
-        source: 'web-sdk',
-      });
+    function recordLog(level, tag, message, data, context = {}) {
+      return capture('logs', { level: level ?? 'info', tag: tag ?? 'web', message: trimText(message), data }, context);
     }
-
-    function recordNetwork(record) {
-      capture('network', {
-        method: record.method || 'GET',
-        url: record.url || '',
-        statusCode: record.statusCode === undefined ? -1 : record.statusCode,
-        durationMs: record.durationMs === undefined ? -1 : record.durationMs,
-        requestHeaders: record.requestHeaders,
-        responseHeaders: record.responseHeaders,
-        requestBody: trimText(record.requestBody),
-        responseBody: trimText(record.responseBody),
-        error: record.error,
-        // The SDK has not inspected or rewritten arbitrary network payloads.
-        // A caller that supplies an already-sanitized record may opt in.
-        redacted: record.redacted === true,
-        source: record.source || 'web-sdk',
-      });
+    function recordNetwork(record, context = {}) {
+      return capture('network', { method: record.method ?? 'GET', url: record.url ?? '', statusCode: record.statusCode ?? -1,
+        durationMs: record.durationMs ?? -1, requestHeaders: record.requestHeaders, responseHeaders: record.responseHeaders,
+        requestBody: captureText(record.requestBody, record.requestBodyEncoding), responseBody: captureText(record.responseBody, record.responseBodyEncoding), error: record.error,
+        requestBodyState: record.requestBodyState, responseBodyState: record.responseBodyState,
+        requestBodyEncoding: record.requestBodyEncoding, responseBodyEncoding: record.responseBodyEncoding,
+        redacted: record.redacted === true, source: record.source ?? 'web-sdk' }, context);
     }
-
-    function recordState(namespace, key, value) {
-      capture('state', {
-        namespace: namespace || 'app',
-        key: key || 'value',
-        value,
-      });
+    function recordState(namespace, key, value, context = {}) {
+      return capture('state', { namespace, key, value }, context);
     }
-
-    function recordEvent(category, name, data) {
-      capture('events', {
-        category: category || 'app',
-        name: name || 'event',
-        data,
-      });
+    function recordEvent(category, name, data, context = {}) {
+      return capture('events', { category: category ?? 'app', name: name ?? 'event', data }, context);
     }
-
     function registerAction(name, handler) {
-      if (!name || typeof handler !== 'function') {
-        throw new Error('registerAction requires a name and handler');
-      }
-      state.actions.set(String(name), handler);
-      return api;
+      if (typeof name !== 'string' || !name || name.length > 1024 || typeof handler !== 'function') throw new Error('registerAction requires a name and handler');
+      if (!state.actions.has(name) && state.actions.size >= 128) throw new Error('web_action_registration_limit');
+      state.actions.set(name, handler); return api;
     }
-
-    function unregisterAction(name) {
-      state.actions.delete(String(name));
-      return api;
-    }
-
+    function unregisterAction(name) { state.actions.delete(name); return api; }
     function registerStateProvider(name, provider) {
-      if (!name || typeof provider !== 'function') {
-        throw new Error('registerStateProvider requires a name and provider');
-      }
-      state.stateProviders.set(String(name), provider);
-      return api;
+      if (typeof name !== 'string' || !name || name.length > 1024 || typeof provider !== 'function') throw new Error('registerStateProvider requires a name and provider');
+      if (!state.stateProviders.has(name) && state.stateProviders.size >= 128) throw new Error('web_state_provider_limit');
+      state.stateProviders.set(name, provider); return api;
     }
-
+    function target() { return { sessionId: state.sessionId, runtimeEpoch: state.runtimeEpoch, targetId: 'main' }; }
+    function validBinding(binding) {
+      return binding && binding.schemaVersion === webProtocol && binding.sessionId === state.sessionId
+        && binding.runtimeEpoch === state.runtimeEpoch && binding.targetId === 'main'
+        && typeof binding.providerEpoch === 'string' && typeof binding.connectionId === 'string';
+    }
+    function reply(request, result) { sendWire({ type: 'response', requestId: request.requestId, result }); }
+    function sendCompletion() { if (state.completion) sendWire({ type: 'completion', result: state.completion }); }
     async function handleServerMessage(raw) {
-      let message;
-      try {
-        message = JSON.parse(raw);
-      } catch (_) {
+      if (typeof raw !== 'string' || utf8Bytes(raw) > transportLimits.messageBytes) throw new Error('invalid_web_message');
+      const message = JSON.parse(raw);
+      if (message.type === 'helloAck') {
+        if (state.binding || message.ok !== true || !validBinding(message.binding)) throw new Error('invalid_web_binding');
+        state.binding = message.binding; state.connected = true; state.reconnectDelay = 1000;
+        sendCompletion(); flushQueue(); return;
+      }
+      if (!state.binding || JSON.stringify(message.binding) !== JSON.stringify(state.binding)) throw new Error('web_binding_mismatch');
+      if (message.type === 'captureAck') {
+        state.lastReceipt = { captureId: message.captureId, ...message.receipt };
+        if (!message.receipt?.stored) { state.rejected++; state.lastError = message.error; } return;
+      }
+      if (message.type === 'completionAck') {
+        if (state.completion?.actionId === message.actionId && message.stored === true) state.completion = null;
+        else if (message.stored !== true) state.lastError = message.error;
         return;
       }
-      if (message.type !== 'command') return;
-      const command = message.command || {};
-      try {
-        const result = await runCommand(command);
-        send({
-          type: 'commandResult',
-          commandId: message.commandId,
-          ok: result && result.ok === false ? false : true,
-          result,
-        });
-      } catch (error) {
-        send({
-          type: 'commandResult',
-          commandId: message.commandId,
-          ok: false,
-          error: error.message || String(error),
-        });
-      }
-    }
-
-    async function runCommand(command) {
-      const args = command.args || {};
-      switch (command.name) {
-        case 'domSnapshot': {
-          const dom = snapshotDom(args);
-          send({ type: 'dom', targetId: command.targetId || 'main', dom });
-          return { ok: true, dom };
+      if (message.type === 'read') {
+        if (message.payload?.name === 'captureBarrier') {
+          const stream = message.payload.args?.stream;
+          if (!captureStreams.includes(stream)) { reply(message, { ok: false, error: 'invalid_web_capture_stream' }); return; }
+          if (stream === 'events' && state.flushUi) state.flushUi();
+          flushQueue();
+          reply(message, { ok: true, schemaVersion: captureSchema, stream,
+            ...state.captures[stream], target: target() });
+          return;
         }
-        case 'click':
-          return clickElement(args);
-        case 'input':
-          return inputElement(args);
-        case 'waitFor':
-          return waitFor(args);
-        case 'scroll':
-          return scrollTarget(args);
+        if (message.payload?.name !== 'domSnapshot') { reply(message, { ok: false, error: 'unknown_web_read' }); return; }
+        const dom = observeDom(message.payload.args ?? {});
+        reply(message, dom.ok ? { ok: true, dom } : dom); return;
+      }
+      if (message.type === 'cancel') {
+        const identity = message.payload;
+        if (identity?.runtimeEpoch !== state.runtimeEpoch) { reply(message, { ok: false, error: 'web_target_changed' }); return; }
+        if (state.active?.actionId === identity.actionId) state.active.cancel('web_action_cancelled');
+        sendCompletion(); reply(message, { ok: true, actionId: identity.actionId, runtimeEpoch: state.runtimeEpoch }); return;
+      }
+      if (message.type !== 'command') throw new Error('unknown_web_message');
+      const request = message.payload, execution = request?.execution;
+      const reject = error => reply(message, { ok: false, error, dispatched: false, ambiguous: false });
+      if (execution?.schemaVersion !== executionSchema || execution.runtimeEpoch !== state.runtimeEpoch
+          || typeof execution.actionId !== 'string' || request.actionId !== execution.actionId
+          || !Number.isInteger(execution.timeoutMs) || execution.timeoutMs < 1 || execution.timeoutMs > 2147483647
+          || JSON.stringify(request.target) !== JSON.stringify(target())) { reject('invalid_web_execution'); return; }
+      if (state.active || state.completion) { sendCompletion(); reject('web_action_busy'); return; }
+      const controller = new AbortController();
+      const task = { actionId: request.actionId, issued: false, stopReason: null, timer: null, queued: null,
+        deadline: performance.now() + execution.timeoutMs,
+        cancel(reason) {
+          if (state.active !== task || task.stopReason) return;
+          task.stopReason = reason; controller.abort(reason);
+          if (!task.issued) { clearTimeout(task.queued); finish({ ok: false, error: reason }); }
+        },
+        check() {
+          if (performance.now() >= task.deadline) task.cancel('web_action_timeout');
+          if (state.active !== task || task.stopReason || !state.started) throw new Error(task.stopReason ?? 'web_action_not_active');
+        },
+        permit() { task.check(); task.issued = true; },
+        pageRef: () => documentPageRef(target()),
+        signal: controller.signal,
+      };
+      function finish(outcome) {
+        if (state.active !== task) return;
+        clearTimeout(task.timer); clearTimeout(task.queued);
+        let result = { ...outcome, ...(task.stopReason ? { ok: false, error: task.stopReason } : {}),
+          actionId: task.actionId, runtimeEpoch: state.runtimeEpoch, settled: true, dispatched: task.issued, ambiguous: false,
+          execution: { schemaVersion: executionSchema, actionId: task.actionId, runtimeEpoch: state.runtimeEpoch, target: target(), settled: true } };
+        try { if (typeof outcome?.ok !== 'boolean' || (outcome.ok === false && typeof outcome.error !== 'string')
+          || utf8Bytes(JSON.stringify(result)) > 64 * 1024) throw new Error(); }
+        catch { result = { ok: false, error: 'invalid_web_action_result', actionId: task.actionId,
+          runtimeEpoch: state.runtimeEpoch, settled: true, dispatched: task.issued, ambiguous: false,
+          execution: { schemaVersion: executionSchema, actionId: task.actionId, runtimeEpoch: state.runtimeEpoch, target: target(), settled: true } }; }
+        state.active = null; state.completion = result; sendCompletion();
+      }
+      state.active = task;
+      task.timer = setTimeout(() => task.cancel('web_action_timeout'), execution.timeoutMs);
+      task.queued = setTimeout(async () => {
+        try {
+          task.check();
+          let result;
+          // This scope covers the synchronous dispatch stack only. Native
+          // async/await continuations do not inherit it in current browsers.
+          state.captureActionId = task.actionId;
+          try { result = runCommand(request.command, task); }
+          finally { state.captureActionId = null; }
+          finish(await result);
+        }
+        catch (error) { finish({ ok: false, error: error.message || 'web_action_failed',
+          ...(error.details === undefined ? {} : { details: error.details }) }); }
+      }, 0);
+    }
+    async function runCommand(command, task) {
+      const args = command?.args ?? {};
+      switch (command?.name) {
+        case 'click': return clickElement(args, task);
+        case 'input': return inputElement(args, task);
+        case 'key': return keyEvent(args, task);
+        case 'waitFor': return waitFor(args, task);
+        case 'scroll': return scrollTarget(args, task);
         case 'state': {
           const values = {};
-          for (const [name, provider] of state.stateProviders.entries()) {
-            values[name] = await provider();
-          }
+          for (const [name, provider] of state.stateProviders) { task.permit(); values[name] = await provider({ signal: task.signal }); task.check(); }
           return { ok: true, values };
         }
         case 'action': {
-          const actionName = args.name || args.action;
-          const handler = state.actions.get(String(actionName || ''));
-          if (!handler) return { ok: false, error: 'action_not_registered', action: actionName || '' };
-          return { ok: true, value: await handler(args.arguments || args) };
+          if (typeof args.name !== 'string' || !state.actions.has(args.name)) return { ok: false, error: 'action_not_registered' };
+          const context = { signal: task.signal, actionId: task.actionId, runtimeEpoch: state.runtimeEpoch,
+            recordState: (namespace, key, value) => recordState(namespace, key, value, { actionId: task.actionId }),
+            recordEvent: (category, name, data) => recordEvent(category, name, data, { actionId: task.actionId }) };
+          task.permit(); const value = await state.actions.get(args.name)(args.arguments, context);
+          return { ok: true, value };
         }
-        default: {
-          const handler = state.actions.get(String(command.name || ''));
-          if (!handler) return { ok: false, error: 'unknown_command', command: command.name || '' };
-          return { ok: true, value: await handler(args) };
-        }
+        default: return { ok: false, error: 'unknown_web_command' };
       }
     }
-
+    function observeDom(options = {}) {
+      const dom = snapshotDom(options);
+      return dom.ok ? { ...dom, pageRef: documentPageRef(target()) } : dom;
+    }
     function installCaptures() {
-      const captureOptions = options.capture || {};
+      const captureOptions = options.capture ?? {};
       if (captureOptions.console) installConsoleCapture(state, recordLog);
       if (captureOptions.errors) installErrorCapture(state, recordLog);
       if (captureOptions.fetch) installFetchCapture(state, recordNetwork, options);
-      if (captureOptions.xhr) installXhrCapture(state, recordNetwork);
+      if (captureOptions.xhr) installXhrCapture(state, recordNetwork, options);
       if (captureOptions.ui) installUiCapture(state, recordEvent, captureOptions.ui);
     }
-
     return api;
+  }
+
+  function utf8Bytes(value) { return new TextEncoder().encode(value).byteLength; }
+  function newIdentity() {
+    const bytes = new Uint8Array(16); globalValue('crypto').getRandomValues(bytes);
+    return Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  function documentTarget(doc) {
+    if (!documentTargets.has(doc)) documentTargets.set(doc, { navigationId: newIdentity(), available: true, elements: new WeakMap(), nextElement: 0 });
+    return documentTargets.get(doc);
+  }
+  function documentPageRef(binding) {
+    const doc = globalValue('document');
+    if (!doc) throw new Error('document_unavailable');
+    const state = documentTarget(doc);
+    if (!state.available) throw new Error('web_document_inactive');
+    return { schemaVersion: domTargetSchema, ...binding, navigationId: state.navigationId, url: locationHref() };
+  }
+  function trackDocument() {
+    const doc = globalValue('document'), win = globalValue('window');
+    if (!doc || !win) return () => {};
+    const state = documentTarget(doc), restores = [];
+    const advance = () => { state.navigationId = newIdentity(); };
+    for (const name of ['pushState', 'replaceState']) {
+      const original = win.history?.[name];
+      if (typeof original !== 'function') continue;
+      const wrapper = function (...args) { const result = original.apply(this, args); advance(); return result; };
+      win.history[name] = wrapper;
+      restores.push(() => { if (win.history[name] === wrapper) win.history[name] = original; });
+    }
+    const events = { popstate: advance, hashchange: advance,
+      pagehide: () => { state.available = false; advance(); }, pageshow: () => { state.available = true; advance(); } };
+    if (typeof win.addEventListener === 'function') for (const [name, callback] of Object.entries(events)) {
+      win.addEventListener(name, callback); restores.push(() => win.removeEventListener(name, callback));
+    }
+    return () => { for (const restore of restores) restore(); };
+  }
+  function elementIdentity(element, doc = element.ownerDocument || globalValue('document')) {
+    const state = documentTarget(doc);
+    if (!state.elements.has(element)) state.elements.set(element, `e${++state.nextElement}`);
+    const sensitive = isSensitiveInput(element);
+    return { elementId: state.elements.get(element), tag: text(element.tagName).toLowerCase(), id: text(element.id),
+      name: attr(element, 'name'), type: attr(element, 'type'), role: attr(element, 'role'), ariaLabel: attr(element, 'aria-label'),
+      placeholder: attr(element, 'placeholder'), href: trimText(element.href, 500),
+      text: trimText(sensitive ? attr(element, 'aria-label') || attr(element, 'placeholder')
+        : element.innerText || element.value || element.title || attr(element, 'aria-label'), 300) };
+  }
+  function elementVisible(element) {
+    const win = element.ownerDocument?.defaultView || globalValue('window');
+    if (!element.isConnected || !win || typeof win.getComputedStyle !== 'function') return false;
+    const style = win.getComputedStyle(element), rect = bounds(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse'
+      && Number(style.opacity) !== 0 && rect.width > 0 && rect.height > 0;
+  }
+  function elementDisabled(element) {
+    return Boolean(element.disabled || attr(element, 'aria-disabled') === 'true' || element.closest?.('[inert]'));
+  }
+  function elementEditable(element) {
+    return !elementDisabled(element) && !element.readOnly && (element.isContentEditable === true
+      || element.tagName === 'TEXTAREA' || element.tagName === 'INPUT' && textInputTypes.includes(element.type));
+  }
+  function elementChecked(element) {
+    if (element.tagName === 'INPUT' && ['checkbox', 'radio'].includes(element.type)) {
+      return element.type === 'checkbox' && element.indeterminate ? 'mixed' : element.checked;
+    }
+    const role = attr(element, 'role'), value = element.getAttribute('aria-checked');
+    if (!checkedRoles.includes(role)) return null;
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    // WAI-ARIA defines mixed on radio/menuitemradio/switch as false. The raw
+    // attribute is retained separately, including invalid or missing tokens.
+    if (value === 'mixed') {
+      if (['radio', 'menuitemradio', 'switch'].includes(role)) return false;
+      if (['checkbox', 'menuitemcheckbox'].includes(role)) return 'mixed';
+    }
+    return null;
+  }
+  function interactionState(element) {
+    if (elementDisabled(element)) return { status: 'disabled' };
+    if (!elementVisible(element)) return { status: 'hidden' };
+    const doc = element.ownerDocument, win = doc.defaultView, rect = bounds(element);
+    const left = Math.max(0, rect.left), top = Math.max(0, rect.top), right = Math.min(win.innerWidth, rect.right), bottom = Math.min(win.innerHeight, rect.bottom);
+    if (right <= left || bottom <= top) return { status: 'outside-viewport' };
+    const point = { x: (left + right) / 2, y: (top + bottom) / 2 };
+    const hit = doc.elementFromPoint(point.x, point.y);
+    if (hit === element || element.contains(hit)) return { status: 'ready', point };
+    return { status: 'obscured', point, hit: hit ? { tag: text(hit.tagName).toLowerCase(), id: text(hit.id),
+      role: attr(hit, 'role'), className: typeof hit.className === 'string' ? trimText(hit.className, 300) : '' } : null };
   }
 
   function snapshotDom(options = {}) {
@@ -299,128 +383,186 @@
     const selector = options.selector || defaultControlSelector;
     const maxControls = Number(options.maxControls || 200);
     const controls = [];
-    const elements = Array.prototype.slice.call(doc.querySelectorAll(selector), 0, maxControls);
+    const matched = doc.querySelectorAll(selector);
+    const elements = Array.prototype.slice.call(matched, 0, maxControls);
     elements.forEach((element, index) => {
       const sensitive = isSensitiveInput(element);
       const elementValue = text(element.value);
       controls.push({
+        ...elementIdentity(element, doc),
         index,
-        tag: text(element.tagName).toLowerCase(),
-        id: text(element.id),
-        name: attr(element, 'name'),
-        type: attr(element, 'type'),
-        role: attr(element, 'role'),
-        ariaLabel: attr(element, 'aria-label'),
-        placeholder: attr(element, 'placeholder'),
-        text: trimText(
-          sensitive
-            ? (attr(element, 'aria-label') || attr(element, 'placeholder'))
-            : (element.innerText || elementValue || element.title || attr(element, 'aria-label')),
-          300,
-        ),
         sensitive,
         ...(sensitive ? { valueLength: elementValue.length } : {}),
-        href: trimText(element.href, 500),
-        disabled: Boolean(element.disabled),
+        disabled: elementDisabled(element),
+        visible: elementVisible(element),
+        editable: elementEditable(element),
+        checked: elementChecked(element),
+        ariaChecked: element.getAttribute('aria-checked'),
+        interaction: interactionState(element),
         bounds: bounds(element),
       });
     });
     return {
       ok: true,
+      targetSchema: domTargetSchema,
       title: text(doc.title),
       url: locationHref(),
       readyState: text(doc.readyState),
       bodyText: trimText(doc.body && doc.body.innerText, 20000),
+      bodyTextTruncated: text(doc.body && doc.body.innerText).length > 20000,
       controls,
       controlCount: controls.length,
+      truncated: matched.length > maxControls,
       updatedAtMs: Date.now(),
     };
   }
 
-  function clickElement(args = {}) {
-    const element = findElement(args);
-    if (!element) return { ok: false, error: 'element_not_found' };
-    element.click();
-    return { ok: true, target: uiTarget(element) };
+  function clickElement(args, task) {
+    const selected = actionTarget(args, task);
+    ensureTarget(selected, task, { hit: true }); task.permit(); selected.element.click();
+    return { ok: true, resolved: selected.ref };
   }
 
-  function inputElement(args = {}) {
-    const element = findElement(args);
-    if (!element) return { ok: false, error: 'element_not_found' };
-    const value = args.value === undefined ? '' : String(args.value);
-    element.focus && element.focus();
-    element.value = value;
-    dispatchInputEvents(element);
+  function inputElement(args, task) {
+    const selected = actionTarget(args, task), element = selected.element;
+    if (typeof args.value !== 'string') return { ok: false, error: 'invalid_web_input_value' };
+    const richText = element.isContentEditable === true;
+    if (!elementEditable(element))
+      return { ok: false, error: 'web_element_not_editable' };
+    const value = args.value;
+    const doc = element.ownerDocument, win = doc.defaultView;
+    ensureTarget(selected, task, { hit: true }); task.permit(); element.focus();
+    ensureTarget(selected, task, { focus: true });
+    if (richText) {
+      const range = doc.createRange(); range.selectNodeContents(element);
+      const selection = win.getSelection(); task.permit(); selection.removeAllRanges(); selection.addRange(range);
+      ensureTarget(selected, task, { focus: true }); task.permit();
+      if (!doc.execCommand('insertText', false, value)) return { ok: false, error: 'web_input_rejected', resolved: selected.ref };
+    } else {
+      const prototype = element.tagName === 'INPUT' ? win.HTMLInputElement.prototype : win.HTMLTextAreaElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
+      task.permit(); setter.call(element, value);
+      ensureTarget(selected, task, { focus: true, edited: true }); task.permit();
+      element.dispatchEvent(new win.InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: value }));
+      ensureTarget(selected, task, { focus: true, edited: true }); task.permit(); element.dispatchEvent(new win.Event('change', { bubbles: true }));
+    }
+    ensureTarget(selected, task, { edited: true });
     const sensitive = isSensitiveInput(element);
     return {
       ok: true,
+      resolved: selected.ref,
       sensitive,
-      valueLength: value.length,
-      ...(sensitive ? {} : { value }),
+      valueLength: (richText ? element.innerText : element.value).length,
+      ...(sensitive ? {} : { value: richText ? element.innerText : element.value }),
     };
   }
 
-  function waitFor(args = {}) {
-    const timeoutMs = Number(args.timeoutMs || 5000);
-    const startedAtMs = Date.now();
-    return new Promise((resolve) => {
+  function keyEvent(args, task) {
+    if (!['Enter', 'Escape'].includes(args.key)) return { ok: false, error: 'invalid_web_key' };
+    const selected = actionTarget(args, task), element = selected.element;
+    ensureTarget(selected, task, { hit: true }); task.permit(); element.focus();
+    ensureTarget(selected, task, { focus: true });
+    const event = new element.ownerDocument.defaultView.KeyboardEvent('keydown', {
+      key: args.key, code: args.key, bubbles: true, cancelable: true, composed: true,
+    });
+    task.permit(); element.dispatchEvent(event);
+    return { ok: true, resolved: selected.ref, key: args.key, eventType: 'keydown',
+      trusted: event.isTrusted, defaultPrevented: event.defaultPrevented };
+  }
+
+  function waitFor(args, task) {
+    const timeoutMs = args.timeoutMs ?? 5000;
+    const startedAtMs = performance.now();
+    return new Promise((resolve, reject) => {
+      let timer;
+      const finish = (error, result) => { clearTimeout(timer); task.signal.removeEventListener('abort', abort); error ? reject(error) : resolve(result); };
+      const abort = () => finish(new Error(task.signal.reason));
       const tick = () => {
-        if (args.selector && findElement({ selector: args.selector })) {
-          resolve({ ok: true, matched: 'selector' });
+        try { task.check();
+        if (args.selector && findElement(args.selector)) {
+          finish(null, { ok: true, matched: 'selector' });
           return;
         }
         if (args.targetText && bodyText().includes(String(args.targetText))) {
-          resolve({ ok: true, matched: 'text' });
+          finish(null, { ok: true, matched: 'text' });
           return;
         }
-        if (Date.now() - startedAtMs >= timeoutMs) {
-          resolve({ ok: false, error: 'wait_timeout' });
+        if (performance.now() - startedAtMs >= timeoutMs) {
+          finish(null, { ok: false, error: 'wait_timeout' });
           return;
         }
-        setTimeout(tick, Number(args.intervalMs || 250));
+        timer = setTimeout(tick, args.intervalMs ?? 250);
+        } catch (error) { finish(error); }
       };
+      task.signal.addEventListener('abort', abort, { once: true });
       tick();
     });
   }
 
-  function scrollTarget(args = {}) {
-    const element = args.selector ? findElement({ selector: args.selector }) : null;
-    const deltaX = Number(args.deltaX || 0);
-    const deltaY = Number(args.deltaY === undefined ? args.delta || 400 : args.deltaY);
-    if (element && element.scrollBy) {
-      element.scrollBy(deltaX, deltaY);
-      return { ok: true, target: 'element' };
+  function scrollTarget(args, task) {
+    const selected = args.selector ? actionTarget(args, task) : null;
+    const deltaX = args.deltaX ?? 0;
+    const deltaY = args.deltaY ?? 0;
+    if (args.mode === 'into-view') {
+      if (!selected) return { ok: false, error: 'web_selector_required' };
+      ensureTarget(selected, task); task.permit(); selected.element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      return { ok: true, resolved: selected.ref };
+    }
+    if (args.mode !== 'by') return { ok: false, error: 'invalid_web_scroll_mode' };
+    if (selected) {
+      ensureTarget(selected, task); task.permit(); selected.element.scrollBy({ left: deltaX, top: deltaY, behavior: 'instant' });
+      return { ok: true, resolved: selected.ref };
     }
     const win = globalValue('window');
     if (win && win.scrollBy) {
-      win.scrollBy(deltaX, deltaY);
+      task.permit(); win.scrollBy({ left: deltaX, top: deltaY, behavior: 'instant' });
       return { ok: true, target: 'window' };
     }
     return { ok: false, error: 'scroll_unavailable' };
   }
 
-  function findElement(args = {}) {
-    const doc = args.document || globalValue('document');
+  function findElement(selector) {
+    const doc = globalValue('document');
     if (!doc) return null;
-    if (args.selector) return doc.querySelector(args.selector);
-    const targetText = args.targetText === undefined ? '' : String(args.targetText);
-    if (!targetText) return null;
-    const elements = Array.prototype.slice.call(doc.querySelectorAll(defaultControlSelector), 0, 500);
-    return elements.find((element) => elementMatchesText(element, targetText, Boolean(args.exact))) || null;
+    if (!selector || typeof selector !== 'object') throw new Error('invalid_web_selector');
+    const identities = ['elementId', 'text', 'ariaLabel', 'css'].filter(key => typeof selector[key] === 'string' && selector[key].length > 0);
+    if (identities.length !== 1) throw new Error('invalid_web_selector');
+    const elements = doc.querySelectorAll(selector.css ?? defaultControlSelector);
+    if (elements.length > 1000) throw new Error('web_selector_scan_limit');
+    const matches = Array.from(elements).filter(element => {
+      if (!elementVisible(element)) return false;
+      const ref = elementIdentity(element);
+      return ['elementId', 'text', 'ariaLabel', 'tag', 'role'].every(key => selector[key] === undefined || selector[key] === ref[key]);
+    });
+    if (matches.length > 1) throw new Error('web_element_ambiguous');
+    return matches[0] ?? null;
   }
 
-  function elementMatchesText(element, targetText, exact) {
-    const values = [
-      element.innerText,
-      element.value,
-      element.title,
-      element.id,
-      attr(element, 'name'),
-      attr(element, 'role'),
-      attr(element, 'aria-label'),
-      attr(element, 'placeholder'),
-    ].map((value) => text(value)).filter(Boolean);
-    return values.some((value) => exact ? value === targetText : value.includes(targetText));
+  function actionTarget(args, task) {
+    const element = findElement(args.selector);
+    if (!element) throw new Error('web_element_not_found');
+    const ref = { pageRef: task.pageRef(), element: elementIdentity(element) };
+    if (args.expectedTarget && (!samePage(ref.pageRef, args.expectedTarget.pageRef)
+      || !elementKeys.every(key => ref.element[key] === args.expectedTarget.element[key]))) throw new Error('reobserve_required');
+    return { element, ref };
+  }
+  function samePage(a, b) {
+    return ['schemaVersion', 'sessionId', 'runtimeEpoch', 'targetId', 'navigationId', 'url'].every(key => a[key] === b?.[key]);
+  }
+  function ensureTarget(selected, task, { focus = false, hit = false, edited = false } = {}) {
+    const { element, ref } = selected;
+    const doc = globalValue('document');
+    task.check();
+    if (!samePage(task.pageRef(), ref.pageRef)) throw new Error('reobserve_required');
+    if (!element.isConnected || element.ownerDocument !== doc || elementDisabled(element) || !elementVisible(element)
+      || (focus && doc.activeElement !== element)) throw new Error('web_element_changed');
+    const current = elementIdentity(element);
+    if (!elementKeys.filter(key => !edited || key !== 'text').every(key => current[key] === ref.element[key])) throw new Error('reobserve_required');
+    if (hit) {
+      const interaction = interactionState(element);
+      if (interaction.status !== 'ready') throw Object.assign(new Error(interaction.status === 'outside-viewport'
+        ? 'web_element_outside_viewport' : 'web_element_obscured'), { details: { interaction } });
+    }
   }
 
   function installConsoleCapture(state, recordLog) {
@@ -465,38 +607,34 @@
     const win = globalValue('window');
     if (!win || typeof win.fetch !== 'function') return;
     const original = win.fetch;
-    win.fetch = async function capturedFetch(input, init = {}) {
+    win.fetch = function capturedFetch(input, init = {}) {
       const startedAtMs = Date.now();
       const method = (init && init.method) || (input && input.method) || 'GET';
       const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const context = captureContext(state);
+      state.captures.network.pending++;
+      const requestBody = captureRequestBody(input, init, options.captureRequestBodies === true);
+      const finish = async (response, error) => {
+        try {
+          const [request, body] = await Promise.all([requestBody,
+            response && options.captureResponseBodies === true
+              ? captureResponseBody(response) : Promise.resolve({ state: 'disabled' })]);
+          recordNetwork({ source: 'fetch-auto', method, url,
+            statusCode: response ? response.status : -1, durationMs: Date.now() - startedAtMs,
+            requestBody: request.text, requestBodyState: request.state,
+            responseBody: body.text, responseBodyState: body.state,
+            requestBodyEncoding: request.encoding, responseBodyEncoding: body.encoding,
+            ...(error ? { error: error.message || String(error) } : {}) }, context);
+        } finally { state.captures.network.pending--; }
+      };
       try {
-        const response = await original.apply(this, arguments);
-        let responseBody;
-        if (options.captureResponseBodies && response.clone) {
-          try {
-            responseBody = await response.clone().text();
-          } catch (_) {
-            responseBody = undefined;
-          }
-        }
-        recordNetwork({
-          source: 'fetch-auto',
-          method,
-          url,
-          statusCode: response.status,
-          durationMs: Date.now() - startedAtMs,
-          responseBody,
-        });
-        return response;
+        return original.apply(this, arguments).then(response => {
+          // Body capture cannot delay the App's response or consume its body.
+          void finish(response, null);
+          return response;
+        }, error => { void finish(null, error); throw error; });
       } catch (error) {
-        recordNetwork({
-          source: 'fetch-auto',
-          method,
-          url,
-          statusCode: -1,
-          durationMs: Date.now() - startedAtMs,
-          error: error.message || String(error),
-        });
+        void finish(null, error);
         throw error;
       }
     };
@@ -505,7 +643,79 @@
     });
   }
 
-  function installXhrCapture(state, recordNetwork) {
+  function captureContext(state) {
+    return { ...actionContext(state),
+      pageRef: documentPageRef({ sessionId: state.sessionId, runtimeEpoch: state.runtimeEpoch, targetId: 'main' }) };
+  }
+
+  function actionContext(state) {
+    return { actionId: state.captureActionId, association: state.captureActionId === null ? 'unattributed' : 'synchronous' };
+  }
+
+  function captureText(value, encoding) {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') throw new TypeError('Web capture bodies must be strings when supplied.');
+    if (encoding === 'base64') {
+      if (value.length > Math.ceil(maxCaptureText / 3) * 4) throw new TypeError('Encoded Web bodies exceed the capture limit.');
+      return value;
+    }
+    return trimText(value);
+  }
+
+  async function captureRequestBody(input, init, enabled) {
+    if (!enabled) return { state: 'disabled' };
+    if (Object.hasOwn(init, 'body')) {
+      const body = init.body;
+      if (body === null || body === undefined) return { state: 'empty', text: '', encoding: 'utf8' };
+      if (typeof body === 'string') return { state: body.length > maxCaptureText ? 'truncated' : 'complete', text: trimText(body), encoding: 'utf8' };
+      if (body instanceof URLSearchParams) {
+        const text = body.toString();
+        return { state: text.length > maxCaptureText ? 'truncated' : 'complete', text: trimText(text), encoding: 'utf8' };
+      }
+      if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+        const bytes = body instanceof ArrayBuffer ? new Uint8Array(body) : new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+        return { ...encodeCapturedBytes(bytes.subarray(0, maxCaptureText)), state: bytes.length > maxCaptureText ? 'truncated' : 'complete' };
+      }
+      return { state: 'unsupported-body-type' };
+    }
+    const Request = globalValue('Request');
+    if (typeof Request === 'function' && input instanceof Request) return captureResponseBody(input);
+    return { state: 'empty', text: '', encoding: 'utf8' };
+  }
+
+  function encodeCapturedBytes(bytes) {
+    // Preserve arbitrary protocol bytes. Encoding is explicit so consumers never
+    // mistake a printable Base64 value for the App's original text body.
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch {}
+    if (text !== undefined && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text))
+      return { text, encoding: 'utf8' };
+    return { text: btoa(String.fromCharCode(...bytes)), encoding: 'base64' };
+  }
+
+  async function captureResponseBody(response) {
+    let reader, timer;
+    try {
+      const copy = response.clone();
+      if (copy.body === null) return { state: 'empty', text: '', encoding: 'utf8' };
+      reader = copy.body.getReader();
+      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('capture-body-timeout')), 1000); });
+      const chunks = []; let length = 0;
+      while (true) {
+        const next = await Promise.race([reader.read(), timeout]);
+        if (next.done) {
+          const bytes = new Uint8Array(length); let offset = 0;
+          for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+          return { state: 'complete', ...encodeCapturedBytes(bytes) };
+        }
+        if (length + next.value.length > maxCaptureText) return { state: 'too-large' };
+        chunks.push(next.value); length += next.value.length;
+      }
+    } catch (error) { return { state: error.message === 'capture-body-timeout' ? 'timeout' : 'unavailable' }; }
+    finally { clearTimeout(timer); if (reader) void reader.cancel().catch(() => {}); }
+  }
+
+  function installXhrCapture(state, recordNetwork, options) {
     const win = globalValue('window');
     if (!win || !win.XMLHttpRequest) return;
     const Xhr = win.XMLHttpRequest;
@@ -518,18 +728,29 @@
     Xhr.prototype.send = function capturedSend(body) {
       const meta = this.__aiAppBridge || {};
       const startedAtMs = Date.now();
-      this.addEventListener('loadend', () => {
-        recordNetwork({
+      const context = captureContext(state);
+      state.captures.network.pending++;
+      const requestBody = captureRequestBody(null, { body }, options.captureRequestBodies === true);
+      const onEnd = () => {
+        const response = options.captureResponseBodies !== true ? { state: 'disabled' }
+          : this.responseType !== '' && this.responseType !== 'text' ? { state: 'unsupported-body-type' }
+          : { text: trimText(this.responseText), state: this.responseText.length > maxCaptureText ? 'truncated' : 'complete', encoding: 'utf8' };
+        const record = {
           source: 'xhr-auto',
           method: meta.method || 'GET',
           url: meta.url || '',
           statusCode: this.status,
           durationMs: Date.now() - startedAtMs,
-          requestBody: trimText(body),
-          responseBody: trimText(this.responseText),
-        });
-      });
-      return originalSend.apply(this, arguments);
+          responseBody: response.text, responseBodyState: response.state,
+          responseBodyEncoding: response.encoding,
+        };
+        void requestBody.then(request => {
+          recordNetwork({ ...record, requestBody: request.text, requestBodyState: request.state, requestBodyEncoding: request.encoding }, context);
+        }).finally(() => { state.captures.network.pending--; });
+      };
+      this.addEventListener('loadend', onEnd, { once: true });
+      try { return originalSend.apply(this, arguments); }
+      catch (error) { this.removeEventListener('loadend', onEnd); state.captures.network.pending--; throw error; }
     };
     state.restores.push(() => {
       Xhr.prototype.open = originalOpen;
@@ -569,7 +790,11 @@
       }
       if (!pending.length) return;
       do {
-        const events = pending.splice(0, maxBatchSize);
+        const origin = pending[0];
+        const changedOrigin = pending.findIndex(event => event.actionId !== origin.actionId || event.association !== origin.association);
+        const count = changedOrigin < 0 ? maxBatchSize : Math.min(maxBatchSize, changedOrigin);
+        const events = pending.splice(0, count);
+        state.captures.events.pending = pending.length;
         const dropped = droppedEvents;
         droppedEvents = 0;
         const signals = uiBatchSignals(events);
@@ -578,7 +803,7 @@
           droppedEvents: dropped,
           ...signals,
           events,
-        });
+        }, { actionId: origin.actionId, association: origin.association });
       } while (drain && pending.length);
       if (pending.length) scheduleFlush();
     };
@@ -587,14 +812,19 @@
       if (pending.length >= maxPendingEvents) {
         pending.shift();
         droppedEvents += 1;
+        state.captures.events.losses++;
       }
       pending.push({
         timestampMs: Date.now(),
         route: routeFromLocation(win && win.location),
         ...event,
+        ...actionContext(state),
       });
+      state.captures.events.pending = pending.length;
       scheduleFlush();
     };
+    state.flushUi = () => flush(true);
+    state.restores.push(() => { state.flushUi = null; });
     const onClick = (event) => {
       enqueue({
         type: 'interaction.click',
@@ -985,18 +1215,12 @@
 
   function storedSessionId(key) {
     const storage = globalValue('sessionStorage');
-    const existing = storage && storage.getItem(key);
+    if (!storage) throw new Error('web_session_storage_unavailable: supply sessionId');
+    const existing = storage.getItem(key);
     if (existing) return existing;
-    const next = `web-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-    if (storage) storage.setItem(key, next);
+    const next = newIdentity();
+    storage.setItem(key, next);
     return next;
-  }
-
-  function dispatchInputEvents(element) {
-    const win = globalValue('window');
-    if (!win || typeof win.Event !== 'function') return;
-    element.dispatchEvent(new win.Event('input', { bubbles: true }));
-    element.dispatchEvent(new win.Event('change', { bubbles: true }));
   }
 
   function bounds(element) {

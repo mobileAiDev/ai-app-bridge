@@ -1,0 +1,9 @@
+{
+  "url": "https://raw.githubusercontent.com/openzim/zim-testing-suite/2edf72096208e60c82b6ebbe313baa552cc6af52/data/nons/wikipedia_en_climate_change_mini_2024-06.zim",
+  "repository": "https://github.com/openzim/zim-testing-suite",
+  "commit": "2edf72096208e60c82b6ebbe313baa552cc6af52",
+  "filename": "wikipedia_en_climate_change_mini_2024-06.zim",
+  "bytes": 8978471,
+  "sha256": "3485a2c475a2356331f33f137ce26ed7116e62c7062d73a7773362d6dff005f4",
+  "scope": "real offline Wikipedia article navigation; not malformed-ZIM testing"
+}

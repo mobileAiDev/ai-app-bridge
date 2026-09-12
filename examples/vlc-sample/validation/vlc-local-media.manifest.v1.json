@@ -1,0 +1,178 @@
+{
+  "schemaVersion": "vlc-local-media-scenario/v1",
+  "frozen": true,
+  "target": {
+    "platform": "android",
+    "packageName": "org.videolan.vlc.bridge_sample.debug",
+    "locale": "zh-CN"
+  },
+  "upstream": {
+    "repository": "https://github.com/videolan/vlc-android.git",
+    "tag": "3.7.1",
+    "commit": "baeb1edae0678927ebe16d482d979e9c7e75ead6",
+    "packageName": "org.videolan.vlc.bridge_sample.debug",
+    "libvlcRepository": "https://code.videolan.org/videolan/libvlcjni.git",
+    "libvlcCommit": "7cd0c151da4162aa3052fb6949ddab1436d8fafb",
+    "remoteAccessRepository": "https://code.videolan.org/videolan/remoteaccess.git",
+    "remoteAccessCommit": "d618004a966acf81b9bc8878bcaf43578f69da07",
+    "toolchain": {
+      "gradle": "9.2.1",
+      "gradleSha256": "72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f",
+      "agp": "8.13.2",
+      "kotlin": "2.1.20",
+      "compileSdk": 36,
+      "buildTools": "36.0.0",
+      "ndk": "21.4.7075529"
+    },
+    "nativeDependencies": {
+      "libvlc-all": "3.7.0",
+      "medialibrary-all": "0.13.17"
+    }
+  },
+  "apkSha256": "9dd12dc1f6157f1bd9d389af21844617c88f8de761a3c61c9ffd43d686c57df4",
+  "androidAarSha256": "70bb223502a568b2fb7409be9e08dd687432bdaeafa08b8dbb447dc0c4ae2477",
+  "scriptSha256": "6732aa55523e6dec69a2d5d48654e10aefd75ec7c3608c000722f455bff3dd32",
+  "oracleSha256": "f53edca337ecbb1dda43077b6f54ff90555ef18694b011f114ad4b8d9b75557e",
+  "media": {
+    "schemaVersion": "vlc-media-fixture/v1",
+    "content": "Synthetic test pattern, visible media clock and quiet sine tones; no third-party media",
+    "ffmpegVersion": "7.1",
+    "ffmpegSha256": "6d175a4743ca50256e89a8cdd731100f9cee33bd79aeea46894d209410dc6617",
+    "generatorSha256": "12adb7ca07f5b2d99c1d65cfa26dfc709983a9c2134c4accb342061610c1cff6",
+    "fontSha256": "f2d400484a6aace67980730ec0a9ef24ce9e535a2604f118e6fdc2510021b85f",
+    "files": [
+      {
+        "name": "Bridge Video Fixture.mp4",
+        "bytes": 12783791,
+        "sha256": "24ab98e36355234d4f91ea00fece07ceee357a207cda293965b9bbfdd497aa1c",
+        "durationMs": 180000
+      },
+      {
+        "name": "Bridge Audio Fixture.wav",
+        "bytes": 2880086,
+        "sha256": "b22d5dea275cb37d7bec109aa5b9c7c827d3e978db7bf181231f57bf686e7003",
+        "durationMs": 90000
+      }
+    ],
+    "phoneDirectory": "/sdcard/Movies/BridgeVLCFixture",
+    "emptyDirectory": "/sdcard/Movies/BridgeVLCEmpty"
+  },
+  "preparation": {
+    "intentOperationId": "vlc-onboarding-routed-20260912-01",
+    "playbackIntentOperationId": "vlc-playback-intent-20260912-02",
+    "onboardingDone": true,
+    "appTheme": "-1",
+    "optionalOnboardingPreparedBeforeRepeatedRuns": true
+  },
+  "scenarios": {
+    "vlc-core-v1": {
+      "appId": "vlc-android",
+      "kind": "core",
+      "maxMs": 300000,
+      "sideEffects": "local-media-fixture",
+      "steps": [
+        {
+          "id": "permission-onboarding",
+          "optional": true,
+          "expectPage": "leave-onboarding",
+          "evidence": [
+            "tree",
+            "summary"
+          ]
+        },
+        {
+          "id": "scan-fixture",
+          "expectPage": "media-list",
+          "evidence": [
+            "tree",
+            "state"
+          ]
+        },
+        {
+          "id": "open-media",
+          "expectPage": "player",
+          "evidence": [
+            "tree",
+            "state"
+          ]
+        },
+        {
+          "id": "play-pause-seek",
+          "expectPage": "player-progress",
+          "evidence": [
+            "tree",
+            "state",
+            "events"
+          ]
+        },
+        {
+          "id": "back-to-list",
+          "expectPage": "media-list",
+          "evidence": [
+            "tree",
+            "summary"
+          ]
+        }
+      ]
+    },
+    "vlc-acceptance-v1": {
+      "appId": "vlc-android",
+      "kind": "acceptance",
+      "maxMs": 600000,
+      "includes": "vlc-core-v1",
+      "sideEffects": "local-media-fixture",
+      "steps": [
+        {
+          "id": "empty-directory",
+          "expectPage": "empty-or-no-result",
+          "evidence": [
+            "tree",
+            "state"
+          ]
+        },
+        {
+          "id": "playback-restore",
+          "expectPage": "player-restored",
+          "evidence": [
+            "tree",
+            "state"
+          ]
+        },
+        {
+          "id": "play-back-repeat",
+          "expectPage": "media-list-stable",
+          "evidence": [
+            "tree",
+            "events"
+          ]
+        },
+        {
+          "id": "settings-restore",
+          "expectPage": "settings-restored",
+          "evidence": [
+            "tree",
+            "state"
+          ]
+        }
+      ]
+    }
+  },
+  "expectedTerminalPage": "video media list containing Bridge Video Fixture",
+  "requiredCapture": {
+    "streams": [
+      "state",
+      "events",
+      "logs"
+    ],
+    "committed": true,
+    "gap": false,
+    "pages": "follow native cursors through a complete final page"
+  },
+  "independentChecks": [
+    "installed APK and fixture SHA-256",
+    "MediaSession actual paused positions and resumed playback",
+    "SharedPreferences saved media URI and position",
+    "empty directory filesystem contents",
+    "app_theme persistence and actual runtime epoch changes"
+  ]
+}

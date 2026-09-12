@@ -23,4 +23,4 @@ function handle(args = {}) {
 
 function resetScriptOperations() {}
 
-module.exports = { handle, resetScriptOperations, createProductionHost };
+module.exports = { handle, resetScriptOperations, createProductionHost, cancelActiveScripts: () => codeSupervisor.cancelAll() };

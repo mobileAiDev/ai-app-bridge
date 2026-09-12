@@ -143,7 +143,7 @@ async function executeMode(client, mode, target, steps, directory) {
   }
   const operationId = `localsend-compare-${crypto.randomUUID()}-${path.basename(directory)}`;
   const script = {
-    schemaVersion: 'aab.code-script/v1', name: operationId, language: 'javascript', source: SCRIPT_SOURCE, target,
+    schemaVersion: 'aab.code-script/v1', name: operationId, language: 'javascript', source: SCRIPT_SOURCE, target: { platform: 'android', ...target },
     inputs: { steps, rowsPath }, policy: { restartPolicy: 'none', timeoutMs: 90_000 },
   };
   writeJson(path.join(directory, 'script-input.json'), script);

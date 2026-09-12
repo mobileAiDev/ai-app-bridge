@@ -11,6 +11,7 @@ const { createProductionIntentDeviceAdapter } = require('../bin/intent/intent-pr
 const { handle } = require('./helpers/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createTargetLease } = require('../bin/shared-kernel/target-lease-protocol');
+const { flutterNode, flutterRef } = require('../test-support/flutter-target-fixture');
 
 function deferred() {
   let resolve;
@@ -78,7 +79,7 @@ test('G7 production Intent adapter uses injected ports and never overlaps device
       active.push('uia');
       assert.equal(active.filter((item) => item !== 'done').length <= 1, true);
       active.pop();
-      return { root: { id: 'more', className: 'Button', text: 'More', clickable: true, children: [] } };
+      return require('../test-support/uia-target-fixture').uiaXml('<hierarchy><node package="org.wikipedia" class="Button" text="More" clickable="true" enabled="true" bounds="[10,20][30,40]"/></hierarchy>');
     },
     async uiaTree() { throw new Error('legacy uiaTree must not be used on the new path'); },
     async bridgeTree() { throw new Error('native tree must be explicit'); },
@@ -86,12 +87,14 @@ test('G7 production Intent adapter uses injected ports and never overlaps device
     findUiaNodeByAny() {
       return { left: 10, top: 20, right: 30, bottom: 40 };
     },
-    async tap() {
-      active.push('tap');
+    async uiaTap(_ctx, binding) {
+      active.push('uiaTap');
       assert.equal(active.length, 1);
+      assert.equal(binding.target.selector.value, 'More');
       active.pop();
       return { ok: true };
     },
+    async tap() { throw new Error('UIA actions must not dispatch coordinates'); },
     async tapUiaText() { throw new Error('tapUiaText must not be used on the new path'); },
     async tapText() { throw new Error('tapText must be explicit'); },
     async keyevent() { throw new Error('keyevent must be explicit'); },
@@ -108,7 +111,7 @@ test('G7 production Intent adapter uses injected ports and never overlaps device
           decisionId: 'd1',
           agentDecision: 'act',
           basedOnRevision: revision,
-          action: { action: 'tap', provider: 'uia', text: 'More' },
+          action: { action: 'tap', provider: 'uia', selector: { text: 'More' } },
         };
       }
       return { decisionId: 'done', agentDecision: 'complete', basedOnRevision: revision };
@@ -119,7 +122,7 @@ test('G7 production Intent adapter uses injected ports and never overlaps device
     operationId: 'g7-prod-ports',
     mode: 'autonomous',
     goal: 'open more',
-    target: { serial: 'b46093e6', packageName: 'org.wikipedia' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'org.wikipedia' },
     provider: 'uia',
     store: createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() }),
     adapter,
@@ -138,6 +141,7 @@ test('G7 production Intent adapter taps native text from the observed tree', asy
     async bridgeTree() {
       return {
         root: {
+          targetRef: require('../test-support/native-target-fixture').nativeTargetRef(),
           id: 'more',
           className: 'Button',
           text: 'More',
@@ -175,7 +179,7 @@ test('G7 production Intent adapter taps native text from the observed tree', asy
           decisionId: 'd1',
           agentDecision: 'act',
           basedOnRevision: revision,
-          action: { action: 'tap', text: 'More' },
+          action: { action: 'tap', selector: { text: 'More' } },
         };
       }
       return { decisionId: 'done', agentDecision: 'complete', basedOnRevision: revision };
@@ -186,7 +190,7 @@ test('G7 production Intent adapter taps native text from the observed tree', asy
     operationId: 'g7-prod-native-tap',
     mode: 'autonomous',
     goal: 'open more',
-    target: { serial: 'b46093e6', packageName: 'org.wikipedia' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'org.wikipedia' },
     provider: 'native',
     store: createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() }),
     adapter,
@@ -197,18 +201,19 @@ test('G7 production Intent adapter taps native text from the observed tree', asy
   assert.deepEqual(taps, [{ x: 20, y: 30 }]);
 });
 
-test('G7 production Intent adapter taps Flutter text from the observed tree', async () => {
+test('G7 production Intent adapter revalidates Flutter text before one dispatch', async () => {
   let flutterAcquires = 0;
   const taps = [];
   const ports = {
     createBridgeContext: (options) => options,
     async flutterNodes() {
       flutterAcquires += 1;
-      throw new Error('flutterNodes must not be re-acquired on tap');
+      return { nodes: [flutterNode({ text: '返回', bounds: { left: 8, top: 48, right: 48, bottom: 88 } })] };
     },
+    bridgeTree: async () => ({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }),
     async tap() { throw new Error('Flutter intent actions must carry actionId to the runtime'); },
-    async flutterAction(_ctx, payload) {
-      taps.push(payload);
+    async flutterAction(_ctx, payload, context) {
+      taps.push({ payload, context });
       return { ok: true };
     },
     async tapText() { throw new Error('tapText must not be used on the new path'); },
@@ -222,18 +227,18 @@ test('G7 production Intent adapter taps Flutter text from the observed tree', as
     serial: 'b46093e6',
     packageName: 'com.example.app',
     actionId: 'intent:flutter-tap',
-    spec: { action: 'tap', provider: 'flutter', text: '返回' },
+    spec: { action: 'tap', provider: 'flutter', selector: { text: '返回' } },
     rawTree: {
-      nodes: [{
+      nodes: [flutterNode({
         text: '返回',
-        tap: { bounds: { left: 8, top: 48, right: 48, bottom: 88, centerX: 28, centerY: 68 } },
-      }],
+        bounds: { left: 8, top: 48, right: 48, bottom: 88, centerX: 28, centerY: 68 },
+      })],
       viewport: { devicePixelRatio: 3 },
     },
   });
   assert.equal(result.ok, true);
-  assert.equal(flutterAcquires, 0);
-  assert.deepEqual(taps, [{ action: 'tapAt', x: 28, y: 68, actionId: 'intent:flutter-tap' }]);
+  assert.equal(flutterAcquires, 1);
+  assert.deepEqual(taps, [{ payload: { action: 'tapTarget', selector: { text: '返回' }, targetRef: flutterRef('e1') }, context: { runtimeActionId: 'intent:flutter-tap' } }]);
 });
 
 test('G7 production Intent adapter scrolls UIA via host swipe', async () => {
@@ -241,7 +246,7 @@ test('G7 production Intent adapter scrolls UIA via host swipe', async () => {
   const ports = {
     createBridgeContext: (options) => options,
     async uiaTree() { throw new Error('legacy uiaTree must not be used on the new path'); },
-    async uiaTreeOnce() { throw new Error('observe must supply rawTree'); },
+    async uiaTreeOnce() { return '<hierarchy><node package="org.wikipedia.dev" bounds="[0,0][1080,2376]"/></hierarchy>'; },
     parseUiaViewport() {
       return { left: 0, top: 0, right: 1080, bottom: 2376, width: 1080, height: 2376 };
     },

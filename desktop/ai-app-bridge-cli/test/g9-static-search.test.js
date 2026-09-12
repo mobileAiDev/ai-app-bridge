@@ -37,12 +37,13 @@ test('G9 production AiAppBridge no longer holds four payload containers', () => 
     assert.equal(source.includes('shadowCapture'), false, name);
     assert.equal(/AndroidShadowCapture|IOSShadowCapture/.test(source), false, name);
     assert.match(source, /CaptureAppend\.appendSanitized\(/);
-    assert.match(source, /LegacyLiveView\.fromHttp/);
+    if (name === 'android') assert.match(source, /LegacyLiveView\.fromHttp/);
+    else assert.match(source, /CaptureHttpView\.fromHttp/);
   }
 });
 
 test('G9 production Script and Intent adapters do not add ADB probes', () => {
-  const script = readRepo('desktop/ai-app-bridge-cli/bin/script/script-production-adapter.js');
+  const script = readRepo('desktop/ai-app-bridge-cli/bin/script/script-entry-code.js');
   const intent = readRepo('desktop/ai-app-bridge-cli/bin/intent/intent-production-adapter.js');
   const host = readRepo('desktop/ai-app-bridge-cli/bin/script/script-host-port.js');
   for (const [name, source] of [['script-adapter', script], ['intent-adapter', intent], ['host', host]]) {
@@ -69,8 +70,7 @@ test('G9 Host live path does not copy mobile payloads or fall back to history', 
   assert.equal(collector.includes("recordEvidence('network'"), false);
   assert.equal(collector.includes("recordEvidence('state'"), false);
   assert.equal(collector.includes("recordEvidence('events'"), false);
-  assert.match(collector, /if \(target\.kind === 'web'\) \{/);
-  assert.match(collector, /evidenceStreams\.map\(\(stream\) => this\.pullEvidence/);
+  assert.doesNotMatch(collector, /pullEvidence|evidenceStreams/);
   assert.equal(/adb kill-server|kill-server|UiA2/.test(collector + recorder + mcp), false);
 });
 
@@ -80,11 +80,9 @@ test('G9 Flutter Dart has no second capture store', () => {
   assert.match(dart, /unawaited\(_sendCapture\('recordLog', '\/v1\/logs', payload\)\);/);
 });
 
-test('G9 capabilities history delta is phone FactStore, not Host-copied fallback', () => {
-  const mcp = readRepo('desktop/ai-app-bridge-cli/bin/mcp-server.js');
-  assert.equal(mcp.includes('Read host-persisted facts instead of the live target'), false);
-  assert.match(mcp, /read the phone FactStore while connected/);
-  assert.match(mcp, /unavailable targets return explicit errors without Host-copied payload fallback/);
-  assert.match(mcp, /Web evidence history still pages Host-owned facts/);
-  assert.match(mcp, /More than 200 keys use a byte-bounded keyed LRU/);
+test('G9 public history contract keeps mobile facts authoritative', () => {
+  const { capabilityPayload } = require('../bin/mcp-server');
+  const schema = capabilityPayload({ command: 'network' }).inputSchema;
+  assert.match(schema.properties.history.description, /read the phone FactStore while connected/);
+  assert.match(schema.properties.history.description, /never use Host-copied payload/);
 });

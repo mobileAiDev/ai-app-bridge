@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "organic-maps-offline-scenario/v1",
+  "frozen": true,
+  "hostProfile": "1gb",
+  "target": {
+    "platform": "android",
+    "packageName": "app.organicmaps.bridge_sample.web.debug",
+    "locale": "zh-Hans-CN"
+  },
+  "upstream": {
+    "repository": "https://github.com/organicmaps/organicmaps.git",
+    "tag": "2026.08.27-18-android",
+    "commit": "3ef379196cca434cf17f4ee684f16aa99fd8985e",
+    "versionName": "2026.08.27-18",
+    "packageName": "app.organicmaps.bridge_sample.web.debug",
+    "originalPackageName": "app.organicmaps.web",
+    "officialApkSha256": "1f19229d95b731862349d504b150dad63eb405caa83e98c96bfe93b7acae3c7a",
+    "variant": "webDebug",
+    "toolchain": {
+      "gradle": "9.6.0",
+      "gradleSha256": "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01",
+      "agp": "9.2.1",
+      "ndk": "29.0.14206865",
+      "compileSdk": 36,
+      "java": 17,
+      "abi": "arm64-v8a"
+    }
+  },
+  "apkSha256": "41d68f202eef16b1c2a72b80e024d459e51a6fc60c7ba2076056c4ab26a618a6",
+  "scriptSha256": "aa089352a5957c5134ea9d48a35d8c29b72e5da1b43698c76286eff92ca9beb1",
+  "oracleSha256": "272ae9fd825476204b86fab9e9639da83cb4d3cb07aaf523c8e92b7b270d61bd",
+  "maps": {
+    "upstreamCommit": "3ef379196cca434cf17f4ee684f16aa99fd8985e",
+    "dataVersion": 260826,
+    "catalogSha256": "d8a631f97ba180a04c2a064552ba5582ab1a523d1ce629789695cc8143ddc992",
+    "files": [
+      {
+        "name": "World.mwm",
+        "origin": "pinned upstream data/World.mwm",
+        "bytes": 64005633,
+        "blake3PrefixBase64": "oQvZQbw1wiTa",
+        "sha256": "1504e3516979977f3a84f69aace7f8eeaef828705e80790270e7703ee725317a"
+      },
+      {
+        "name": "WorldCoasts.mwm",
+        "origin": "pinned upstream data/WorldCoasts.mwm",
+        "bytes": 8354683,
+        "blake3PrefixBase64": "UMYGWXz8B8GT",
+        "sha256": "3f2a8c666f0aa5916e4bb59f0d3f4a4ea7815139874b156211f7b87c1aa06a58"
+      },
+      {
+        "name": "Monaco.mwm",
+        "origin": "https://cdn.organicmaps.app/maps/260826/Monaco.mwm",
+        "bytes": 1077264,
+        "blake3PrefixBase64": "Rw6Pc7ZQNsmk",
+        "sha256": "3970f58b6cda60e08c4d2e19249c105cc6aa3fb0e225a4ec4bf462be1129a131"
+      }
+    ]
+  },
+  "expectedRouteText": "7 分钟 • 560 米",
+  "preparation": {
+    "intentOperationId": "organic-maps-complete-20260912-03",
+    "intentManifestSha256": "294d6e640999f25ff3e2bbd9d6a245927b05353b0c98b2fd8bd75e26bb93642c",
+    "onboardingCompleted": true,
+    "autoDownloadEnabled": false,
+    "units": "Metric",
+    "bookmarks": [],
+    "terminalPage": "map home"
+  },
+  "core": [
+    "offline POI search and named detail",
+    "save bookmark with independent KML verification",
+    "walking route between palace and museum",
+    "route preview screenshot and capture",
+    "cancel route and preserve bookmark"
+  ],
+  "acceptance": [
+    "core",
+    "explicit no-results search",
+    "bookmark list, delete and restore with KML checks",
+    "units Metric to Foot to Metric with checked-state and file checks",
+    "cleanup test bookmark and return home",
+    "query current mobile evidence and export/verify archive"
+  ],
+  "timing": {
+    "coreMaximumMs": 300000,
+    "acceptanceMaximumMs": 600000,
+    "includes": "Script UI waits, assertions, independent reads and live capture; separate throughOfflineVerifyMs includes export and offline verification",
+    "excludes": "source build, installation, onboarding, initial map download and preflight fixture hashing"
+  },
+  "controllerSha256": "5720d2f3d7ed4f6ef4e724445c3f263dd85b62b7bfead20971009c5b24ce3ad5",
+  "hostRuntimeCode": "05ba942f176a4bab24a4429057f18a1eff1e9b8ae257ed667b239aa0a54484d9",
+  "authoringOperationId": "script-1789170301709-1"
+}

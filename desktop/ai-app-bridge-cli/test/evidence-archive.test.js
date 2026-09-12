@@ -12,9 +12,33 @@ const { buildEnvelope } = require('../bin/shared-kernel/evidence-schema');
 const OPERATION = 'archive-operation';
 const APP = 'example.notes';
 const SERIAL = 'phone-one';
-const TARGET = { serial: SERIAL, packageName: APP };
+const TARGET = { platform: 'android', serial: SERIAL, packageName: APP };
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const clone = value => JSON.parse(JSON.stringify(value));
+
+test('immutable unversioned archives verify original targets without becoming valid new execution writes', async t => {
+  const { validateRecord, checksumOf } = require('../bin/shared-kernel/evidence-schema');
+  const facts = intentFacts();
+  for (const { payload } of facts) {
+    delete payload.schemaVersion;
+    if (payload.target) delete payload.target.platform;
+    if (payload.kind === 'observation') {
+      payload.serial = SERIAL; payload.packageName = APP;
+      delete payload.target; delete payload.observedTarget;
+    }
+    const { checksum, persisted, ...body } = payload;
+    payload.checksum = checksumOf(body);
+  }
+  const original = JSON.stringify(facts);
+  assert.equal(validateRecord('intent', 'observation', facts[0].payload).ok, false);
+  const { outputDir } = fixture(t);
+  const { result } = await exportFacts(outputDir, facts);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal((await verify(outputDir, result.manifestSha256)).ok, true);
+  assert.equal(JSON.stringify(facts), original);
+  const observed = result.targets.find(item => item.role === 'observed');
+  assert.deepEqual(observed.value, { serial: SERIAL, packageName: APP });
+});
 
 function fact(namespace, kind, fields, globalSeq) {
   const built = buildEnvelope(namespace, kind, {
@@ -40,7 +64,7 @@ function intentFacts({ systemRoute = false } = {}) {
   const rawTreeId = `${OPERATION}:1`;
   const observedPackage = systemRoute ? 'com.android.documentsui' : APP;
   const observation = fact('intent', 'observation', {
-    ...TARGET, packageName: observedPackage, provider: systemRoute ? 'uia' : 'native',
+    target: TARGET, observedTarget: { ...TARGET, packageName: observedPackage }, provider: systemRoute ? 'uia' : 'native',
     capturedAtMs: 900, rawTreeId,
     rawTree: '<hierarchy><node package="example.notes" text="中文 &amp; café" /></hierarchy>',
     ...(systemRoute ? { requestedTarget: { ...TARGET, foregroundPackages: [observedPackage] },
@@ -391,7 +415,7 @@ test('allows a routed Intent observation of a system package without rewriting i
 
 test('preserves a Script system package dispatch target separately from the owning App', async t => {
   const { outputDir } = fixture(t);
-  const { result } = await exportFacts(outputDir, scriptFacts({ dispatchTarget: { serial: SERIAL, packageName: 'com.android.documentsui' } }));
+  const { result } = await exportFacts(outputDir, scriptFacts({ dispatchTarget: { platform: 'android', serial: SERIAL, packageName: 'com.android.documentsui' } }));
   assert.equal(result.ok, true, JSON.stringify(result));
   assert(result.targets.some(item => item.role === 'owner' && item.value.packageName === APP));
   assert(result.targets.some(item => item.role === 'dispatch' && item.value.packageName === 'com.android.documentsui'));
@@ -400,7 +424,7 @@ test('preserves a Script system package dispatch target separately from the owni
 
 test('preserves an explicit Script serial override supported by the current Host contract', async t => {
   const { outputDir } = fixture(t);
-  const dispatchTarget = { serial: 'phone-two', packageName: APP };
+  const dispatchTarget = { platform: 'android', serial: 'phone-two', packageName: APP };
   const { result } = await exportFacts(outputDir, scriptFacts({ dispatchTarget }));
   assert.equal(result.ok, true, JSON.stringify(result));
   assert(result.targets.some(item => item.role === 'owner' && item.value.serial === SERIAL));
@@ -586,7 +610,7 @@ for (const [label, index] of [['rawTreeId', 0], ['decisionId', 2], ['marker acti
 test('compares receipt and marker targets canonically without depending on property order', async t => {
   const { outputDir } = fixture(t);
   const facts = intentFacts();
-  facts[4] = changedFact(facts[4], { target: { packageName: APP, serial: SERIAL } });
+  facts[4] = changedFact(facts[4], { target: { platform: 'android', packageName: APP, serial: SERIAL } });
   const { result } = await exportFacts(outputDir, facts);
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(result.coverage.referenceClosure, 'complete');

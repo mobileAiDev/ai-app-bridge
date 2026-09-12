@@ -15,7 +15,22 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "SegmentedFactStoreC",
+            path: "ios/ai-app-bridge-ios/Sources/SegmentedFactStoreC",
+            publicHeadersPath: "include"
+        ),
+        .target(
+            name: "AiAppBridgeFactStoreC",
+            dependencies: ["SegmentedFactStoreC"],
+            path: "ios/ai-app-bridge-ios/Sources/AiAppBridgeFactStoreC",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .linkedFramework("Foundation")
+            ]
+        ),
+        .target(
             name: "AiAppBridgeIOS",
+            dependencies: ["AiAppBridgeFactStoreC"],
             path: "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS"
         )
     ]

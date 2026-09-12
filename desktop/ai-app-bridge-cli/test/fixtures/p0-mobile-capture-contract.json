@@ -33,59 +33,25 @@
       "/v1/events"
     ],
     "clearPath": "/v1/app/clear-data",
-    "getFields": ["ok", "type", "items", "count", "sinceId", "sinceMs", "limit", "updatedAtMs"],
-    "stateExtraFields": ["values"],
+    "getFields": [
+      "ok",
+      "type",
+      "items",
+      "count",
+      "sinceId",
+      "sinceMs",
+      "limit",
+      "updatedAtMs"
+    ],
+    "stateExtraFields": [
+      "values"
+    ],
     "postEnvelope": "ok+event",
     "redaction": {
       "network": true,
       "logsData": false,
       "stateValue": false,
       "eventData": false,
-      "marker": "[redacted]"
-    }
-  },
-  "ios": {
-    "sdkVersion": "0.2.11",
-    "source": "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/AiAppBridge.swift",
-    "liveView": "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/Capture/LegacyLiveView.swift",
-    "storeBackend": "ios/ai-app-bridge-ios/Sources/AiAppBridgeIOS/Capture/BoundedMemoryCaptureBackend.swift",
-    "windows": {
-      "logs": 300,
-      "network": 200,
-      "events": 300,
-      "state": 200
-    },
-    "stateKey": "namespace:key",
-    "stateOverflow": "declared-200-not-enforced-on-write",
-    "query": {
-      "defaultLimit": 200,
-      "maxLimit": 1000,
-      "sinceId": "id > sinceId",
-      "sinceMs": "timestampMs >= sinceMs",
-      "order": "suffix(limit)",
-      "sinceAliases": ["since-id", "since-ms"]
-    },
-    "getPaths": [
-      "/v1/logs",
-      "/v1/network",
-      "/v1/state",
-      "/v1/events"
-    ],
-    "postPaths": [
-      "/v1/logs",
-      "/v1/network",
-      "/v1/state",
-      "/v1/events"
-    ],
-    "clearPath": "/v1/app/clear-data",
-    "getFields": ["ok", "type", "items", "count", "sinceId", "sinceMs", "limit", "updatedAtMs"],
-    "stateExtraFields": ["values"],
-    "postEnvelope": "ok+record",
-    "redaction": {
-      "network": true,
-      "logsData": false,
-      "stateValue": true,
-      "eventData": true,
       "marker": "[redacted]"
     }
   },
@@ -105,7 +71,12 @@
   "hostCopy": {
     "pollIntervalMs": 1000,
     "inactiveTargetTtlMs": 1800000,
-    "streams": ["logs", "network", "state", "events"],
+    "streams": [
+      "logs",
+      "network",
+      "state",
+      "events"
+    ],
     "feedbackOffStopsCopy": true,
     "historyTrueReadsHostOnDisconnect": false
   }

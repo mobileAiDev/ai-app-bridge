@@ -275,6 +275,20 @@ truncated, but the interval may also contain sequence numbers that belonged to
 other partitions. A partition scan does not otherwise label ordinary global
 sequence gaps caused only by interleaved records in other partitions.
 
+A partition cursor with nonzero `after_sequence` and zero `segment_id`/`offset`
+seeks to the first retained record in that partition whose sequence is greater
+than the supplied value. A successful read returns a physical cursor. End,
+buffer-too-small and failure do not advance it. Prior eviction is reported only
+when the requested sequence precedes the partition's retained prefix; unrelated
+partitions' ordinary sequence gaps do not become data loss.
+
+The open store keeps three `uint64_t` read-position hints per partition to avoid
+decoding an already excluded segment prefix on every global/sequence seek.
+Rewinds and evicted segment IDs are resolved against current segment metadata.
+No payload or successful result is cached: selected frames are decoded and CRC
+checked from the original mapping before a read succeeds. These hints are not
+persisted and do not alter the disk format or cursor wire layout.
+
 ## C interface semantics
 
 The public seam is `sfs_open`, `sfs_append`, `sfs_scan`, `sfs_status`,

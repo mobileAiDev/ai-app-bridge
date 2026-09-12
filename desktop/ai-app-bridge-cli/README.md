@@ -1,58 +1,86 @@
 # AI App Bridge CLI
 
-Android connections discover the app's device port and reuse an ADB forward for
-that serial and device port, or let ADB allocate a free host port. The host port
-can differ from the device port; use the `forward` command's `hostPort` result
-for direct HTTP clients. `--port` explicitly selects the same host/device port
-and rejects an existing mapping owned by another target. Every Bridge HTTP
-request checks the cached mapping before dispatch. A missing or replaced route
-fails with `bridge_forward_mismatch`; mutating requests are never replayed.
-For manual cleanup, pass the returned host port to `remove-forward --port PORT`.
+Android SDK connections read the selected App's private endpoint descriptor and
+bind an ADB forward to its exact `localabstract:aab-sdk-<runtimeEpoch>` socket.
+`--port` selects an optional Host port; it cannot identify an App or bypass endpoint
+discovery. Every request checks the mapping before dispatch. Mutating requests
+are never replayed after a missing route or uncertain result. For manual cleanup,
+pass the exact serial and returned Host port to `remove-forward`.
 
 The current working tree builds `0.3.0-rc.1`. This is a local release candidate;
 it has not been published to npm. Installing the public package does not imply
-that the optional Script/Intent and capture contracts below are available.
+that the candidate Script/Intent and capture contracts below are available.
+The supported Node range is `>=26.3.0 <27`; this candidate was checked on 26.3.0.
+See [the release guide](docs/RELEASE.md) for local packaging and coordinated publication.
 
 AI App Bridge CLI/MCP supports Android native apps, Android WebView/H5/CDP,
 Flutter apps on Android and iOS, iOS native apps via `AiAppBridgeIOS` plus
 WebDriverAgent/XCUITest, WKWebView, and desktop Web Bridge sessions.
 
+Intent and Script are first-class execution interfaces. The shared command registry supplies discovery, validation and provider access. See [the command contract](docs/COMMAND_CONTRACT.md) for dispatch rules and known limits.
+
+CLI and MCP connect to one independent local execution runtime. Every registered
+command is available from either entrypoint, including Intent, Script, Web,
+installation and permission flows. A CLI command can start a task and a later MCP
+connection can observe or decide the same operation ID. Disconnecting either
+client leaves tasks running. Use `runtime --operation status` to inspect its
+owner, `runtime --operation stop` to drain it, and task `cancel` to stop one task.
+
+CLI output is `{kind: "json"|"text"|"bytes", value, history?}`. Read the command
+payload from `value`; binary values are base64. Failure uses `value.ok:false` and
+exit code 1. MCP wraps the same payload/history in its content format. See the
+[shared lifecycle and configuration contract](docs/COMMAND_CONTRACT.md#shared-runtime-lifecycle).
+
+Execution operations and nested controls use strict schemas. Supply an explicit
+`operation`, use `script.target` and canonical `javascript`/`python` languages,
+and handle call failures in source. Progress is read through `status`/`wait`.
+Flutter expert payloads are JSON objects; Web App actions use the explicit
+`action` wrapper. Unknown fields fail before storage or provider access.
+
 Command domains:
+
+- `execution`: `intent`, `script`, `runtime`, `device-ownership`
+- `evidence`: archive export and offline verification
 
 - `core`: `status`, `tree`, `uia-tree`, `screenshot`, `logs`, `network`, `state`, `events`
 - `app`: `install-apk`, `clear-app-data`, `launch-*`, `freeze-app`, `thaw-app`, `permission-*`, `appops-set`
-- `action`: `tap`, `tap-text`, `tap-uia-text`, `input-text`, `swipe`, `keyevent`, `wait-text`, `keyboard-state`, `hide-keyboard`
+- `action`: `tap`, `tap-text`, `tap-native`, `tap-uia`, `tap-uia-text`, `input-text`, `swipe`, `native-gesture`, `keyevent`, `wait-text`, `keyboard-state`, `hide-keyboard`
 - `flutter`: `flutter-tree`, `flutter-nodes`, `flutter-action`, `tap-flutter-text`, `input-flutter-text`, `scroll-flutter`
 - `webview`: `h5-*`, `flutter-h5-*`, `webview-pages`, `webview-network`, `webview-console`
-- `ios`: `ios-devices`, `ios-doctor`, `ios-setup`, `ios-*` runtime evidence, WDA tree/tap/input/swipe, WKWebView, and Flutter iOS
-- `web`: `web-session-start`, `web-sessions`, `web-status`, `web-dom`, `web-logs`, `web-network`, `web-state`, `web-events`, `web-command`, `web-click`, `web-input`, `web-wait`, `web-scroll`
-- `diagnostics` / `advanced`: `logcat`, `smoke`, `batch`, `forward`, `remove-forward`, plus isolated MCP `script` and `intent` (not CLI verbs)
+- `ios`: `ios-devices`, `ios-doctor`, `ios-setup`, `ios-execution` status/cancel/result/reconcile, `ios-*` runtime evidence, explicit `ios-wda-session`, WDA tree/tap/input/swipe/orientation, WKWebView, and Flutter iOS
+- `web`: provider/session lifecycle, `web-execution`, observations and capture, `web-command`, `web-click`, `web-input`, `web-key`, `web-wait`, `web-scroll`
+- `diagnostics` / `advanced`: `logcat`, `uia-runtime`, `forward`, `remove-forward`
 
-For MCP clients, the default surface is compact: call `capabilities` to discover
+MCP exposes exactly two tools: call `capabilities` to discover
 domains, commands, and options, then call `run` with the selected command.
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge
+# After candidate publication; see docs/RELEASE.md for local packaging.
+npm install -g @mobileaidev/ai-app-bridge@0.3.0-rc.1
 
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge install-apk --package-name io.github.mobileaidev.aiappbridge.sample --apk-path app-debug.apk
-ai-app-bridge clear-app-data --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge launch-app --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge launch-activity --package-name io.github.mobileaidev.aiappbridge.sample --activity .MainActivity --extra route=/home
+ai-app-bridge clear-app-data --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge launch-app --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge launch-activity --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample --activity .MainActivity --extra route=/home
 ai-app-bridge screenshot --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge input-text --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
+ai-app-bridge input-text --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
 ai-app-bridge network --package-name io.github.mobileaidev.aiappbridge.sample --compact --url-filter /api/
 ai-app-bridge webview-network --package-name io.github.mobileaidev.aiappbridge.sample --duration-ms 3000
 ai-app-bridge ios-devices
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-ai-app-bridge ios-tap --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
-ai-app-bridge ios-input --bundle-id <ios.bundle.id> --accessibility-id sample_text_field --clear-first --text "hello" --wda-url <wda-url-from-setup>
-ai-app-bridge-mcp # then run web-session-start / web-* commands through MCP
-ai-app-bridge thaw-app --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge freeze-app --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge ios-execution --operation status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-execution --operation reconcile --device-id <device-or-udid> --bundle-id <original.ios.bundle.id>
+ai-app-bridge ios-execution --operation reconcile --kind wda --device-id <device-or-udid> --wda-runner-bundle-id <runner.bundle.id>
+ai-app-bridge ios-wda-session --operation create --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-tap --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id> --wda-session-id <created-session> --tap-x 120 --tap-y 360
+ai-app-bridge ios-input --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id> --wda-session-id <created-session> --accessibility-id sample_text_field --clear-first --text "hello"
+ai-app-bridge web-session-start --web-port 18180
+ai-app-bridge runtime --operation status
+ai-app-bridge thaw-app --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge freeze-app --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge-mcp --help
 ```
 
@@ -66,21 +94,24 @@ directory, for example `$CODEX_HOME/skills/ai-app-bridge-use` on macOS/Linux or
 `%USERPROFILE%\.codex\skills\ai-app-bridge-use` on Windows, then restart or
 refresh the session.
 
-MCP defaults to a compact tool surface to avoid loading every command schema
+MCP uses a compact tool surface to avoid loading every command schema
 into the model context:
 
-- `capabilities` lists supported targets, command domains, command names, and optional argument names.
+- `capabilities` lists supported targets, command domains, command names, and exact argument schemas, execution role and supported entrypoints.
 - `run` executes a selected command with command-specific arguments.
 
+The `install-apk` command through CLI or MCP starts an Intent installation; system buttons are chosen
+from actual observations and the installed APK is independently verified. See
+[the installation contract](docs/COMMAND_CONTRACT.md#installation-is-an-intent-operation).
+
 This keeps install, data reset, launch, UI action, Flutter, WebView/H5/CDP,
-iOS, Web Bridge, logcat, network, permission, smoke, batch, port-forward,
-and isolated `script`/`intent` capabilities discoverable without exposing
+iOS, Web Bridge, logcat, network, permission, port-forward,
+and first-class `script`/`intent` capabilities discoverable without exposing
 dozens of full schemas at session start. `script` is trusted-local-code
 JavaScript or Python: `permissions` gate Bridge SDK calls only and are not
 an OS sandbox. There is no explore, export-to-script, or assemble-report command.
-Set `AI_APP_BRIDGE_MCP_SURFACE=full` before launching
-`ai-app-bridge-mcp` only when a client needs the legacy one-tool-per-command
-surface.
+Per-command MCP aliases and the old full surface were removed.
+All command parameters belong exclusively in `run.arguments`.
 
 The MCP server accepts both standard `Content-Length` framed JSON-RPC messages
 and single-line JSON messages. Responses use the format of the first request on
@@ -89,25 +120,36 @@ Node REPL scripts can send and read one JSON object per line.
 
 ## Persistent facts and action feedback
 
-The MCP process keeps one in-process connection path per target and serializes
-mutations for the same target. Phone `logs`/`network`/`state`/`events` live in
+The shared execution runtime serializes mutations for the same physical Android serial
+across direct commands, Intent and Script. A durable device lease also arbitrates
+across Host processes. Phone `logs`/`network`/`state`/`events` live in
 `MobileCaptureStore` on the device. Host live commands read the phone; the
-collector does not copy those payloads into Host history. Android App logs
+collector does not copy those payloads into Host history. Android registration
+does not open a background SDK connection or poll `status`; explicit reads and
+Intent/Script capture still use the live provider. Android App logs
 come from that App's in-process `logs` stream on an explicit live read. The
 collector does not attribute device-wide logcat to the App. Device logs are
 enabled only with the additive `deviceLogScope: "device"` option and are stored
 as an explicit device target. One bounded stream is then reused per explicit
-serial. Web Bridge sessions still collect Host-owned web evidence streams.
+serial. Web Bridge commits incoming SDK evidence directly to FactStore before
+acknowledgement; the observer does not poll or mirror those records.
 The default buffers are `main`, `system`, and `crash`; sensitive `radio`,
 `security`, and `kernel` buffers still require explicit `deviceLogBuffers`.
 The observer keeps at most 32 targets and retires a target after 30 minutes
-without an explicit operation. Its limit, expirations, evictions, failures, and
-dropped-log counters are visible in `_feedback.observer`.
+without an explicit operation. Android expiry uses a timer without device I/O
+and stops an opted-in log stream when its last target expires. Its limit,
+expirations, evictions, failures, and dropped-log counters are visible in
+`_feedback.observer`. Android targets report `backgroundPolling: false`; null
+poll timestamps and runtime epochs do not represent a successful health check.
+For `launch-app` and `launch-activity`, full feedback runs the launch first,
+then captures a system UIA tree and optional screenshot. It does not require
+an active App SDK before launch. These snapshots show the current screen;
+without an event baseline, they do not establish a semantic UI change.
 
 Facts are stored once in an authoritative segmented mmap store. A bounded
 SQLite WAL index is only a rebuildable query projection; it is not a second
 fact-payload store. Legacy history, Script evidence, and Intent evidence use
-the same process-level FactStore with isolated adapters and namespaces. The MCP
+the same runtime-owned FactStore with isolated adapters and namespaces. The
 default `auto` profile selects 1 GB when total disk capacity is at least 32 GiB and at
 least 8 GiB is available, 512 MB when total disk capacity is at least 16 GiB and at
 least 4 GiB is available, 256 MB when total capacity is at least 4 GiB and at
@@ -126,10 +168,11 @@ metadata 2%; 10% remains reserved for manifests and recovery. The SQLite
 projection has a separate bounded budget and cannot evict mmap facts. The
 feedback reports the selected profile, disk selection inputs, mmap usage, and
 projection health. The npm package bundles the native source and builds its
-Node-API binding during installation. If the native store or query projection
-cannot initialize, existing foreground commands still run and report degraded
-history; Script/Intent fail their own evidence gate. The server never silently
-claims an in-memory buffer is persistent.
+Node-API binding during installation. If only the SQLite projection fails, queries
+scan the authoritative mmap records and report the projection degradation; persistent
+execution evidence remains available. If the native store cannot initialize,
+foreground commands report degraded history and Script/Intent fail their evidence
+gate. No in-memory buffer substitutes for persistent facts.
 
 Existing SQLite fact-cache files are left intact and are not silently imported;
 opaque `fc1` cursors cannot be reused as segmented-store `fs1` cursors.
@@ -145,10 +188,10 @@ On an Android runtime that supports persistent capture, phone
 while the device is connected. This also applies to capture forwarded by the
 Flutter Android plugin when its embedded Android runtime has been updated.
 If the phone or runtime is unavailable they return an explicit error and do not
-fall back to a Host-copied payload. The current iOS capture backend is volatile:
-strong `decision-window` and `connected-history` reads return
-`persistence_unavailable`, empty refs and uncommitted coverage. Its existing
-Legacy reads remain available. Web evidence history still pages
+fall back to a Host-copied payload. iOS capture uses its segmented device store
+for live, `decision-window` and `connected-history` reads. Startup, flush and
+storage failures return explicit errors and incomplete coverage. Web evidence
+is committed on ingress to the Host FactStore; retained history pages
 Host-owned facts through the existing command plus an opaque `factCursor`.
 Mobile history does not merge Host execution records into mobile facts. Use
 Script/Intent history to inspect execution records separately:
@@ -156,22 +199,27 @@ Script/Intent history to inspect execution records separately:
 ```json
 {
   "command": "events",
-  "packageName": "io.github.mobileaidev.aiappbridge.sample",
-  "history": true,
-  "arguments": { "limit": 100 }
+  "arguments": { "serial": "DEVICE", "packageName": "com.example.app", "history": true, "limit": 100 }
 }
 ```
 
-## Optional Script and evidence contracts in this candidate
+## Intent, Script and evidence
 
-Agents may keep using ordinary `run` calls or `batch`. Intent is optional; a
-Script does not need to be generated from an Intent session. Start a Script
-through MCP `run` with `command: "script"`, `operation: "start"` and a `script`
+Intent supports daily observation and decisions; Script supports repeatable regression.
+Individual `run` calls remain useful. A Script can be authored directly or from
+observed Intent evidence. The duplicate batch executor has been removed. Start a Script
+through CLI or MCP with `operation: "start"` and a `script`
 object containing `schemaVersion: "aab.code-script/v1"`, `language`, one of
-`source`/`sourcePath`, and `target: {serial, packageName}`. Code exports
+`source`/`sourcePath`, and an explicit Android, iOS or Web `target` for device work. Code exports
 `async function main(ctx)`; Python defines its corresponding `main` entrypoint.
-This candidate's new device execution validation focuses on Android and
-Flutter Android. Existing platform command availability is a separate contract.
+Each platform retains its own provider requirements and business acceptance evidence.
+
+Read progress with `status`/`wait`; completion exposes a small `resultRef`.
+Use `script --operation result --operation-id ID` to read the persisted final
+JSON independently of event retention, including after runtime restart. Password
+and token redaction is declared by the reference's `representation`; missing or
+evicted results return an error. Full result storage is required before a Script
+can report `completed`.
 
 See [Script authoring](docs/SCRIPT_AUTHORING.md) for the executable source shape,
 call envelope, assertion results, bounded UI waits and evidence reuse boundaries.
@@ -228,9 +276,9 @@ write requires reconciliation and is never automatically replayed. Completed
 and cancelled operations cannot be resumed to repeat their effects.
 
 The old declarative Script `steps` format is rejected with
-`script_format_removed`; migrate it to an explicit code Script. Legacy command
-JSON and its per-`(serial, packageName)` concurrency remain unchanged. New
-Script/Intent mutations serialize on the physical Android serial. No fake
+`script_format_removed`; migrate it to an explicit code Script. All common
+commands now use strict canonical arguments and physical Android serial arbitration
+inside the same process. Old concurrency and alias contracts have been replaced. No fake
 provider is selected by a missing production dependency.
 
 Development checkout: [Script contract validation](scripts/validation/script-contract.md)
@@ -248,8 +296,8 @@ same feedback object.
 
 For a coordinate tap on the foreground Android App, `auto`/`full` feedback uses
 one App-local bridge request and reports the actual hit View, bounds, window,
-and touch handling result. System UI and non-target foreground taps keep the
-single-ADB path and report that App-local component feedback is unavailable.
+and touch handling result. An explicit package mismatch stops the action. System UI uses an observed
+system package and explicit device scope; an SDK failure does not trigger ADB retry.
 The request id is carried into synchronous runtime log/network/state/event
 records. Later asynchronous records are correlated by the bounded action
 timeline instead of being presented as an exact runtime binding.
@@ -260,26 +308,35 @@ at most 64 MB total. An explicitly supplied `outFile` is user-owned and is not
 automatically removed. Screenshot bytes remain files and are never copied into
 the fact database.
 
-For multi-step app automation, call `run` with `command: "batch"`. Batch steps
-run serially in one MCP call, so a failed step can stop and mark the remaining
-steps as skipped without mixing results from different commands:
+For continuous automation, start a [code Script](docs/SCRIPT_AUTHORING.md).
+Normal loops, `ctx.call`, `ctx.assert`, progress and cancellation share one
+execution record. `tap-text` supports observed provider selection (`auto`) or
+an explicit `native`, `flutter` or `uia` provider for repeatable execution.
+For repeated labels or a semantic container, `tap-native` accepts the same exact
+`text`, `contentDescription`, `resourceName` and optional `within` row scope as
+Android Native Intent. CLI, MCP and Script use the same command and validated SDK
+receipt; callers do not supply coordinates or fabricate a `targetRef`.
 
-```json
-{
-  "command": "batch",
-  "arguments": {
-    "defaults": {
-      "packageName": "io.github.mobileaidev.aiappbridge.sample"
-    },
-    "steps": [
-      { "id": "launch", "command": "launch-app" },
-      { "id": "wait-home", "command": "wait-text", "arguments": { "targetText": "Home" } },
-      { "id": "capture-logs", "command": "logs", "arguments": { "limit": 20 } }
-    ],
-    "stopOnError": true
-  }
-}
-```
+UIA reads and text actions use the bundled phone node runtime on Android API
+33+. A selected node stays bound to its observation and original action ID;
+ordinary commands, Intent and Script share the same executor and completion
+recovery. `uia-runtime --serial DEVICE --operation status|start|stop` controls
+its lifecycle. Fresh observation rotates a full, durably acknowledged session;
+startup retires only confirmed history. Explicit start checks the phone's
+process lock before reopening a dead runtime; unknown actions still block it.
+Host crashes leave a durable pending-acknowledgement queue. `device-ownership
+--operation reconcile --serial DEVICE` commits completion history, acknowledges
+live or stopped phone records and retires that queue without replay.
+For an exited phone owner, reconciliation can turn a matching committed
+prepared/queued record into a durable non-dispatch receipt under the original
+root's exclusive process lock. The receipt preserves original identity and
+separately records the recovery boot/time; admitted/unknown or missing records
+remain unresolved. Recovery never creates a UiAutomation connection.
+`device-ownership --operation receipt --serial DEVICE --runtime-epoch UUID
+--action-id ORIGINAL-ID` queries the retained FactStore representation, including
+explicit original/redacted hashes. A busy FactStore preserves pending cleanup.
+API 36 on OPPO PGFM10 and OnePlus PKR110 is the current real-device scope. See
+the [command contract](docs/COMMAND_CONTRACT.md#semantic-targets-and-text-waits).
 
 For dynamic or transient screens, MCP agents can use `freeze-app`/`thaw-app` as
 an optional stabilization control: thaw before reads, actions, waits, or
@@ -296,20 +353,27 @@ target app is debuggable and WebView debugging is enabled.
 
 iOS commands use Xcode `devicectl` for device/app/screenshot operations, the
 AiAppBridgeIOS runtime for in-app evidence, and WebDriverAgent/XCUITest for
-full-control taps, input, swipes, and external UI tree reads. `ios-setup`
-can start the vendored `appium-webdriveragent` project when `--start-wda` and
-`--team-id` are supplied. On physical devices, reuse the returned WDA URL for
-later WDA commands; it may be a CoreDevice tunnel such as
-`http://[fdxx::1]:8100`. It returns explicit blockers for Developer Mode,
-device preparation, signing, or WDA reachability instead of silently
-downgrading iOS capability.
+taps, input, swipes, and external UI tree reads. `ios-setup --start-wda --team-id`
+prepares a separate copy of pinned WDA 14.1.1 with Bridge identity checks and
+builds/signs that Runner. It returns the actual `wdaRunnerBundleId`; later WDA
+commands require this ID and the selected `deviceId`. An optional `wdaUrl`
+selects a forwarded endpoint without bypassing the Runner container check.
+Create an explicit `ios-wda-session` for an already foreground App, then pass
+its returned session ID with the App bundle ID. Reads do not create sessions
+or launch Apps. See [the WDA contract](docs/COMMAND_CONTRACT.md#ios-wda-target-and-session).
+WDA uses managed execution with queued cancellation, durable original completion
+and `ios-execution --kind wda` recovery. Cancellation waits for the original
+callback of an already submitted XCTest event. iOS Intent and Script support
+native, H5 and Flutter providers with explicit target binding. Native Intent
+`setOrientation` and CLI/MCP/Script `ios-set-orientation` share the same managed
+rotation action. Reobserve the UI after rotation; capability support and individual
+real-device results do not establish complete complex-App acceptance.
 
-`input-text` first uses the app bridge native text endpoint. This is required
-for Chinese and other Unicode text because `adb shell input text` is ASCII-only
-on many Android 16 devices; ASCII text can still fall back to ADB when an older
-bridge runtime is running.
+`input-text` uses the native SDK endpoint for Unicode text and returns its actual
+failure without retrying through ADB. `clear-app-data` chooses `method:"pm-clear"`
+(default) or `"runtime"` before dispatch; there is no retry through another method.
 
-When `screenshot` or `smoke` runs without `--out-file`, the CLI writes a unique
+When `screenshot` runs without `--out-file`, the CLI writes a unique
 PNG under a git-ignored project artifact directory. Gradle, Android, and Flutter
 projects normally use `build/ai_app_bridge_artifacts`; Node projects can use
 `node_modules/.cache/ai_app_bridge_artifacts`; Swift projects can use

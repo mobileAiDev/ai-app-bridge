@@ -14,8 +14,15 @@ Add the Flutter package. The plugin's Android debug variant automatically includ
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.2.4
+  ai_app_bridge_flutter: 0.3.0-rc.1
 ```
+
+This checkout is the `0.3.0-rc.1` candidate. The matching Android runtime and
+Gradle plugin must be available from JitPack before publishing this Flutter
+version; a local path integration does not prove the public coordinate exists.
+The iOS sources and C store are included in the Flutter package. Flutter's own
+Swift Package Manager integration supplies its generated `FlutterFramework`
+package; native iOS consumers use the separate repository-root Swift package.
 
 ## Initialize
 
@@ -46,6 +53,60 @@ In debug mode the bridge also samples Flutter frame timings as bounded
 them. Animation-time layout snapshots are capped at four per second; full trees
 and screenshots are not produced per frame. Call `AiAppBridge.instance.shutdown()`
 when a debug harness tears down the engine and may initialize it again later.
+
+## Executing observed targets
+
+Operable snapshots publish `targetSchema: "aab.flutter-target/v1"` and references
+to live Elements. IDs remain stable when the same Element moves; replacement,
+semantic changes and a new runtime invalidate old references. Empty EditableText
+controls and real Scrollable containers are included in the operable tree.
+Nested containers keep separate identities even when their bounds coincide.
+Taps use the selected Element's current visible bounds, so a scroll ancestor's
+center cannot redirect a label tap to an unrelated button.
+Each scroll owner exposes its nodeId, axis, current pixels and available extents
+(an unbounded extent is null); replacing its ScrollPosition invalidates old refs.
+
+The Host binds these references for Intent and the public `tap-flutter`,
+`input-flutter-text` and `scroll-flutter` commands. Select by exact text or an
+observed node ID. The runtime rechecks the reference and current geometry before
+dispatch. Input retains the exact editor/controller/focus across awaited frames
+and updates that TextInputClient only. Multiple unfocused editors or multiple
+implicit scroll containers are ambiguous; the runtime does not choose the first
+editor or last scrollable.
+
+Standard Material editors expose their own `labelText`, `hintText` and
+`errorText` as optional `label`, `hint` and `errorText`; Cupertino editors expose
+their `placeholder` as `hint`. Intent summaries preserve these declarations.
+Choose the matching observed editor and use its node ID. Changing its label or
+hint invalidates the old target; a validation message alone does not change its
+identity. Custom label widgets and canvas content require App semantics.
+
+Operable text excludes transparent TextSpan content, including inherited text
+styles. Controls beneath zero-opacity Opacity or FadeTransition widgets are not
+operable. Inspector diagnostic strings are never substituted for visible text.
+These checks do not establish visibility through arbitrary shaders or native
+system overlays.
+
+Bound taps cancel their pointer stream if the target changes before UP. The
+runtime serializes action requests and reports busy, invalid target, changed
+focus and scroll-boundary errors explicitly. Arbitrary App callbacks are not
+transactions. Android and iOS advertise `aab.flutter-execution/v1`: Native owns admission
+and the deadline, Dart checks before new mutations, and a cancellation receipt
+waits for the original execution to settle. Pointer timing stays local so a
+transport wait cannot turn a tap into a long press. Cancelled owned waits send
+CANCEL; an opaque App future remains occupied until completion. If settlement
+cannot be confirmed, the SDK returns an ambiguous pending result and keeps
+admission closed. Host never treats a closed socket as successful cancellation.
+This contract requires matching Native SDK and Flutter plugin sources. On iOS,
+the asynchronous plugin uses `executeAction`, `checkAction` and `cancelAction`;
+unmanaged `runAction` is rejected. Native persists the original completion in its
+segmented disk store before releasing admission. Host keeps unknown actions under
+physical UDID ownership, and `ios-execution reconcile` queries the original receipt
+without replay. A detached engine cannot clear a newer handler registration.
+The iOS integration has software tests, an arm64 compile gate and a fixed
+[Flexify Intent/Script business acceptance](../../docs/IOS_FLUTTER_BUSINESS_2026-09-11.md).
+That evidence covers the documented workout flow, not arbitrary Apps or the whole
+device. No receipt rolls back App effects.
 
 ## WebView Adapter
 

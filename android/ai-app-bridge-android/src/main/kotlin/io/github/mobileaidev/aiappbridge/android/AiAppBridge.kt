@@ -8,6 +8,8 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.net.LocalServerSocket
+import android.net.LocalSocket
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +20,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.text.InputType
 import android.text.method.PasswordTransformationMethod
+import android.util.AtomicFile
 import android.util.Base64
 import android.util.Log
 import android.view.MotionEvent
@@ -25,8 +28,11 @@ import android.view.PixelCopy
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.Window
+import android.view.inspector.WindowInspector
 import android.webkit.WebView
+import android.widget.Checkable
 import android.widget.EditText
 import android.widget.TextView
 import org.json.JSONArray
@@ -34,13 +40,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.lang.ref.WeakReference
 import java.lang.reflect.Proxy
-import java.net.BindException
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.net.Socket
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Collections
@@ -50,7 +50,6 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import io.github.mobileaidev.aiappbridge.android.capture.CaptureAppend
@@ -60,7 +59,6 @@ import io.github.mobileaidev.aiappbridge.android.capture.MobileCaptureStore
 
 object AiAppBridge {
     private const val tag = "AiAppBridge"
-    private const val defaultPort = 18080
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
@@ -69,73 +67,17 @@ object AiAppBridge {
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     @Volatile
     private var flutterActionHandler: FlutterActionHandler? = null
-    private val h5DomSnapshotScript = """
-        (function() {
-          function text(value) {
-            return value == null ? '' : String(value);
-          }
-          function cut(value, max) {
-            var raw = text(value);
-            return raw.length > max ? raw.slice(0, max) : raw;
-          }
-          function bounds(element) {
-            var rect = element.getBoundingClientRect();
-            return {
-              left: rect.left,
-              top: rect.top,
-              right: rect.right,
-              bottom: rect.bottom,
-              width: rect.width,
-              height: rect.height
-            };
-          }
-          function sensitive(element) {
-            var probe = [
-              element.type,
-              element.id,
-              element.name,
-              element.autocomplete,
-              element.getAttribute('data-sensitive'),
-              element.getAttribute('data-private')
-            ].join(' ').toLowerCase();
-            return /password|passwd|pwd|passcode/.test(probe);
-          }
-          var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
-          var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200)
-            .map(function(element, index) {
-              return {
-                index: index,
-                tag: text(element.tagName).toLowerCase(),
-                id: text(element.id),
-                name: text(element.getAttribute('name')),
-                type: text(element.getAttribute('type')),
-                role: text(element.getAttribute('role')),
-                ariaLabel: text(element.getAttribute('aria-label')),
-                placeholder: text(element.getAttribute('placeholder')),
-                text: sensitive(element)
-                  ? '[redacted:length=' + text(element.value).length + ']'
-                  : cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
-                href: cut(element.href, 500),
-                disabled: !!element.disabled,
-                bounds: bounds(element)
-              };
-            });
-          return JSON.stringify({
-            ok: true,
-            title: document.title,
-            url: location.href,
-            readyState: document.readyState,
-            bodyText: cut(document.body && document.body.innerText, 20000),
-            controls: controls,
-            controlCount: controls.length,
-            updatedAtMs: Date.now()
-          });
-        })()
-    """.trimIndent()
 
     fun interface FlutterActionHandler {
-        fun handle(payloadJson: String): String
+        fun handle(method: String, payloadJson: String, reply: FlutterActionReply)
     }
+
+    fun interface FlutterActionReply { fun reply(responseJson: String) }
+
+    private val flutterActions = FlutterActionExecutor(
+        { flutterActionHandler },
+        { JSONObject(flutterSnapshot).optJSONObject("layout")?.optJSONObject("operable")?.optString("runtimeEpoch") },
+    )
 
     interface WebViewAdapter {
         val name: String
@@ -153,8 +95,23 @@ object AiAppBridge {
     @Volatile
     private var lifecycleRegistered = false
 
-    @Volatile
-    private var currentActivity: WeakReference<Activity>? = null
+    private val foregroundActivities = ForegroundActivityTracker<Activity>()
+    private val explicitActivityStarts = FocusedActivityStart(
+        foregroundActivities,
+        usable = { !it.isFinishing && !it.isDestroyed && it.window?.decorView != null },
+        focused = { it.window.decorView.hasWindowFocus() },
+        watchFocus = { activity, gainedFocus ->
+            val root = activity.window.decorView
+            val listener = ViewTreeObserver.OnWindowFocusChangeListener { focused -> if (focused) gainedFocus() }
+            root.viewTreeObserver.addOnWindowFocusChangeListener(listener)
+            val remove: () -> Unit = {
+                val observer = root.viewTreeObserver
+                if (observer.isAlive) observer.removeOnWindowFocusChangeListener(listener)
+            }
+            remove
+        },
+        initialized = { ensureUiObserver().attach(it, reason = "bridge-start") },
+    )
 
     @Volatile
     private var factApplicationContext: Context? = null
@@ -198,15 +155,13 @@ object AiAppBridge {
     @JvmStatic
     fun start(context: Context) {
         factApplicationContext = context.applicationContext
-        if (context is Activity) {
-            currentActivity = WeakReference(context)
-        }
-        val observer = ensureUiObserver()
+        ensureUiObserver()
         registerLifecycleCallbacks(context)
         startObservationFactStore(context)
         startAutomaticLogPersist(context)
         if (context is Activity) {
-            observer.attach(context, reason = "bridge-start")
+            if (Looper.myLooper() == Looper.getMainLooper()) explicitActivityStarts.start(context)
+            else mainHandler.post { explicitActivityStarts.start(context) }
         }
         if (server != null) {
             return
@@ -215,7 +170,7 @@ object AiAppBridge {
             if (server != null) {
                 return
             }
-            server = DebugBridgeServer(context.applicationContext, defaultPort).also {
+            server = DebugBridgeServer(context.applicationContext).also {
                 it.start()
             }
         }
@@ -227,9 +182,21 @@ object AiAppBridge {
     }
 
     @JvmStatic
+    @Synchronized
     fun setFlutterActionHandler(handler: FlutterActionHandler?) {
         flutterActionHandler = handler
     }
+
+    @JvmStatic
+    @Synchronized
+    fun clearFlutterActionHandler(handler: FlutterActionHandler): Boolean {
+        if (flutterActionHandler !== handler) return false
+        flutterActionHandler = null
+        return true
+    }
+
+    @JvmStatic
+    fun checkFlutterAction(body: String): String = flutterActions.check(JSONObject(body)).toString()
 
     @JvmStatic
     fun registerWebViewAdapter(adapter: WebViewAdapter) {
@@ -378,34 +345,38 @@ object AiAppBridge {
             application.registerActivityLifecycleCallbacks(
                 object : Application.ActivityLifecycleCallbacks {
                     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-                        currentActivity = WeakReference(activity)
+                        foregroundActivities.onLifecycle(activity, ActivityPhase.CREATED)
                         uiObserver?.onLifecycle(activity, "created")
                     }
 
                     override fun onActivityStarted(activity: Activity) {
-                        currentActivity = WeakReference(activity)
+                        foregroundActivities.onLifecycle(activity, ActivityPhase.STARTED)
                         uiObserver?.onLifecycle(activity, "started")
                     }
 
                     override fun onActivityResumed(activity: Activity) {
-                        currentActivity = WeakReference(activity)
+                        explicitActivityStarts.cancel(activity)
+                        foregroundActivities.onLifecycle(activity, ActivityPhase.RESUMED)
                         uiObserver?.onLifecycle(activity, "resumed")
                     }
 
                     override fun onActivityPaused(activity: Activity) {
+                        explicitActivityStarts.cancel(activity)
+                        foregroundActivities.onLifecycle(activity, ActivityPhase.PAUSED)
                         uiObserver?.onLifecycle(activity, "paused")
                     }
 
                     override fun onActivityStopped(activity: Activity) {
+                        explicitActivityStarts.cancel(activity)
+                        foregroundActivities.onLifecycle(activity, ActivityPhase.STOPPED)
                         uiObserver?.onLifecycle(activity, "stopped")
                     }
                     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 
                     override fun onActivityDestroyed(activity: Activity) {
+                        explicitActivityStarts.cancel(activity)
+                        foregroundActivities.onLifecycle(activity, ActivityPhase.DESTROYED)
                         uiObserver?.onLifecycle(activity, "destroyed")
-                        if (currentActivity?.get() == activity) {
-                            currentActivity = null
-                        }
                     }
                 },
             )
@@ -413,16 +384,18 @@ object AiAppBridge {
         }
     }
 
-    private fun activity(): Activity? = currentActivity?.get()
+    private fun activity(): Activity? = foregroundActivities.current()
 
-    private fun runOnMainThread(block: () -> JSONObject): JSONObject {
+    private fun runOnMainThread(mutation: Boolean = false, block: () -> JSONObject): JSONObject {
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            return block()
+            return try { block() } catch (failure: NativeTargetFailure) { failure.response() }
         }
         val latch = CountDownLatch(1)
         val result = AtomicReference<JSONObject>()
         val error = AtomicReference<Throwable>()
-        mainHandler.post {
+        val gate = MainThreadTaskGate()
+        val task = Runnable {
+            if (!gate.begin()) { latch.countDown(); return@Runnable }
             try {
                 result.set(block())
             } catch (throwable: Throwable) {
@@ -431,10 +404,21 @@ object AiAppBridge {
                 latch.countDown()
             }
         }
-        if (!latch.await(mainThreadTimeoutMs, TimeUnit.MILLISECONDS)) {
-            return JSONObject().put("ok", false).put("error", "main_thread_timeout")
+        if (!mainHandler.post(task)) return NativeTargetFailure("main_thread_unavailable").response()
+        fun abortWait(code: String): JSONObject {
+            val cancelledQueued = gate.cancelQueued()
+            if (cancelledQueued) mainHandler.removeCallbacks(task)
+            return NativeTargetFailure(code).response()
+                .put("dispatched", if (mutation && !cancelledQueued) JSONObject.NULL else false)
+                .put("ambiguous", mutation && !cancelledQueued)
         }
-        error.get()?.let { throw it }
+        val completed = try { latch.await(mainThreadTimeoutMs, TimeUnit.MILLISECONDS) }
+        catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return abortWait("main_thread_interrupted")
+        }
+        if (!completed) return abortWait("main_thread_timeout")
+        error.get()?.let { if (it is NativeTargetFailure) return it.response() else throw it }
         return result.get() ?: JSONObject().put("ok", false).put("error", "empty_main_thread_result")
     }
 
@@ -515,7 +499,7 @@ object AiAppBridge {
     }
 
     private fun startObservationFactStore(context: Context?) {
-        val target = context ?: factApplicationContext ?: currentActivity?.get() ?: return
+        val target = context ?: factApplicationContext ?: activity() ?: return
         try {
             val configuration = MobileFactStoreProfiles.forContext(target)
             if (!captureStore.status().persistent) captureAttachmentState = "opening"
@@ -667,12 +651,12 @@ object AiAppBridge {
     }
 
     private fun captureTargetKey(): String {
-        val context = factApplicationContext ?: currentActivity?.get()?.applicationContext
+        val context = factApplicationContext ?: activity()?.applicationContext
         return context?.packageName ?: "unknown"
     }
 
     private fun mobileFactContext(event: JSONObject? = null): MobileFactEnvelopeContext {
-        val context = factApplicationContext ?: currentActivity?.get()?.applicationContext
+        val context = factApplicationContext ?: activity()?.applicationContext
         val packageName = context?.packageName ?: "unknown"
         val rawDeviceIdentity = try {
             context?.contentResolver?.let {
@@ -912,11 +896,6 @@ object AiAppBridge {
         return json.optString(key)
     }
 
-    private data class WebViewTarget(
-        val view: View,
-        val adapter: WebViewAdapter,
-    )
-
     private object StandardAndroidWebViewAdapter : WebViewAdapter {
         override val name: String = "android-webview"
 
@@ -1010,78 +989,151 @@ object AiAppBridge {
 
     private class DebugBridgeServer(
         private val context: Context,
-        private val port: Int,
     ) {
-        private val activePort = AtomicInteger(port)
+        private val socketName = "aab-sdk-$runtimeEpoch"
         private val executor = Executors.newSingleThreadExecutor { task ->
             Thread(task, "ai-app-bridge").apply { isDaemon = true }
         }
+        private val nativeGestures = NativeGestureExecutor(mainHandler, { actionId, data ->
+            CaptureActionContext.withActionId(actionId) { uiObserver?.noteGesture(data) }
+        })
+        private val nativeActions = ManagedActionExecutor(ManagedActionProtocol.NATIVE, runtimeEpoch, settledEvent = { result ->
+            CaptureActionContext.withActionId(result.getString("actionId")) {
+                val data = JSONObject().put("execution", result.getJSONObject("execution"))
+                    .put("ok", result.getBoolean("ok")).put("dispatched", result.getBoolean("dispatched"))
+                    .put("ambiguous", result.getBoolean("ambiguous")).put("error", result.opt("error") ?: JSONObject.NULL)
+                recordEvent("interaction", "native.action.settled", data.toString())
+            }
+        })
+        private val h5Actions = ManagedActionExecutor(ManagedActionProtocol.H5, runtimeEpoch, settledEvent = { result ->
+            CaptureActionContext.withActionId(result.getString("actionId")) {
+                val data = JSONObject().put("execution", result.getJSONObject("execution"))
+                    .put("ok", result.getBoolean("ok")).put("dispatched", result.getBoolean("dispatched"))
+                    .put("ambiguous", result.getBoolean("ambiguous")).put("error", result.opt("error") ?: JSONObject.NULL)
+                recordEvent("interaction", "h5.action.settled", data.toString())
+            }
+        })
+        private val h5Bridge = AndroidH5Bridge(runtimeEpoch, context.packageName, { webViewAdapters.toList() }) {
+            val activity = activity() ?: throw H5EvaluationFailure("no_current_activity")
+            val window = foregroundH5Window(activity)
+            AndroidH5Bridge.Window(window.root, activity.javaClass.name, window.type)
+        }
+        private val actionReplies = java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
+            java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.ArrayBlockingQueue(16),
+            { task -> Thread(task, "aab-action-reply").apply { isDaemon = true } })
 
         fun start() {
             executor.execute {
-                writePortState(ok = false, port = port, error = "starting")
-                var lastError: Throwable? = null
-                for (candidatePort in port..(port + 50)) {
-                    try {
-                        serve(candidatePort)
-                        return@execute
-                    } catch (error: BindException) {
-                        lastError = error
-                        Log.w(tag, "AI app bridge port $candidatePort is already in use", error)
-                    } catch (error: SecurityException) {
-                        lastError = error
-                        Log.w(tag, "AI app bridge cannot open local socket; INTERNET permission is required", error)
-                        break
-                    } catch (error: Throwable) {
-                        lastError = error
-                        Log.w(tag, "AI app bridge stopped", error)
-                        break
+                try {
+                    writeEndpointState(ok = false, error = "starting")
+                    LocalServerSocket(socketName).use { serverSocket ->
+                        writeEndpointState(ok = true, error = null)
+                        Log.i(tag, "AI app bridge listening on localabstract:$socketName")
+                        while (!Thread.currentThread().isInterrupted) {
+                            handleClient(serverSocket.accept())
+                        }
                     }
-                }
-                writePortState(
-                    ok = false,
-                    port = port,
-                    error = lastError?.javaClass?.simpleName ?: "no_available_port",
-                )
-            }
-        }
-
-        private fun serve(candidatePort: Int) {
-            ServerSocket().use { serverSocket ->
-                serverSocket.reuseAddress = true
-                serverSocket.bind(
-                    InetSocketAddress(InetAddress.getByName("127.0.0.1"), candidatePort),
-                )
-                activePort.set(candidatePort)
-                writePortState(ok = true, port = candidatePort, error = null)
-                Log.i(tag, "AI app bridge listening on 127.0.0.1:$candidatePort")
-                while (!Thread.currentThread().isInterrupted) {
-                    handleClient(serverSocket.accept())
+                } catch (error: Throwable) {
+                    Log.w(tag, "AI app bridge stopped", error)
+                    try { writeEndpointState(ok = false, error = error.javaClass.simpleName) }
+                    catch (stateError: Throwable) { Log.w(tag, "AI app bridge failed to write endpoint state", stateError) }
                 }
             }
         }
 
-        private fun writePortState(ok: Boolean, port: Int, error: String?) {
+        private fun writeEndpointState(ok: Boolean, error: String?) {
+            val payload = JSONObject()
+                .put("schema", "ai-app-bridge.android-endpoint.v1")
+                .put("ok", ok)
+                .put("packageName", context.packageName)
+                .put("runtimeEpoch", runtimeEpoch)
+                .put("transport", "localabstract")
+                .put("socketName", socketName)
+                .put("version", bridgeVersion)
+                .put("updatedAtMs", System.currentTimeMillis())
+                .put("error", error ?: JSONObject.NULL)
+            val file = AtomicFile(File(context.filesDir, "ai_app_bridge_endpoint.json"))
+            val output = file.startWrite()
             try {
-                val payload = JSONObject()
-                    .put("ok", ok)
-                    .put("packageName", context.packageName)
-                    .put("port", port)
-                    .put("version", bridgeVersion)
-                    .put("updatedAtMs", System.currentTimeMillis())
-                if (!error.isNullOrBlank()) {
-                    payload.put("error", error)
-                }
-                File(context.filesDir, "ai_app_bridge_port.json").writeText(payload.toString())
-            } catch (error: Throwable) {
-                Log.w(tag, "AI app bridge failed to write port state", error)
+                output.write(payload.toString().toByteArray(StandardCharsets.UTF_8))
+                file.finishWrite(output)
+            } catch (failure: Throwable) {
+                file.failWrite(output)
+                throw failure
             }
         }
 
-        private fun handleClient(socket: Socket) {
+        private fun enqueueActionReply(socket: LocalSocket, response: JSONObject) {
+            try { actionReplies.execute { replyGesture(socket, 200, response) } }
+            catch (_: java.util.concurrent.RejectedExecutionException) {
+                try { socket.close() } catch (_: java.io.IOException) { }
+            }
+        }
+
+        private fun handleClient(socket: LocalSocket) {
+            val request = try { readRequest(socket) }
+            catch (error: Throwable) { replyGesture(socket, 500, JSONObject().put("ok", false).put("error", error.toString())); return }
+            if (request.method == "POST" && request.path in setOf("/v1/action/tap", "/v1/action/tap-target",
+                    "/v1/action/input-text", "/v1/action/input-target", "/v1/action/gesture-target", "/v1/action/cancel")) {
+                val body = try { requestJson(request.body) }
+                catch (_: org.json.JSONException) { replyGesture(socket, 200, NativeTargetFailure("invalid_json").response()); return }
+                val reply: (JSONObject) -> Unit = { response -> enqueueActionReply(socket, response) }
+                if (request.path == "/v1/action/cancel") nativeActions.cancel(body, reply)
+                else if (flutterActions.isBusy()) reply(NativeTargetFailure("flutter_action_busy").response())
+                else if (h5Actions.isBusy()) reply(h5Failure("h5_action_busy"))
+                else {
+                    val kind = when (request.path) {
+                        "/v1/action/gesture-target" -> "gesture"
+                        "/v1/action/tap", "/v1/action/tap-target" -> "tap"
+                        else -> "input"
+                    }
+                    nativeActions.submit(kind, body, {
+                        when (kind) {
+                            "gesture" -> {
+                                val gesture = NativeGestureContract.parse(body)
+                                nativeGestures.task(gesture) { prepareNativeGesture(gesture) }
+                            }
+                            else -> {
+                                val semantic = request.path.endsWith("-target")
+                                if (semantic) NativeTargetContract.validateRequest(body, input = kind == "input")
+                                else NativeTargetContract.validatePointRequest(body, input = kind == "input")
+                                NativeMainThreadTask(mainHandler) { mutation ->
+                                    if (kind == "tap") dispatchTap(body, semantic, mutation) else dispatchInputText(body, semantic, mutation)
+                                }
+                            }
+                        }
+                    }, reply)
+                }
+                return
+            }
+            if (request.method == "POST" && request.path in setOf("/v1/flutter/action", "/v1/flutter/cancel")) {
+                val body = try { requestJson(request.body) }
+                catch (_: org.json.JSONException) { replyGesture(socket, 200, NativeTargetFailure("invalid_json").response()); return }
+                val reply: (JSONObject) -> Unit = { response -> enqueueActionReply(socket, response) }
+                if (request.path == "/v1/flutter/cancel") flutterActions.cancel(body, reply)
+                else if (nativeActions.isBusy()) reply(NativeTargetFailure("native_action_busy").response())
+                else if (h5Actions.isBusy()) reply(h5Failure("h5_action_busy"))
+                else flutterActions.submit(body, reply)
+                return
+            }
+            if (request.method == "POST" && request.path in setOf("/v1/h5/action", "/v1/h5/cancel")) {
+                val body = try { requestJson(request.body) }
+                catch (_: org.json.JSONException) { replyGesture(socket, 200, h5Failure("invalid_json")); return }
+                val reply: (JSONObject) -> Unit = { response -> enqueueActionReply(socket, response) }
+                if (request.path == "/v1/h5/cancel") h5Actions.cancel(body, reply)
+                else if (nativeActions.isBusy()) reply(h5Failure("native_action_busy"))
+                else if (flutterActions.isBusy()) reply(h5Failure("flutter_action_busy"))
+                else if (body.keys().asSequence().toSet() != setOf("payload", "actionId", "execution") || body.opt("payload") !is JSONObject) {
+                    reply(h5Failure("invalid_h5_request"))
+                } else h5Actions.submit(body.getJSONObject("payload").optString("action"), body, {
+                    val payload = body.getJSONObject("payload")
+                    AndroidH5Bridge.validate(payload)
+                    H5EvaluationTask(mainHandler::post, mainHandler::removeCallbacks) { check -> h5Bridge.prepare(payload, check) }
+                }, reply)
+                return
+            }
             socket.use {
                 try {
-                    val request = readRequest(socket)
                     when {
                         request.method == "GET" && request.path == "/v1/status" -> {
                             writeJson(socket, 200, buildStatus())
@@ -1105,19 +1157,7 @@ object AiAppBridge {
                             writeJson(socket, 200, buildEvents(request.query))
                         }
                         request.method == "GET" && request.path == "/v1/h5/dom" -> {
-                            writeJson(socket, 200, buildH5Dom())
-                        }
-                        request.method == "POST" && request.path == "/v1/action/tap" -> {
-                            writeJson(socket, 200, dispatchTap(request.body))
-                        }
-                        request.method == "POST" && request.path == "/v1/action/input-text" -> {
-                            writeJson(socket, 200, dispatchInputText(request.body))
-                        }
-                        request.method == "POST" && request.path == "/v1/flutter/action" -> {
-                            writeJson(socket, 200, dispatchFlutterAction(request.body))
-                        }
-                        request.method == "POST" && request.path == "/v1/h5/eval" -> {
-                            writeJson(socket, 200, executeH5Script(request.body))
+                            writeJson(socket, 200, buildH5Dom(request.query["webViewId"]))
                         }
                         request.method == "POST" && request.path == "/v1/flutter/snapshot" -> {
                             updateFlutterSnapshot(request.body)
@@ -1147,16 +1187,24 @@ object AiAppBridge {
                         }
                     }
                 } catch (error: Throwable) {
-                    writeJson(
+                    try { writeJson(
                         socket,
                         500,
                         JSONObject().put("ok", false).put("error", error.toString()),
-                    )
+                    ) } catch (closed: java.io.IOException) { Log.w(tag, "AI app bridge response connection closed", closed) }
                 }
             }
         }
 
-        private fun readRequest(socket: Socket): HttpRequest {
+        private fun replyGesture(socket: LocalSocket, status: Int, response: JSONObject) {
+            socket.use {
+                try { writeJson(socket, status, response) }
+                catch (error: java.io.IOException) { Log.w(tag, "SDK action response connection closed", error) }
+            }
+        }
+
+        private fun readRequest(socket: LocalSocket): HttpRequest {
+            socket.soTimeout = 1500
             val input = socket.getInputStream()
             val headerBytes = ByteArrayOutputStream()
             val tail = IntArray(4)
@@ -1210,6 +1258,9 @@ object AiAppBridge {
         }
 
         private fun clearAppData(): JSONObject {
+            if (nativeActions.isBusy()) return NativeTargetFailure("native_action_busy").response()
+            if (flutterActions.isBusy()) return NativeTargetFailure("flutter_action_busy").response()
+            if (h5Actions.isBusy()) return h5Failure("h5_action_busy")
             val cleared = JSONArray()
             val failures = JSONArray()
             if (!stopObservationFactStoreForMaintenance()) {
@@ -1246,7 +1297,7 @@ object AiAppBridge {
             deletePathContents("shared-prefs", File(dataDir, "shared_prefs"), cleared, failures)
             deletePathContents("datastore", File(dataDir, "datastore"), cleared, failures)
             deletePathContents("app-webview", File(dataDir, "app_webview"), cleared, failures)
-            writePortState(ok = true, port = activePort.get(), error = null)
+            writeEndpointState(ok = true, error = null)
             startObservationFactStore(context)
 
             return JSONObject()
@@ -1298,11 +1349,17 @@ object AiAppBridge {
                     JSONObject()
                         .put("name", "ai_app_bridge")
                         .put("version", bridgeVersion)
-                        .put("transport", "http")
+                        .put("transport", "localabstract")
                         .put("runtimeEpoch", runtimeEpoch)
+                        .put("nativeTargetSchema", NativeTargetContract.SCHEMA)
+                        .put("nativeExecutionSchema", ManagedActionProtocol.NATIVE.schema)
+                        .put("h5ExecutionSchema", ManagedActionProtocol.H5.schema)
+                        .put("h5TargetSchema", AndroidH5Bridge.SCHEMA)
+                        .put("h5Action", h5Actions.status() ?: JSONObject.NULL)
+                        .put("nativeAction", nativeActions.status() ?: JSONObject.NULL)
+                        .put("flutterAction", flutterActions.status() ?: JSONObject.NULL)
                         .put("captureTargetKey", captureTargetKey())
-                        .put("host", "127.0.0.1")
-                        .put("port", activePort.get()),
+                        .put("socketName", socketName),
                 )
                 .put(
                     "app",
@@ -1336,160 +1393,61 @@ object AiAppBridge {
                     ?: return@runOnMainThread JSONObject()
                         .put("ok", false)
                         .put("error", "no_current_activity")
-                val root = activity.window?.decorView
-                    ?: return@runOnMainThread JSONObject()
-                        .put("ok", false)
-                        .put("error", "no_decor_view")
-                val counter = NodeCounter()
-                val roots = windowRoots(activity)
-                val windows = JSONArray()
-                roots.forEachIndexed { index, windowRoot ->
-                    windows.put(
-                        JSONObject()
-                            .put("index", index)
-                            .put("type", windowRoot.type)
-                            .put("rootClassName", windowRoot.root.javaClass.name)
-                            .put("activityDecor", windowRoot.activityDecor)
-                            .put("bounds", rectToJson(windowRoot.bounds))
-                            .put("root", viewToJson(activity, windowRoot.root, counter, depth = 0, parentEffectiveVisible = true)),
-                    )
-                }
-                JSONObject()
-                    .put("ok", true)
-                    .put("activity", activity.javaClass.name)
-                    .put("root", viewToJson(activity, root, counter, depth = 0, parentEffectiveVisible = true))
-                    .put("windows", windows)
-                    .put("windowCount", roots.size)
-                    .put("nodeCount", counter.count)
-                    .put("updatedAtMs", System.currentTimeMillis())
+                nativeSnapshot(activity).json
             }
         }
 
-        private fun buildH5Dom(): JSONObject {
+        private fun nativeSnapshot(activity: Activity): NativeViewSnapshot {
+            val root = activity.window?.decorView ?: throw NativeTargetFailure("no_decor_view")
+            val counter = NodeCounter()
+            val roots = windowRoots(activity)
+            val windows = JSONArray()
+            roots.forEachIndexed { index, windowRoot ->
+                windows.put(
+                    JSONObject()
+                        .put("index", index)
+                        .put("type", windowRoot.type)
+                        .put("rootClassName", windowRoot.root.javaClass.name)
+                        .put("activityDecor", windowRoot.activityDecor)
+                        .put("windowId", viewIdentity(windowRoot.root))
+                        .put("focused", windowRoot.root.hasWindowFocus())
+                        .put("focusable", windowRoot.focusable)
+                        .put("touchable", windowRoot.touchable)
+                        .put("focusOwnerWindowId", windowRoot.focusOwnerWindowId ?: JSONObject.NULL)
+                        .put("bounds", rectToJson(windowRoot.bounds))
+                        .put("root", viewToJson(activity, windowRoot.root, counter, depth = 0, parentEffectiveVisible = true)),
+                )
+            }
+            val json = JSONObject()
+                .put("ok", true)
+                .put("activity", activity.javaClass.name)
+                .put("root", viewToJson(activity, root, counter, depth = 0, parentEffectiveVisible = true))
+                .put("windows", windows)
+                .put("windowCount", roots.size)
+                .put("nodeCount", counter.count)
+                .put("updatedAtMs", System.currentTimeMillis())
+            return NativeViewSnapshot(json, roots, counter.views)
+        }
+
+        private fun buildH5Dom(webViewId: String?): JSONObject {
             val latch = CountDownLatch(1)
             val result = AtomicReference<JSONObject>()
             mainHandler.post {
                 try {
-                    val activity = activity()
-                    if (activity == null) {
-                        result.set(JSONObject().put("ok", false).put("error", "no_current_activity"))
-                        latch.countDown()
-                        return@post
-                    }
-                    val root = activity.window?.decorView
-                    if (root == null) {
-                        result.set(JSONObject().put("ok", false).put("error", "no_decor_view"))
-                        latch.countDown()
-                        return@post
-                    }
-                    val target = findWebViewTarget(root)
-                    if (target == null) {
-                        result.set(
-                            JSONObject()
-                                .put("ok", false)
-                                .put("error", "no_webview")
-                                .put("activity", activity.javaClass.name),
-                        )
-                        latch.countDown()
-                        return@post
-                    }
-                    target.adapter.evaluateJavascript(target.view, h5DomSnapshotScript) { raw ->
-                        try {
-                            result.set(
-                                JSONObject()
-                                    .put("ok", true)
-                                    .put("activity", activity.javaClass.name)
-                                    .put("webView", target.adapter.metadata(target.view))
-                                    .put("dom", decodeJavascriptObject(raw))
-                                    .put("updatedAtMs", System.currentTimeMillis()),
-                            )
-                        } catch (error: Throwable) {
-                            result.set(
-                                JSONObject()
-                                    .put("ok", false)
-                                    .put("error", error.toString())
-                                    .put("raw", raw ?: JSONObject.NULL),
-                            )
-                        } finally {
-                            latch.countDown()
-                        }
-                    }
+                    h5Bridge.snapshot(webViewId) { value -> result.set(value); latch.countDown() }
                 } catch (error: Throwable) {
-                    result.set(JSONObject().put("ok", false).put("error", error.toString()))
+                    result.set(h5Failure("h5_snapshot_failed").put("message", error.toString()))
                     latch.countDown()
                 }
             }
-            if (!latch.await(mainThreadTimeoutMs, TimeUnit.MILLISECONDS)) {
-                return JSONObject()
-                    .put("ok", false)
-                    .put("error", "h5_dom_timeout")
-            }
-            return result.get() ?: JSONObject()
-                .put("ok", false)
-                .put("error", "empty_h5_dom_result")
+            if (!latch.await(mainThreadTimeoutMs, TimeUnit.MILLISECONDS)) return h5Failure("h5_dom_timeout")
+            return result.get() ?: h5Failure("empty_h5_dom_result")
         }
 
-        private fun executeH5Script(body: String): JSONObject {
-            val json = requestJson(body)
-            val script = json.optString("script").trim()
-            if (script.isEmpty()) {
-                return JSONObject()
-                    .put("ok", false)
-                    .put("error", "missing_script")
-            }
-
-            val latch = CountDownLatch(1)
-            val result = AtomicReference<JSONObject>()
-            mainHandler.post {
-                try {
-                    val activity = activity()
-                    if (activity == null) {
-                        result.set(JSONObject().put("ok", false).put("error", "no_current_activity"))
-                        latch.countDown()
-                        return@post
-                    }
-                    val root = activity.window?.decorView
-                    if (root == null) {
-                        result.set(JSONObject().put("ok", false).put("error", "no_decor_view"))
-                        latch.countDown()
-                        return@post
-                    }
-                    val target = findWebViewTarget(root)
-                    if (target == null) {
-                        result.set(
-                            JSONObject()
-                                .put("ok", false)
-                                .put("error", "no_webview")
-                                .put("activity", activity.javaClass.name),
-                        )
-                        latch.countDown()
-                        return@post
-                    }
-                    target.adapter.evaluateJavascript(target.view, script) { raw ->
-                        result.set(
-                            JSONObject()
-                                .put("ok", true)
-                                .put("activity", activity.javaClass.name)
-                                .put("webView", target.adapter.metadata(target.view))
-                                .put("result", decodeJavascriptValue(raw))
-                                .put("raw", raw ?: JSONObject.NULL)
-                                .put("updatedAtMs", System.currentTimeMillis()),
-                        )
-                        latch.countDown()
-                    }
-                } catch (error: Throwable) {
-                    result.set(JSONObject().put("ok", false).put("error", error.toString()))
-                    latch.countDown()
-                }
-            }
-            if (!latch.await(mainThreadTimeoutMs, TimeUnit.MILLISECONDS)) {
-                return JSONObject()
-                    .put("ok", false)
-                    .put("error", "h5_eval_timeout")
-            }
-            return result.get() ?: JSONObject()
-                .put("ok", false)
-                .put("error", "empty_h5_eval_result")
+        private fun foregroundH5Window(activity: Activity): WindowRoot = try {
+            foregroundActionWindow(activity)
+        } catch (error: NativeTargetFailure) {
+            throw H5EvaluationFailure(error.code)
         }
 
         private fun buildScreenshot(): JSONObject {
@@ -1698,139 +1656,110 @@ object AiAppBridge {
             }
         }
 
-        private fun dispatchTap(body: String): JSONObject {
-            val request = JSONObject(body.ifBlank { "{}" })
-            val x = request.optDouble("x", Double.NaN).toFloat()
-            val y = request.optDouble("y", Double.NaN).toFloat()
-            val actionId = request.optString("actionId", "").takeIf { it.isNotBlank() }
-            if (x.isNaN() || y.isNaN()) {
-                return JSONObject()
-                    .put("ok", false)
-                    .put("error", "x_y_required")
-            }
-            return runOnMainThread {
-                val activity = activity()
-                    ?: return@runOnMainThread JSONObject()
-                        .put("ok", false)
-                        .put("error", "no_current_activity")
-                val fallbackRoot = activity.window?.decorView
-                    ?: return@runOnMainThread JSONObject()
-                        .put("ok", false)
-                        .put("error", "no_decor_view")
-                val roots = windowRoots(activity)
-                val target = roots.asReversed().firstOrNull {
-                    it.bounds.contains(x.toInt(), y.toInt()) && it.root.isShown
-                } ?: WindowRoot(
-                    root = fallbackRoot,
-                    bounds = boundsForView(fallbackRoot),
-                    type = "activity",
-                    activityDecor = true,
+        private fun dispatchTap(request: JSONObject, semantic: Boolean, mutation: NativeMutationGate): JSONObject {
+            val actionId = request.getString("actionId")
+            val activity = activity() ?: throw NativeTargetFailure("no_current_activity")
+            val resolved = if (semantic) resolveNativeTarget(activity, request, editable = false) else null
+            val x = resolved?.selection?.x?.toFloat() ?: request.getDouble("x").toFloat()
+            val y = resolved?.selection?.y?.toFloat() ?: request.getDouble("y").toFloat()
+            val target = resolved?.root ?: foregroundActionWindow(activity)
+            if (!target.bounds.contains(x.toInt(), y.toInt())) throw NativeTargetFailure("native_point_outside_foreground_window")
+            val hitView = findActionViewAtPoint(target.root, x.toInt(), y.toInt())
+            val localX = x - target.bounds.left
+            val localY = y - target.bounds.top
+            val response = CaptureActionContext.withActionId(actionId) {
+                val hitTarget = hitView?.let { actionViewToJson(activity, it) }
+                val downTime = SystemClock.uptimeMillis()
+                val eventTime = downTime + 48L
+                val down = nativeTouchEvent(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, target.bounds)
+                val up = nativeTouchEvent(downTime, eventTime, MotionEvent.ACTION_UP, x, y, target.bounds)
+                var downSent = false
+                var upReturned = false
+                val handledDown: Boolean
+                val handledUp: Boolean
+                try {
+                    mutation.dispatch(); downSent = true
+                    handledDown = target.root.dispatchTouchEvent(down)
+                    mutation.dispatch()
+                    handledUp = target.root.dispatchTouchEvent(up); upReturned = true
+                } catch (error: Throwable) {
+                    if (downSent && !upReturned) {
+                        val cancel = nativeTouchEvent(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, x, y, target.bounds)
+                        try { target.root.dispatchTouchEvent(cancel) } catch (failure: Throwable) { error.addSuppressed(failure) }
+                        finally { cancel.recycle() }
+                    }
+                    throw error
+                } finally { down.recycle(); up.recycle() }
+                uiObserver?.noteTap(
+                    x = x,
+                    y = y,
+                    windowType = target.type,
+                    target = hitTarget,
+                    handledDown = handledDown,
+                    handledUp = handledUp,
                 )
-                val localX = x - target.bounds.left
-                val localY = y - target.bounds.top
-                val response = CaptureActionContext.withActionId(actionId) {
-                    val hitView = findActionViewAtPoint(target.root, x.toInt(), y.toInt())
-                    val hitTarget = hitView?.let { actionViewToJson(activity, it) }
-                    val downTime = SystemClock.uptimeMillis()
-                    val eventTime = downTime + 48L
-                    val down = MotionEvent.obtain(
-                        downTime,
-                        downTime,
-                        MotionEvent.ACTION_DOWN,
-                        localX,
-                        localY,
-                        0,
-                    )
-                    val up = MotionEvent.obtain(
-                        downTime,
-                        eventTime,
-                        MotionEvent.ACTION_UP,
-                        localX,
-                        localY,
-                        0,
-                    )
-                    val handledDown = target.root.dispatchTouchEvent(down)
-                    val handledUp = target.root.dispatchTouchEvent(up)
-                    down.recycle()
-                    up.recycle()
-                    uiObserver?.noteTap(
-                        x = x,
-                        y = y,
-                        windowType = target.type,
-                        target = hitTarget,
-                        handledDown = handledDown,
-                        handledUp = handledUp,
-                    )
-                    JSONObject()
-                        .put("ok", true)
-                        .put("x", x.toDouble())
-                        .put("y", y.toDouble())
-                        .put("localX", localX.toDouble())
-                        .put("localY", localY.toDouble())
-                        .put("windowType", target.type)
-                        .put("rootClassName", target.root.javaClass.name)
-                        .put("rootBounds", rectToJson(target.bounds))
-                        .put("target", hitTarget ?: JSONObject.NULL)
-                        .put("handledDown", handledDown)
-                        .put("handledUp", handledUp)
-                        .put("actionId", actionId ?: JSONObject.NULL)
-                        .put("updatedAtMs", System.currentTimeMillis())
-                }
-                CaptureActionContext.deferActionId(actionId) { clear -> mainHandler.post(clear) }
-                response
+                JSONObject()
+                    .put("ok", true)
+                    .put("dispatched", true)
+                    .put("ambiguous", false)
+                    .put("targetValidation", if (semantic) NativeTargetContract.SCHEMA else "coordinates")
+                    .put("targetRef", resolved?.selection?.node?.optJSONObject("targetRef") ?: JSONObject.NULL)
+                    .put("x", x.toDouble())
+                    .put("y", y.toDouble())
+                    .put("localX", localX.toDouble())
+                    .put("localY", localY.toDouble())
+                    .put("windowType", target.type)
+                    .put("rootClassName", target.root.javaClass.name)
+                    .put("rootBounds", rectToJson(target.bounds))
+                    .put("target", hitTarget ?: JSONObject.NULL)
+                    .put("handledDown", handledDown)
+                    .put("handledUp", handledUp)
+                    .put("actionId", actionId ?: JSONObject.NULL)
+                    .put("updatedAtMs", System.currentTimeMillis())
             }
+            CaptureActionContext.deferActionId(actionId) { clear -> mainHandler.post(clear) }
+            return response
         }
 
-        private fun dispatchInputText(body: String): JSONObject {
-            val request = requestJson(body)
-            val actionId = request.optString("actionId", "").takeIf { it.isNotBlank() }
-            if (request.has("x") != request.has("y")) {
-                return JSONObject().put("ok", false).put("error", "x_y_must_be_provided_together")
+        private fun dispatchInputText(request: JSONObject, semantic: Boolean, mutation: NativeMutationGate): JSONObject {
+            val actionId = request.getString("actionId")
+            val text = request.getString("text")
+            val activity = activity() ?: throw NativeTargetFailure("no_current_activity")
+            val resolved = if (semantic) resolveNativeTarget(activity, request, editable = true) else null
+            val target = if (resolved != null) TextInputTarget(resolved.root, resolved.view as EditText) else {
+                val window = foregroundActionWindow(activity)
+                findInputTextTarget(listOf(window), request.optDouble("x", Double.NaN).toFloat(), request.optDouble("y", Double.NaN).toFloat())
+                    ?: throw NativeTargetFailure("input_target_not_found")
             }
-            val rawText = request.opt("text")
-            if (!request.has("text") || rawText == null || rawText == JSONObject.NULL) {
-                return JSONObject()
-                    .put("ok", false)
-                    .put("error", "text_required")
-            }
-            val text = rawText.toString()
-            val x = request.optDouble("x", Double.NaN).toFloat()
-            val y = request.optDouble("y", Double.NaN).toFloat()
-            if (request.has("x") && (!x.isFinite() || !y.isFinite())) {
-                return JSONObject().put("ok", false).put("error", "invalid_input_coordinates")
-            }
-            return runOnMainThread {
-                val activity = activity()
-                    ?: return@runOnMainThread JSONObject()
-                        .put("ok", false)
-                        .put("error", "no_current_activity")
-                val roots = windowRoots(activity)
-                val target = findInputTextTarget(roots, x, y)
-                    ?: return@runOnMainThread JSONObject()
-                        .put("ok", false)
-                        .put("error", "input_target_not_found")
-                        .put("message", "No enabled visible EditText was focused or matched by the requested coordinates.")
-
-                val response = CaptureActionContext.withActionId(actionId) {
-                    val requestedFocus = target.view.requestFocus()
-                    val connection = target.view.onCreateInputConnection(android.view.inputmethod.EditorInfo())
-                        ?: return@withActionId JSONObject()
-                            .put("ok", false)
-                            .put("error", "input_connection_unavailable")
+            if (!target.root.root.hasWindowFocus()) throw NativeTargetFailure("native_input_window_not_focused")
+            val response = CaptureActionContext.withActionId(actionId) {
+                mutation.dispatch()
+                val requestedFocus = target.view.requestFocus()
+                if (!target.view.isFocused) return@withActionId NativeTargetFailure("input_focus_rejected", dispatched = true).response()
+                mutation.dispatch()
+                val connection = target.view.onCreateInputConnection(android.view.inputmethod.EditorInfo())
+                    ?: return@withActionId NativeTargetFailure("input_connection_unavailable", dispatched = true).response()
+                try {
+                    // Every input path keeps the editor/window selected before focus.
+                    // App callbacks may change that binding without changing its text.
+                    validateInputBinding(activity, target, if (semantic) request else null)
                     // Use the editor's IME contract. Custom EditText.setText overrides
                     // can deliberately suppress the listeners that update app state.
+                    mutation.dispatch()
                     connection.beginBatchEdit()
                     val committed = try {
-                        connection.setSelection(0, target.view.text?.length ?: 0) &&
+                        mutation.dispatch()
+                        if (!connection.setSelection(0, target.view.text?.length ?: 0)) false
+                        else {
+                            validateInputBinding(activity, target, if (semantic) request else null)
+                            mutation.dispatch()
                             connection.commitText(text, 1)
+                        }
                     } finally {
                         connection.endBatchEdit()
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) connection.closeConnection()
                     }
                     if (!committed) {
-                        return@withActionId JSONObject()
-                            .put("ok", false)
-                            .put("error", "input_connection_rejected")
+                        return@withActionId NativeTargetFailure("input_connection_rejected", dispatched = true).response()
                     }
                     uiObserver?.noteInput(
                         inputLength = text.length,
@@ -1840,6 +1769,10 @@ object AiAppBridge {
                     )
                     JSONObject()
                         .put("ok", true)
+                        .put("dispatched", true)
+                        .put("ambiguous", false)
+                        .put("targetValidation", if (semantic) NativeTargetContract.SCHEMA else "coordinates-or-focus")
+                        .put("targetRef", resolved?.selection?.node?.optJSONObject("targetRef") ?: JSONObject.NULL)
                         .put("transport", "bridge")
                         .put("source", "native-view")
                         .put("text", text)
@@ -1850,24 +1783,112 @@ object AiAppBridge {
                         .put("target", editTextToJson(activity, target.view))
                         .put("actionId", actionId ?: JSONObject.NULL)
                         .put("updatedAtMs", System.currentTimeMillis())
+                } catch (failure: NativeTargetFailure) {
+                    NativeTargetFailure(failure.code, failure.field, dispatched = true).response()
+                } finally {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) connection.closeConnection()
                 }
-                CaptureActionContext.deferActionId(actionId) { clear -> mainHandler.post(clear) }
-                response
+            }
+            CaptureActionContext.deferActionId(actionId) { clear -> mainHandler.post(clear) }
+            return response
+        }
+
+        private fun validateInputBinding(activity: Activity, target: TextInputTarget, semanticRequest: JSONObject?) {
+            if (activity() !== activity || foregroundActionWindow(activity).root !== target.root.root) {
+                throw NativeTargetFailure("native_window_changed")
+            }
+            if (!target.view.isAttachedToWindow || target.view.rootView !== target.root.root) {
+                throw NativeTargetFailure("native_target_replaced")
+            }
+            if (!target.root.root.hasWindowFocus()) throw NativeTargetFailure("native_input_window_not_focused")
+            if (!target.view.isFocused) throw NativeTargetFailure("input_focus_changed")
+            if (!target.view.isShown || !target.view.isEnabled || target.view.alpha <= 0f) {
+                throw NativeTargetFailure("input_target_not_operable")
+            }
+            if (semanticRequest != null) resolveNativeTarget(activity, semanticRequest, editable = true)
+        }
+
+        private fun resolveNativeTarget(activity: Activity, request: JSONObject, editable: Boolean): ResolvedNativeTarget {
+            val resolved = resolveNativeSelection(activity, request, editable)
+            val hit = findActionViewAtPoint(resolved.root.root, resolved.selection.x, resolved.selection.y)
+            val ownsPoint = if (editable) targetContainsView(hit, resolved.view) else nativePointerOwnsHit(resolved.view, hit)
+            if (!ownsPoint) throw NativeTargetFailure("native_target_obscured")
+            return resolved
+        }
+
+        private fun resolveNativeSelection(activity: Activity, request: JSONObject, editable: Boolean): ResolvedNativeTarget {
+            val snapshot = nativeSnapshot(activity)
+            val selection = NativeTargetContract.resolve(snapshot.json, request.getJSONObject("selector"), request.getJSONObject("targetRef"), editable)
+            val ref = selection.node.getJSONObject("targetRef")
+            val root = snapshot.roots.single { viewIdentity(it.root) == ref.getString("windowId") }
+            val view = snapshot.views[ref.getString("viewId")] ?: throw NativeTargetFailure("native_target_replaced")
+            return ResolvedNativeTarget(selection, root, view)
+        }
+
+        private fun prepareNativeGesture(request: NativeGestureRequest): NativeGestureTarget {
+            val owner = activity() ?: throw NativeTargetFailure("no_current_activity")
+            val selected = resolveNativeSelection(owner, request.body, editable = false)
+            val root = selected.root
+            var startX = selected.selection.x
+            var startY = selected.selection.y
+            var endX = startX
+            var endY = startY
+            if (request.action == "scroll") {
+                val direction = if (request.direction == "down") 1 else -1
+                if (!selected.view.canScrollVertically(direction)) throw NativeTargetFailure("native_scroll_boundary")
+                val visible = Rect()
+                if (!selected.view.getGlobalVisibleRect(visible)) throw NativeTargetFailure("native_target_obscured")
+                val origin = IntArray(2).also(selected.view.rootView::getLocationOnScreen)
+                visible.offset(origin[0], origin[1])
+                if (!visible.intersect(root.bounds)) throw NativeTargetFailure("native_target_obscured")
+                startX = visible.centerX(); endX = startX
+                startY = Math.round(visible.top + visible.height() * if (direction > 0) .76f else .22f)
+                endY = Math.round(visible.top + visible.height() * if (direction > 0) .22f else .76f)
+            } else if (request.action == "swipe") {
+                val x = Math.round(startX + request.deltaX)
+                val y = Math.round(startY + request.deltaY)
+                if (x < root.bounds.left || x >= root.bounds.right || y < root.bounds.top || y >= root.bounds.bottom) throw NativeTargetFailure("swipe_endpoint_out_of_bounds")
+                endX = x.toInt(); endY = y.toInt()
+            }
+            if (request.action != "longPress" && startX == endX && startY == endY) throw NativeTargetFailure("swipe_delta_zero")
+            val hit = findActionViewAtPoint(root.root, startX, startY)
+            val ownsPoint = if (request.action == "scroll") hit != null && targetContainsView(selected.view, hit)
+                else nativePointerOwnsHit(selected.view, hit)
+            if (!ownsPoint) throw NativeTargetFailure("native_target_obscured")
+            return NativeGestureTarget(root.root, Rect(root.bounds), root.type, selected.selection.node.getJSONObject("targetRef"),
+                startX.toFloat(), startY.toFloat(), endX.toFloat(), endY.toFloat()) {
+                val current = windowRoots(owner).lastOrNull { it.root.isShown && it.root.alpha > 0f }
+                activity() === owner && current != null && current.root === root.root && current.bounds == root.bounds &&
+                    NativeWindowContract.pointerError(current.root.hasWindowFocus(), current.focusable,
+                        current.touchable, current.focusOwnerWindowId) == null
             }
         }
 
-        private fun dispatchFlutterAction(body: String): JSONObject {
-            val handler = flutterActionHandler
-                ?: return JSONObject()
-                    .put("ok", false)
-                    .put("error", "flutter_action_handler_absent")
-            return try {
-                JSONObject(handler.handle(body.ifBlank { "{}" }))
-            } catch (error: Throwable) {
-                JSONObject()
-                    .put("ok", false)
-                    .put("error", error.toString())
+        private fun foregroundActionWindow(activity: Activity): WindowRoot {
+            val window = windowRoots(activity).lastOrNull { it.root.isShown && it.root.alpha > 0f }
+                ?: throw NativeTargetFailure("native_window_unavailable")
+            NativeWindowContract.pointerError(window.root.hasWindowFocus(), window.focusable, window.touchable, window.focusOwnerWindowId)
+                ?.let { throw NativeTargetFailure(it) }
+            return window
+        }
+
+        private fun targetContainsView(hit: View?, selected: View): Boolean {
+            if (hit == null) return false
+            var current: View? = selected
+            while (current != null) {
+                if (current === hit) return true
+                current = current.parent as? View
             }
+            return false
+        }
+
+        private fun nativePointerOwnsHit(selected: View, hit: View?): Boolean {
+            if (targetContainsView(hit, selected)) return true
+            // A semantic container can handle touches through its own passive
+            // surface/UI layers. An interactive descendant or unrelated overlay
+            // still requires its own selection; input retains its stricter rule.
+            return hit != null && !hit.isClickable && !hit.isLongClickable && hit !is EditText &&
+                targetContainsView(selected, hit)
         }
 
         private fun viewToJson(
@@ -1876,6 +1897,8 @@ object AiAppBridge {
             counter: NodeCounter,
             depth: Int,
             parentEffectiveVisible: Boolean,
+            windowId: String = viewIdentity(view.rootView),
+            parentGuard: String = windowId,
         ): JSONObject {
             counter.count += 1
             val location = IntArray(2)
@@ -1904,6 +1927,7 @@ object AiAppBridge {
                 .put("focusable", view.isFocusable)
                 .put("focused", view.isFocused)
                 .put("selected", view.isSelected)
+                .put("checked", (view as? Checkable)?.isChecked ?: JSONObject.NULL)
                 .put("alpha", view.alpha.toDouble())
                 .put(
                     "bounds",
@@ -1918,14 +1942,26 @@ object AiAppBridge {
             if (view is TextView) {
                 json.put("text", if (isPasswordField(view)) "" else (view.text?.toString()?.take(300) ?: ""))
             }
+            val viewId = viewIdentity(view)
+            val targetRef = NativeTargetContract.reference(runtimeEpoch, windowId, viewId, parentGuard, json)
+            json.put("targetRef", targetRef)
+            counter.views[viewId] = view
             if (view is ViewGroup && depth < 24) {
                 val children = JSONArray()
                 for (index in 0 until view.childCount) {
-                    children.put(viewToJson(activity, view.getChildAt(index), counter, depth + 1, effectiveVisible))
+                    children.put(viewToJson(activity, view.getChildAt(index), counter, depth + 1, effectiveVisible, windowId, targetRef.getString("guard")))
                 }
                 json.put("children", children)
             }
             return json
+        }
+
+        private fun viewIdentity(view: View): String {
+            val key = R.id.aab_native_view_identity
+            val existing = view.getTag(key)
+            if (existing is String) return existing
+            check(existing == null) { "Native View identity tag was overwritten" }
+            return UUID.randomUUID().toString().also { view.setTag(key, it) }
         }
 
         private fun isPasswordField(view: View): Boolean {
@@ -1955,11 +1991,12 @@ object AiAppBridge {
                 return findEditTextAtPoint(root.root, screenX, screenY)?.let { TextInputTarget(root, it) }
             }
             val root = roots.asReversed().firstOrNull { it.root.isShown } ?: return null
-            val view = findFocusedEditText(root.root) ?: findFirstUsableEditText(root.root)
+            val view = findFocusedEditText(root.root)
             return view?.let { TextInputTarget(root, it) }
         }
 
         private fun findEditTextAtPoint(view: View, x: Int, y: Int): EditText? {
+            if (!view.isShown || !view.isEnabled || view.alpha <= 0f || !boundsForView(view).contains(x, y)) return null
             if (view is ViewGroup) {
                 for (index in view.childCount - 1 downTo 0) {
                     findEditTextAtPoint(view.getChildAt(index), x, y)?.let { return it }
@@ -2013,18 +2050,6 @@ object AiAppBridge {
             return null
         }
 
-        private fun findFirstUsableEditText(view: View): EditText? {
-            if (view is EditText && isUsableEditText(view)) {
-                return view
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) {
-                    findFirstUsableEditText(view.getChildAt(index))?.let { return it }
-                }
-            }
-            return null
-        }
-
         private fun isUsableEditText(view: EditText): Boolean {
             var ancestor: View? = view
             while (ancestor != null) {
@@ -2052,9 +2077,17 @@ object AiAppBridge {
             val activityRoot = activity.window?.decorView ?: return emptyList()
             val roots = mutableListOf<WindowRoot>()
             val seen = Collections.newSetFromMap(IdentityHashMap<View, Boolean>())
-            reflectWindowRoots().forEach { root ->
-                if (root.width <= 0 || root.height <= 0 || !seen.add(root)) {
+            val views = inspectWindowRoots()
+            views.forEach { root ->
+                if (!root.isAttachedToWindow || root.width <= 0 || root.height <= 0 || !seen.add(root)) {
                     return@forEach
+                }
+                val params = root.layoutParams as? android.view.WindowManager.LayoutParams
+                    ?: throw NativeTargetFailure("native_window_metadata_unavailable")
+                val ownerToken = root.applicationWindowToken
+                val focusedOwner = views.singleOrNull { candidate ->
+                    candidate.isAttachedToWindow && candidate.isShown && candidate.alpha > 0f && candidate.hasWindowFocus()
+                        && ownerToken != null && candidate.applicationWindowToken == ownerToken
                 }
                 roots.add(
                     WindowRoot(
@@ -2062,32 +2095,19 @@ object AiAppBridge {
                         bounds = boundsForView(root),
                         type = windowRootType(root, root === activityRoot),
                         activityDecor = root === activityRoot,
+                        focusable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0,
+                        touchable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0,
+                        focusOwnerWindowId = focusedOwner?.let(::viewIdentity),
                     ),
                 )
             }
-            if (seen.add(activityRoot)) {
-                roots.add(
-                    WindowRoot(
-                        root = activityRoot,
-                        bounds = boundsForView(activityRoot),
-                        type = "activity",
-                        activityDecor = true,
-                    ),
-                )
-            }
-            return roots.ifEmpty {
-                listOf(
-                    WindowRoot(
-                        root = activityRoot,
-                        bounds = boundsForView(activityRoot),
-                        type = "activity",
-                        activityDecor = true,
-                    ),
-                )
-            }
+            return roots
         }
 
-        private fun reflectWindowRoots(): List<View> {
+        private fun inspectWindowRoots(): List<View> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return WindowInspector.getGlobalWindowViews()
+            // Android 19-28 has no public window enumeration API. Failure must
+            // remain visible; an Activity decor cannot stand in for a dialog.
             return try {
                 val globalClass = Class.forName("android.view.WindowManagerGlobal")
                 val instance = globalClass.getMethod("getInstance").invoke(null)
@@ -2096,10 +2116,10 @@ object AiAppBridge {
                 when (val rawViews = viewsField.get(instance)) {
                     is List<*> -> rawViews.filterIsInstance<View>()
                     is Array<*> -> rawViews.filterIsInstance<View>()
-                    else -> emptyList()
+                    else -> throw NativeTargetFailure("native_window_enumeration_unavailable")
                 }
             } catch (_: Throwable) {
-                emptyList()
+                throw NativeTargetFailure("native_window_enumeration_unavailable")
             }
         }
 
@@ -2143,47 +2163,6 @@ object AiAppBridge {
             return null
         }
 
-        private fun findWebViewTarget(view: View): WebViewTarget? {
-            webViewAdapters.firstOrNull { adapter ->
-                try {
-                    adapter.matches(view)
-                } catch (_: Throwable) {
-                    false
-                }
-            }?.let { adapter ->
-                return WebViewTarget(view, adapter)
-            }
-            if (view is ViewGroup) {
-                for (index in 0 until view.childCount) {
-                    findWebViewTarget(view.getChildAt(index))?.let { return it }
-                }
-            }
-            return null
-        }
-
-        private fun decodeJavascriptObject(raw: String?): JSONObject {
-            val rawValue = raw?.trim()
-                ?: throw IllegalArgumentException("empty_javascript_result")
-            val firstValue = JSONTokener(rawValue).nextValue()
-            return when (firstValue) {
-                is JSONObject -> firstValue
-                is String -> JSONObject(firstValue)
-                else -> JSONObject(firstValue.toString())
-            }
-        }
-
-        private fun decodeJavascriptValue(raw: String?): Any {
-            val rawValue = raw?.trim() ?: return JSONObject.NULL
-            if (rawValue.isEmpty() || rawValue == "undefined") {
-                return JSONObject.NULL
-            }
-            return try {
-                JSONTokener(rawValue).nextValue()
-            } catch (_: Throwable) {
-                rawValue
-            }
-        }
-
         private fun resourceName(activity: Activity, id: Int): Any {
             if (id == View.NO_ID) {
                 return JSONObject.NULL
@@ -2213,7 +2192,7 @@ object AiAppBridge {
             }
         }
 
-        private fun writeJson(socket: Socket, statusCode: Int, body: JSONObject) {
+        private fun writeJson(socket: LocalSocket, statusCode: Int, body: JSONObject) {
             val statusText = when (statusCode) {
                 200 -> "OK"
                 404 -> "Not Found"
@@ -2257,14 +2236,22 @@ object AiAppBridge {
         val bounds: Rect,
         val type: String,
         val activityDecor: Boolean,
+        val focusable: Boolean,
+        val touchable: Boolean,
+        val focusOwnerWindowId: String?,
     )
 
-    private data class TextInputTarget(
+        private data class TextInputTarget(
         val root: WindowRoot,
         val view: EditText,
-    )
+        )
+
+        private data class ResolvedNativeTarget(val selection: NativeSelection, val root: WindowRoot, val view: View)
 
     private class NodeCounter {
         var count: Int = 0
+        val views = mutableMapOf<String, View>()
     }
+
+    private data class NativeViewSnapshot(val json: JSONObject, val roots: List<WindowRoot>, val views: Map<String, View>)
 }

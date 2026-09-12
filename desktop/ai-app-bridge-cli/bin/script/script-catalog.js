@@ -1,65 +1,8 @@
 'use strict';
 
-const PERMISSIONS = Object.freeze({
-  'app.read': Object.freeze([
-    'status',
-    'tree',
-    'uia-tree',
-    'screenshot',
-    'flutter-tree',
-    'flutter-nodes',
-    'h5-dom',
-    'keyboard-state',
-    'permission-state',
-    'page-summary',
-    'ios-status',
-    'ios-uia-tree',
-    'web-status',
-    'web-dom',
-  ]),
-  'capture.read': Object.freeze([
-    'logs',
-    'network',
-    'state',
-    'events',
-    'webview-console',
-    'webview-network',
-    'ios-logs',
-    'ios-network',
-    'ios-state',
-    'ios-events',
-    'web-logs',
-    'web-network',
-    'web-state',
-    'web-events',
-  ]),
-  'app.interact': Object.freeze([
-    'launch-app',
-    'tap',
-    'tap-text',
-    'tap-uia-text',
-    'input-text',
-    'swipe',
-    'keyevent',
-    'wait-text',
-    'hide-keyboard',
-    'tap-flutter',
-    'tap-flutter-text',
-    'input-flutter-text',
-    'scroll-flutter',
-    'h5-click',
-    'h5-input',
-    'h5-wait',
-    'h5-scroll',
-    'ios-tap',
-    'ios-input',
-    'ios-swipe',
-    'web-click',
-    'web-input',
-    'web-wait',
-    'web-scroll',
-  ]),
-});
+const { scriptPermissions } = require('../command-registry');
+const PERMISSIONS = Object.freeze(Object.fromEntries(Object.entries(scriptPermissions).map(([name, commands]) =>
+  [name, Object.freeze(name === 'app.read' ? [...commands, 'page-summary'] : [...commands])])));
 
 const DENY_DEFAULT = Object.freeze([
   'clear-app-data',
@@ -68,7 +11,6 @@ const DENY_DEFAULT = Object.freeze([
   'ios-setup',
   'permission-grant',
   'permission-revoke',
-  'permission-dialog',
   'appops-set',
 ]);
 
@@ -102,7 +44,7 @@ function authorizeCommand(command, permissions = DEFAULT_PERMISSIONS) {
   if (DENY_PERMANENT.includes(command)) {
     return { ok: false, error: 'command_permanently_denied', command };
   }
-  if (DENY_DEFAULT.includes(command)) {
+  if (DENY_DEFAULT.includes(command) && !permissions.includes(commandPermission(command))) {
     return { ok: false, error: 'command_not_in_default_allowlist', command };
   }
   const permission = commandPermission(command);
@@ -121,6 +63,8 @@ function catalogPayload() {
     warning: 'Script source is trusted-local-code, not an OS sandbox. permissions gate Bridge SDK calls only.',
     schemaVersion: 'aab.code-script/v1',
     languages: ['javascript', 'python'],
+    executablePlatforms: ['android', 'ios', 'web'],
+    unavailablePlatforms: {},
     entrypoint: 'main',
     permissions: PERMISSIONS,
     defaultPermissions: DEFAULT_PERMISSIONS,

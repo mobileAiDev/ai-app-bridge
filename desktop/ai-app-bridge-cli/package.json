@@ -17,27 +17,42 @@
   },
   "files": [
     "bin/ai-app-bridge.js",
+    "bin/bridge-forward.js",
+    "bin/command-registry.js",
+    "bin/command-errors.js",
     "bin/artifact-paths.js",
     "bin/connection-cache.js",
-    "bin/fact-cache.js",
     "bin/fact-codec.js",
     "bin/fact-recorder.js",
     "bin/fact-store.js",
     "bin/feedback-probe.js",
     "bin/android-uia-xml.js",
+    "bin/android-permissions.js",
     "bin/mmap-scan-index.js",
     "bin/segment-index.js",
     "bin/segmented-fact-store.js",
     "bin/mcp-server.js",
+    "bin/execution-host.js",
+    "bin/device-provider.js",
+    "bin/command-discovery.js",
+    "bin/command-request.js",
+    "bin/execution-runtime.js",
+    "bin/runtime-client.js",
+    "bin/runtime-directory.js",
+    "bin/runtime-protocol.js",
     "bin/command-router.js",
     "bin/script",
     "bin/intent",
-    "bin/legacy",
     "bin/shared-kernel",
+    "runtime/uia",
     "bin/observation-collector.js",
     "bin/ios-provider.js",
+    "bin/ios-device-outcome.js",
+    "bin/ios-runtime-binding.js",
+    "bin/ios-execution.js",
     "bin/target-execution.js",
     "bin/web-provider.js",
+    "bin/web",
     "skills/ai-app-bridge-use",
     "README.md",
     "docs/SCRIPT_AUTHORING.md",
@@ -46,16 +61,25 @@
     "docs/INTENT_FOREGROUND.md",
     "!bin/script/fake-*.js",
     "!bin/script/p9-*.js",
-    "!bin/intent/intent-device-adapter.js"
+    "!bin/intent/intent-device-adapter.js",
+    "docs/COMMAND_CONTRACT.md",
+    "bin/ios-wda-port.js",
+    "bin/ios-wda-project.js",
+    "bin/ios-wda-execution.js",
+    "runtime/ios-wda",
+    "LICENSE",
+    "NOTICE",
+    "docs/RELEASE.md"
   ],
   "scripts": {
-    "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node --test",
-    "test": "node --test"
+    "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node --import ./test-support/ownership-test-sandbox.js --test",
+    "test": "node --import ./test-support/ownership-test-sandbox.js --test",
+    "verify:package": "node scripts/validation/verify-package.js"
   },
   "license": "Apache-2.0",
   "dependencies": {
     "@mobileaidev/segmented-fact-store-native": "file:../../native/segmented-fact-store",
-    "appium-webdriveragent": "^14.1.1",
+    "appium-webdriveragent": "14.1.1",
     "ws": "^8.18.0"
   },
   "bundleDependencies": [
@@ -63,5 +87,8 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=26.3.0 <27"
   }
 }

@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/usememos/memos",
+  "version": "0.30.0",
+  "commit": "2036c1ffc1b0a1e1fa6a473738c2a5ef520df67f",
+  "archiveUrl": "https://codeload.github.com/usememos/memos/tar.gz/2036c1ffc1b0a1e1fa6a473738c2a5ef520df67f",
+  "archiveSha256": "088d7bc6ee2f421487ca47fc584dd5c8075b2aabdaa1833a19ea94972e44f26f",
+  "releaseAsset": {
+    "url": "https://github.com/usememos/memos/releases/download/v0.30.0/memos_0.30.0_darwin_arm64.tar.gz",
+    "size": 18794311,
+    "sha256": "8156cb03cac46d599d06a12944b2cf9f224429599ec2a7066f6eb01ee96d7d24"
+  },
+  "purpose": "Validate real React and CodeMirror business flows using Web Intent, Script and an independent SQLite oracle."
+}

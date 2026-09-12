@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/organicmaps/organicmaps.git",
+  "tag": "2026.08.27-18-android",
+  "commit": "3ef379196cca434cf17f4ee684f16aa99fd8985e",
+  "versionName": "2026.08.27-18",
+  "packageName": "app.organicmaps.bridge_sample.web.debug",
+  "originalPackageName": "app.organicmaps.web",
+  "officialApkSha256": "1f19229d95b731862349d504b150dad63eb405caa83e98c96bfe93b7acae3c7a",
+  "variant": "webDebug",
+  "toolchain": {
+    "gradle": "9.6.0",
+    "gradleSha256": "bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01",
+    "agp": "9.2.1",
+    "ndk": "29.0.14206865",
+    "compileSdk": 36,
+    "java": 17,
+    "abi": "arm64-v8a"
+  }
+}

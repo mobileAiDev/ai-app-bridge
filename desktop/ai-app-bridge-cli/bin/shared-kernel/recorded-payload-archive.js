@@ -1,6 +1,7 @@
 'use strict';
 
 const { canonicalJson, checksumOf } = require('./evidence-schema');
+const { capturePageMetadata } = require('./live-capture-query');
 const { requireValue, sha256, jsonHash, checkPng, PAYLOAD_SCHEMA, MAX_FILE_BYTES,
   MAX_RECORDING_BYTES } = require('./evidence-recording');
 
@@ -20,7 +21,8 @@ function analyzeRecordedPayloads(facts, readFile) {
   const attachments = [];
   const missingReferences = [];
   const counts = { scriptCalls: 0, assertions: { passed: 0, failed: 0, inconclusive: 0 },
-    screenshots: 0, mobilePages: 0, mobileItems: 0, boundMobileItems: 0, redactedPayloads: 0 };
+    screenshots: 0, mobilePages: 0, mobileItems: 0, boundMobileItems: 0,
+    webPages: 0, webItems: 0, boundWebItems: 0, redactedPayloads: 0 };
   let totalBytes = 0;
   function read(record, file, extension) {
     requireValue(file && /^[a-f0-9]{64}$/.test(file.sha256)
@@ -95,8 +97,9 @@ function analyzeRecordedPayloads(facts, readFile) {
           || marker.actionSpecHash === checksumOf({ command, args })), 'call_action_mismatch');
       }
       if (evidence?.capture) {
-        analyzeMobilePage({ ...evidence.capture, window: evidence.window, coverage: evidence.coverage,
-          refs: evidence.refs, items: envelope.result.items }, counts);
+        analyzeCapturePage({ ...evidence.capture, stream: command.replace(/^web-/, ''),
+          window: evidence.window, coverage: evidence.coverage,
+          refs: evidence.refs, items: envelope.result.items }, counts, doc.target);
       }
       counts.scriptCalls += 1;
     } else if (doc.kind === 'script-assertion') {
@@ -123,16 +126,11 @@ function analyzeRecordedPayloads(facts, readFile) {
         requireValue(observation.kind === 'observation' && observation.rawTreeId === rawTreeId
           && observation.revision === record.revision && same(observation.captureRefs, capture.refs)
           && same(observation.captureCoverage, capture.coverage), 'capture_observation_mismatch');
-        requireValue(same(observation.capturePages, capture.pages.map(page => ({
-          stream: page.stream, coverage: page.coverage, window: page.window, runtimeEpoch: page.runtimeEpoch,
-          targetKey: page.targetKey, storeGeneration: page.storeGeneration, watermarkCursor: page.watermarkCursor,
-          nextCursor: page.nextCursor, hasMore: page.hasMore, throughWatermark: page.throughWatermark,
-          error: page.error || page.reason || null,
-        }))), 'capture_observation_mismatch');
+        requireValue(same(observation.capturePages, capture.pages.map(capturePageMetadata)), 'capture_observation_mismatch');
       }
       requireValue(same(capture.refs, capture.pages.flatMap(p => p.refs))
         && same(capture.items, capture.pages.flatMap(p => p.items)), 'capture_page_mismatch');
-      for (const page of capture.pages) analyzeMobilePage(page, counts);
+      for (const page of capture.pages) analyzeCapturePage(page, counts, doc.target);
     } else requireValue(false, 'unsupported_recorded_payload');
   }
   return { scope: 'retained-recorded-payloads', priorHistoryComplete: 'unknown',
@@ -142,9 +140,10 @@ function analyzeRecordedPayloads(facts, readFile) {
     exclusions: ['unrecorded-calls-and-screenshots', 'unqueried-mobile-facts', 'in-memory-events'] };
 }
 
-function analyzeMobilePage(page, counts) {
+function analyzeCapturePage(page, counts, target) {
   requireValue(Array.isArray(page.items) && Array.isArray(page.refs)
     && ['complete', 'partial', 'unavailable'].includes(page.coverage?.status), 'invalid_recorded_capture');
+  if (target.platform === 'web') return analyzeWebPage(page, counts, target);
   counts.mobilePages += 1;
   counts.mobileItems += page.items.length;
   // Uncommitted/memory-only pages remain inspectable without strong fact refs.
@@ -164,6 +163,32 @@ function analyzeMobilePage(page, counts) {
     if (page.window?.runtimeEpoch != null) requireValue(ref.runtimeEpoch === page.window.runtimeEpoch, 'capture_epoch_mismatch');
     ids.add(ref.mobileFactId);
     counts.boundMobileItems += 1;
+  }
+}
+
+function analyzeWebPage(page, counts, target) {
+  counts.webPages += 1; counts.webItems += page.items.length;
+  if (page.coverage.committed !== true) return;
+  requireValue(['logs', 'network', 'state', 'events'].includes(page.stream), 'invalid_web_capture_stream');
+  const targetKey = `web:${JSON.stringify([target.sessionId, target.targetId, page.stream])}`;
+  requireValue(page.targetKey === targetKey && page.runtimeEpoch === target.runtimeEpoch
+    && page.refs.length === page.items.length, 'web_capture_target_mismatch');
+  const ids = new Set();
+  for (let index = 0; index < page.items.length; index++) {
+    const item = page.items[index], ref = page.refs[index];
+    requireValue(ref.source === 'host-fact-store' && ref.stream === page.stream
+      && ref.targetKey === targetKey && ref.runtimeEpoch === target.runtimeEpoch
+      && Number.isSafeInteger(ref.globalSeq) && ref.globalSeq > 0 && !ids.has(ref.globalSeq)
+      && ref.globalSeq === item.id && same(ref, item.ref)
+      && item.sessionId === target.sessionId && item.targetId === target.targetId && item.runtimeEpoch === target.runtimeEpoch
+      && typeof item.captureId === 'string' && item.captureId.length > 0
+      && Number.isSafeInteger(item.sourceSequence) && item.sourceSequence > 0,
+    'web_capture_ref_binding_mismatch');
+    requireValue(item.association === 'unattributed' ? item.actionId === null
+      : ['explicit', 'synchronous'].includes(item.association) && typeof item.actionId === 'string' && item.actionId.length > 0,
+    'web_capture_action_binding_mismatch');
+    if (page.window?.afterActionId != null) requireValue(item.actionId === page.window.afterActionId, 'web_capture_action_binding_mismatch');
+    ids.add(ref.globalSeq); counts.boundWebItems += 1;
   }
 }
 

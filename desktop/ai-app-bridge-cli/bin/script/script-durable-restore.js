@@ -1,7 +1,8 @@
 'use strict';
 
-const { compileScriptSpec, isCodeScript, scriptHash } = require('./script-spec');
+const { compileScriptSpec, scriptHash } = require('./script-spec');
 const { scriptError } = require('./script-errors');
+const { readScriptResult } = require('./script-result');
 const { verifyChecksum, checksumOf } = require('../shared-kernel/evidence-schema');
 
 const RESTORE_CONTEXT = Symbol('scriptRestoreContext');
@@ -35,33 +36,28 @@ function loadDurableCheckpoint(store, operationId) {
 function planCodeRestore({ checkpoint, script } = {}) {
   if (!checkpoint) return scriptError('unknown_operation');
   if (checkpoint.script && Array.isArray(checkpoint.script.steps)) {
-    return { ok: true, format: 'steps', checkpoint };
+    return scriptError('script_format_removed');
   }
-  const candidate = script && isCodeScript(script) ? script : null;
+  const candidate = script;
   if (candidate?.target && checkpoint.target && checksumOf(candidate.target) !== checksumOf(checkpoint.target)) {
     return scriptError('script_target_mismatch');
   }
   if (candidate?.permissions && checkpoint.permissions && checksumOf(candidate.permissions) !== checksumOf(checkpoint.permissions)) {
     return scriptError('script_permissions_mismatch');
   }
-  const source = candidate && candidate.source ? candidate.source : checkpoint.source;
-  const language = candidate && candidate.language ? candidate.language : checkpoint.language;
-  if (!source || !language) {
-    return scriptError('script_source_required', { hash: checkpoint.hash || null });
+  let input = candidate;
+  if (input === undefined) {
+    if (!checkpoint.source || !checkpoint.language) return scriptError('script_source_required', { hash: checkpoint.hash || null });
+    input = { schemaVersion: 'aab.code-script/v1' };
+    // The durable record owns the frozen program. Omit absent optional fields
+    // instead of injecting undefined or mixing it with a caller's program.
+    for (const field of ['name', 'language', 'source', 'target', 'permissions', 'policy', 'inputs', 'entrypoint']) {
+      if (Object.hasOwn(checkpoint, field)) input[field] = checkpoint[field];
+    }
   }
-  const compiled = compileScriptSpec({
-    schemaVersion: 'aab.code-script/v1',
-    name: (candidate && candidate.name) || checkpoint.name || 'script',
-    language,
-    source,
-    target: checkpoint.target || candidate?.target,
-    permissions: checkpoint.permissions || candidate?.permissions,
-    policy: (candidate && candidate.policy) || checkpoint.policy,
-    inputs: (candidate && candidate.inputs) || checkpoint.inputs,
-    entrypoint: (candidate && candidate.entrypoint) || checkpoint.entrypoint,
-  });
+  const compiled = compileScriptSpec(input);
   if (!compiled.ok) return compiled;
-  if (checkpoint.sourcePath) {
+  if (candidate === undefined && checkpoint.sourcePath) {
     compiled.spec.sourcePath = checkpoint.sourcePath;
     compiled.hash = scriptHash(compiled.spec);
   }
@@ -147,11 +143,14 @@ async function restoreUnknownOperation(args = {}) {
   const loaded = loadDurableCheckpoint(store, operationId);
   if (!loaded.ok) return loaded;
   const checkpoint = loaded.checkpoint;
-  if (checkpoint.script && Array.isArray(checkpoint.script.steps)) return { ok: true, format: 'steps', checkpoint };
+  if (checkpoint.script && Array.isArray(checkpoint.script.steps)) return scriptError('script_format_removed');
   const op = args.operation || 'status';
   const gate = restartGate(checkpoint, loaded.records);
-  if (op === 'status' || op === 'wait' || op === 'progress') {
+  if (op === 'status' || op === 'wait') {
     const terminal = ['completed', 'cancelled', 'failed'].includes(checkpoint.status);
+    const result = checkpoint.status === 'completed' && checkpoint.resultRef
+      ? readScriptResult({ store, operationId }) : null;
+    if (result?.ok === false) return { ...result, status: 'failed', restored: true, resumable: false };
     return {
       ok: true,
       command: 'script',
@@ -163,6 +162,7 @@ async function restoreUnknownOperation(args = {}) {
       resumeMode: gate.ok ? 'checkpoint' : 'none',
       resumable: gate.ok,
       hash: checkpoint.hash || null,
+      resultRef: checkpoint.resultRef ?? null,
     };
   }
   if (op !== 'resume') return scriptError('not_resumable', { operationId });

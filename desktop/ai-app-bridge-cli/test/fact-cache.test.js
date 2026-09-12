@@ -16,7 +16,7 @@ const {
   FactCache,
   PARTITION_WEIGHTS,
   createFactCache,
-} = require('../bin/fact-cache.js');
+} = require('../test-support/fact-cache.js');
 
 function makeCache(t, options = {}) {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-fact-cache-')));

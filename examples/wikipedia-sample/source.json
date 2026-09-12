@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/wikimedia/apps-android-wikipedia.git",
+  "ref": "r/50605-r-2026-09-08",
+  "commit": "2fa2f9536e0d0120ef82638d9ea8086be821f3a3",
+  "license": "Apache-2.0",
+  "licenseFile": "COPYING",
+  "versionCode": 50605,
+  "buildVariant": "devDebug",
+  "packageName": "org.wikipedia.dev.bridge_sample",
+  "compileSdk": 37,
+  "minSdk": 23,
+  "javaVersion": 17,
+  "gradleVersion": "9.7.1"
+}

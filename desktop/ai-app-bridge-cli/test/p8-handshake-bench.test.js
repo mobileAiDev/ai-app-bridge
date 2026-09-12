@@ -46,7 +46,7 @@ async function handshakeMs(createRuntime, language, source) {
     name: 'p8-handshake',
     language,
     source,
-    target: { serial: 'p8', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
     policy: { timeoutMs: 15_000 },
   });
   const started = process.hrtime.bigint();
@@ -129,7 +129,7 @@ async function main(ctx) {
 }
 module.exports = { main };
 `,
-    target: { serial: 'p8', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
     policy: { timeoutMs: 15_000 },
   });
   const result = await runtime.start({

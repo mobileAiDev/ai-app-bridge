@@ -1,0 +1,28 @@
+{
+  "url": "https://mirror.download.kiwix.org/zim/freecodecamp/freecodecamp_en_all_2026-08.zim",
+  "metalink": "https://lb.download.kiwix.org/zim/freecodecamp/freecodecamp_en_all_2026-08.zim.meta4",
+  "repository": "https://github.com/openzim/freecodecamp",
+  "scraper": "fcc2zim v2.0.3",
+  "filename": "freecodecamp_en_all_2026-08.zim",
+  "bytes": 7892996,
+  "sha256": "f145e4620bebb3f3e99d438934e39a05cff1ffe15b8f7988134e071dc18bfecb",
+  "zimUUID": "b237d3c6-4ce9-b57f-411a-3ccb8cc24367",
+  "zimDate": "2026-08-21",
+  "lesson": {
+    "title": "Add Two Numbers with JavaScript",
+    "route": "/javascript-algorithms-and-data-structures/basic-javascript/cf1111c1c11feddfaeb3bdef",
+    "initialCode": "const sum = 10 + 0;",
+    "requirements": [
+      "sum should equal 20.",
+      "You should use the + operator."
+    ]
+  },
+  "scope": "Official Vue/CodeMirror offline course inside Kiwix. Original iOS 27 layout leaves Run outside the viewport. The declared reader-height fixture enables real wrong/correct submission testing without changing grading.",
+  "readerPreparation": {
+    "source": "fixtures/freecodecamp-viewport.js",
+    "sha256": "b67f081c42ccb2fa39173f60fe472cbbfa00b5438af29bc00117e21eb869e434",
+    "effect": "Fixed course container height uses document.documentElement.clientHeight; reapply after document reload.",
+    "businessScript": "scripts/h5-course-submission.js",
+    "report": "../../docs/IOS_H5_SUBMISSION_2026-09-12.md"
+  }
+}

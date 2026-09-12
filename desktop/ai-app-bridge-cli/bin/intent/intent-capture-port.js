@@ -15,12 +15,15 @@ function createIntentCapturePort({ query } = {}) {
     if (executionContext.runtimeEpochChanged === true || executionContext.disconnected === true) {
       return unavailablePage(executionContext.disconnected ? 'target_disconnected' : 'runtime_epoch_changed');
     }
-    const target = executionContext.target || {};
+    // Foreground routing belongs to Intent observation, not a phone data query.
+    const { foregroundPackages: _foregroundPackages, ...target } = executionContext.target || {};
     for (const key of ['serial', 'packageName', 'port', 'adb', 'platform', 'deviceId', 'bundleId', 'sessionId', 'targetId', 'runtimeUrl', 'iosHost', 'iosPort']) {
       if (target[key] != null && requirements[key] != null && requirements[key] !== target[key]) {
         return unavailablePage('capture_target_mismatch');
       }
     }
+    if (target.platform === 'web' && requirements.runtimeEpoch !== undefined
+      && requirements.runtimeEpoch !== target.runtimeEpoch) return unavailablePage('capture_target_mismatch');
     const page = await query({
       ...requirements,
       ...target,
@@ -29,9 +32,9 @@ function createIntentCapturePort({ query } = {}) {
       stream,
       afterActionId: afterActionIdOf(requirements, executionContext),
       timeoutMs: timeoutMsOf(requirements, executionContext),
-      runtimeEpoch: executionContext.runtimeEpoch ?? requirements.runtimeEpoch ?? null,
+      runtimeEpoch: executionContext.runtimeEpoch ?? target.runtimeEpoch ?? requirements.runtimeEpoch ?? null,
       sinceMs: requirements.sinceMs ?? null,
-      limit: requirements.limit ?? 200,
+      limit: requirements.limit ?? ((executionContext.platform ?? target.platform ?? requirements.platform) === 'web' ? 16 : 200),
     });
     return capturePage(page);
   }
@@ -40,6 +43,7 @@ function createIntentCapturePort({ query } = {}) {
 }
 
 function afterActionIdOf(requirements, executionContext) {
+  if (requirements.afterActionId === null) return null;
   if (executionContext.evidenceWindow && executionContext.evidenceWindow.afterActionId != null) {
     return executionContext.evidenceWindow.afterActionId;
   }

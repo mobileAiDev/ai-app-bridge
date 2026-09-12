@@ -18,7 +18,7 @@ function codeSpec(source, serial) {
     name: 'p4-wire',
     language: 'javascript',
     source,
-    target: { serial, packageName: 'com.example.app' },
+    target: { platform: 'android', serial, packageName: 'com.example.app' },
   };
 }
 
@@ -99,7 +99,7 @@ test('P4 Intent action uses the process device-mutation lease', async () => {
       operation: 'start',
       operationId: 'p4-lease',
       goal: 'tap',
-      target: { serial, packageName: 'com.example.app' },
+      target: { platform: 'android', serial, packageName: 'com.example.app' },
       store: createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() }),
       adapter,
     });
@@ -110,7 +110,7 @@ test('P4 Intent action uses the process device-mutation lease', async () => {
         decisionId: 'p4-d1',
         agentDecision: 'act',
         basedOnRevision: started.revision,
-        action: { action: 'tap', text: 'Home' },
+        action: { action: 'tap', selector: { text: 'Home' } },
       },
     });
     assert.equal(decided.error, 'target_busy');
@@ -127,7 +127,7 @@ test('P4 process lease held by Intent blocks ScriptHostPort on the same serial',
   try {
     const host = createScriptHostPort({
       mutationLease: getProcessDeviceMutationLease(),
-      target: { serial },
+      target: { platform: 'android', serial, packageName: 'com.example.app' },
       actions: async () => ({ ok: true }),
       runner: async () => ({
         ok: true,

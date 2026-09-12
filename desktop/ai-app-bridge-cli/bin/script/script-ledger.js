@@ -25,15 +25,11 @@ function createScriptLedger({ ledger = createExecutionLedger() } = {}) {
   return { ledger, append };
 }
 
-// Calls may explicitly target a system picker while their owning Script belongs to an App.
-// Match the same optional target overrides used by dispatch and durable mutation markers.
+// Call events carry the target already bound before dispatch. Never reconstruct
+// it from a subset of arguments or borrow the owning Script's connection.
 function scriptEventTarget(record, type, extra = {}) {
-  const target = record.spec && record.spec.target;
-  const args = ['call_started', 'call_completed', 'call_failed'].includes(type) ? extra.args
-    : type === 'action_receipt' ? extra.payloadSummary?.args : null;
-  if (!args) return target;
-  return { ...target, ...(args.serial != null ? { serial: args.serial } : {}),
-    ...(args.packageName != null ? { packageName: args.packageName } : {}) };
+  return ['call_started', 'call_completed', 'call_failed', 'action_receipt'].includes(type)
+    ? extra.target : record.spec?.target;
 }
 
 function scriptPayload(extra) {
@@ -43,6 +39,7 @@ function scriptPayload(extra) {
     args: extra.args,
     error: extra.error,
     status: extra.status,
+    resultRef: extra.resultRef,
     name: extra.name,
     verdict: extra.verdict,
     scope: extra.scope,

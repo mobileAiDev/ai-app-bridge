@@ -27,6 +27,9 @@ android {
 
     defaultConfig {
         minSdk = 19
+        // For the library's instrumentation APK; consumers choose their own target SDK.
+        targetSdk = 35
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -47,6 +50,8 @@ android {
 dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("junit:junit:4.13.2")
 }
 
 afterEvaluate {

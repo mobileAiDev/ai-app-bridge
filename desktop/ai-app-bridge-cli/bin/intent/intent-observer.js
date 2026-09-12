@@ -2,30 +2,44 @@
 
 const { summarizeTree } = require('../shared-kernel/summary-transformer');
 const { intentError } = require('./intent-errors');
+const { checkExecution } = require('../shared-kernel/execution-scope');
+const { capturePageMetadata } = require('../shared-kernel/live-capture-query');
 
-async function observeAndCommit(context) {
+async function observeAndCommit(context, provider = context.provider, observationTarget = context.observationTarget) {
   const timings = context.timings || {};
   const observeStarted = context.now();
   const observation = await context.adapter.observe({
     ...context.target,
-    provider: context.provider,
+    provider,
+    observationTarget,
     rawTreeId: `${context.operationId}:${context.revision}`,
   });
+  checkExecution();
   timings.providerAcquireMs = (timings.providerAcquireMs || 0) + (context.now() - observeStarted);
   if (!observation || observation.ok === false) {
+    const failure = { provider, observationTarget, revision: context.revision, response: observation };
+    const persisted = await context.store.persist('checkpoint', { operationId: context.operationId,
+      revision: context.revision, target: context.target, stepId: 'observation-failed', timestampMs: context.now(),
+      payloadSummary: { observationFailure: failure } });
+    if (!persisted.ok) return intentError(persisted.error || 'evidence_not_persisted', { persisted: false });
+    checkExecution();
+    context.observationFailure = { ...failure, evidenceId: persisted.evidenceId };
+    context.latestEvidenceIds = { ...context.latestEvidenceIds, observationFailure: persisted.evidenceId };
     return intentError(observation?.error || 'provider_failed', { stage: 'provider' });
   }
   const routed = context.target.foregroundPackages !== undefined;
-  if (routed && (!observation.route || !['native', 'uia', 'flutter'].includes(observation.provider))) return intentError('foreground_observation_required');
-  const activeProvider = routed ? observation.provider : context.provider;
+  if (routed && (!observation.route || !['native', 'uia', 'flutter', 'h5'].includes(observation.provider))) return intentError('foreground_observation_required');
+  const activeProvider = routed ? observation.provider : provider;
   const capture = await observeCapture(context);
+  checkExecution();
   const persistStarted = context.now();
   const observationRecord = {
     operationId: context.operationId,
     revision: context.revision,
-    serial: context.target.serial,
-    packageName: routed ? observation.route.packageName : context.target.packageName,
+    target: context.target,
+    observedTarget: routed ? { ...context.target, packageName: observation.route.packageName } : context.target,
     provider: activeProvider,
+    observationTarget,
     capturedAtMs: context.now(),
     foregroundTarget: observation.foregroundTarget,
     rawTreeId: observation.rawTreeId,
@@ -35,30 +49,20 @@ async function observeAndCommit(context) {
   if (capture) {
     observationRecord.captureRefs = capture.refs;
     observationRecord.captureCoverage = capture.coverage;
-    observationRecord.capturePages = capture.pages.map((page) => ({
-      stream: page.stream,
-      coverage: page.coverage,
-      window: page.window,
-      runtimeEpoch: page.runtimeEpoch,
-      targetKey: page.targetKey,
-      storeGeneration: page.storeGeneration,
-      watermarkCursor: page.watermarkCursor,
-      nextCursor: page.nextCursor,
-      hasMore: page.hasMore,
-      throughWatermark: page.throughWatermark,
-      error: page.error || page.reason || null,
-    }));
+    observationRecord.capturePages = capture.pages.map(capturePageMetadata);
   }
   const persisted = await context.store.persist('observation', observationRecord);
   timings.evidenceCommitMs = (timings.evidenceCommitMs || 0) + (context.now() - persistStarted);
   if (!persisted.ok) {
     return intentError(persisted.error || 'evidence_not_persisted', { persisted: false });
   }
+  checkExecution();
   if (capture && context.recording) {
     const saved = await context.recording.record({ kind: 'intent-capture', revision: context.revision,
       target: context.target, parentFactId: persisted.evidenceId,
       data: { rawTreeId: observation.rawTreeId, capture } });
     if (!saved.ok) return intentError(saved.error, { persisted: false });
+    checkExecution();
   }
   const summaryStarted = context.now();
   const summary = summarizeTree({
@@ -76,11 +80,17 @@ async function observeAndCommit(context) {
     rawTreeId: observation.rawTreeId,
     target: context.target,
     timestampMs: context.now(),
+    observationTarget,
     summary,
   });
   if (!summaryPersist.ok) return intentError(summaryPersist.error || 'summary_not_persisted');
+  checkExecution();
   const exposed = context.store.canExposeRevision(context.operationId);
   if (!exposed.ok) return intentError(exposed.error);
+  context.provider = provider;
+  context.observationTarget = observationTarget;
+  context.observationFailure = null;
+  delete context.latestEvidenceIds.observationFailure;
   context.latestSummary = summary;
   context.latestProvider = activeProvider;
   context.latestRoute = observation.route;
@@ -103,22 +113,18 @@ async function observeAndCommit(context) {
 
 async function observeCapture(context) {
   if (!context.capturePort || !context.captureRequirements) return null;
-  const require = context.captureRequirements;
-  const streams = Array.isArray(require.streams)
-    ? require.streams
-    : require.stream
-      ? [require.stream]
-      : [];
+  const { streams, ...requirements } = context.captureRequirements;
   if (streams.length === 0) return null;
   const pages = [];
   context.captureWatermarks ||= new Map();
   for (const stream of streams) {
     const previous = context.captureWatermarks.get(stream);
+    const actionCursor = previous && previous.actionId === context.actionId ? previous.actionCursor : previous?.cursor;
     const page = await context.capturePort.observe({
-      ...require,
+      ...requirements,
       stream,
-      ...(context.actionId && previous && require.view !== 'connected-history' && require.history !== true
-        ? { factCursor: require.factCursor ?? previous.cursor, runtimeEpoch: require.runtimeEpoch ?? previous.epoch }
+      ...(context.actionId && previous && requirements.view !== 'connected-history' && requirements.history !== true
+        ? { factCursor: requirements.factCursor ?? actionCursor, runtimeEpoch: requirements.runtimeEpoch ?? previous.epoch }
         : {}),
     }, {
       target: context.target,
@@ -128,8 +134,12 @@ async function observeCapture(context) {
       runtimeEpochChanged: context.runtimeEpochChanged === true,
       disconnected: context.disconnected === true,
     });
-    if (page.coverage.status === 'complete' && page.watermarkCursor && page.runtimeEpoch) {
-      context.captureWatermarks.set(stream, { cursor: page.watermarkCursor, epoch: page.runtimeEpoch });
+    // An issued watermark bounds the next action even if earlier retained data
+    // has a known gap. The current observation keeps that partial coverage.
+    if (page.committed === true && ['complete', 'partial'].includes(page.coverage.status)
+      && page.watermarkCursor && page.runtimeEpoch) {
+      context.captureWatermarks.set(stream, { cursor: page.watermarkCursor, epoch: page.runtimeEpoch,
+        actionId: context.actionId, actionCursor: context.actionId ? requirements.factCursor ?? actionCursor : null });
     }
     pages.push({ stream, ...page });
   }

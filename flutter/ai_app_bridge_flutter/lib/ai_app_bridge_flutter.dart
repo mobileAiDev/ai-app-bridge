@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart' show CupertinoTextField;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -13,6 +14,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'src/ui_observation.dart';
+import 'src/diagnostic_snapshot.dart';
+
+part 'src/execution_targets.dart';
+part 'src/action_lifetime.dart';
+part 'src/operable_content.dart';
+part 'src/h5_targets.dart';
+part 'src/h5_renderer.dart';
 
 typedef AiAppBridgeH5Evaluator = FutureOr<Object?> Function(String script);
 typedef AiAppBridgeH5MetadataProvider = FutureOr<Map<String, Object?>>
@@ -23,12 +31,14 @@ class AiAppBridgeH5Adapter {
     required this.id,
     required this.source,
     required this.evaluateJavascript,
+    required this.isVisible,
     this.metadata,
   });
 
   final String id;
   final String source;
   final AiAppBridgeH5Evaluator evaluateJavascript;
+  final bool Function() isVisible;
   final AiAppBridgeH5MetadataProvider? metadata;
 }
 
@@ -47,76 +57,6 @@ class AiAppBridge {
   static const int _maxOperableNodes = 600;
   static const int _maxAutoCaptureBodyChars = 12000;
   static const int _maxAutoCaptureMessageChars = 4000;
-  static const String _h5DomSnapshotScript = r'''
-        (function() {
-          function text(value) {
-            return value == null ? '' : String(value);
-          }
-          function cut(value, max) {
-            var raw = text(value);
-            return raw.length > max ? raw.slice(0, max) : raw;
-          }
-          function bounds(element) {
-            var rect = element.getBoundingClientRect();
-            return {
-              left: rect.left,
-              top: rect.top,
-              right: rect.right,
-              bottom: rect.bottom,
-              width: rect.width,
-              height: rect.height
-            };
-          }
-          function sensitive(element) {
-            var probe = [
-              element.type,
-              element.id,
-              element.name,
-              element.autocomplete,
-              element.getAttribute('data-sensitive'),
-              element.getAttribute('data-private')
-            ].join(' ').toLowerCase();
-            return /password|passwd|pwd|passcode/.test(probe);
-          }
-          var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
-          var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200)
-            .map(function(element, index) {
-              return {
-                index: index,
-                tag: text(element.tagName).toLowerCase(),
-                id: text(element.id),
-                name: text(element.getAttribute('name')),
-                type: text(element.getAttribute('type')),
-                role: text(element.getAttribute('role')),
-                ariaLabel: text(element.getAttribute('aria-label')),
-                placeholder: text(element.getAttribute('placeholder')),
-                text: sensitive(element)
-                  ? '[redacted:length=' + text(element.value).length + ']'
-                  : cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
-                href: cut(element.href, 500),
-                disabled: !!element.disabled,
-                bounds: bounds(element)
-              };
-            });
-          return JSON.stringify({
-            ok: true,
-            title: document.title,
-            url: location.href,
-            readyState: document.readyState,
-            bodyText: cut(document.body && document.body.innerText, 20000),
-            controls: controls,
-            controlCount: controls.length,
-            updatedAtMs: Date.now()
-          });
-        })()
-  ''';
-  static const String _h5ConsoleInstallScript =
-      "(function(){if(window.__aabConsoleHook)return 0;window.__aabConsoleHook=true;"
-      "window.__aabConsoleBuf=[];var names=['log','info','warn','error','debug'];"
-      "names.forEach(function(name){var original=console[name];console[name]=function(){"
-      "var args=Array.prototype.slice.call(arguments);var buf=window.__aabConsoleBuf;"
-      "buf.push({method:name,message:args.map(function(value){return value==null?'':String(value);}).join(' '),atMs:Date.now()});"
-      "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};});return 1;})()";
   static final Object _autoCaptureSuppressionKey = Object();
   static final Object _actionCaptureKey = Object();
   // An explicit no-ID action must not inherit an enclosing action's zone value.
@@ -141,14 +81,16 @@ class AiAppBridge {
   Map<String, Object?> _app = const <String, Object?>{};
   Map<String, Object?> _route = const <String, Object?>{};
   Map<String, Object?> _h5 = const <String, Object?>{'active': false};
-  final Map<String, AiAppBridgeH5Adapter> _h5Adapters =
-      <String, AiAppBridgeH5Adapter>{};
-  String? _activeH5AdapterId;
+  late final _FlutterH5Targets _h5Targets = _FlutterH5Targets(this);
   final AiAppBridgeUiBurstTracker _uiBurstTracker = AiAppBridgeUiBurstTracker();
   final Map<int, int> _pointerDownAtMs = <int, int>{};
   int _lastAnimationSnapshotAtMs = 0;
   bool _snapshotInFlight = false;
   bool _snapshotPending = false;
+  bool _shortPointerInFlight = false;
+  late final _FlutterExecutionTargets _targets = _FlutterExecutionTargets(this);
+  bool _actionInFlight = false;
+  _FlutterActionLifetime? _activeLifetime;
 
   late final NavigatorObserver navigatorObserver =
       AiAppBridgeNavigatorObserver._(this);
@@ -162,6 +104,7 @@ class AiAppBridge {
     if (!kDebugMode) {
       return;
     }
+    if (!_enabled) _targets.reset();
     _enabled = true;
     _app = <String, Object?>{
       'name': appName,
@@ -184,6 +127,8 @@ class AiAppBridge {
   }
 
   void shutdown() {
+    _activeLifetime?.stop('flutter_runtime_shutdown');
+    _targets.beginObservation();
     if (!_uiObservationInstalled) {
       _enabled = false;
       return;
@@ -328,11 +273,29 @@ class AiAppBridge {
   }
 
   Future<Object?> _handleNativeCall(MethodCall call) async {
-    if (call.method != 'runAction') {
-      throw MissingPluginException('No handler for ${call.method}');
+    final body = call.arguments?.toString() ?? '{}';
+    switch (call.method) {
+      case 'executeAction':
+        return _runManagedAction(body);
+      case 'cancelAction':
+        final request = jsonDecode(body);
+        final active = _activeLifetime;
+        if (request is! Map ||
+            active == null ||
+            request['schemaVersion'] != _FlutterActionLifetime.schema ||
+            request['actionId'] != active.actionId ||
+            request['runtimeEpoch'] != active.runtimeEpoch) {
+          return {'ok': false, 'error': 'flutter_action_not_active'};
+        }
+        active.stop(request['reason'] is String
+            ? request['reason'] as String
+            : 'flutter_action_cancelled');
+        return {'ok': true, ...active.identity, 'settled': false};
+      case 'runAction':
+        return {'ok': false, 'error': 'flutter_execution_required'};
+      default:
+        throw MissingPluginException('No handler for ${call.method}');
     }
-    final Object? arguments = call.arguments;
-    return _runAction(arguments?.toString() ?? '{}');
   }
 
   void _installAutoCapture({
@@ -491,36 +454,14 @@ class AiAppBridge {
     recordH5(active: false);
   }
 
-  void registerH5Adapter(
-    AiAppBridgeH5Adapter adapter, {
-    bool activate = true,
-  }) {
-    final String id = adapter.id.trim();
-    if (id.isEmpty) {
-      throw ArgumentError.value(adapter.id, 'id', 'must not be empty');
-    }
-    _h5Adapters[id] = adapter;
-    if (activate || _activeH5AdapterId == null) {
-      _activeH5AdapterId = id;
-    }
-    if (_enabled) {
-      _schedulePost();
-    }
+  void registerH5Adapter(AiAppBridgeH5Adapter adapter) {
+    _h5Targets.register(adapter);
+    if (_enabled) _schedulePost();
   }
 
   void unregisterH5Adapter(String id) {
-    _h5Adapters.remove(id);
-    if (_activeH5AdapterId == id) {
-      _activeH5AdapterId = _h5Adapters.isEmpty ? null : _h5Adapters.keys.first;
-    }
-    if (!_enabled) {
-      return;
-    }
-    if (_h5Adapters.isEmpty) {
-      clearH5();
-    } else {
-      _schedulePost();
-    }
+    _h5Targets.unregister(id);
+    if (_enabled) _schedulePost();
   }
 
   void recordLog({
@@ -623,81 +564,19 @@ class AiAppBridge {
     };
   }
 
-  AiAppBridgeH5Adapter? get _activeH5Adapter {
-    final String? id = _activeH5AdapterId;
-    if (id != null) {
-      final AiAppBridgeH5Adapter? adapter = _h5Adapters[id];
-      if (adapter != null) {
-        return adapter;
-      }
-    }
-    return _h5Adapters.isEmpty ? null : _h5Adapters.values.first;
-  }
-
   Future<void> _refreshH5Snapshot() async {
-    final AiAppBridgeH5Adapter? adapter = _activeH5Adapter;
-    if (!_enabled || adapter == null) {
-      return;
-    }
+    if (!_enabled) return;
     try {
-      _h5 = await _buildH5Snapshot(
-        adapter,
-      ).timeout(const Duration(milliseconds: 800));
+      _h5 = await _h5Targets.snapshot(null, managed: false)
+          .timeout(const Duration(milliseconds: 800));
     } catch (error) {
       _h5 = <String, Object?>{
-        'active': true,
-        'adapterId': adapter.id,
-        'source': adapter.source,
-        'error': error.toString(),
+        'ok': false,
+        'error': error is _FlutterTargetFailure ? error.code : 'flutter_h5_snapshot_failed',
+        'adapters': _h5Targets.candidates,
         'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
       };
     }
-  }
-
-  Future<Map<String, Object?>> _buildH5Snapshot(
-    AiAppBridgeH5Adapter adapter,
-  ) async {
-    await adapter.evaluateJavascript(_h5ConsoleInstallScript);
-    final Object? raw = await adapter.evaluateJavascript(_h5DomSnapshotScript);
-    final Map<String, Object?> dom = _decodeJavascriptObject(raw);
-    final Map<String, Object?> metadata = await _adapterMetadata(adapter);
-    return <String, Object?>{
-      'active': true,
-      'adapterId': adapter.id,
-      'source': adapter.source,
-      ...metadata,
-      'currentUrl': metadata['currentUrl'] ?? dom['url'],
-      'title': metadata['title'] ?? dom['title'],
-      'dom': dom,
-      'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
-    };
-  }
-
-  Future<Map<String, Object?>> _adapterMetadata(
-    AiAppBridgeH5Adapter adapter,
-  ) async {
-    final AiAppBridgeH5MetadataProvider? provider = adapter.metadata;
-    if (provider == null) {
-      return <String, Object?>{};
-    }
-    final Map<String, Object?> raw = await provider();
-    final Map<String, Object?> metadata = <String, Object?>{};
-    final Object? currentUrl = raw['currentUrl'] ?? raw['url'];
-    if (currentUrl != null) {
-      metadata['currentUrl'] = currentUrl;
-    }
-    for (final String key in <String>[
-      'title',
-      'isLoading',
-      'progress',
-      'className',
-      'package',
-    ]) {
-      if (raw[key] != null) {
-        metadata[key] = raw[key];
-      }
-    }
-    return metadata;
   }
 
   Map<String, Object?> _decodeJavascriptObject(Object? raw) {
@@ -799,6 +678,7 @@ class AiAppBridge {
   }
 
   Map<String, Object?> _operableTree() {
+    _targets.beginObservation();
     try {
       final Element? rootElement = WidgetsBinding.instance.rootElement;
       if (rootElement == null) {
@@ -812,7 +692,6 @@ class AiAppBridge {
       final List<Map<String, Object?>> nodes = <Map<String, Object?>>[];
       final List<String> sampleWidgetTypes = <String>[];
       bool truncated = false;
-      var nextId = 0;
       var visitedCount = 0;
       var textCount = 0;
       var actionCount = 0;
@@ -821,6 +700,7 @@ class AiAppBridge {
 
       void collectNode({
         required int depth,
+        required Element element,
         required Widget widget,
         required Rect? bounds,
         required _ActionTarget? tapTarget,
@@ -831,17 +711,19 @@ class AiAppBridge {
           sampleWidgetTypes.add(widgetType);
         }
         if (bounds == null) return;
-        final _ActionTarget? currentTapTarget =
-            _isTapWidget(widgetType)
-                ? _ActionTarget(widgetType: widgetType, bounds: bounds)
-                : tapTarget;
-        final _ActionTarget? currentScrollTarget =
-            _isScrollWidget(widgetType)
-                ? _ActionTarget(widgetType: widgetType, bounds: bounds)
-                : scrollTarget;
+        final _ActionTarget? currentTapTarget = _isTapWidget(widgetType)
+            ? _ActionTarget(
+                element: element, widgetType: widgetType, bounds: bounds)
+            : tapTarget;
+        final _ActionTarget? currentScrollTarget = widget is Scrollable
+            ? _ActionTarget(
+                element: element, widgetType: widgetType, bounds: bounds)
+            : scrollTarget;
 
-        final String text = _widgetText(widget);
+        final String text = _widgetText(element);
         final String value = _widgetValue(widget);
+        final description =
+            widget is EditableText ? _editorDescription(element) : null;
         if (text.isNotEmpty || value.isNotEmpty) {
           textCount += 1;
         }
@@ -850,7 +732,7 @@ class AiAppBridge {
         if (text.isNotEmpty) {
           actions.add('tap');
         }
-        if (_isInputWidget(widgetType)) {
+        if (widget is EditableText) {
           actions.add('input');
         }
         if (currentScrollTarget != null) {
@@ -861,39 +743,63 @@ class AiAppBridge {
         }
 
         final bool isActionNode =
-            (text.isNotEmpty || value.isNotEmpty) && actions.isNotEmpty;
+            ((text.isNotEmpty || value.isNotEmpty) && actions.isNotEmpty) ||
+                widget is EditableText;
         final bool isStandaloneScrollNode =
-            _isScrollWidget(widgetType) && currentScrollTarget != null;
+            widget is Scrollable && currentScrollTarget != null;
 
         if (isActionNode || isStandaloneScrollNode) {
           // Text, RichText and Semantics can describe the same hit region.
           // Keep one observed target per label/value, action set and region.
           final String targetKey = jsonEncode(<Object?>[
-            text, value, actions.toList()..sort(),
+            text,
+            value,
+            actions.toList()..sort(),
             _rectToJson(tapBounds),
           ]);
-          if (!emittedTargets.add(targetKey)) return;
-          nodes.add(<String, Object?>{
-            'id': nextId++,
+          // Equal rectangles do not identify a Scrollable: a PageView and its
+          // nested list commonly cover the same viewport.
+          if (!isStandaloneScrollNode && !emittedTargets.add(targetKey)) return;
+          final node = <String, Object?>{
+            'id': _targets.identity(element),
             'widgetType': widgetType,
+            'role': widget is EditableText
+                ? 'input'
+                : widget is Scrollable
+                    ? 'scrollable'
+                    : 'control',
             if (text.isNotEmpty) 'text': _trimNodeText(text),
             if (value.isNotEmpty) 'value': _trimNodeText(value),
+            if (description?.label != null)
+              'label': _trimNodeText(description!.label!),
+            if (description?.hint != null)
+              'hint': _trimNodeText(description!.hint!),
+            if (description?.errorText != null)
+              'errorText': _trimNodeText(description!.errorText!),
             'bounds': _rectToJson(bounds),
             'actions': actions.toList()..sort(),
             if (text.isNotEmpty)
               'tap': <String, Object?>{
                 'widgetType': currentTapTarget?.widgetType ?? widgetType,
-                'bounds': _rectToJson(tapBounds),
+                'bounds': _rectToJson(bounds),
               },
-            if (_isInputWidget(widgetType))
-              'input': <String, Object?>{'bounds': _rectToJson(bounds)},
+            if (widget is EditableText)
+              'input': <String, Object?>{
+                'bounds': _rectToJson(bounds),
+                'focused': widget.focusNode.hasFocus,
+                'readOnly': widget.readOnly,
+                'enabled': widget.focusNode.canRequestFocus,
+              },
             if (currentScrollTarget != null)
               'scroll': <String, Object?>{
                 'widgetType': currentScrollTarget.widgetType,
                 'bounds': _rectToJson(currentScrollTarget.bounds),
               },
             'depth': depth,
-          });
+          };
+          _targets.observe(
+              element, node, currentTapTarget, currentScrollTarget);
+          nodes.add(node);
         }
       }
 
@@ -919,20 +825,25 @@ class AiAppBridge {
         final Widget widget = element.widget;
         final String widgetType = widget.runtimeType.toString();
         final bool needsBounds = _isTapWidget(widgetType) ||
-            _isScrollWidget(widgetType) || _isInputWidget(widgetType) ||
-            _widgetText(widget).isNotEmpty || _widgetValue(widget).isNotEmpty;
+            _isScrollWidget(widgetType) ||
+            _isInputWidget(widgetType) ||
+            _widgetText(element).isNotEmpty ||
+            _widgetValue(widget).isNotEmpty;
         final Rect? bounds = needsBounds ? _visibleGlobalBounds(element) : null;
         final _ActionTarget? currentTapTarget =
             _isTapWidget(widgetType) && bounds != null
-                ? _ActionTarget(widgetType: widgetType, bounds: bounds)
+                ? _ActionTarget(
+                    element: element, widgetType: widgetType, bounds: bounds)
                 : tapTarget;
         final _ActionTarget? currentScrollTarget =
-            _isScrollWidget(widgetType) && bounds != null
-                ? _ActionTarget(widgetType: widgetType, bounds: bounds)
+            widget is Scrollable && bounds != null
+                ? _ActionTarget(
+                    element: element, widgetType: widgetType, bounds: bounds)
                 : scrollTarget;
 
         collectNode(
           depth: depth,
+          element: element,
           widget: widget,
           bounds: bounds,
           tapTarget: tapTarget,
@@ -954,6 +865,10 @@ class AiAppBridge {
       visitElement(rootElement, depth: 0);
       return <String, Object?>{
         'ok': true,
+        'targetSchema': _FlutterExecutionTargets.schema,
+        if (Platform.isAndroid)
+          'executionSchema': _FlutterActionLifetime.schema,
+        'runtimeEpoch': _targets.runtimeEpoch,
         'nodes': nodes,
         'count': nodes.length,
         'visitedCount': visitedCount,
@@ -967,6 +882,12 @@ class AiAppBridge {
           'logicalHeight': logicalSize.height,
           'physicalWidth': physicalSize.width,
           'physicalHeight': physicalSize.height,
+          'viewInsets': <String, Object?>{
+            'left': view.viewInsets.left / devicePixelRatio,
+            'top': view.viewInsets.top / devicePixelRatio,
+            'right': view.viewInsets.right / devicePixelRatio,
+            'bottom': view.viewInsets.bottom / devicePixelRatio,
+          },
         },
         'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
       };
@@ -979,7 +900,7 @@ class AiAppBridge {
     try {
       final String raw = WidgetInspectorService.instance
           .getRootWidgetSummaryTree('ai_app_bridge');
-      return jsonDecode(raw);
+      return diagnosticSnapshot(jsonDecode(raw));
     } catch (error) {
       return <String, Object?>{'ok': false, 'error': error.toString()};
     }
@@ -1044,33 +965,120 @@ class AiAppBridge {
     }
   }
 
-  Future<Map<String, Object?>> _runAction(String body) async {
+  Future<Map<String, Object?>> _runManagedAction(String body) async {
+    _FlutterActionLifetime? lifetime;
     try {
-      final Object? decoded = body.trim().isEmpty ? null : jsonDecode(body);
-      final Map<String, Object?> request = decoded is Map
-          ? decoded.cast<String, Object?>()
-          : <String, Object?>{};
+      final decoded = jsonDecode(body);
+      final execution = decoded is Map ? decoded['execution'] : null;
+      if (execution is! Map ||
+          execution.length != 4 ||
+          execution['schemaVersion'] != _FlutterActionLifetime.schema ||
+          execution['actionId'] is! String ||
+          (execution['actionId'] as String).trim().isEmpty ||
+          execution['runtimeEpoch'] is! String ||
+          (execution['runtimeEpoch'] as String).trim().isEmpty ||
+          execution['timeoutMs'] is! int ||
+          (execution['timeoutMs'] as int) < 1 ||
+          (execution['timeoutMs'] as int) > 2147483647 ||
+          (decoded as Map)['actionId'] != execution['actionId']) {
+        throw const _FlutterTargetFailure('invalid_flutter_execution');
+      }
+      lifetime = _FlutterActionLifetime(
+          execution['actionId'] as String, execution['runtimeEpoch'] as String);
+      if (lifetime.runtimeEpoch != _targets.runtimeEpoch) {
+        throw const _FlutterTargetFailure('flutter_runtime_changed');
+      }
+      final request = Map<String, Object?>.from(decoded)..remove('execution');
+      return lifetime
+          .receipt(await _runAction(jsonEncode(request), lifetime: lifetime));
+    } on _FlutterTargetFailure catch (error) {
+      return lifetime?.receipt(error.toJson()) ?? error.toJson();
+    } on FormatException {
+      return const _FlutterTargetFailure('invalid_flutter_execution').toJson();
+    } finally {
+      lifetime?.dispose();
+    }
+  }
+
+  Future<Map<String, Object?>> _runAction(String body,
+      {_FlutterActionLifetime? lifetime}) async {
+    var ownsAction = false;
+    try {
+      if (!_enabled)
+        throw const _FlutterTargetFailure('flutter_runtime_unavailable');
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(body);
+      } on FormatException {
+        throw const _FlutterTargetFailure('invalid_argument', field: 'payload');
+      }
+      if (decoded is! Map)
+        throw const _FlutterTargetFailure('invalid_argument', field: 'payload');
+      final Map<String, Object?> request = decoded.cast<String, Object?>();
+      _targets.validateRequest(request);
       final Object? actionId = request['actionId'];
       if (request.containsKey('actionId') &&
           (actionId is! String || actionId.trim().isEmpty)) {
         throw ArgumentError('actionId must be a non-empty string when present');
       }
+      if (_actionInFlight) {
+        return const {
+          'ok': false,
+          'error': 'flutter_action_busy',
+          'dispatched': false,
+          'ambiguous': false
+        };
+      }
+      _actionInFlight = true;
+      ownsAction = true;
+      _activeLifetime = lifetime;
       final result = await runZoned(() => _executeAction(request),
           zoneValues: <Object, Object?>{
             _actionCaptureKey: actionId ?? _unattributedAction,
+            _FlutterActionLifetime.zoneKey: lifetime,
           });
+      lifetime?.throwIfStopped();
       _schedulePost();
       return result;
+    } on _FlutterActionStopped catch (error) {
+      return {'ok': false, 'error': error.code, 'ambiguous': false};
+    } on _FlutterTargetFailure catch (error) {
+      return error.toJson();
     } catch (error) {
-      return <String, Object?>{'ok': false, 'error': error.toString()};
+      return <String, Object?>{
+        'ok': false,
+        'error': 'flutter_action_failed',
+        'message': error.toString(),
+        'dispatched': ownsAction ? null : false,
+        'ambiguous': ownsAction,
+      };
+    } finally {
+      if (ownsAction) {
+        if (lifetime != null)
+          runZoned(
+              () => recordEvent(
+                      category: 'execution',
+                      name: 'flutter.action.settled',
+                      data: {
+                        ...lifetime.identity,
+                        'dispatched': lifetime.dispatched,
+                        'stopReason': lifetime.stopReason
+                      }),
+              zoneValues: {_actionCaptureKey: lifetime.actionId});
+        _activeLifetime = null;
+        _actionInFlight = false;
+      }
     }
   }
 
-  Future<Map<String, Object?>> _executeAction(Map<String, Object?> request) async {
+  Future<Map<String, Object?>> _executeAction(
+      Map<String, Object?> request) async {
+    await _checkAction();
     final String action = request['action']?.toString() ?? '';
     return switch (action) {
       'tapAt' => await _runTapAt(request),
       'tapText' => await _runTapText(request),
+      'tapTarget' => await _targets.tap(request),
       'inputText' => await _runInputText(request),
       'swipe' => await _runSwipe(request),
       'scrollBy' => await _runScrollBy(request),
@@ -1079,8 +1087,8 @@ class AiAppBridge {
       'back' => await _runBack(),
       'openHarness' => await _runOpenHarness(),
       'h5Adapters' => _runH5Adapters(),
-      'h5Dom' => await _runH5Dom(),
-      'h5Eval' => await _runH5Eval(request),
+      'h5Dom' => await _runH5Dom(request),
+      'h5Eval' || 'h5Control' => await _h5Targets.control(request),
       _ => <String, Object?>{'ok': false, 'error': 'unknown_action'},
     };
   }
@@ -1095,57 +1103,14 @@ class AiAppBridge {
     return <String, Object?>{'ok': true, 'x': x, 'y': y};
   }
 
-  Future<Map<String, Object?>> _runTapText(Map<String, Object?> request) async {
-    final String text = request['text']?.toString() ?? '';
-    if (text.isEmpty) {
-      return <String, Object?>{'ok': false, 'error': 'text_required'};
-    }
-    final _RuntimeTarget? target = _findTargetByText(text);
-    if (target == null) {
-      return <String, Object?>{'ok': false, 'error': 'text_not_found'};
-    }
-    await _dispatchTap(target.bounds.center);
-    return <String, Object?>{
-      'ok': true,
-      'text': target.text,
-      'widgetType': target.widgetType,
-      'bounds': _rectToJson(target.bounds),
-    };
-  }
+  Future<Map<String, Object?>> _runTapText(Map<String, Object?> request) =>
+      _targets.tap({
+        ...request,
+        'selector': {'text': request['text']}
+      });
 
-  Future<Map<String, Object?>> _runInputText(
-    Map<String, Object?> request,
-  ) async {
-    final String text = request['text']?.toString() ?? '';
-    final Offset? point = _pointFromRequest(request) ?? _firstInputCenter();
-    if (point == null) {
-      return <String, Object?>{'ok': false, 'error': 'input_target_not_found'};
-    }
-    await _dispatchTap(point);
-    await _waitForFrame();
-    TextInput.updateEditingValue(
-      TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      ),
-    );
-    await _waitForFrame();
-    recordEvent(
-      category: 'ui.interaction',
-      name: 'input.changed',
-      data: <String, Object?>{
-        'length': text.length,
-        'x': point.dx.round(),
-        'y': point.dy.round(),
-      },
-    );
-    return <String, Object?>{
-      'ok': true,
-      'text': text,
-      'x': point.dx,
-      'y': point.dy,
-    };
-  }
+  Future<Map<String, Object?>> _runInputText(Map<String, Object?> request) =>
+      _targets.input(request);
 
   Future<Map<String, Object?>> _runSwipe(Map<String, Object?> request) async {
     final double? startX = _doubleValue(request['startX']);
@@ -1165,47 +1130,12 @@ class AiAppBridge {
     };
   }
 
-  Future<Map<String, Object?>> _runScrollBy(
-    Map<String, Object?> request,
-  ) async {
-    final double delta = _doubleValue(request['delta']) ?? 420;
-    await _hideKeyboard();
-    final bool didScroll = await _scrollPrimaryBy(delta);
-    return <String, Object?>{'ok': didScroll, 'delta': delta};
-  }
+  Future<Map<String, Object?>> _runScrollBy(Map<String, Object?> request) =>
+      _targets.scroll(request);
 
   Future<Map<String, Object?>> _runScrollUntilText(
-    Map<String, Object?> request,
-  ) async {
-    final String text = request['text']?.toString() ?? '';
-    if (text.isEmpty) {
-      return <String, Object?>{'ok': false, 'error': 'text_required'};
-    }
-    final int maxSwipes = _intValue(request['maxSwipes']) ?? 12;
-    await _hideKeyboard();
-    final Rect viewport = _viewportRect();
-    final Offset start = Offset(viewport.center.dx, viewport.bottom - 80);
-    final Offset end = Offset(viewport.center.dx, viewport.top + 160);
-    for (var index = 0; index <= maxSwipes; index += 1) {
-      final _RuntimeTarget? target = _findTargetByText(text);
-      if (target != null) {
-        return <String, Object?>{
-          'ok': true,
-          'text': target.text,
-          'swipes': index,
-          'bounds': _rectToJson(target.bounds),
-        };
-      }
-      if (index == maxSwipes) {
-        break;
-      }
-      final bool didScroll = await _scrollPrimaryBy(420);
-      if (!didScroll) {
-        await _dispatchSwipe(start, end);
-      }
-    }
-    return <String, Object?>{'ok': false, 'error': 'text_not_found'};
-  }
+          Map<String, Object?> request) =>
+      _targets.scrollUntilText(request);
 
   Future<Map<String, Object?>> _runHideKeyboard() async {
     await _hideKeyboard();
@@ -1213,22 +1143,28 @@ class AiAppBridge {
   }
 
   Future<void> _hideKeyboard() async {
+    await _checkAction();
+    _markActionDispatched();
     FocusManager.instance.primaryFocus?.unfocus();
-    SystemChannels.textInput.invokeMethod<void>('TextInput.hide').ignore();
+    await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     await _waitForFrame();
   }
 
   Future<Map<String, Object?>> _runBack() async {
+    await _checkAction();
     if (_harnessOverlayEntry != null) {
+      _markActionDispatched();
       _closeHarnessOverlay();
       return <String, Object?>{'ok': true, 'handled': true};
     }
     final NavigatorState? navigator = _rootNavigatorState();
+    if (navigator != null) _markActionDispatched();
     final bool didPop = navigator == null ? false : await navigator.maybePop();
     return <String, Object?>{'ok': true, 'handled': didPop};
   }
 
   Future<Map<String, Object?>> _runOpenHarness() async {
+    await _checkAction();
     if (_harnessOverlayEntry?.mounted == true) {
       return <String, Object?>{'ok': true, 'alreadyOpen': true};
     }
@@ -1246,6 +1182,7 @@ class AiAppBridge {
         ),
       );
       _harnessOverlayEntry = entry;
+      _markActionDispatched();
       overlay.insert(entry);
       await _waitForFrame();
       return <String, Object?>{'ok': true, 'surface': 'overlay'};
@@ -1255,6 +1192,7 @@ class AiAppBridge {
     if (navigator == null) {
       return <String, Object?>{'ok': false, 'error': 'navigator_not_found'};
     }
+    _markActionDispatched();
     unawaited(
       navigator.push<void>(
         MaterialPageRoute<void>(
@@ -1296,60 +1234,18 @@ class AiAppBridge {
     return overlays.isEmpty ? null : overlays.last;
   }
 
-  Map<String, Object?> _runH5Adapters() {
-    return <String, Object?>{
-      'ok': true,
-      'activeAdapterId': _activeH5Adapter?.id,
-      'adapters': _h5Adapters.values
-          .map(
-            (AiAppBridgeH5Adapter adapter) => <String, Object?>{
-              'id': adapter.id,
-              'source': adapter.source,
-              'active': adapter.id == _activeH5Adapter?.id,
-            },
-          )
-          .toList(growable: false),
-    };
-  }
+  Map<String, Object?> _runH5Adapters() => {
+    'ok': true, 'adapters': _h5Targets.candidates,
+  };
 
-  Future<Map<String, Object?>> _runH5Dom() async {
-    final AiAppBridgeH5Adapter? adapter = _activeH5Adapter;
-    if (adapter == null) {
-      return <String, Object?>{'ok': false, 'error': 'no_h5_adapter'};
+  Future<Map<String, Object?>> _runH5Dom(Map<String, Object?> request) async {
+    try {
+      final result = await _h5Targets.snapshot(request['adapterId'] as String?);
+      _h5 = result;
+      return result;
+    } on _FlutterTargetFailure catch (error) {
+      return {...error.toJson(), 'adapters': _h5Targets.candidates};
     }
-    final Map<String, Object?> snapshot = await _buildH5Snapshot(adapter);
-    _h5 = snapshot;
-    return <String, Object?>{
-      'ok': true,
-      'h5': snapshot,
-      'dom': snapshot['dom'],
-    };
-  }
-
-  Future<Map<String, Object?>> _runH5Eval(Map<String, Object?> request) async {
-    final String script = request['script']?.toString().trim() ?? '';
-    if (script.isEmpty) {
-      return <String, Object?>{'ok': false, 'error': 'missing_script'};
-    }
-    final AiAppBridgeH5Adapter? adapter = _activeH5Adapter;
-    if (adapter == null) {
-      return <String, Object?>{'ok': false, 'error': 'no_h5_adapter'};
-    }
-    final Object? raw = await adapter.evaluateJavascript(script);
-    final Object? result = _decodeJavascriptValue(raw);
-    final Map<String, Object?> metadata = await _adapterMetadata(adapter);
-    return <String, Object?>{
-      'ok': true,
-      'h5': <String, Object?>{
-        'active': true,
-        'adapterId': adapter.id,
-        'source': adapter.source,
-        ...metadata,
-      },
-      'result': result,
-      'raw': raw,
-      'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
-    };
   }
 
   NavigatorState? _rootNavigatorState() {
@@ -1385,116 +1281,6 @@ class AiAppBridge {
     return result;
   }
 
-  Iterable<ScrollableState> _scrollableStates() sync* {
-    for (final Element element in _inspectorElements()) {
-      if (element is StatefulElement && element.state is ScrollableState) {
-        yield element.state as ScrollableState;
-        continue;
-      }
-      final ScrollableState? scrollable = Scrollable.maybeOf(element);
-      if (scrollable != null) {
-        yield scrollable;
-      }
-    }
-  }
-
-  Future<bool> _scrollPrimaryBy(double delta) async {
-    final List<ScrollableState> candidates = <ScrollableState>[];
-    for (final ScrollableState state in _scrollableStates()) {
-      final ScrollPosition position = state.position;
-      if (!position.hasPixels || !position.hasContentDimensions) {
-        continue;
-      }
-      if (position.maxScrollExtent <= position.minScrollExtent) {
-        continue;
-      }
-      candidates.add(state);
-    }
-    if (candidates.isEmpty) {
-      return false;
-    }
-    final ScrollPosition position = candidates.last.position;
-    final double next = (position.pixels + delta).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
-    if (next == position.pixels) {
-      return false;
-    }
-    position.jumpTo(next);
-    await _waitForFrame();
-    return true;
-  }
-
-  _RuntimeTarget? _findTargetByText(String text) {
-    return _runtimeTargets().firstWhereOrNull(
-      (_RuntimeTarget target) => target.text.contains(text),
-    );
-  }
-
-  Iterable<_RuntimeTarget> _runtimeTargets() sync* {
-    final List<_RuntimeTarget> inspectorTargets =
-        _runtimeTargetsFromInspector().toList(growable: false);
-    if (inspectorTargets.isNotEmpty) {
-      yield* inspectorTargets;
-      return;
-    }
-
-    final Element? rootElement = WidgetsBinding.instance.rootElement;
-    if (rootElement == null) {
-      return;
-    }
-    final Set<Element> visited = HashSet<Element>.identity();
-
-    Iterable<Element> walk(Element root) sync* {
-      if (!visited.add(root)) {
-        return;
-      }
-      yield root;
-      final List<Element> children = <Element>[];
-      _visitElementChildren(root, children.add);
-      for (final Element child in children) {
-        yield* walk(child);
-      }
-    }
-
-    for (final Element element in walk(rootElement)) {
-      final String text = _widgetText(element.widget);
-      if (text.isEmpty) {
-        continue;
-      }
-      final Rect? bounds = _visibleGlobalBounds(element);
-      if (bounds == null || bounds.isEmpty) {
-        continue;
-      }
-      yield _RuntimeTarget(
-        element: element,
-        widgetType: element.widget.runtimeType.toString(),
-        text: text,
-        bounds: bounds,
-      );
-    }
-  }
-
-  Iterable<_RuntimeTarget> _runtimeTargetsFromInspector() sync* {
-    for (final Element element in _inspectorElements()) {
-      final String text = _widgetText(element.widget);
-      if (text.isEmpty) {
-        continue;
-      }
-      final Rect? bounds = _visibleGlobalBounds(element);
-      if (bounds == null || bounds.isEmpty) {
-        continue;
-      }
-      yield _RuntimeTarget(
-        element: element,
-        widgetType: element.widget.runtimeType.toString(),
-        text: text,
-        bounds: bounds,
-      );
-    }
-  }
-
   Iterable<Element> _inspectorElements() sync* {
     final Map<String, Object?>? root = _inspectorRootTree();
     if (root == null) {
@@ -1515,113 +1301,157 @@ class AiAppBridge {
     yield* walk(root);
   }
 
-  Offset? _firstInputCenter() {
-    for (final Element element in _inspectorElements()) {
-      if (!_isInputWidget(element.widget.runtimeType.toString())) {
-        continue;
-      }
-      final Rect? bounds = _visibleGlobalBounds(element);
-      if (bounds != null && !bounds.isEmpty) {
-        return bounds.center;
-      }
-    }
-
-    final Element? rootElement = WidgetsBinding.instance.rootElement;
-    if (rootElement == null) {
-      return null;
-    }
-    final Set<Element> visited = HashSet<Element>.identity();
-    Offset? result;
-
-    void walk(Element element) {
-      if (result != null || !visited.add(element)) {
-        return;
-      }
-      if (_isInputWidget(element.widget.runtimeType.toString())) {
-        final Rect? bounds = _visibleGlobalBounds(element);
-        if (bounds != null && !bounds.isEmpty) {
-          result = bounds.center;
-          return;
-        }
-      }
-      _visitElementChildren(element, walk);
-    }
-
-    walk(rootElement);
-    return result;
+  Future<void> _checkAction() async {
+    await _FlutterActionLifetime.current?.check();
   }
 
-  Future<void> _dispatchTap(Offset position) async {
-    GestureBinding.instance.handlePointerEvent(
-      PointerDownEvent(
-        position: position,
-        pointer: 1,
-        kind: PointerDeviceKind.touch,
-      ),
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 48));
-    GestureBinding.instance.handlePointerEvent(
-      PointerUpEvent(
-        position: position,
-        pointer: 1,
-        kind: PointerDeviceKind.touch,
-      ),
-    );
+  void _markActionDispatched() {
+    final lifetime = _FlutterActionLifetime.current;
+    if (lifetime == null) return;
+    lifetime.throwIfStopped();
+    if (!lifetime.dispatched) {
+      lifetime.dispatched = true;
+      recordEvent(
+          category: 'execution',
+          name: 'flutter.action.started',
+          data: lifetime.identity);
+    }
+  }
+
+  Future<void> _actionDelay(Duration duration) =>
+      _FlutterActionLifetime.current?.delay(duration) ??
+      Future<void>.delayed(duration);
+
+  void _cancelPointer(int pointer, Offset position) {
+    GestureBinding.instance.handlePointerEvent(PointerCancelEvent(
+        position: position, pointer: pointer, kind: PointerDeviceKind.touch));
+    recordEvent(
+        category: 'ui.interaction',
+        name: 'flutter.pointer.cancel',
+        data: {'pointer': pointer, 'x': position.dx, 'y': position.dy});
+  }
+
+  Future<Offset> _dispatchTap(Offset position,
+      {_BoundFlutterTarget? target}) async {
+    await _checkAction();
+    if (target != null) {
+      _targets.validate(target, dispatched: false);
+      final current = _visibleGlobalBounds(target.element)?.center;
+      if (current == null)
+        throw const _FlutterTargetFailure('flutter_target_not_operable');
+      position = current;
+    }
+    var down = false;
+    _shortPointerInFlight = true;
+    try {
+      _markActionDispatched();
+      down = true;
+      GestureBinding.instance.handlePointerEvent(
+        PointerDownEvent(
+          position: position,
+          pointer: 1,
+          kind: PointerDeviceKind.touch,
+        ),
+      );
+      await _actionDelay(const Duration(milliseconds: 48));
+      // Ending the admitted tap must not wait on another channel round trip:
+      // that wait can turn a short tap into a long press. Native retains this
+      // operation until its original receipt; cancellation never acknowledges
+      // settlement while this terminal touch is still pending.
+      _FlutterActionLifetime.current?.throwIfStopped();
+      if (target != null) {
+        _targets.validatePointer(target, position);
+      }
+      _FlutterActionLifetime.current?.throwIfStopped();
+      down = false;
+      GestureBinding.instance.handlePointerEvent(
+        PointerUpEvent(
+          position: position,
+          pointer: 1,
+          kind: PointerDeviceKind.touch,
+        ),
+      );
+    } finally {
+      try {
+        if (down) _cancelPointer(1, position);
+      } finally {
+        _shortPointerInFlight = false;
+        _resumePendingSnapshot();
+      }
+    }
     await _waitForFrame();
+    return position;
   }
 
   Future<void> _dispatchSwipe(Offset start, Offset end) async {
     const int pointer = 2;
-    GestureBinding.instance.handlePointerEvent(
-      PointerDownEvent(
-        position: start,
-        pointer: pointer,
-        kind: PointerDeviceKind.touch,
-      ),
-    );
-    const int steps = 8;
+    await _checkAction();
+    var down = false;
     Offset previous = start;
-    for (var index = 1; index <= steps; index += 1) {
-      final double t = index / steps;
-      final Offset next = Offset.lerp(start, end, t)!;
+    try {
+      _markActionDispatched();
+      down = true;
       GestureBinding.instance.handlePointerEvent(
-        PointerMoveEvent(
-          position: next,
-          delta: next - previous,
+        PointerDownEvent(
+          position: start,
           pointer: pointer,
           kind: PointerDeviceKind.touch,
         ),
       );
-      previous = next;
-      await Future<void>.delayed(const Duration(milliseconds: 16));
+      const int steps = 8;
+      for (var index = 1; index <= steps; index += 1) {
+        _FlutterActionLifetime.current?.throwIfStopped();
+        final double t = index / steps;
+        final Offset next = Offset.lerp(start, end, t)!;
+        GestureBinding.instance.handlePointerEvent(
+          PointerMoveEvent(
+            position: next,
+            delta: next - previous,
+            pointer: pointer,
+            kind: PointerDeviceKind.touch,
+          ),
+        );
+        previous = next;
+        await _actionDelay(const Duration(milliseconds: 16));
+      }
+      _FlutterActionLifetime.current?.throwIfStopped();
+      down = false;
+      GestureBinding.instance.handlePointerEvent(
+        PointerUpEvent(
+          position: end,
+          pointer: pointer,
+          kind: PointerDeviceKind.touch,
+        ),
+      );
+      await _waitForFrame();
+    } finally {
+      if (down) _cancelPointer(pointer, previous);
     }
-    GestureBinding.instance.handlePointerEvent(
-      PointerUpEvent(
-        position: end,
-        pointer: pointer,
-        kind: PointerDeviceKind.touch,
-      ),
-    );
-    await _waitForFrame();
   }
 
   Future<void> _waitForFrame() async {
     SchedulerBinding.instance.scheduleFrame();
-    await SchedulerBinding.instance.endOfFrame;
+    final frame = SchedulerBinding.instance.endOfFrame;
+    final lifetime = _FlutterActionLifetime.current;
+    if (lifetime == null)
+      await frame;
+    else
+      await lifetime.wait(frame);
   }
 
-  Offset? _pointFromRequest(Map<String, Object?> request) {
-    final double? x = _doubleValue(request['x']);
-    final double? y = _doubleValue(request['y']);
-    return x == null || y == null ? null : Offset(x, y);
-  }
-
-  Rect _viewportRect() {
-    final dynamic view = WidgetsBinding.instance.platformDispatcher.views.first;
+  Rect _viewportRect(Element element) {
+    final view = View.of(element);
     final double devicePixelRatio = view.devicePixelRatio;
     final Size physicalSize = view.physicalSize;
     final Size logicalSize = physicalSize / devicePixelRatio;
-    return Offset.zero & logicalSize;
+    // Native keyboards are outside Flutter's hit-test tree. Respect the actual
+    // view insets even when the App keeps its Scaffold body behind the keyboard.
+    return Rect.fromLTRB(
+      view.viewInsets.left / devicePixelRatio,
+      view.viewInsets.top / devicePixelRatio,
+      logicalSize.width - view.viewInsets.right / devicePixelRatio,
+      logicalSize.height - view.viewInsets.bottom / devicePixelRatio,
+    );
   }
 
   Rect? _visibleGlobalBounds(Element? element) {
@@ -1633,11 +1463,16 @@ class AiAppBridge {
     if (bounds == null || bounds.isEmpty) {
       return null;
     }
-    final Rect viewport = _viewportRect();
-    if (!viewport.contains(bounds.center)) {
+    final Rect viewport = _viewportRect(element);
+    final Rect visibleBounds = bounds.intersect(viewport);
+    if (visibleBounds.isEmpty) {
       return null;
     }
-    return _isHitTestReachable(renderObject, bounds.center) ? bounds : null;
+    // A keyboard can cover the center of a large Scrollable while its editor
+    // remains visible. Keep that live container and use its exposed geometry.
+    return _isHitTestReachable(renderObject, visibleBounds.center)
+        ? visibleBounds
+        : null;
   }
 
   bool _hasNonInteractiveAncestor(Element element) {
@@ -1651,6 +1486,11 @@ class AiAppBridge {
       } else if (widget is IgnorePointer && widget.ignoring) {
         blocked = true;
       } else if (widget is AbsorbPointer && widget.absorbing) {
+        blocked = true;
+      } else if (widget is Opacity && widget.opacity == 0 ||
+          widget is SliverOpacity && widget.opacity == 0 ||
+          widget is FadeTransition && widget.opacity.value == 0 ||
+          widget is SliverFadeTransition && widget.opacity.value == 0) {
         blocked = true;
       }
     }
@@ -1688,13 +1528,6 @@ class AiAppBridge {
       return result.isFinite ? result : null;
     }
     return double.tryParse(value?.toString() ?? '');
-  }
-
-  int? _intValue(Object? value) {
-    if (value is int) {
-      return value;
-    }
-    return int.tryParse(value?.toString() ?? '');
   }
 
   Map<String, Object?> _widgetDump() {
@@ -1862,17 +1695,16 @@ class AiAppBridge {
         widgetType == 'TextFormField';
   }
 
-  String _widgetText(Widget widget) {
+  String _widgetText(Element element) {
+    final widget = element.widget;
     // The inspector summary omits the framework Text inside a destination.
     // Its public label and its own bounds identify the individual tab.
     if (widget is NavigationDestination) {
       return widget.label;
     }
-    if (widget is Text) {
-      return widget.data ?? widget.textSpan?.toPlainText() ?? '';
-    }
-    if (widget is RichText) {
-      return widget.text.toPlainText();
+    if (widget is Text || widget is RichText) {
+      final render = element.findRenderObject();
+      return render is RenderParagraph ? _paragraphText(render.text) : '';
     }
     if (widget is EditableText) {
       if (widget.obscureText) {
@@ -1883,11 +1715,7 @@ class AiAppBridge {
     if (widget is Semantics) {
       return widget.properties.label ?? '';
     }
-    final String short = widget.toStringShort();
-    final RegExpMatch? match = RegExp(
-      r'^(?:Text|RichText)\("([^"]*)"\)',
-    ).firstMatch(short);
-    return match?.group(1) ?? '';
+    return '';
   }
 
   String _widgetValue(Widget widget) {
@@ -1912,13 +1740,20 @@ class AiAppBridge {
   }
 
   Future<void> _postSnapshot() async {
-    if (_snapshotInFlight) {
+    if (!_enabled) return;
+    if (_snapshotInFlight || _shortPointerInFlight) {
       _snapshotPending = true;
       return;
     }
     _snapshotInFlight = true;
     try {
       await _refreshH5Snapshot();
+      if (!_enabled) return;
+      // An H5 read can yield before the pointer begins. Recheck after it returns.
+      if (_shortPointerInFlight) {
+        _snapshotPending = true;
+        return;
+      }
       final String snapshotJson = jsonEncode(_snapshot());
       if (await _postSnapshotByMethodChannel(snapshotJson)) {
         return;
@@ -1926,11 +1761,17 @@ class AiAppBridge {
       await _postJson(_snapshotPath, snapshotJson);
     } finally {
       _snapshotInFlight = false;
-      if (_snapshotPending && _enabled) {
-        _snapshotPending = false;
-        scheduleMicrotask(() => unawaited(_postSnapshot()));
-      }
+      _resumePendingSnapshot();
     }
+  }
+
+  void _resumePendingSnapshot() {
+    if (!_snapshotPending ||
+        !_enabled ||
+        _snapshotInFlight ||
+        _shortPointerInFlight) return;
+    _snapshotPending = false;
+    scheduleMicrotask(() => unawaited(_postSnapshot()));
   }
 
   Future<void> _sendCapture(
@@ -2644,6 +2485,7 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
   var _h5FixtureInput = 'h5 initial value';
   var _h5FixtureClicked = false;
   var _h5FixtureScrollY = 0.0;
+  String? _h5FixtureDocumentId;
 
   @override
   void initState() {
@@ -2651,6 +2493,7 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     _h5FixtureAdapter = AiAppBridgeH5Adapter(
       id: 'runtime-harness-h5',
       source: 'flutter_runtime_harness_adapter',
+      isVisible: () => mounted,
       evaluateJavascript: _evaluateH5FixtureScript,
       metadata: () => <String, Object?>{
         'currentUrl': 'https://debug.local/flutter-runtime-h5',
@@ -2829,126 +2672,54 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     }
   }
 
+  // This is an explicit in-process diagnostic fixture, not a WebView result.
   Future<Object?> _evaluateH5FixtureScript(String script) async {
-    final Map<String, Object?>? operation = _extractH5Operation(script);
-    if (operation != null) {
-      return jsonEncode(_runH5FixtureOperation(operation));
+    final start = script.lastIndexOf('\n(');
+    if (start < 0 || !script.endsWith('))')) {
+      throw StateError('unsupported_h5_fixture_script');
     }
-    if (script.contains('document.querySelectorAll') ||
-        script.contains('controlCount')) {
-      return jsonEncode(_h5FixtureDom());
+    final request = jsonDecode(script.substring(start + 2, script.length - 2)) as Map;
+    if (request['operation'] == 'snapshot') {
+      _h5FixtureDocumentId ??= request['seed'] as String;
+      return jsonEncode({'ok': true, 'dom': _h5FixtureDom()});
     }
-    if (script.contains('document.title')) {
-      return jsonEncode('Flutter Runtime H5 Fixture');
+    const rejected = {'ok': false, 'error': 'reobserve_required',
+      'dispatched': false, 'ambiguous': false};
+    final page = request['pageRef'] as Map;
+    if (page['documentId'] != _h5FixtureDocumentId ||
+        page['url'] != 'https://debug.local/flutter-runtime-h5') return jsonEncode(rejected);
+    final action = request['action'];
+    if (action == 'eval') {
+      return jsonEncode({'ok': false, 'error': 'h5_fixture_eval_unsupported',
+        'dispatched': false, 'ambiguous': false});
     }
-    if (script.contains('location.href')) {
-      return jsonEncode('https://debug.local/flutter-runtime-h5');
+    if (action == 'scrollBy') {
+      setState(() => _h5FixtureScrollY += (request['deltaY'] as num).toDouble());
+      return jsonEncode({'ok': true, 'dispatched': true, 'ambiguous': false,
+        'scrollX': 0, 'scrollY': _h5FixtureScrollY});
     }
-    return jsonEncode(_h5FixtureDom());
-  }
-
-  Map<String, Object?>? _extractH5Operation(String script) {
-    final RegExpMatch? match = RegExp(
-      r'var params = (\{.*?\});',
-      dotAll: true,
-    ).firstMatch(script);
-    if (match == null) {
-      return null;
+    final expected = request['element'] as Map;
+    final matches = [_h5InputTarget(), _h5ButtonTarget()].where((element) =>
+      _FlutterH5Targets.elementFields.every((key) => element[key] == expected[key])).toList();
+    if (matches.length != 1) return jsonEncode(rejected);
+    final element = matches.single;
+    final geometry = {'bounds': element['bounds'], 'scrollY': _h5FixtureScrollY};
+    if (request['operation'] == 'prepare') {
+      return jsonEncode({'ok': true, 'geometry': geometry,
+        'dispatched': false, 'ambiguous': false});
     }
-    final Object? decoded = jsonDecode(match.group(1)!);
-    return decoded is Map ? decoded.cast<String, Object?>() : null;
-  }
-
-  Map<String, Object?> _runH5FixtureOperation(Map<String, Object?> params) {
-    final String action = params['action']?.toString() ?? '';
-    final String selector = params['selector']?.toString() ?? '';
-    final String targetText = params['targetText']?.toString() ?? '';
-    final Map<String, Object?>? target = _findH5FixtureTarget(
-      selector: selector,
-      targetText: targetText,
-      exact: params['exact'] == true,
-    );
-    if (action == 'find' &&
-        targetText.isNotEmpty &&
-        _h5FixtureBodyText().contains(targetText)) {
-      return <String, Object?>{
-        'ok': true,
-        'action': action,
-        'matchSource': 'bodyText',
-        'bodyText': _h5FixtureBodyText(),
-        'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
-      };
+    if (action != 'scroll' && jsonEncode(request['geometry']) != jsonEncode(geometry)) {
+      return jsonEncode(rejected);
     }
-    if (target == null) {
-      return <String, Object?>{
-        'ok': false,
-        'action': action,
-        'error': 'target_not_found',
-        'selector': selector,
-        'targetText': targetText,
-        'bodyText': _h5FixtureBodyText(),
-        'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
-      };
-    }
-    if (action == 'click' && target['id'] == 'flutter-h5-button') {
+    if (action == 'input' && element['id'] == 'flutter-h5-input') {
+      setState(() => _h5FixtureInput = request['text'] as String);
+    } else if (action == 'click' && element['id'] == 'flutter-h5-button') {
       setState(() => _h5FixtureClicked = true);
-    } else if (action == 'input' && target['id'] == 'flutter-h5-input') {
-      setState(() => _h5FixtureInput = params['value']?.toString() ?? '');
-    } else if (action == 'scroll') {
-      setState(() {
-        _h5FixtureScrollY += _doubleParam(params['deltaY']) ?? 480;
-      });
+    } else if (action != 'scroll') {
+      return jsonEncode({'ok': false, 'error': 'h5_fixture_action_unsupported',
+        'dispatched': false, 'ambiguous': false});
     }
-    final Map<String, Object?> updatedTarget = _findH5FixtureTarget(
-          selector: selector,
-          targetText: targetText,
-          exact: params['exact'] == true,
-        ) ??
-        target;
-    return <String, Object?>{
-      'ok': true,
-      'action': action,
-      'matched': updatedTarget,
-      'value': updatedTarget['value'] ?? '',
-      'bodyText': _h5FixtureBodyText(),
-      'scroll': <String, Object?>{'x': 0, 'y': _h5FixtureScrollY},
-      'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
-    };
-  }
-
-  Map<String, Object?>? _findH5FixtureTarget({
-    required String selector,
-    required String targetText,
-    required bool exact,
-  }) {
-    final List<Map<String, Object?>> targets = <Map<String, Object?>>[
-      _h5InputTarget(),
-      _h5ButtonTarget(),
-    ];
-    if (selector.isNotEmpty) {
-      return targets
-          .firstWhere(
-            (Map<String, Object?> target) =>
-                selector == '#${target['id']}' ||
-                selector == target['tag'] ||
-                selector == '[aria-label="${target['ariaLabel']}"]',
-            orElse: () => <String, Object?>{},
-          )
-          .ifEmptyNull;
-    }
-    if (targetText.isNotEmpty) {
-      return targets.firstWhere((Map<String, Object?> target) {
-        final String label = <Object?>[
-          target['text'],
-          target['value'],
-          target['id'],
-          target['ariaLabel'],
-          target['placeholder'],
-        ].whereType<String>().join('\n');
-        return exact ? label == targetText : label.contains(targetText);
-      }, orElse: () => <String, Object?>{}).ifEmptyNull;
-    }
-    return targets.first;
+    return jsonEncode({'ok': true, 'dispatched': true, 'ambiguous': false});
   }
 
   Map<String, Object?> _h5FixtureDom() {
@@ -2959,6 +2730,8 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     return <String, Object?>{
       'ok': true,
       'title': 'Flutter Runtime H5 Fixture',
+      'documentId': _h5FixtureDocumentId,
+      'truncated': false,
       'url': 'https://debug.local/flutter-runtime-h5',
       'readyState': 'complete',
       'bodyText': _h5FixtureBodyText(),
@@ -2981,6 +2754,10 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     return <String, Object?>{
       if (index != null) 'index': index,
       'tag': 'input',
+      'elementId': 'fixture-input',
+      'visible': true,
+      'editable': true,
+      'href': '',
       'id': 'flutter-h5-input',
       'name': '',
       'type': 'text',
@@ -3005,6 +2782,10 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     return <String, Object?>{
       if (index != null) 'index': index,
       'tag': 'button',
+      'elementId': 'fixture-button',
+      'visible': true,
+      'editable': false,
+      'href': '',
       'id': 'flutter-h5-button',
       'name': '',
       'type': 'button',
@@ -3025,16 +2806,6 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     };
   }
 
-  double? _doubleParam(Object? value) {
-    if (value is num) {
-      return value.toDouble();
-    }
-    return double.tryParse(value?.toString() ?? '');
-  }
-}
-
-extension on Map<String, Object?> {
-  Map<String, Object?>? get ifEmptyNull => isEmpty ? null : this;
 }
 
 class _NodeCounter {
@@ -3042,33 +2813,11 @@ class _NodeCounter {
 }
 
 class _ActionTarget {
-  const _ActionTarget({required this.widgetType, required this.bounds});
-
-  final String widgetType;
-  final Rect bounds;
-}
-
-class _RuntimeTarget {
-  const _RuntimeTarget({
-    required this.element,
-    required this.widgetType,
-    required this.text,
-    required this.bounds,
-  });
+  const _ActionTarget(
+      {required this.element, required this.widgetType, required this.bounds});
 
   final Element element;
-  final String widgetType;
-  final String text;
-  final Rect bounds;
-}
 
-extension _FirstWhereOrNull<T> on Iterable<T> {
-  T? firstWhereOrNull(bool Function(T value) test) {
-    for (final T value in this) {
-      if (test(value)) {
-        return value;
-      }
-    }
-    return null;
-  }
+  final String widgetType;
+  final Rect bounds;
 }

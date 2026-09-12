@@ -15,6 +15,7 @@
 #include "fishhook.h"
 
 #include <dlfcn.h>
+#include <mach/mach.h>
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
@@ -91,6 +92,16 @@ static void perform_rebinding_with_section(struct rebindings_entry *rebindings,
             for (j = 0; j < cur->rebindings_nel; j++) {
                 if (strlen(symbol_name) > 1 &&
                     strcmp(&symbol_name[1], cur->rebindings[j].name) == 0) {
+                    // dyld may map symbol pointers read-only, including in
+                    // automation frameworks loaded after Bridge starts.
+                    // Match upstream fishhook: write only after VM permission
+                    // succeeds; a denied hook must leave the App runnable.
+                    kern_return_t protection = vm_protect(mach_task_self(),
+                        (vm_address_t)indirect_symbol_bindings, section->size, FALSE,
+                        VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY);
+                    if (protection != KERN_SUCCESS) {
+                        goto symbol_loop;
+                    }
                     if (cur->rebindings[j].replaced != NULL &&
                         indirect_symbol_bindings[i] != cur->rebindings[j].replacement) {
                         *(cur->rebindings[j].replaced) = indirect_symbol_bindings[i];

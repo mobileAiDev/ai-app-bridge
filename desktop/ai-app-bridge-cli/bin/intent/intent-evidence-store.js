@@ -15,7 +15,7 @@ function createIntentEvidenceStore(options = {}) {
         executionId: record.operationId,
         revision: record.revision,
         kind,
-        target: record.target || targetOf(record),
+        target: record.target,
         timestampMs: timestampFor(kind, record),
         actionId: record.actionId,
         parentFactId: kind === 'decision' ? firstId(record.basedOnEvidenceIds) : record.parentFactId,
@@ -32,6 +32,19 @@ function createIntentEvidenceStore(options = {}) {
     persist: persistAndRecord,
     commit: persistAndRecord,
     ledger,
+    history(operationId, afterSequence = 0, limit) {
+      const restored = createExecutionLedger();
+      for (const record of store.list(operationId)) {
+        const checked = store.read(record.evidenceId);
+        if (!checked.ok) throw Object.assign(new Error(checked.error), { code: checked.error });
+        restored.record({ executionId: operationId, revision: record.revision, kind: record.kind,
+          target: record.target, timestampMs: timestampFor(record.kind, record), actionId: record.actionId,
+          parentFactId: record.kind === 'decision' ? firstId(record.basedOnEvidenceIds) : record.parentFactId,
+          payloadSummary: payloadSummaryFor(record.kind, record), evidenceRefs: [record.evidenceId],
+          timings: record.kind === 'action-receipt' ? timingsOf(record) : record.timings });
+      }
+      return restored.query(operationId, afterSequence, limit);
+    },
   };
 }
 
@@ -39,11 +52,6 @@ function timestampFor(kind, record) {
   if (kind === 'observation') return record.capturedAtMs;
   if (kind === 'action-receipt') return record.completedAtMs;
   return record.timestampMs;
-}
-
-function targetOf(record) {
-  if (record.serial == null && record.packageName == null) return undefined;
-  return { serial: record.serial, packageName: record.packageName };
 }
 
 function firstId(ids) {
@@ -59,6 +67,7 @@ function payloadSummaryFor(kind, record) {
   if (kind === 'observation') {
     const summary = {
       provider: record.provider,
+      observationTarget: record.observationTarget,
       rawTreeId: record.rawTreeId,
       foregroundTarget: record.foregroundTarget,
       capturedAtMs: record.capturedAtMs,
@@ -98,6 +107,7 @@ function payloadSummaryFor(kind, record) {
       mechanicalStatus: record.mechanicalStatus,
       error: record.error,
       ambiguous: record.ambiguous === true,
+      dispatched: record.dispatched,
       action: record.action,
       resolved: record.resolved,
       matched: record.matched,

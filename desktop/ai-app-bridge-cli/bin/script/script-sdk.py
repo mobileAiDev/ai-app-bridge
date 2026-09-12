@@ -13,8 +13,10 @@ HELD = {
 
 
 def send(message):
-    _real_stdout.write(json.dumps(message) + "\n")
-    _real_stdout.flush()
+    # Match the Host UTF-8 JSON byte budget; ASCII escaping can triple it.
+    frame = json.dumps(message, ensure_ascii=False, separators=(",", ":")) + "\n"
+    _real_stdout.buffer.write(frame.encode("utf-8", errors="backslashreplace"))
+    _real_stdout.buffer.flush()
 
 
 def read_message():

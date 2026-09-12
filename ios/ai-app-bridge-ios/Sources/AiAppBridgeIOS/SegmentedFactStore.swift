@@ -800,7 +800,6 @@ internal final class SegmentedFactStore {
     private var acceptedRecords: UInt64 = 0
     private var writtenRecords: UInt64 = 0
     private var droppedRecords: UInt64 = 0
-    private var receiptOutcomes: [Bool] = []
     private var unflushedRecords = 0
     private var flushTimer: DispatchSourceTimer?
     private var lastOperation = SegmentedFactStoreOperationResult(code: SegmentedFactStoreResultCode.closed)
@@ -955,29 +954,20 @@ internal final class SegmentedFactStore {
         partitionId: UInt32 = 0,
         durability: SegmentedFactStoreDurability = .memory
     ) -> SegmentedFactRecordEnqueueResult {
-        enqueueRecord(payload, partitionId: partitionId, durability: durability, trackReceiptOutcome: false)
+        enqueueRecord(payload, partitionId: partitionId, durability: durability)
     }
 
+    // This callback belongs to this exact enqueue, including its physical
+    // sequence and write failure. It never infers identity from later scans.
     @discardableResult
-    internal func recordForReceipt(
+    internal func appendWithReceipt(
         _ payload: Data,
-        partitionId: UInt32 = 0,
-        durability: SegmentedFactStoreDurability = .memory
+        partitionId: UInt32,
+        durability: SegmentedFactStoreDurability = .memory,
+        completion: @escaping (NativeAppendResult) -> Void
     ) -> SegmentedFactRecordEnqueueResult {
-        enqueueRecord(payload, partitionId: partitionId, durability: durability, trackReceiptOutcome: true)
-    }
-
-    internal func takeReceiptOutcomes() -> [Bool] {
-        withLock {
-            let taken = receiptOutcomes
-            receiptOutcomes.removeAll()
-            return taken
-        }
-    }
-
-    private func offerReceiptOutcome(_ track: Bool, success: Bool) {
-        if !track { return }
-        receiptOutcomes.append(success)
+        enqueueRecord(payload, partitionId: partitionId, durability: durability,
+                      completion: completion)
     }
 
     @discardableResult
@@ -985,7 +975,7 @@ internal final class SegmentedFactStore {
         _ payload: Data,
         partitionId: UInt32,
         durability: SegmentedFactStoreDurability,
-        trackReceiptOutcome: Bool
+        completion: ((NativeAppendResult) -> Void)? = nil
     ) -> SegmentedFactRecordEnqueueResult {
         let configuration = withLock {
             RecordConfiguration(
@@ -1035,8 +1025,9 @@ internal final class SegmentedFactStore {
             guard snapshot.0 != 0, let adapter = snapshot.1 else {
                 withLock {
                     droppedRecords += 1
-                    offerReceiptOutcome(trackReceiptOutcome, success: false)
                 }
+                completion?(.init(operation: .init(code: SegmentedFactStoreResultCode.closed), sequence: 0,
+                                  partitionId: partitionId))
                 return
             }
             let result: NativeAppendResult
@@ -1060,12 +1051,11 @@ internal final class SegmentedFactStore {
                 lastOperation = result.operation
                 if result.operation.isSuccess {
                     writtenRecords += 1
-                    offerReceiptOutcome(trackReceiptOutcome, success: true)
                 } else {
                     droppedRecords += 1
-                    offerReceiptOutcome(trackReceiptOutcome, success: false)
                 }
             }
+            completion?(result)
             if result.operation.isSuccess {
                 unflushedRecords += 1
                 if unflushedRecords >= maxUnflushedRecords {
@@ -1102,6 +1092,56 @@ internal final class SegmentedFactStore {
         }
     }
 
+    // Bound both the number and total size of logical records on the writer.
+    // The caller retains the returned cursor; no payload history is hydrated.
+    internal func readPage(
+        cursor: SegmentedFactStoreCursor,
+        maxRecords: Int = 64,
+        maxBytes: Int = 2 * 1024 * 1024,
+        completion: @escaping ([SegmentedFactStoreRecord], SegmentedFactStoreReadResult) -> Void
+    ) {
+        precondition(maxRecords > 0 && maxBytes > 0)
+        writer.async { [self] in
+            let snapshot = withLock { (handle, native) }
+            guard snapshot.0 != 0, let adapter = snapshot.1 else {
+                completion([], .init(operation: .init(code: SegmentedFactStoreResultCode.closed),
+                                     cursor: cursor, record: nil, requiredCapacity: 0))
+                return
+            }
+            var position = cursor
+            var records: [SegmentedFactStoreRecord] = []
+            var bytes = 0
+            var previous: SegmentedFactStoreReadResult?
+            while true {
+                let result = readLogical(adapter: adapter, handle: snapshot.0, cursor: position,
+                                         bufferCapacity: Self.maxPersistedPayloadBytes)
+                guard result.operation.isSuccess, let record = result.record else {
+                    completion(records, result)
+                    return
+                }
+                guard result.cursor.afterSequence > position.afterSequence else {
+                    completion([], .init(operation: .init(code: SegmentedFactStoreResultCode.corrupt,
+                                                         message: "capture cursor did not advance"),
+                                         cursor: position, record: nil, requiredCapacity: 0))
+                    return
+                }
+                if bytes + record.payload.count > maxBytes {
+                    if let previous { completion(records, previous) }
+                    else { completion([], bufferTooSmallRead(position, record.payload.count)) }
+                    return
+                }
+                records.append(record)
+                bytes += record.payload.count
+                if records.count >= maxRecords || bytes >= maxBytes {
+                    completion(records, result)
+                    return
+                }
+                previous = result
+                position = result.cursor
+            }
+        }
+    }
+
     internal func flush(completion: @escaping (SegmentedFactStoreOperationResult) -> Void) {
         writer.async { [self] in
             let snapshot = withLock { (handle, native) }
@@ -1119,28 +1159,43 @@ internal final class SegmentedFactStore {
     }
 
     internal func status(completion: @escaping (SegmentedFactStoreStatus) -> Void) {
+        writer.async { [self] in completion(statusOnWriter()) }
+    }
+
+    // Flush and freeze the readable boundary in one writer turn. A later
+    // enqueue must not be included in a watermark whose flush preceded it.
+    internal func durableStatus(completion: @escaping (SegmentedFactStoreOperationResult, SegmentedFactStoreStatus) -> Void) {
         writer.async { [self] in
-            if withLock({ cleanupPending }) {
-                runProfileMaintenanceOnWriter()
-            }
-            let wrapper = wrapperStatus()
             let snapshot = withLock { (handle, native) }
             guard snapshot.0 != 0, let adapter = snapshot.1 else {
-                completion(wrapper)
+                completion(.init(code: SegmentedFactStoreResultCode.closed), statusOnWriter())
                 return
             }
-            var status = adapter.status(handle: snapshot.0)
-            status.state = wrapper.state
-            status.enabled = wrapper.enabled
-            status.queuedRecords = wrapper.queuedRecords
-            status.acceptedRecords = wrapper.acceptedRecords
-            status.writtenRecords = wrapper.writtenRecords
-            status.droppedRecords = wrapper.droppedRecords
-            status.cleanupPending = wrapper.cleanupPending
-            status.inactiveBytes = wrapper.inactiveBytes
-            status.cleanupError = wrapper.cleanupError
-            completion(status)
+            var operation = SegmentedFactStoreOperationResult(code: SegmentedFactStoreResultCode.ok)
+            if unflushedRecords > 0 {
+                flushPendingOnWriter(adapter: adapter, handle: snapshot.0)
+                operation = withLock { lastOperation }
+            }
+            completion(operation, statusOnWriter())
         }
+    }
+
+    private func statusOnWriter() -> SegmentedFactStoreStatus {
+        if withLock({ cleanupPending }) { runProfileMaintenanceOnWriter() }
+        let wrapper = wrapperStatus()
+        let snapshot = withLock { (handle, native) }
+        guard snapshot.0 != 0, let adapter = snapshot.1 else { return wrapper }
+        var status = adapter.status(handle: snapshot.0)
+        status.state = wrapper.state
+        status.enabled = wrapper.enabled
+        status.queuedRecords = wrapper.queuedRecords
+        status.acceptedRecords = wrapper.acceptedRecords
+        status.writtenRecords = wrapper.writtenRecords
+        status.droppedRecords = wrapper.droppedRecords
+        status.cleanupPending = wrapper.cleanupPending
+        status.inactiveBytes = wrapper.inactiveBytes
+        status.cleanupError = wrapper.cleanupError
+        return status
     }
 
     internal func close(
@@ -1749,9 +1804,23 @@ final class ObservationFactStoreLifecycle {
     private var lifecycleState: SegmentedFactStoreState = .closed
     private var configuration: MobileFactStoreConfiguration?
     private var closeIssued = false
+    // Callbacks run under the lifecycle lock and must not reenter this object.
+    // They only schedule capture attachment or invalidate its current binding.
+    private let onOpened: (MobileFactStoreConfiguration) -> Void
+    private let onOpening: () -> Void
+    private let onOpenFailed: (String) -> Void
+    private let onStopped: () -> Void
 
-    init(store: ObservationFactStore = SegmentedFactStore.shared) {
+    init(store: ObservationFactStore = SegmentedFactStore.shared,
+         onOpening: @escaping () -> Void = {},
+         onOpened: @escaping (MobileFactStoreConfiguration) -> Void = { _ in },
+         onOpenFailed: @escaping (String) -> Void = { _ in },
+         onStopped: @escaping () -> Void = {}) {
         self.store = store
+        self.onOpening = onOpening
+        self.onOpened = onOpened
+        self.onOpenFailed = onOpenFailed
+        self.onStopped = onStopped
     }
 
     func start(_ configuration: MobileFactStoreConfiguration) {
@@ -1761,6 +1830,7 @@ final class ObservationFactStoreLifecycle {
             switch lifecycleState {
             case .closed, .disabled, .failed:
                 lifecycleState = .opening
+                onOpening()
                 return true
             case .opening, .open, .closing:
                 return false
@@ -1772,6 +1842,7 @@ final class ObservationFactStoreLifecycle {
     func stop() {
         let shouldClose = withLock { () -> Bool in
             desiredRunning = false
+            onStopped()
             switch lifecycleState {
             case .opening where !closeIssued,
                  .open where !closeIssued:
@@ -1816,8 +1887,10 @@ final class ObservationFactStoreLifecycle {
                 if result.isSuccess {
                     if !configuration.options.enabled {
                         self.lifecycleState = .disabled
+                        self.onOpenFailed("capture_store_disabled")
                     } else if self.desiredRunning && !self.closeIssued {
                         self.lifecycleState = .open
+                        self.onOpened(configuration)
                     } else if !self.closeIssued {
                         self.lifecycleState = .closing
                         self.closeIssued = true
@@ -1825,6 +1898,7 @@ final class ObservationFactStoreLifecycle {
                     }
                 } else if !self.closeIssued {
                     self.lifecycleState = .failed
+                    self.onOpenFailed("capture_store_open_failed")
                 }
             }
             if shouldClose { self.requestClose() }
@@ -1843,6 +1917,7 @@ final class ObservationFactStoreLifecycle {
             let shouldOpen = self.withLock { () -> Bool in
                 guard self.lifecycleState == .closed, self.desiredRunning else { return false }
                 self.lifecycleState = .opening
+                self.onOpening()
                 return true
             }
             if shouldOpen { self.requestOpen(reopen) }

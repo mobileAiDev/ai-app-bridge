@@ -10,7 +10,7 @@ const { handle, resetScriptOperations } = require('../bin/script/script-entry');
 function scriptDoc() {
   return {
     name: 's17',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     steps: [
       { id: 'o1', type: 'observe', provider: 'native' },
       { id: 'a1', type: 'action', action: 'tap', text: 'About' },

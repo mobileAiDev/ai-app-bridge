@@ -11,6 +11,10 @@ final class SegmentedFactStoreSourceMirrorTests: XCTestCase {
 
         let pairs: [(String, String)] = [
             (
+                "ios/ai-app-bridge-ios/Sources/AiAppBridgeFactStoreC/include/module.modulemap",
+                "flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC/include/module.modulemap"
+            ),
+            (
                 "native/segmented-fact-store/src/sfs.c",
                 "ios/ai-app-bridge-ios/Sources/SegmentedFactStoreC/sfs.c"
             ),
@@ -64,16 +68,20 @@ final class SegmentedFactStoreSourceMirrorTests: XCTestCase {
     private var swiftRuntimeSourcePairs: [(String, String)] {
         [
             "AiAppBridge.swift",
+            "IOSRuntimeIdentity.swift",
+            "IOSHttpRequest.swift",
+            "IOSManagedExecution.swift",
+            "IOSManagedTasks.swift",
+            "IOSExecutionReceiptStore.swift",
             "AiAppBridgeUiObserver.swift",
             "AutomaticLogCapture.swift",
             "H5ConsoleLog.swift",
             "ObservationFactSink.swift",
             "SegmentedFactStore.swift",
             "UiObservationStateMachine.swift",
-            "Capture/BoundedMemoryCaptureBackend.swift",
             "Capture/CaptureAppend.swift",
-            "Capture/FactStoreReceiptPort.swift",
-            "Capture/LegacyLiveView.swift",
+            "Capture/CaptureHttpView.swift",
+            "Capture/SegmentedCaptureBackend.swift",
             "Capture/MobileCaptureStore.swift"
         ].map { name in
             (

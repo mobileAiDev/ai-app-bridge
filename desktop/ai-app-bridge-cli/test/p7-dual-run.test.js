@@ -24,7 +24,7 @@ const TREE = {
 function stepsDoc() {
   return {
     name: 'p7-dual',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     steps: [
       { id: 'o1', type: 'observe', provider: 'native' },
       { id: 'a1', type: 'action', action: 'tap', text: 'About' },
@@ -75,7 +75,7 @@ test('P7 production entry rejects old steps and completes the code runtime', asy
       name: 'p7-dual-code',
       language: 'javascript',
       source: JS_SOURCE,
-      target: { serial: 'b46093e6', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     },
     host: createFakeHostPort({
       handlers: {

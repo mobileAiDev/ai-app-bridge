@@ -14,7 +14,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     private var channel: MethodChannel? = null
     private var activity: Activity? = null
     private var applicationContext: Context? = null
-    private var bridgeActionRegistered = false
+    private var bridgeActionCallback: Any? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = binding.applicationContext
@@ -37,6 +37,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        unregisterFlutterActionBridge()
         activity = null
     }
 
@@ -45,11 +46,18 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     }
 
     override fun onDetachedFromActivity() {
+        unregisterFlutterActionBridge()
         activity = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
+            if (call.method == "checkAction") {
+                val bridgeClass = Class.forName(androidBridgeClassName)
+                result.success(bridgeClass.getMethod("checkFlutterAction", String::class.java)
+                    .invoke(null, call.arguments as String))
+                return
+            }
             val handled = when (call.method) {
                 "updateSnapshot" -> updateSnapshot(call.arguments?.toString() ?: "{}")
                 "recordLog", "recordNetwork", "recordState", "recordEvent" ->
@@ -76,7 +84,9 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
             val bridgeClass = Class.forName(androidBridgeClassName)
             val startMethod = bridgeClass.getMethod("start", Context::class.java)
             startMethod.invoke(null, context)
-            registerFlutterActionBridge(bridgeClass)
+            // A background service also creates an engine and registers plugins.
+            // Only an engine attached to an Activity owns the UI action channel.
+            if (context is Activity) registerFlutterActionBridge(bridgeClass)
         } catch (_: ClassNotFoundException) {
             // The Android SDK is optional so this Flutter plugin can stay reusable.
         } catch (error: Throwable) {
@@ -85,7 +95,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     }
 
     private fun registerFlutterActionBridge(bridgeClass: Class<*>) {
-        if (bridgeActionRegistered) {
+        if (bridgeActionCallback != null) {
             return
         }
         val currentChannel = channel ?: return
@@ -95,73 +105,64 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
             arrayOf(callbackClass),
         ) { _, method, args ->
             if (method.name == "handle") {
-                val payload = args?.firstOrNull()?.toString() ?: "{}"
-                runFlutterAction(currentChannel, payload)
+                val values = requireNotNull(args)
+                val reply = values[2]
+                val replyMethod = Class.forName("$androidBridgeClassName\$FlutterActionReply").getMethod("reply", String::class.java)
+                runFlutterAction(currentChannel, values[0] as String, values[1] as String) { response -> replyMethod.invoke(reply, response) }
+                null
             } else {
                 null
             }
         }
         bridgeClass.getMethod("setFlutterActionHandler", callbackClass).invoke(null, callback)
-        bridgeActionRegistered = true
+        bridgeActionCallback = callback
     }
 
     private fun unregisterFlutterActionBridge() {
-        if (!bridgeActionRegistered) {
-            return
-        }
+        val callback = bridgeActionCallback ?: return
         try {
             val bridgeClass = Class.forName(androidBridgeClassName)
-            bridgeClass.getMethod("setFlutterActionHandler", Class.forName("$androidBridgeClassName\$FlutterActionHandler"))
-                .invoke(null, null)
+            bridgeClass.getMethod("clearFlutterActionHandler", Class.forName("$androidBridgeClassName\$FlutterActionHandler"))
+                .invoke(null, callback)
         } catch (_: Throwable) {
         } finally {
-            bridgeActionRegistered = false
+            bridgeActionCallback = null
         }
     }
 
-    private fun runFlutterAction(currentChannel: MethodChannel, payloadJson: String): String {
-        val latch = java.util.concurrent.CountDownLatch(1)
-        val response = java.util.concurrent.atomic.AtomicReference<String>()
-        val error = java.util.concurrent.atomic.AtomicReference<String>()
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            currentChannel.invokeMethod(
-                "runAction",
+    private fun runFlutterAction(currentChannel: MethodChannel, method: String, payloadJson: String, reply: (String) -> Unit) {
+        val posted = android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try { currentChannel.invokeMethod(
+                method,
                 payloadJson,
                 object : MethodChannel.Result {
                     override fun success(result: Any?) {
-                        response.set(toJsonString(result))
-                        latch.countDown()
+                        reply(toJsonString(result))
                     }
 
                     override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                        error.set(errorMessage ?: errorCode)
-                        latch.countDown()
+                        reply(JSONObject().put("ok", false).put("error", errorCode).put("message", errorMessage).toString())
                     }
 
                     override fun notImplemented() {
-                        error.set("flutter_action_not_implemented")
-                        latch.countDown()
+                        reply("""{"ok":false,"error":"flutter_action_not_implemented"}""")
                     }
                 },
-            )
+            ) } catch (error: Throwable) {
+                reply(JSONObject().put("ok", false).put("error", "flutter_channel_failed").put("message", error.message).toString())
+            }
         }
-        if (!latch.await(15000L, java.util.concurrent.TimeUnit.MILLISECONDS)) {
-            return """{"ok":false,"error":"flutter_action_timeout"}"""
-        }
-        error.get()?.let {
-            return JSONObject().put("ok", false).put("error", it).toString()
-        }
-        return response.get() ?: """{"ok":false,"error":"empty_flutter_action_result"}"""
+        if (!posted) reply("""{"ok":false,"error":"flutter_main_thread_unavailable"}""")
     }
 
     private fun toJsonString(value: Any?): String {
         return when (value) {
-            null -> """{"ok":true}"""
+            null -> """{"ok":false,"error":"empty_flutter_action_result"}"""
             is String -> value
             is Map<*, *> -> JSONObject(value).toString()
             else -> JSONObject()
-                .put("ok", true)
-                .put("value", value.toString())
+                .put("ok", false)
+                .put("error", "invalid_flutter_action_result")
                 .toString()
         }
     }
@@ -205,4 +206,3 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
         private const val androidBridgeClassName = "io.github.mobileaidev.aiappbridge.android.AiAppBridge"
     }
 }
-

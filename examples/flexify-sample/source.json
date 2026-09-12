@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/brandonp2412/Flexify",
+  "tag": "2.1.109",
+  "commit": "9ae7a8b8f423cbd28fd5f22dc7ae14fded1fc604",
+  "version": "2.1.109+394",
+  "license": "MIT",
+  "archive": "https://codeload.github.com/brandonp2412/Flexify/tar.gz/9ae7a8b8f423cbd28fd5f22dc7ae14fded1fc604",
+  "archiveSha256": "f3bedabb88d9a981ba452d1e463795486b73274add2757bff5a72a1917d97e78",
+  "flutterVersion": "3.44.8",
+  "iosBundleId": "io.github.mobileaidev.flexify.sample"
+}

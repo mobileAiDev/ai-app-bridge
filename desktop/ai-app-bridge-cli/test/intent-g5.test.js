@@ -11,7 +11,7 @@ const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-sto
 const { handle, resetIntentOperations } = require('./helpers/intent-entry');
 const { createIntentRuntime } = require('../bin/intent/intent-runtime');
 const { handle: scriptHandle } = require('../bin/script/script-entry');
-const { runBatch, runBridgeChecked } = require('../bin/mcp-server');
+const { runBridgeChecked } = require('../test-support/host-client');
 
 const tree = {
   root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] },
@@ -62,7 +62,7 @@ test('G5 Intent live operation registry fails closed at its bound', async () => 
       operation: 'start',
       operationId: `bounded-live-${i}`,
       goal: 'wait',
-      target: { serial: `serial-${i}`, packageName: 'com.example.app' },
+      target: { platform: 'android', serial: `serial-${i}`, packageName: 'com.example.app' },
       store: store(),
       adapter,
     });
@@ -72,7 +72,7 @@ test('G5 Intent live operation registry fails closed at its bound', async () => 
     operation: 'start',
     operationId: 'bounded-live-overflow',
     goal: 'wait',
-    target: { serial: 'overflow', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'overflow', packageName: 'com.example.app' },
     store: store(),
     adapter,
   });
@@ -95,7 +95,7 @@ test('G5 start without persisted evidence cannot enter waiting_for_decision', as
     operation: 'start',
     operationId: 'blocked',
     goal: 'open settings',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: blocked,
     adapter: createFakeIntentDeviceAdapter({ trees: { native: tree } }),
   });
@@ -110,7 +110,7 @@ test('G5 stale revision and duplicate decisionId do not dispatch; one action per
     operation: 'start',
     operationId: 'g5-rev',
     goal: 'tap home',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter,
   });
@@ -118,7 +118,7 @@ test('G5 stale revision and duplicate decisionId do not dispatch; one action per
   const stale = await handle({
     operation: 'decide',
     operationId: 'g5-rev',
-    decision: { decisionId: 'd-stale', agentDecision: 'act', basedOnRevision: started.revision + 9, action: { action: 'tap', text: 'Home' } },
+    decision: { decisionId: 'd-stale', agentDecision: 'act', basedOnRevision: started.revision + 9, action: { action: 'tap', selector: { text: 'Home' } } },
   });
   assert.equal(stale.error, 'reobserve_required');
   assert.equal(adapter.calls.filter((item) => item.name === 'action').length, 0);
@@ -126,7 +126,7 @@ test('G5 stale revision and duplicate decisionId do not dispatch; one action per
   const first = await handle({
     operation: 'decide',
     operationId: 'g5-rev',
-    decision: { decisionId: 'd1', agentDecision: 'act', basedOnRevision: started.revision, action: { action: 'tap', text: 'Home' } },
+    decision: { decisionId: 'd1', agentDecision: 'act', basedOnRevision: started.revision, action: { action: 'tap', selector: { text: 'Home' } } },
   });
   assert.equal(first.ok, true);
   assert.equal(adapter.calls.filter((item) => item.name === 'action').length, 1);
@@ -134,7 +134,7 @@ test('G5 stale revision and duplicate decisionId do not dispatch; one action per
   const dup = await handle({
     operation: 'decide',
     operationId: 'g5-rev',
-    decision: { decisionId: 'd1', agentDecision: 'act', basedOnRevision: first.revision, action: { action: 'tap', text: 'Home' } },
+    decision: { decisionId: 'd1', agentDecision: 'act', basedOnRevision: first.revision, action: { action: 'tap', selector: { text: 'Home' } } },
   });
   assert.equal(dup.error, 'duplicate_decision');
   assert.equal(adapter.calls.filter((item) => item.name === 'action').length, 1);
@@ -161,21 +161,21 @@ test('G5 receipt loss is ambiguous; status and cancel make zero device calls', a
     operation: 'start',
     operationId: 'receipt',
     goal: 'tap',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: failing,
     adapter,
   });
   const decided = await handle({
     operation: 'decide',
     operationId: 'receipt',
-    decision: { decisionId: 'd-r', agentDecision: 'act', basedOnRevision: started.revision, action: { action: 'tap', text: 'Home' } },
+    decision: { decisionId: 'd-r', agentDecision: 'act', basedOnRevision: started.revision, action: { action: 'tap', selector: { text: 'Home' } } },
   });
   assert.equal(decided.status, 'ambiguous');
   const after = adapter.callCount;
   const status = handle({ operation: 'status', operationId: 'receipt' });
-  const cancelled = handle({ operation: 'cancel', operationId: 'receipt' });
+  const cancelled = await handle({ operation: 'cancel', operationId: 'receipt' });
   assert.equal(status.status, 'ambiguous');
-  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(cancelled.status, 'ambiguous', 'cancel cannot overwrite a settled uncertain receipt');
   assert.equal(adapter.callCount, after);
 });
 
@@ -185,7 +185,7 @@ test('G5 completes three observe-decide-action-observe rounds; Script and Legacy
     operation: 'start',
     operationId: 'rounds',
     goal: 'three taps',
-    target: { serial: 'b46093e6', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'b46093e6', packageName: 'com.example.app' },
     store: store(),
     adapter,
   });
@@ -197,7 +197,7 @@ test('G5 completes three observe-decide-action-observe rounds; Script and Legacy
         decisionId: `d-${i}`,
         agentDecision: 'act',
         basedOnRevision: current.revision,
-        action: { action: 'tap', text: 'Home' },
+        action: { action: 'tap', selector: { text: 'Home' } },
       },
     });
     assert.equal(current.ok, true);
@@ -220,7 +220,7 @@ test('G5 completes three observe-decide-action-observe rounds; Script and Legacy
       name: 'g5-reg',
       language: 'javascript',
       source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
-      target: { serial: 'android-1', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'android-1', packageName: 'com.example.app' },
     },
   });
   const deadline = Date.now() + 5000;
@@ -244,7 +244,7 @@ test('G5 completes three observe-decide-action-observe rounds; Script and Legacy
   const legacy = await runBridgeChecked('status', { serial: 'android-1' }, {
     rawRunner: async () => { throw new Error('no runner'); },
   });
-  assert.match(legacy.content[0].text, /packageName or explicit port is required/);
-  const batch = JSON.parse((await runBatch({ steps: [{ id: 's1', command: 'intent' }] })).content[0].text);
-  assert.equal(batch.error, 'unknown_batch_step_command');
+  assert.match(legacy.content[0].text, /packageName/);
+  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  assert.equal(batch.error, 'unknown_command');
 });

@@ -17,7 +17,7 @@ function spec() {
     name: 'p8-material',
     language: 'javascript',
     source: 'function main() { return { ok: true }; }\nmodule.exports = { main };',
-    target: { serial: 'p8', packageName: 'com.example.app' },
+    target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
   };
 }
 

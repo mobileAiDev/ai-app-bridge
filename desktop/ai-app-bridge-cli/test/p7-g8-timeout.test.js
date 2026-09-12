@@ -41,7 +41,7 @@ test('P7 G8 code timeout stops hanging JavaScript scripts', async () => {
         name: `p7-g8-timeout-${i}`,
         language: 'javascript',
         source: HANGING,
-        target: { serial: 'p7', packageName: 'com.example.app' },
+        target: { platform: 'android', serial: 'p7', packageName: 'com.example.app' },
         policy: { timeoutMs: 80 },
       },
     });

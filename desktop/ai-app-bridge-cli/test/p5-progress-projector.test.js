@@ -11,7 +11,7 @@ function fact(kind, extra = {}) {
     executionId: 'ex-1',
     revision: 1,
     kind,
-    target: { serial: 's', packageName: 'p' },
+    target: { platform: 'android', serial: 's', packageName: 'p' },
     timestampMs: 1000,
     actionId: extra.actionId,
     parentFactId: extra.parentFactId,

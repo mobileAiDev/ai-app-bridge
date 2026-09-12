@@ -2,7 +2,6 @@
 
 const { spawn: spawnProcess } = require('node:child_process');
 
-const evidenceStreams = ['logs', 'network', 'state', 'events'];
 const defaultDeviceLogBuffers = ['main', 'system', 'crash'];
 const sensitiveDeviceLogBuffers = new Set(['radio', 'security', 'kernel']);
 const allowedDeviceLogBuffers = new Set([...defaultDeviceLogBuffers, ...sensitiveDeviceLogBuffers]);
@@ -19,7 +18,6 @@ class ObservationCollector {
     statusIntervalMs = 5_000,
     initialBackoffMs = 1_000,
     maxBackoffMs = 30_000,
-    captureLimit = 200,
     deviceLogFlushMs = 250,
     deviceLogBatchLines = 100,
     deviceLogBatchBytes = 64 * 1024,
@@ -52,7 +50,6 @@ class ObservationCollector {
     this.statusIntervalMs = positiveNumber(statusIntervalMs, 'statusIntervalMs');
     this.initialBackoffMs = positiveNumber(initialBackoffMs, 'initialBackoffMs');
     this.maxBackoffMs = positiveNumber(maxBackoffMs, 'maxBackoffMs');
-    this.captureLimit = positiveInteger(captureLimit, 'captureLimit');
     this.deviceLogFlushMs = positiveNumber(deviceLogFlushMs, 'deviceLogFlushMs');
     this.deviceLogBatchLines = positiveInteger(deviceLogBatchLines, 'deviceLogBatchLines');
     this.deviceLogBatchBytes = positiveInteger(deviceLogBatchBytes, 'deviceLogBatchBytes');
@@ -111,21 +108,18 @@ class ObservationCollector {
       nextPollAtMs: null,
       runtimeEpoch: null,
       generationChanges: 0,
-      cursors: Object.fromEntries(evidenceStreams.map((stream) => [stream, null])),
       failureCount: 0,
       lastError: null,
       lastActionId: null,
       lastActionAtMs: null,
       actionTimeline: [],
       pollTimer: null,
+      expiryTimer: null,
       polling: false,
     };
     this.targets.set(state.key, state);
     this.registerDeviceLogTarget(state);
-    if (this.running) {
-      this.schedulePoll(state, 0);
-      this.startDeviceLogForTarget(state);
-    }
+    if (this.running) this.startTarget(state);
     return { registered: true, target: publicTarget(state) };
   }
 
@@ -172,8 +166,7 @@ class ObservationCollector {
     if (this.running) return this.status();
     this.running = true;
     for (const target of this.targets.values()) {
-      this.schedulePoll(target, 0);
-      this.startDeviceLogForTarget(target);
+      this.startTarget(target);
     }
     return this.status();
   }
@@ -182,7 +175,9 @@ class ObservationCollector {
     this.running = false;
     for (const target of this.targets.values()) {
       if (target.pollTimer !== null) this.timers.clearTimeout(target.pollTimer);
+      if (target.expiryTimer !== null) this.timers.clearTimeout(target.expiryTimer);
       target.pollTimer = null;
+      target.expiryTimer = null;
       target.nextPollAtMs = null;
     }
     for (const deviceLog of this.deviceLogs.values()) {
@@ -219,11 +214,12 @@ class ObservationCollector {
           ...publicTarget(target),
           ...(target.kind === 'android' ? { deviceLog: this.targetDeviceLogStatus(target) } : {}),
           runtimeEpoch: target.runtimeEpoch,
-          cursors: { ...target.cursors },
           failureCount: target.failureCount,
           lastError: target.lastError,
           lastActionId: target.lastActionId,
           actionTimeline,
+          backgroundPolling: target.kind !== 'android',
+          expiresAtMs: target.lastRegisteredAtMs + this.inactiveTargetTtlMs,
           lastPollAtMs: target.lastPollAtMs,
           lastSuccessAtMs: target.lastSuccessAtMs,
           nextPollAtMs: target.nextPollAtMs,
@@ -269,6 +265,28 @@ class ObservationCollector {
     };
   }
 
+  startTarget(target) {
+    if (target.kind === 'android') {
+      // Android evidence is read explicitly. An unsolicited SDK connection can
+      // block ADB while a background app is being launched; TTL needs no I/O.
+      this.scheduleTargetExpiry(target);
+    } else {
+      this.schedulePoll(target, 0);
+    }
+    this.startDeviceLogForTarget(target);
+  }
+
+  scheduleTargetExpiry(target) {
+    if (!this.running || target.expiryTimer !== null || this.targets.get(target.key) !== target) return;
+    const delayMs = Math.max(0, target.lastRegisteredAtMs + this.inactiveTargetTtlMs - this.clock());
+    target.expiryTimer = this.timers.setTimeout(() => {
+      target.expiryTimer = null;
+      if (!this.running || this.targets.get(target.key) !== target) return;
+      if (this.targetExpired(target)) this.removeTarget(target, 'expired');
+      else this.scheduleTargetExpiry(target);
+    }, delayMs);
+  }
+
   schedulePoll(target, delayMs) {
     if (
       !this.running
@@ -294,13 +312,6 @@ class ObservationCollector {
     try {
       if (target.lastStatusAtMs === null || this.clock() - target.lastStatusAtMs >= this.statusIntervalMs) {
         await this.pullStatus(target);
-      }
-      if (target.kind === 'web') {
-        const pulls = await Promise.allSettled(
-          evidenceStreams.map((stream) => this.pullEvidence(target, stream)),
-        );
-        const failedPull = pulls.find((pull) => pull.status === 'rejected');
-        if (failedPull) throw failedPull.reason;
       }
       target.failureCount = 0;
       target.lastError = null;
@@ -330,7 +341,6 @@ class ObservationCollector {
       && runtimeEpoch !== null
       && target.runtimeEpoch !== runtimeEpoch;
     if (changed) {
-      for (const stream of evidenceStreams) target.cursors[stream] = null;
       target.generationChanges += 1;
     }
     if (runtimeEpoch !== null) target.runtimeEpoch = runtimeEpoch;
@@ -339,21 +349,6 @@ class ObservationCollector {
       generationChanged: changed,
       sinceId: null,
     }));
-  }
-
-  async pullEvidence(target, stream) {
-    const command = commandFor(target.kind, stream);
-    const sinceId = target.cursors[stream];
-    const args = {
-      ...target.args,
-      limit: this.captureLimit,
-      ...(sinceId === null ? {} : { sinceId }),
-    };
-    const result = await this.rawRunner(command, args);
-    assertSuccessfulResult(command, result);
-    await this.recordEvidence(command, args, result, this.evidenceContext(target, { sinceId }));
-    const nextCursor = maximumItemId(result);
-    if (nextCursor !== null) target.cursors[stream] = nextCursor;
   }
 
   evidenceContext(target, extra = {}) {
@@ -414,7 +409,9 @@ class ObservationCollector {
       : targetOrKey;
     if (!target || this.targets.get(target.key) !== target) return false;
     if (target.pollTimer !== null) this.timers.clearTimeout(target.pollTimer);
+    if (target.expiryTimer !== null) this.timers.clearTimeout(target.expiryTimer);
     target.pollTimer = null;
+    target.expiryTimer = null;
     target.nextPollAtMs = null;
     this.targets.delete(target.key);
     if (reason === 'evicted') this.targetEvictions += 1;
@@ -702,16 +699,10 @@ function observationTargetFor(command, args = {}) {
     };
   }
   if (name.startsWith('web-')) {
-    const sessionId = stringPart(args.sessionId);
-    const targetId = stringPart(args.targetId);
-    if (!sessionId) return null;
-    return {
-      kind: 'web',
-      key: identityKey('web', sessionId, targetId),
-      args: pickDefined({ ...args, targetId }, ['sessionId', 'targetId']),
-      sessionId,
-      targetId,
-    };
+    // Web ingress commits authoritative facts before its SDK acknowledgement.
+    // Pulling those facts into a second observer would duplicate evidence and
+    // infer action ownership from whichever command happened to run last.
+    return null;
   }
   const packageName = stringPart(args.packageName);
   if (!packageName) return null;
@@ -730,8 +721,7 @@ function observationTargetFor(command, args = {}) {
 function publicTarget(target) {
   const base = { kind: target.kind, key: target.key };
   if (target.kind === 'android') return { ...base, serial: target.serial, packageName: target.packageName };
-  if (target.kind === 'ios') return { ...base, deviceId: target.deviceId, bundleId: target.bundleId };
-  return { ...base, sessionId: target.sessionId, targetId: target.targetId };
+  return { ...base, deviceId: target.deviceId, bundleId: target.bundleId };
 }
 
 function targetKeyValue(target) {
@@ -745,20 +735,8 @@ function commandFor(kind, stream) {
 }
 
 function runtimeEpochFor(kind, result) {
-  const value = kind === 'web'
-    ? result?.session?.connectedAtMs ?? result?.connectedAtMs
-    : result?.debugBridge?.runtimeEpoch;
+  const value = result?.debugBridge?.runtimeEpoch;
   return value === undefined || value === null || value === '' ? null : String(value);
-}
-
-function maximumItemId(result) {
-  let maximum = null;
-  for (const item of Array.isArray(result?.items) ? result.items : []) {
-    const id = Number(item?.id);
-    if (!Number.isFinite(id)) continue;
-    if (maximum === null || id > maximum) maximum = id;
-  }
-  return maximum;
 }
 
 function assertSuccessfulResult(command, result) {

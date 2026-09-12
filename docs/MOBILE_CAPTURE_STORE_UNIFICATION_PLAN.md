@@ -8,7 +8,7 @@
 >
 > 当前记录基线：`codex/script-intent-isolated-rebuild` @ `eec151b`（实施前必须重新核对）
 >
-> 核心门禁：一个 Phase 的 Gate 未通过时停止，不进入下一阶段。
+> 2026-09-10 推进顺序：本文件是基础能力子计划，不再把全部存储 Phase 作为复杂 App Intent/Script 开发的串行前置。遵循[复杂 App 主线](BRIDGE_NEXT_GATES_2026-09-08.md#2026-09-10-用户纠偏后的当前优先级)：修复当前业务流程实际遇到的正确性阻塞，随后回到业务验收；其他存储性能与边界项保持未完成，并在生产交付前验证。
 
 文档关系：本文件是 `docs/SCRIPT_INTENT_RUNTIME_CAPTURE_MASTER_PLAN.md` 的 CaptureStore 子计划。`docs/SCRIPT_INTENT_ISOLATED_REBUILD_PLAN.md` 中“Legacy 外观不变、Script / Intent / Legacy 代码隔离”的原则继续有效；其“Script 只允许声明式 steps、禁止 JS/Python”的结论失效。JS/Python runtime 和持续进度摘要以总计划为准；Intent execution 只提供中性历史，Agent 自行读取历史编写 Script，并在回放后自行按证据引用编写报告，代码不做 Intent→Script 转换或报告组装。
 

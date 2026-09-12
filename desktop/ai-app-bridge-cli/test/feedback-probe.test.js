@@ -3,6 +3,60 @@ const test = require('node:test');
 
 const { runWithFeedbackProbe } = require('../bin/feedback-probe');
 
+for (const command of ['launch-app', 'launch-activity']) {
+  test(`full ${command} feedback observes the system only after launch without assuming an active App SDK`, async () => {
+    const calls = [];
+    const result = { ok: true, dispatched: true, settled: true,
+      foreground: { ok: true, packageName: 'example.app', activity: 'example.app.MainActivity' },
+      executionReceipt: { kind: 'android-shell', actionId: 'original-launch' } };
+    const output = await runWithFeedbackProbe({ command, args: { feedback: 'full', serial: 'phone', packageName: 'example.app' },
+      sleep: async () => {}, runner: async operation => {
+        calls.push(operation);
+        if (operation === command) return result;
+        if (operation === 'uia-tree') return { ok: true, nodeCount: 8 };
+        if (operation === 'screenshot') return { ok: true, path: '/tmp/launch.png' };
+        throw new Error('No running App SDK exists before launch');
+      } });
+    assert.deepEqual(calls, [command, 'uia-tree', 'screenshot']);
+    assert.equal(output.result, result);
+    assert.equal(output.observation.basis, 'post-launch-system-snapshot');
+    assert.equal(output.observation.semanticChanged, false);
+    assert.equal(output.observation.inconclusive, true);
+    assert.deepEqual(output.observation.current.foreground, result.foreground);
+    assert.equal(output.observation.current.tree.nodeCount, 8);
+    assert.deepEqual(output.evidence.map(item => item.command), ['uia-tree', 'screenshot']);
+  });
+}
+
+test('failed launch retains its original result without extra full-feedback device reads', async () => {
+  const calls = [];
+  const result = { ok: false, error: 'activity_not_found', dispatched: false };
+  const output = await runWithFeedbackProbe({ command: 'launch-activity', args: { feedback: 'full' },
+    sleep: async () => {}, runner: async command => { calls.push(command); return result; } });
+  assert.equal(output.result, result);
+  assert.deepEqual(calls, ['launch-activity']);
+  assert.deepEqual(output.evidence, []);
+});
+
+test('post-launch capture failure remains inconclusive without retrying the launch or substituting an App SDK', async () => {
+  const calls = [];
+  const result = { ok: true, dispatched: true, settled: true };
+  const output = await runWithFeedbackProbe({ command: 'launch-app',
+    args: { feedback: 'full', feedbackScreenshot: false, serial: 'phone', packageName: 'example.app' },
+    runner: async (command, args) => {
+      calls.push(command);
+      if (command === 'launch-app') return result;
+      assert.equal(args.serial, 'phone');
+      assert.equal(args.compact, true);
+      throw Object.assign(new Error('UIA unavailable'), { code: 'uia_runtime_unreachable' });
+    } });
+  assert.deepEqual(calls, ['launch-app', 'uia-tree']);
+  assert.equal(output.result, result);
+  assert.equal(output.observation.inconclusive, true);
+  assert.equal(output.observation.current.tree.error, 'uia_runtime_unreachable');
+  assert.equal(output.evidence[0].result.ok, false);
+});
+
 test('auto feedback keeps the fast path to one command call', async () => {
   const calls = [];
   const output = await runWithFeedbackProbe({

@@ -4,27 +4,47 @@ import Network
 import UIKit
 import WebKit
 
-public typealias AiAppBridgeFlutterActionHandler = (String) -> String
-
 public final class AiAppBridge {
     public static let shared = AiAppBridge()
 
-    private let defaultPort: UInt16 = 18080
-    private let maxPortAttempts: UInt16 = 50
     private let bridgeVersion = "0.2.11"
     private let runtimeEpoch = UUID().uuidString
+    private lazy var h5Bridge = IOSH5Bridge(runtimeEpoch: runtimeEpoch)
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")
     private let serverQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.server")
     private let maxCapturedBodyChars = 20_000
     private let redactedValue = "[redacted]"
 
-    private let observationFactStoreLifecycle = ObservationFactStoreLifecycle()
+    private lazy var observationFactStoreLifecycle = ObservationFactStoreLifecycle(
+        onOpening: { [weak self] in self?.captureStore.beginOpening() },
+        onOpened: { [weak self] configuration in
+            guard let self else { return }
+            captureStore.attachPersistentStore(SegmentedFactStore.shared, directory: configuration.options.directory,
+                targetKey: Bundle.main.bundleIdentifier ?? "unknown", runtimeEpoch: runtimeEpoch)
+        },
+        onOpenFailed: { [weak self] reason in self?.captureStore.detachPersistentStore(reason: reason) },
+        onStopped: { [weak self] in self?.captureStore.detachPersistentStore() }
+    )
     private var listener: NWListener?
-    private var activePort: UInt16 = 18080
+    private var activePort: UInt16 = 0
     private var started = false
+    private var runtimeDescriptorReady = false
     private var appName = ""
     private var flutterSnapshot: [String: Any] = [:]
     private var flutterActionHandler: AiAppBridgeFlutterActionHandler?
+    private var flutterHandlerToken: String?
+    private lazy var executionReceipts = IOSExecutionReceiptStore(store: SegmentedFactStore.shared,
+        bundleId: Bundle.main.bundleIdentifier ?? "")
+    private lazy var managedExecution = IOSManagedExecution(receipts: executionReceipts) { [weak self] kind in
+        guard let self else { return nil }
+        if kind == "h5" { return runtimeEpoch }
+        return captureQueue.sync {
+            guard self.flutterActionHandler != nil,
+                  let layout = self.flutterSnapshot["layout"] as? [String: Any],
+                  let operable = layout["operable"] as? [String: Any] else { return nil }
+            return operable["runtimeEpoch"] as? String
+        }
+    }
     private var captureSequence: Int64 = 0
     let captureStore = MobileCaptureStore(
         caps: CountCaps(logs: 300, network: 200, events: 300, state: 200)
@@ -59,7 +79,7 @@ public final class AiAppBridge {
         if uiObserver == nil {
             uiObserver = AiAppBridgeUiObserver { [weak self] category, name, data in
                 guard let self else { return }
-                _ = self.recordEventPayload([
+                self.recordEventPayload([
                     "category": category,
                     "name": name,
                     "data": data
@@ -70,25 +90,75 @@ public final class AiAppBridge {
     }
     #endif
 
-    public func setFlutterActionHandler(_ handler: AiAppBridgeFlutterActionHandler?) {
+    @discardableResult
+    public func setFlutterActionHandler(_ handler: @escaping AiAppBridgeFlutterActionHandler) -> String {
         captureQueue.sync {
+            let token = UUID().uuidString
             flutterActionHandler = handler
+            flutterHandlerToken = token
+            flutterSnapshot = [:]
+            return token
+        }
+    }
+
+    public func clearFlutterActionHandler(token: String) {
+        captureQueue.sync {
+            guard flutterHandlerToken == token else { return }
+            flutterActionHandler = nil
+            flutterHandlerToken = nil
+            flutterSnapshot = [:]
+        }
+    }
+
+    public func checkFlutterAction(_ body: String) -> String {
+        guard let value = Self.parseJson(body) as? [String: Any], Set(value.keys) == ["actionId", "runtimeEpoch"],
+              let id = IOSManagedExecution.text(value["actionId"]),
+              let epoch = IOSManagedExecution.text(value["runtimeEpoch"]) else {
+            return Self.jsonString(IOSManagedExecution.failure("invalid_flutter_execution_identity"))
+        }
+        return serverQueue.sync {
+            Self.jsonString(managedExecution.permission(kind: "flutter", actionId: id, epoch: epoch))
         }
     }
 
     public func updateFlutterSnapshot(_ snapshotJson: String) {
-        guard let object = Self.parseJson(snapshotJson) as? [String: Any] else {
+        let data = Data(snapshotJson.utf8)
+        do {
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                captureQueue.sync {
+                    flutterSnapshot = ["ok": false, "error": "invalid_flutter_snapshot",
+                                       "reason": "Expected a JSON object", "utf8Bytes": data.count,
+                                       "updatedAtMs": Self.nowMs()]
+                }
+                return
+            }
+            captureQueue.sync { flutterSnapshot = object }
+        } catch {
             captureQueue.sync {
                 flutterSnapshot = [
                     "ok": false,
                     "error": "invalid_flutter_snapshot",
+                    "reason": String(describing: error),
+                    "utf8Bytes": data.count,
                     "updatedAtMs": Self.nowMs()
                 ]
             }
-            return
         }
-        captureQueue.sync {
-            flutterSnapshot = object
+    }
+
+    // Flutter's method channel forwards the original capture payload, including
+    // actionId, through the same sanitizer and persistent receipt path as HTTP.
+    public func recordFlutterCapture(method: String, payloadJson: String,
+                                     completion: @escaping ([String: Any]) -> Void) {
+        guard let payload = Self.parseJson(payloadJson) as? [String: Any] else {
+            completion(["ok": false, "error": "invalid_capture_json"]); return
+        }
+        switch method {
+        case "recordLog": recordLogPayload(payload, source: "flutter-sdk", completion: completion)
+        case "recordNetwork": recordNetworkPayload(payload, source: "flutter-sdk", completion: completion)
+        case "recordState": recordStatePayload(payload, source: "flutter-sdk", completion: completion)
+        case "recordEvent": recordEventPayload(payload, source: "flutter-sdk", completion: completion)
+        default: completion(["ok": false, "error": "unknown_capture_method"])
         }
     }
 
@@ -101,7 +171,7 @@ public final class AiAppBridge {
         if let data {
             payload["data"] = data
         }
-        _ = recordLogPayload(payload, source: "sdk")
+        recordLogPayload(payload, source: "sdk")
     }
 
     public func recordNetwork(
@@ -127,11 +197,11 @@ public final class AiAppBridge {
         if let requestBody { payload["requestBody"] = requestBody }
         if let responseBody { payload["responseBody"] = responseBody }
         if let error, !error.isEmpty { payload["error"] = error }
-        _ = recordNetworkPayload(payload, source: source.isEmpty ? "sdk" : source)
+        recordNetworkPayload(payload, source: source.isEmpty ? "sdk" : source)
     }
 
     public func recordState(namespace: String = "app", key: String, value: Any?) {
-        _ = recordStatePayload([
+        recordStatePayload([
             "namespace": namespace.isEmpty ? "app" : namespace,
             "key": key,
             "value": value ?? NSNull()
@@ -146,7 +216,7 @@ public final class AiAppBridge {
         if let data {
             payload["data"] = data
         }
-        _ = recordEventPayload(payload, source: "sdk")
+        recordEventPayload(payload, source: "sdk")
     }
 
     private func startServerIfNeeded() {
@@ -154,39 +224,48 @@ public final class AiAppBridge {
             return
         }
         started = true
-        writePortState(ok: false, port: defaultPort, error: "starting")
-
-        var lastError: Error?
-        for candidate in defaultPort...(defaultPort + maxPortAttempts) {
-            do {
-                try startListener(port: candidate)
-                return
-            } catch {
-                lastError = error
-            }
+        writePortState(ok: false, port: 0, error: "starting")
+        do {
+            try startListener()
+        } catch {
+            writePortState(ok: false, port: 0, error: String(describing: error))
+            started = false
         }
-        writePortState(
-            ok: false,
-            port: defaultPort,
-            error: String(describing: lastError ?? AiAppBridgeError.noAvailablePort)
-        )
-        started = false
     }
 
-    private func startListener(port: UInt16) throws {
+    private func startListener() throws {
         let parameters = NWParameters.tcp
-        parameters.allowLocalEndpointReuse = true
-        let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
+        let listener = try NWListener(using: parameters, on: .any)
         listener.newConnectionHandler = { [weak self] connection in
             self?.handle(connection: connection)
         }
-        listener.stateUpdateHandler = { [weak self] state in
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self, let listener, self.listener === listener else { return }
             switch state {
             case .ready:
-                self?.activePort = port
-                self?.writePortState(ok: true, port: port, error: nil)
+                guard let port = listener.port?.rawValue, port != 0 else {
+                    self.writePortState(ok: false, port: 0, error: "listener_port_unavailable")
+                    listener.cancel()
+                    self.listener = nil
+                    self.started = false
+                    return
+                }
+                self.activePort = port
+                self.writePortState(ok: true, port: port, error: nil)
+            case .waiting(let error):
+                self.activePort = 0
+                self.writePortState(ok: false, port: 0, error: String(describing: error))
             case .failed(let error):
-                self?.writePortState(ok: false, port: port, error: String(describing: error))
+                self.activePort = 0
+                self.writePortState(ok: false, port: 0, error: String(describing: error))
+                listener.cancel()
+                self.listener = nil
+                self.started = false
+            case .cancelled:
+                self.activePort = 0
+                self.writePortState(ok: false, port: 0, error: "listener_cancelled")
+                self.listener = nil
+                self.started = false
             default:
                 break
             }
@@ -211,10 +290,15 @@ public final class AiAppBridge {
             if let data {
                 nextBuffer.append(data)
             }
-            if let request = HttpRequest.parse(nextBuffer) {
-                self.route(request: request) { status, body in
-                    self.writeJson(connection: connection, status: status, body: body)
+            do {
+                if let request = try IOSHttpRequest.parse(nextBuffer) {
+                    self.route(request: request) { status, body in
+                        self.writeJson(connection: connection, status: status, body: body)
+                    }
+                    return
                 }
+            } catch {
+                self.writeJson(connection: connection, status: 400, body: self.errorBody(error: "bad_request"))
                 return
             }
             if isComplete {
@@ -225,7 +309,17 @@ public final class AiAppBridge {
         }
     }
 
-    private func route(request: HttpRequest, completion: @escaping (Int, [String: Any]) -> Void) {
+    private var runtimeIdentity: IOSRuntimeIdentity {
+        IOSRuntimeIdentity(bundleId: Bundle.main.bundleIdentifier ?? "", runtimeEpoch: runtimeEpoch,
+                           processId: ProcessInfo.processInfo.processIdentifier, port: activePort)
+    }
+
+    private func route(request: IOSHttpRequest, completion: @escaping (Int, [String: Any]) -> Void) {
+        if IOSRuntimeIdentity.requiresBinding(method: request.method, path: request.path),
+           let error = runtimeIdentity.admissionError(headers: request.headers, descriptorReady: runtimeDescriptorReady) {
+            completion(409, ["ok": false, "error": error, "dispatched": false, "ambiguous": false])
+            return
+        }
         switch (request.method, request.path) {
         case ("GET", "/v1/status"):
             completion(200, buildStatus())
@@ -242,22 +336,35 @@ public final class AiAppBridge {
         case ("GET", "/v1/events"):
             completion(200, liveCapture("events", query: request.query))
         case ("GET", "/v1/h5/dom"):
-            runOnMain { self.buildH5Dom(completion: { completion(200, $0) }) }
-        case ("POST", "/v1/h5/eval"):
-            runOnMain { self.executeH5Script(body: request.body, completion: { completion(200, $0) }) }
+            runOnMain { self.h5Bridge.snapshot(windows: Self.appWindows(), webViewId: request.query["webViewId"]) { completion(200, $0) } }
+        case ("POST", "/v1/h5/action"):
+            dispatchManagedAction(kind: "h5", body: request.body) { completion(200, $0) }
         case ("POST", "/v1/flutter/action"):
-            completion(200, dispatchFlutterAction(body: request.body))
+            dispatchManagedAction(kind: "flutter", body: request.body) { completion(200, $0) }
+        case ("POST", "/v1/h5/cancel"), ("POST", "/v1/flutter/cancel"):
+            let kind = request.path == "/v1/h5/cancel" ? "h5" : "flutter"
+            guard let identity = Self.parseJson(request.body) as? [String: Any],
+                  Set(identity.keys) == ["actionId", "runtimeEpoch"],
+                  let id = IOSManagedExecution.text(identity["actionId"]),
+                  let epoch = IOSManagedExecution.text(identity["runtimeEpoch"]) else {
+                completion(400, IOSManagedExecution.failure("invalid_ios_execution_identity")); return
+            }
+            managedExecution.cancel(kind: kind, actionId: id, epoch: epoch) { completion(200, $0) }
+        case ("GET", "/v1/execution/status"):
+            completion(200, managedExecution.status())
+        case ("GET", "/v1/execution/result"):
+            lookupExecution(query: request.query) { completion(200, $0) }
         case ("POST", "/v1/flutter/snapshot"):
             updateFlutterSnapshot(request.body)
             completion(200, ["ok": true])
         case ("POST", "/v1/logs"):
-            completion(200, postLog(body: request.body))
+            postLog(body: request.body) { completion(200, $0) }
         case ("POST", "/v1/network"):
-            completion(200, postNetwork(body: request.body))
+            postNetwork(body: request.body) { completion(200, $0) }
         case ("POST", "/v1/state"):
-            completion(200, postState(body: request.body))
+            postState(body: request.body) { completion(200, $0) }
         case ("POST", "/v1/events"):
-            completion(200, postEvent(body: request.body))
+            postEvent(body: request.body) { completion(200, $0) }
         case ("POST", "/v1/action/tap"), ("POST", "/v1/action/input-text"):
             completion(200, [
                 "ok": false,
@@ -280,6 +387,9 @@ public final class AiAppBridge {
                 "name": "ai_app_bridge",
                 "version": bridgeVersion,
                 "runtimeEpoch": runtimeEpoch,
+                "h5ExecutionSchema": IOSManagedExecution.schema("h5"),
+                "h5TargetSchema": IOSH5Bridge.schema,
+                "flutterExecutionSchema": IOSManagedExecution.schema("flutter"),
                 "platform": "ios",
                 "transport": "http",
                 "host": "0.0.0.0",
@@ -415,131 +525,89 @@ public final class AiAppBridge {
         ]
     }
 
-    private func buildH5Dom(completion: @escaping ([String: Any]) -> Void) {
-        guard let webView = findWebView() else {
-            completion(["ok": false, "error": "no_webview"])
-            return
+    private func dispatchManagedAction(kind: String, body: String, completion: @escaping ([String: Any]) -> Void) {
+        guard let value = Self.parseJson(body) as? [String: Any] else {
+            completion(IOSManagedExecution.failure("invalid_ios_execution")); return
         }
-        if #available(iOS 16.4, *) {
-            webView.isInspectable = true
-        }
-        webView.evaluateJavaScript(Self.h5DomSnapshotScript) { value, error in
-            if let error {
-                completion(["ok": false, "error": String(describing: error)])
-                return
+        if kind == "h5" {
+            guard let payload = value["payload"] as? [String: Any],
+                  Set(value.keys) == ["payload", "actionId", "execution"],
+                  let action = payload["action"] as? String,
+                  ["click", "input", "scroll", "eval"].contains(action),
+                  payload["pageRef"] is [String: Any] else {
+                completion(IOSManagedExecution.failure("invalid_h5_execution")); return
             }
-            let dom = Self.decodeJavaScriptValue(value)
-            completion([
-                "ok": true,
-                "webView": [
-                    "className": NSStringFromClass(type(of: webView)),
-                    "url": webView.url?.absoluteString ?? "",
-                    "title": webView.title ?? ""
-                ],
-                "dom": dom,
-                "updatedAtMs": Self.nowMs()
-            ])
-        }
-    }
-
-    private func executeH5Script(body: String, completion: @escaping ([String: Any]) -> Void) {
-        guard let webView = findWebView() else {
-            completion(["ok": false, "error": "no_webview"])
-            return
-        }
-        let payload = Self.parseJson(body) as? [String: Any]
-        guard let script = payload?["script"] as? String, !script.isEmpty else {
-            completion(["ok": false, "error": "script_required"])
-            return
-        }
-        if #available(iOS 16.4, *) {
-            webView.isInspectable = true
-        }
-        webView.evaluateJavaScript(script) { value, error in
-            if let error {
-                completion(["ok": false, "error": String(describing: error)])
-                return
+            let expectedKeys: Set<String> = action == "eval" ? ["action", "pageRef", "script"]
+                : action == "input" ? ["action", "pageRef", "element", "text"] : ["action", "pageRef", "element"]
+            guard Set(payload.keys) == expectedKeys,
+                  (action != "eval" || payload["script"] is String),
+                  (action != "input" || payload["text"] is String),
+                  (action == "eval" || payload["element"] is [String: Any]) else {
+                completion(IOSManagedExecution.failure("invalid_h5_operation")); return
             }
-            completion([
-                "ok": true,
-                "result": Self.decodeJavaScriptValue(value),
-                "updatedAtMs": Self.nowMs()
-            ])
-        }
-    }
-
-    private func findWebView() -> WKWebView? {
-        guard let window = Self.keyWindow() else {
-            return nil
-        }
-        return findWebView(in: window)
-    }
-
-    private func findWebView(in view: UIView) -> WKWebView? {
-        if let webView = view as? WKWebView {
-            return webView
-        }
-        for child in view.subviews {
-            if let found = findWebView(in: child) {
-                return found
+            managedExecution.submit(kind: kind, body: value, task: {
+                IOSMainThreadTask { check, complete in
+                    self.h5Bridge.execute(windows: Self.appWindows(), payload: payload, check: check, completion: complete)
+                }
+            }, reply: completion)
+        } else {
+            guard let handler = captureQueue.sync(execute: { flutterActionHandler }) else {
+                completion(IOSManagedExecution.failure("flutter_action_handler_absent")); return
             }
+            managedExecution.submit(kind: kind, body: value, task: { IOSFlutterTask(handler: handler, body: value) }, reply: completion)
         }
-        return nil
     }
 
-    private func dispatchFlutterAction(body: String) -> [String: Any] {
-        let handler = captureQueue.sync { flutterActionHandler }
-        guard let handler else {
-            return ["ok": false, "error": "flutter_action_handler_absent"]
+    private func lookupExecution(query: [String: String], completion: @escaping ([String: Any]) -> Void) {
+        guard Set(query.keys).isSubset(of: ["kind", "actionId", "runtimeEpoch", "cursor"]),
+              let kind = query["kind"], ["h5", "flutter"].contains(kind),
+              let id = IOSManagedExecution.text(query["actionId"]), let epoch = IOSManagedExecution.text(query["runtimeEpoch"]) else {
+            completion(IOSManagedExecution.failure("invalid_ios_execution_identity")); return
         }
-        let response = handler(body)
-        if let json = Self.parseJson(response) as? [String: Any] {
-            return json
+        executionReceipts.lookup(kind: kind, actionId: id, epoch: epoch, cursor: query["cursor"], reply: completion)
+    }
+
+    private func postLog(body: String, completion: @escaping ([String: Any]) -> Void) {
+        guard let payload = Self.parseJson(body) as? [String: Any] else {
+            completion(["ok": false, "error": "invalid_capture_json"]); return
         }
-        return ["ok": true, "value": response]
+        recordLogPayload(payload, source: "http", completion: completion)
     }
 
-    private func postLog(body: String) -> [String: Any] {
-        recordLogPayload(Self.parseJson(body) as? [String: Any] ?? [:], source: "http")
+    private func postNetwork(body: String, completion: @escaping ([String: Any]) -> Void) {
+        guard let payload = Self.parseJson(body) as? [String: Any] else {
+            completion(["ok": false, "error": "invalid_capture_json"]); return
+        }
+        recordNetworkPayload(payload, source: "http", completion: completion)
     }
 
-    private func postNetwork(body: String) -> [String: Any] {
-        recordNetworkPayload(Self.parseJson(body) as? [String: Any] ?? [:], source: "http")
+    private func postState(body: String, completion: @escaping ([String: Any]) -> Void) {
+        guard let payload = Self.parseJson(body) as? [String: Any] else {
+            completion(["ok": false, "error": "invalid_capture_json"]); return
+        }
+        recordStatePayload(payload, source: "http", completion: completion)
     }
 
-    private func postState(body: String) -> [String: Any] {
-        recordStatePayload(Self.parseJson(body) as? [String: Any] ?? [:], source: "http")
+    private func postEvent(body: String, completion: @escaping ([String: Any]) -> Void) {
+        guard let payload = Self.parseJson(body) as? [String: Any] else {
+            completion(["ok": false, "error": "invalid_capture_json"]); return
+        }
+        recordEventPayload(payload, source: "http", completion: completion)
     }
 
-    private func postEvent(body: String) -> [String: Any] {
-        recordEventPayload(Self.parseJson(body) as? [String: Any] ?? [:], source: "http")
-    }
-
-    private func recordLogPayload(_ payload: [String: Any], source: String) -> [String: Any] {
+    private func recordLogPayload(_ payload: [String: Any], source: String,
+                                      completion: (([String: Any]) -> Void)? = nil) {
         let details: [String: Any] = [
             "level": string(payload["level"], fallback: "info"),
             "tag": string(payload["tag"], fallback: ""),
             "message": boundedString(string(payload["message"], fallback: ""), max: 4_000),
-            "data": payload["data"] ?? NSNull()
+            "data": redactJsonValue(payload["data"] ?? NSNull())
         ]
-        let event = captureQueue.sync {
-            let event = captureEvent(source: source).merging(details) { _, new in new }
-            CaptureAppend.appendSanitized(
-                store: captureStore,
-                event: event,
-                stream: "logs",
-                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
-                runtimeEpoch: runtimeEpoch
-            )
-            return event
-        }
-        persistMobileFact(event) { context in
-            try SanitizedFactPayload.log(context: context, record: event)
-        }
-        return ["ok": true, "record": event]
+        appendCapture(details, stream: "logs", source: source, actionId: payload["actionId"], completion: completion)
     }
 
-    private func recordNetworkPayload(_ payload: [String: Any], source: String) -> [String: Any] {
+    private func recordNetworkPayload(_ payload: [String: Any], source: String,
+                                      completion: (([String: Any]) -> Void)? = nil) {
         var details: [String: Any] = [
             "method": string(payload["method"], fallback: "GET"),
             "url": redactUrl(string(payload["url"], fallback: "")),
@@ -558,24 +626,11 @@ public final class AiAppBridge {
         if let error = payload["error"] as? String, !error.isEmpty {
             details["error"] = error
         }
-        let event = captureQueue.sync {
-            let event = captureEvent(source: source).merging(details) { _, new in new }
-            CaptureAppend.appendSanitized(
-                store: captureStore,
-                event: event,
-                stream: "network",
-                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
-                runtimeEpoch: runtimeEpoch
-            )
-            return event
-        }
-        persistMobileFact(event) { context in
-            try SanitizedFactPayload.network(context: context, record: event)
-        }
-        return ["ok": true, "record": event]
+        appendCapture(details, stream: "network", source: source, actionId: payload["actionId"], completion: completion)
     }
 
-    private func recordStatePayload(_ payload: [String: Any], source: String) -> [String: Any] {
+    private func recordStatePayload(_ payload: [String: Any], source: String,
+                                      completion: (([String: Any]) -> Void)? = nil) {
         let namespace = string(payload["namespace"], fallback: "app")
         let key = string(payload["key"], fallback: "")
         let stateKey = "\(namespace):\(key)"
@@ -585,44 +640,17 @@ public final class AiAppBridge {
             "value": redactJsonValue(payload["value"] ?? NSNull()),
             "stateKey": stateKey
         ]
-        let event = captureQueue.sync {
-            let event = captureEvent(source: source).merging(details) { _, new in new }
-            CaptureAppend.appendSanitized(
-                store: captureStore,
-                event: event,
-                stream: "state",
-                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
-                runtimeEpoch: runtimeEpoch
-            )
-            return event
-        }
-        persistMobileFact(event) { context in
-            try SanitizedFactPayload.state(context: context, record: event)
-        }
-        return ["ok": true, "record": event]
+        appendCapture(details, stream: "state", source: source, actionId: payload["actionId"], completion: completion)
     }
 
-    private func recordEventPayload(_ payload: [String: Any], source: String) -> [String: Any] {
+    private func recordEventPayload(_ payload: [String: Any], source: String,
+                                      completion: (([String: Any]) -> Void)? = nil) {
         let details: [String: Any] = [
             "category": string(payload["category"], fallback: "app"),
             "name": string(payload["name"], fallback: ""),
             "data": redactJsonValue(payload["data"] ?? NSNull())
         ]
-        let event = captureQueue.sync {
-            let event = captureEvent(source: source).merging(details) { _, new in new }
-            CaptureAppend.appendSanitized(
-                store: captureStore,
-                event: event,
-                stream: "events",
-                targetKey: Bundle.main.bundleIdentifier ?? "unknown",
-                runtimeEpoch: runtimeEpoch
-            )
-            return event
-        }
-        persistMobileFact(event) { context in
-            try SanitizedFactPayload.event(context: context, record: event)
-        }
-        return ["ok": true, "record": event]
+        appendCapture(details, stream: "events", source: source, actionId: payload["actionId"], completion: completion)
     }
 
     private func startAutomaticLogPersist() {
@@ -633,21 +661,34 @@ public final class AiAppBridge {
 
     private func persistCapturedLog(_ record: AutomaticLogRecord) {
         var event: [String: Any] = [
-            "type": "log",
-            "source": record.source,
-            "level": record.level,
-            "tag": record.tag,
-            "message": record.message,
-            "timestampMs": record.timestampMs
+            "type": "log", "source": record.source, "level": record.level,
+            "tag": record.tag, "message": record.message, "timestampMs": record.timestampMs
         ]
-        if let data = record.data {
-            event["data"] = data
-        }
-        persistMobileFact(event) { context in
-            if record.partition == .deviceLog {
-                return try SanitizedFactPayload.deviceLog(context: context, record: event)
+        if let data = record.data { event["data"] = redactJsonValue(data) }
+        if record.partition == .deviceLog {
+            persistMobileFact(event) { context in
+                try SanitizedFactPayload.deviceLog(context: context, record: event)
             }
-            return try SanitizedFactPayload.log(context: context, record: event)
+        } else {
+            appendCapture(event, stream: "logs", source: record.source)
+        }
+    }
+
+    private func appendCapture(_ details: [String: Any], stream: String, source: String,
+                               actionId: Any? = nil, completion: (([String: Any]) -> Void)? = nil) {
+        if let actionId, !(actionId is NSNull),
+           !(actionId is String) || (actionId as? String)?.isEmpty == true {
+            completion?(["ok": false, "error": "invalid_action_id"]); return
+        }
+        captureQueue.sync {
+            var event = captureEvent(source: source).merging(details) { _, new in new }
+            if let actionId = actionId as? String { event["actionId"] = actionId }
+            CaptureAppend.appendSanitized(store: captureStore, event: event, stream: stream,
+                targetKey: Bundle.main.bundleIdentifier ?? "unknown", runtimeEpoch: runtimeEpoch) { [self] receipt in
+                guard let completion else { return }
+                let response = CaptureAppend.response(receipt: receipt, event: event)
+                serverQueue.async { completion(response) }
+            }
         }
     }
 
@@ -695,25 +736,31 @@ public final class AiAppBridge {
 
     private func captureCounts() -> [String: Any] {
         captureQueue.sync {
-            let streams = captureStore.status().streams
+            let status = captureStore.status()
+            let streams = status.streams
             return [
                 "logs": streams["logs"]!.count,
                 "network": streams["network"]!.count,
                 "state": streams["state"]!.count,
-                "events": streams["events"]!.count
+                "events": streams["events"]!.count,
+                "persistent": status.persistent,
+                "pendingRecords": status.pendingRecords,
+                "pendingBytes": status.pendingBytes,
+                "reason": status.reason as Any? ?? NSNull(),
+                "countsScope": "bounded-accepted-since-attachment"
             ]
         }
     }
 
     private func liveCapture(_ stream: String, query: [String: String]) -> [String: Any] {
-        captureQueue.sync {
-            LegacyLiveView.fromHttp(store: captureStore, stream: stream, http: query, nowMs: Self.nowMs())
-        }
+        CaptureHttpView.fromHttp(store: captureStore, stream: stream, http: query, nowMs: Self.nowMs())
     }
 
     private func clearRuntimeData() -> [String: Any] {
-        captureQueue.sync {
-            _ = captureStore.clear()
+        let receipt = captureStore.clear()
+        guard receipt.ok else {
+            return ["ok": false, "action": "clear-app-data", "cleared": [],
+                    "error": receipt.reason ?? "capture_clear_failed"]
         }
         writePortState(ok: true, port: activePort, error: nil)
         return [
@@ -726,7 +773,9 @@ public final class AiAppBridge {
     }
 
     private func writeJson(connection: NWConnection, status: Int, body: [String: Any]) {
-        let payload = Self.jsonData(body)
+        var responseBody = body
+        responseBody["runtimeBinding"] = runtimeIdentity.json
+        let payload = Self.jsonData(responseBody)
         let statusText = status == 200 ? "OK" : "Error"
         var response = Data("HTTP/1.1 \(status) \(statusText)\r\n".utf8)
         response.append(Data("Content-Type: application/json; charset=utf-8\r\n".utf8))
@@ -743,21 +792,17 @@ public final class AiAppBridge {
     }
 
     private func writePortState(ok: Bool, port: UInt16, error: String?) {
-        let payload: [String: Any] = [
-            "ok": ok,
-            "bundleId": Bundle.main.bundleIdentifier ?? "",
-            "port": Int(port),
-            "version": bridgeVersion,
-            "updatedAtMs": Self.nowMs(),
-            "error": error ?? NSNull()
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-            return
+        runtimeDescriptorReady = false
+        guard let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("ai_app_bridge_port.json") else { return }
+        do {
+            let identity = IOSRuntimeIdentity(bundleId: Bundle.main.bundleIdentifier ?? "", runtimeEpoch: runtimeEpoch,
+                                              processId: ProcessInfo.processInfo.processIdentifier, port: port)
+            try identity.publish(to: url, ready: ok, sdkVersion: bridgeVersion, error: error)
+            runtimeDescriptorReady = ok
+        } catch {
+            NSLog("AiAppBridge runtime descriptor publication failed: %@", String(describing: error))
         }
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("ai_app_bridge_port.json")
-        guard let url else { return }
-        try? data.write(to: url)
     }
 
     private func runOnMain(_ body: @escaping () -> Void) {
@@ -806,6 +851,14 @@ public final class AiAppBridge {
             return nil
         }
         return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    }
+
+    private static func jsonString(_ value: [String: Any]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: value),
+              let text = String(data: data, encoding: .utf8) else {
+            return #"{"ok":false,"error":"invalid_ios_execution_json"}"#
+        }
+        return text
     }
 
     private static func jsonData(_ value: [String: Any]) -> Data {
@@ -939,109 +992,7 @@ public final class AiAppBridge {
             || normalized.hasSuffix("token")
     }
 
-    private static let h5DomSnapshotScript = """
-    (function() {
-      function text(value) { return value == null ? '' : String(value); }
-      function cut(value, max) {
-        var raw = text(value);
-        return raw.length > max ? raw.slice(0, max) : raw;
-      }
-      function bounds(element) {
-        var rect = element.getBoundingClientRect();
-        return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
-      }
-      function sensitive(element) {
-        var probe = [element.type, element.id, element.name, element.autocomplete].join(' ').toLowerCase();
-        return /password|passwd|pwd|passcode/.test(probe);
-      }
-      var selector = 'a,button,input,textarea,select,[role],[onclick],[aria-label]';
-      var controls = Array.prototype.slice.call(document.querySelectorAll(selector), 0, 200).map(function(element, index) {
-        return {
-          index: index,
-          tag: text(element.tagName).toLowerCase(),
-          id: text(element.id),
-          name: text(element.getAttribute('name')),
-          type: text(element.getAttribute('type')),
-          role: text(element.getAttribute('role')),
-          ariaLabel: text(element.getAttribute('aria-label')),
-          placeholder: text(element.getAttribute('placeholder')),
-          text: sensitive(element)
-            ? ''
-            : cut(element.innerText || element.value || element.title || element.getAttribute('aria-label'), 300),
-          href: cut(element.href, 500),
-          disabled: !!element.disabled,
-          bounds: bounds(element)
-        };
-      });
-      return JSON.stringify({
-        ok: true,
-        title: document.title,
-        url: location.href,
-        readyState: document.readyState,
-        bodyText: cut(document.body && document.body.innerText, 20000),
-        controls: controls,
-        controlCount: controls.length,
-        updatedAtMs: Date.now()
-      });
-    })()
-    """
-}
 
-private enum AiAppBridgeError: Error {
-    case noAvailablePort
-}
-
-private struct HttpRequest {
-    let method: String
-    let path: String
-    let query: [String: String]
-    let body: String
-
-    static func parse(_ data: Data) -> HttpRequest? {
-        guard let separator = data.range(of: Data("\r\n\r\n".utf8)) else {
-            return nil
-        }
-        let headerData = data[..<separator.lowerBound]
-        guard let header = String(data: headerData, encoding: .utf8) else {
-            return nil
-        }
-        let lines = header.components(separatedBy: "\r\n")
-        let first = lines.first?.split(separator: " ").map(String.init) ?? []
-        guard first.count >= 2 else {
-            return nil
-        }
-        let contentLength = lines.first {
-            $0.lowercased().hasPrefix("content-length:")
-        }?.split(separator: ":", maxSplits: 1).last.flatMap {
-            Int($0.trimmingCharacters(in: .whitespaces))
-        } ?? 0
-        let bodyStart = separator.upperBound
-        guard data.count >= bodyStart + contentLength else {
-            return nil
-        }
-        let target = first[1]
-        let parts = target.split(separator: "?", maxSplits: 1).map(String.init)
-        let bodyData = data[bodyStart..<(bodyStart + contentLength)]
-        return HttpRequest(
-            method: first[0],
-            path: parts.first ?? "/",
-            query: parts.count > 1 ? parseQuery(parts[1]) : [:],
-            body: String(data: bodyData, encoding: .utf8) ?? ""
-        )
-    }
-
-    private static func parseQuery(_ raw: String) -> [String: String] {
-        var result: [String: String] = [:]
-        for item in raw.split(separator: "&") {
-            let parts = item.split(separator: "=", maxSplits: 1).map(String.init)
-            let key = parts.first?.removingPercentEncoding ?? ""
-            let value = parts.count > 1 ? (parts[1].removingPercentEncoding ?? parts[1]) : ""
-            if !key.isEmpty {
-                result[key] = value
-            }
-        }
-        return result
-    }
 }
 
 private struct NodeCounter {

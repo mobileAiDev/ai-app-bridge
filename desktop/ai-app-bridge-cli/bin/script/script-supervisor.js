@@ -1,14 +1,19 @@
 'use strict';
 
+const { bindCommandTarget } = require('../shared-kernel/execution-target');
+const { authorizeCommand } = require('./script-catalog');
+
 const { createBoundedEventLog, createBoundedScriptRegistry } = require('./bounded-script-registry');
 const { createScriptAgentPort } = require('./script-agent-port');
-const { createScriptHostPort } = require('./script-host-port');
+const { createScriptHostPort, unavailableEnvelope } = require('./script-host-port');
 const { checksumOf } = require('../shared-kernel/evidence-schema');
 const { createNodeRuntimeAdapter } = require('./node-runtime-adapter');
 const { createProgressProjector } = require('./progress-projector');
 const { createPythonRuntimeAdapter, inspectPython } = require('./python-runtime-adapter');
 const { createRollingSummary } = require('./rolling-summary');
-const { catalogPayload, PERMISSIONS } = require('./script-catalog');
+const { catalogPayload } = require('./script-catalog');
+const { isMutationCommand } = require('../command-registry');
+const { runExecution } = require('../shared-kernel/execution-scope');
 const { compileScriptSpec, isCodeScript } = require('./script-spec');
 const { createScriptLedger, scriptEventTarget } = require('./script-ledger');
 const {
@@ -19,6 +24,7 @@ const {
 } = require('./script-durable-restore');
 const { scriptError } = require('./script-errors');
 const { createEvidenceRecording } = require('../shared-kernel/evidence-recording');
+const { prepareScriptResult, resultReference, readScriptResult } = require('./script-result');
 
 function createDefaultRuntime(opts = {}) {
   if (opts.language === 'javascript') return createNodeRuntimeAdapter(opts);
@@ -40,7 +46,8 @@ function createScriptSupervisor({
   function handle(args = {}) {
     const operation = args.operation || 'start';
     if (operation === 'start') return start(args);
-    if (operation === 'status' || operation === 'progress') {
+    if (operation === 'result') return readScriptResult({ ...args, store: registry.get(args.operationId)?.store || args.store });
+    if (operation === 'status') {
       const limitGate = rejectBadLimit(args);
       if (limitGate) return limitGate;
       return snapshot(args);
@@ -54,13 +61,12 @@ function createScriptSupervisor({
     if (operation === 'resume') return resume(args);
     if (operation === 'decide') return decide(args);
     if (operation === 'cancel') return control(args, 'cancelled');
-    if (operation === 'intervene') return control(args, 'pause_requested');
     if (operation === 'runtime-status') return { ok: true, command: 'script', runtimes: inspectRuntimes() };
     return scriptError('invalid_operation', { operation });
   }
 
   function start(args) {
-    const compiled = args[RESTORE_CONTEXT]?.compiled || compileScriptSpec(args.script || args.spec);
+    const compiled = args[RESTORE_CONTEXT]?.compiled || compileScriptSpec(args.script);
     if (!compiled.ok) return compiled;
     if (args.operationId && knownOperation(args.operationId)) {
       return scriptError('operation_exists', { operationId: args.operationId });
@@ -95,7 +101,7 @@ function createScriptSupervisor({
       actions: args.actions,
       query: args.query,
       mutationLease: args.mutationLease,
-      target: compiled.spec.target || args.target,
+      target: compiled.spec.target,
       });
     } catch (error) {
       return scriptError(error.message === 'actions' ? 'host_actions_required' : error.message, { operationId });
@@ -178,6 +184,7 @@ function createScriptSupervisor({
       actionsSinceCheckpoint: [],
       durableError: null,
       persistTail: Promise.resolve(),
+      pendingCalls: new Set(),
     };
     record.host = trackHost(host, record, now);
     record.agent = trackAgent(agent, record, now);
@@ -190,12 +197,19 @@ function createScriptSupervisor({
   }
 
   function startRuntime(record, now) {
+    record.controller = new AbortController();
+    record.deadlineMs = Date.now() + record.spec.policy.timeoutMs;
+    record.cancelling = false;
+    record.cancelPromise = null;
     return Promise.resolve()
       .then(() => record.runtime.start({
         spec: record.spec,
         host: record.host,
         agent: record.agent,
-        emit: (type, extra) => emitRuntimeRecord(record, type, extra, now),
+        emit: (type, extra) => {
+          const pending = emitRuntimeRecord(record, type, extra, now);
+          return type === 'checkpoint' ? trackPending(record, pending) : pending;
+        },
         now,
         control: () => ({
           status: record.status,
@@ -211,8 +225,11 @@ function createScriptSupervisor({
   }
 
   async function finishRuntime(record, result, now) {
-    if (record.cancelling || record.status === 'cancelled') return result;
+    if (record.cancelling || record.status === 'cancelled') return { ok: false, error: 'cancelled' };
+    if (Date.now() >= record.deadlineMs) result = { ok: false, error: 'timeout' };
     record.status = 'finishing';
+    record.controller.abort({ code: result?.error === 'timeout' ? 'deadline_exceeded' : 'runtime_stopped' });
+    await Promise.allSettled([...record.pendingCalls]);
     const error = record.durableError || (record.mutationUnknown || record.inFlightMutations > 0 ? 'ambiguous' : result?.error || null);
     const status = error || result?.ok === false ? 'failed' : 'completed';
     return commitTerminal(record, status, error, now, result);
@@ -279,6 +296,7 @@ function createScriptSupervisor({
       pauseReason: null,
       error: statusFact.payloadSummary ? statusFact.payloadSummary.error || null : null,
       hash: null,
+      resultRef: statusFact.payloadSummary?.resultRef ?? null,
       eventSequence: snap.lastSequence,
       events: [],
       rollingSummary: null,
@@ -295,15 +313,20 @@ function createScriptSupervisor({
     const record = registry.get(args.operationId);
     if (!record) return scriptError('unknown_operation', { operationId: args.operationId || null });
     if (record.finished || record.status === 'finishing') return snapshotOf(record, args);
+    if (record.cancelling && status !== 'cancelled') return snapshotOf(record, args);
     if (status === 'cancelled') {
       if (record.cancelPromise) {
         return record.cancelPromise.then(() => snapshotOf(record, args));
       }
       record.cancelling = true;
+      record.status = 'cancelling';
+      emitRecord(record, 'cancel_requested', { status: record.status }, now);
+      record.controller.abort({ code: 'cancelled' });
       record.cancelPromise = Promise.resolve()
         .then(() => (typeof record.runtime.stop === 'function' ? record.runtime.stop() : null))
         .then(async () => {
-          await commitTerminal(record, 'cancelled', record.inFlightMutations > 0 || record.mutationUnknown ? 'ambiguous' : null, now);
+          await Promise.allSettled([...record.pendingCalls]);
+          await commitTerminal(record, 'cancelled', record.durableError || (record.mutationUnknown ? 'ambiguous' : null), now);
           record.pauseReason = record.status === 'cancelled' ? 'cancelled' : null;
           stopHeartbeat(record);
           return snapshotOf(record, args);
@@ -327,6 +350,7 @@ function createScriptSupervisor({
   function resume(args) {
     const record = registry.get(args.operationId);
     if (!record) return scriptError('unknown_operation', { operationId: args.operationId || null });
+    if (record.cancelling) return scriptError('runtime_stopped', { operationId: record.operationId });
     if (record.status === 'finishing') return scriptError('not_resumable', { operationId: record.operationId });
     if (record.mutationUnknown || record.inFlightMutations > 0) {
       return scriptError('ambiguous', { operationId: record.operationId, status: 'ambiguous' });
@@ -343,8 +367,7 @@ function createScriptSupervisor({
       record.finished = false;
       record.status = 'running';
       record.error = null;
-      record.runtimeTerminal = null;
-      record.pauseReason = null;
+          record.pauseReason = null;
       record.mutationUnknown = false;
       emitRecord(record, 'resumed', { status: 'running' }, now);
       startHeartbeat(record, now);
@@ -363,21 +386,25 @@ function createScriptSupervisor({
   function decide(args) {
     const record = registry.get(args.operationId);
     if (!record) return scriptError('unknown_operation', { operationId: args.operationId || null });
+    if (!Object.hasOwn(args, 'decision') || args.decision === undefined) {
+      return scriptError('invalid_argument', { field: 'decision' });
+    }
     if (args.revision == null) {
       return scriptError('stale_decide', { revision: record.decisionRevision });
     }
     if (!record.questionRevisions.has(args.requestId)) {
       return scriptError('invalid_argument', { field: 'requestId' });
     }
-    if (Number(args.revision) !== Number(record.questionRevisions.get(args.requestId))) {
+    if (args.revision !== record.questionRevisions.get(args.requestId)) {
       return scriptError('stale_decide', { revision: record.questionRevisions.get(args.requestId) });
     }
     if (record.decisions.has(args.requestId)) {
-      if (record.decisions.get(args.requestId) !== args.decision) {
+      if (checksumOf(record.decisions.get(args.requestId)) !== checksumOf(args.decision)) {
         return scriptError('invalid_argument', { field: 'decision' });
       }
       return snapshotOf(record, args);
     }
+    if (record.cancelling || record.finished || record.status === 'finishing') return scriptError('runtime_stopped', { operationId: record.operationId });
     const decided = record.agent.decide(args.requestId, args.decision);
     if (!decided.ok) return scriptError(decided.error, { operationId: record.operationId });
     record.decisions.set(args.requestId, decided.decision);
@@ -404,6 +431,7 @@ function createScriptSupervisor({
       pauseReason: record.pauseReason,
       error: record.error,
       hash: record.hash,
+      resultRef: record.resultRef ?? null,
       eventSequence: record.events.sequence,
       events: record.events.after(args.afterSequence, args.eventLimit ?? args.limit),
       rollingSummary: record.summary.snapshot(now()),
@@ -424,7 +452,12 @@ function createScriptSupervisor({
     return scriptLedger.ledger.snapshot(operationId).lastFact != null;
   }
 
-  return { handle, inspectRuntimes, registry, knownOperation };
+  async function cancelAll() {
+    await Promise.all(registry.values().filter(record => !record.finished).map(record =>
+      record.status === 'finishing' ? record.running : control({ operationId: record.operationId }, 'cancelled')));
+  }
+
+  return { handle, inspectRuntimes, registry, knownOperation, cancelAll };
 }
 
 function resolveWaitMs(value) {
@@ -467,10 +500,6 @@ function isLivePause(status) {
     || status === 'paused_ambiguous';
 }
 
-function isMutation(command) {
-  return PERMISSIONS['app.interact'].includes(command) && !command.includes('wait');
-}
-
 function persistRecord(record, kind, body) {
   if (!record.store) return Promise.resolve({ ok: true, persisted: false });
   const pending = record.persistTail.then(async () => {
@@ -486,8 +515,19 @@ function persistRecord(record, kind, body) {
 }
 
 async function commitTerminal(record, status, error, now, result) {
-  const revision = record.checkpointRevision + 1;
-  const persisted = await persistRecord(record, 'checkpoint', {
+  let revision = record.checkpointRevision + 1;
+  let resultRef = null;
+  if (status === 'completed' && record.store) {
+    const prepared = prepareScriptResult(result?.result, record.spec.policy.maxOutputBytes);
+    const saved = prepared.ok ? await persistRecord(record, 'result', {
+      operationId: record.operationId, revision, target: record.spec.target,
+      result: prepared.result, bytes: prepared.bytes, sha256: prepared.sha256,
+      originalSha256: prepared.originalSha256, representation: prepared.representation,
+    }) : prepared;
+    if (saved.ok && saved.persisted === true) resultRef = resultReference(saved, prepared);
+    else { status = 'failed'; error = prepared.ok ? 'result_not_persisted' : prepared.error; }
+  }
+  const checkpoint = {
     ...codeStartCheckpoint({ spec: record.spec, hash: record.hash }, record.operationId),
     revision,
     stepId: record.lastCheckpoint?.name || 'start',
@@ -496,40 +536,87 @@ async function commitTerminal(record, status, error, now, result) {
     actionSequence: record.actionSequence,
     status,
     error,
+    resultRef,
     ...(record.recording ? { recording: record.recording.info() } : {}),
-  });
+  };
+  let persisted = await persistRecord(record, 'checkpoint', checkpoint);
+  // The terminal write shares a bounded partition with its result. A successful
+  // second write must not conceal eviction of the first one at a quota boundary.
+  if (persisted.ok && status === 'completed' && record.store) {
+    const verified = readScriptResult({ store: record.store, operationId: record.operationId });
+    if (!verified.ok) {
+      status = 'failed';
+      error = 'result_not_persisted';
+      resultRef = null;
+      revision += 1;
+      persisted = await persistRecord(record, 'checkpoint', {
+        ...checkpoint, revision, status, error, resultRef, resultError: verified.error,
+      });
+    }
+  }
   record.checkpointRevision = revision;
   record.finished = true;
   record.status = persisted.ok ? status : 'failed';
   record.error = persisted.ok ? error : 'terminal_not_persisted';
+  record.resultRef = persisted.ok ? resultRef : null;
   const type = record.status === 'completed' ? 'script_completed'
     : record.status === 'cancelled' ? 'script_cancelled' : 'script_failed';
   emitRecord(record, type, {
-    ...(record.runtimeTerminal?.type === type ? record.runtimeTerminal.extra : {}),
+    resultRef: record.resultRef,
     status: record.status,
     error: record.error,
     persisted: persisted.persisted === true,
   }, now);
   stopHeartbeat(record);
-  return record.status === 'completed' ? result : { ok: false, error: record.error || record.status };
+  return record.status === 'completed' ? { ok: true, resultRef: record.resultRef }
+    : { ok: false, error: record.error || record.status };
 }
 
-function failedCall(command, error, actionId = null, ambiguous = false) {
-  return { ok: false, command, error, result: null, ambiguous, execution: { actionId } };
+function failedCall(command, error, actionId = null, ambiguous = false, dispatched = false) {
+  return { ok: false, command, error, result: null, ambiguous, dispatched, execution: { actionId } };
+}
+
+function trackPending(record, pending) {
+  record.pendingCalls.add(pending);
+  const settled = () => record.pendingCalls.delete(pending);
+  pending.then(settled, settled);
+  return pending;
 }
 
 function trackHost(host, record, now) {
-  async function call(command, args = {}, options = {}) {
+  function stopped() { return record.cancelling || record.finished || record.status === 'finishing'; }
+
+  function call(command, args = {}, options = {}) {
+    if (stopped()) return Promise.resolve(failedCall(command, 'runtime_stopped'));
+    const pending = runExecution({ signal: record.controller.signal, deadlineMs: record.deadlineMs,
+      timeoutMs: args.timeoutMs, mutation: isMutationCommand(command, args) }, () => callTracked(command, args, options))
+      .catch(error => failedCall(command, error.code || error.message, null, error.ambiguous === true, error.dispatched === true));
+    return trackPending(record, pending);
+  }
+
+  async function callTracked(command, args, options) {
     if (isLivePause(record.status)) return failedCall(command, 'paused');
     if (record.durableError || record.mutationUnknown) {
       return failedCall(command, record.durableError || 'ambiguous', null, record.mutationUnknown);
     }
-    const mutation = isMutation(command);
+    const gate = authorizeCommand(command, record.spec.permissions);
+    if (!gate.ok) return rejectCall(gate.error);
+    let boundTarget = null;
+    if (command !== 'page-summary') {
+      try {
+        const binding = bindCommandTarget(command, args, record.spec.target, options.target);
+        boundTarget = binding.target;
+        args = binding.args;
+      } catch (error) {
+        return rejectCall(error.code || 'invalid_target', { field: error.field, message: error.message });
+      }
+    }
+    const mutation = isMutationCommand(command, args);
     const actionSequence = mutation ? ++record.actionSequence : null;
     const actionId = mutation ? `${record.operationId}:action-${actionSequence}` : null;
     const startedAtMs = now();
     if (mutation) record.inFlightMutations += 1;
-    emitRecord(record, 'call_started', { command, args, actionId }, now);
+    emitRecord(record, 'call_started', { command, args, target: boundTarget, actionId }, now);
     try {
       if (mutation) {
         const prepared = await persistRecord(record, 'dispatch-marker', {
@@ -537,11 +624,7 @@ function trackHost(host, record, now) {
           revision: record.checkpointRevision,
           actionSequence,
           actionId,
-          target: {
-            ...record.spec.target,
-            ...(args.serial != null ? { serial: args.serial } : {}),
-            ...(args.packageName != null ? { packageName: args.packageName } : {}),
-          },
+          target: boundTarget,
           actionSpecHash: checksumOf({ command, args }),
           planStepId: actionId,
           state: 'prepared',
@@ -549,7 +632,7 @@ function trackHost(host, record, now) {
         });
         if (!prepared.ok) {
           record.durableError = 'dispatch_marker_not_persisted';
-          emitRecord(record, 'call_failed', { command, args, actionId, error: record.durableError }, now);
+          emitRecord(record, 'call_failed', { command, args, target: boundTarget, actionId, error: record.durableError }, now);
           return failedCall(command, record.durableError);
         }
       }
@@ -557,16 +640,18 @@ function trackHost(host, record, now) {
       try {
         // The host uses this ID for its provider request and returned receipt.
         // Caller-supplied dispatch IDs never become authoritative.
-        result = mutation && (record.cancelling || record.finished || record.status === 'finishing' || isLivePause(record.status))
+        result = stopped() || isLivePause(record.status)
           ? failedCall(command, isLivePause(record.status) ? 'paused' : 'runtime_stopped')
           : await host.call(command, args, { ...options, dispatchActionId: actionId });
       } catch (error) {
-        result = failedCall(command, error?.message || String(error), actionId, mutation);
+        result = failedCall(command, error?.code || error?.message || String(error), actionId,
+          error?.ambiguous ?? mutation, error?.dispatched ?? null);
       }
       if (mutation) {
         record.mutationUnknown ||= result.ambiguous === true;
         const receipt = {
           operationId: record.operationId,
+          target: boundTarget,
           revision: record.checkpointRevision,
           actionSequence,
           actionId,
@@ -575,7 +660,9 @@ function trackHost(host, record, now) {
           mechanicalStatus: result.ok === false ? 'failed' : 'ok',
           error: result.error || null,
           ambiguous: result.ambiguous === true,
-          dispatched: result.execution?.actionId != null,
+          dispatched: result.dispatched ?? null,
+          executionReceipt: result.executionReceipt ?? null,
+          ...(result.executionReceipts === undefined ? {} : { executionReceipts: result.executionReceipts }),
           evidenceRefs: result.evidence?.refs || [],
         };
         const persisted = await persistRecord(record, 'action-receipt', receipt);
@@ -587,6 +674,7 @@ function trackHost(host, record, now) {
         }
         emitRecord(record, 'action_receipt', {
           actionId,
+          target: boundTarget,
           payloadSummary: {
             mechanicalStatus: receipt.mechanicalStatus,
             error: receipt.error,
@@ -602,7 +690,7 @@ function trackHost(host, record, now) {
       }
       if (record.recording) {
         const saved = await record.recording.record({ kind: 'script-call', revision: record.checkpointRevision,
-          target: scriptEventTarget(record, 'call_completed', { args }),
+          target: boundTarget,
           data: { command, args, options, startedAtMs, completedAtMs: now(), envelope: result } });
         if (!saved.ok) {
           record.durableError = saved.error;
@@ -610,7 +698,7 @@ function trackHost(host, record, now) {
         }
       }
       emitRecord(record, result.ok === false ? 'call_failed' : 'call_completed', {
-        command, args, actionId,
+        command, args, target: boundTarget, actionId,
         callId: result.execution?.callId,
         error: result.error || null,
         evidenceRefs: result.evidence?.refs,
@@ -630,35 +718,52 @@ function trackHost(host, record, now) {
         }
       }
     }
+    async function rejectCall(error, detail = {}) {
+      const result = { ...unavailableEnvelope({ command, error, executionId: record.operationId, callId: null }),
+        dispatched: false, ambiguous: false, ...detail };
+      emitRecord(record, 'call_failed', { command, args, target: null, actionId: null, callId: null, error,
+        evidenceRefs: result.evidence.refs, window: result.evidence.window, coverage: result.evidence.coverage }, now);
+      if (record.recording) {
+        const saved = await record.recording.record({ kind: 'script-call', revision: record.checkpointRevision,
+          target: null, data: { command, args, options, startedAtMs: now(), completedAtMs: now(), envelope: result } });
+        if (!saved.ok) { record.durableError = saved.error; return failedCall(command, saved.error); }
+      }
+      return result;
+    }
   }
+  async function assertTracked(assertion) {
+    const result = await host.assert(assertion);
+    if (record.recording) {
+      const saved = await record.recording.record({ kind: 'script-assertion', revision: record.checkpointRevision,
+        target: record.spec.target, data: { assertion, result } });
+      if (!saved.ok) {
+        record.durableError = saved.error;
+        return { ok: false, name: result.name, scope: result.scope, verdict: 'inconclusive', reason: saved.error };
+      }
+    }
+    emitRecord(record, `assertion_${result.verdict}`, {
+      name: result.name,
+      verdict: result.verdict,
+      scope: result.scope,
+      reason: result.reason,
+      predicateSummary: assertion.predicateSummary,
+      condition: assertion.condition,
+      requiredEvidence: assertion.requiredEvidence,
+      requireCoverage: assertion.requireCoverage,
+      refs: assertion.evidence && assertion.evidence.refs,
+      coverage: assertion.evidence && assertion.evidence.coverage,
+      observationId: assertion.evidence?.observationId,
+      window: assertion.evidence?.window,
+      source: assertion.evidence?.source,
+    }, now);
+    return result;
+  }
+
   return {
     call,
-    assert: async (assertion) => {
-      const result = await host.assert(assertion);
-      if (record.recording) {
-        const saved = await record.recording.record({ kind: 'script-assertion', revision: record.checkpointRevision,
-          target: record.spec.target, data: { assertion, result } });
-        if (!saved.ok) {
-          record.durableError = saved.error;
-          return { ok: false, name: result.name, scope: result.scope, verdict: 'inconclusive', reason: saved.error };
-        }
-      }
-      emitRecord(record, `assertion_${result.verdict}`, {
-        name: result.name,
-        verdict: result.verdict,
-        scope: result.scope,
-        reason: result.reason,
-        predicateSummary: assertion.predicateSummary,
-        condition: assertion.condition,
-        requiredEvidence: assertion.requiredEvidence,
-        requireCoverage: assertion.requireCoverage,
-        refs: assertion.evidence && assertion.evidence.refs,
-        coverage: assertion.evidence && assertion.evidence.coverage,
-        observationId: assertion.evidence?.observationId,
-        window: assertion.evidence?.window,
-        source: assertion.evidence?.source,
-      }, now);
-      return result;
+    assert(assertion) {
+      if (stopped()) return Promise.resolve({ ok: false, verdict: 'inconclusive', reason: 'runtime_stopped' });
+      return trackPending(record, assertTracked(assertion));
     },
   };
 }
@@ -702,8 +807,8 @@ function emitRecord(record, type, extra, now) {
 }
 
 async function emitRuntimeRecord(record, type, extra, now) {
+  if (record.cancelling || record.finished || record.status === 'finishing') return { ok: false, error: 'runtime_stopped', persisted: false };
   if (type === 'script_completed' || type === 'script_failed') {
-    record.runtimeTerminal = { type, extra };
     return null;
   }
   if (type !== 'checkpoint') return emitRecord(record, type, extra, now);
@@ -724,11 +829,11 @@ async function emitRuntimeRecord(record, type, extra, now) {
       };
     }
   }
-  if (record.finished || record.status === 'finishing' || record.cancelling) return { ok: false, error: 'runtime_stopped', persisted: Boolean(persisted) };
   record.checkpointRevision = revision;
   record.lastCheckpoint = checkpoint;
   record.checkpointActionSequence = record.actionSequence;
   record.actionsSinceCheckpoint = [];
+  if (record.finished || record.status === 'finishing' || record.cancelling) return { ok: false, error: 'runtime_stopped', persisted: Boolean(persisted) };
   emitRecord(record, type, extra, now);
   return {
     ok: true,

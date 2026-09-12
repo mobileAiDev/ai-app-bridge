@@ -57,6 +57,20 @@ test('Node-API binding appends and globally scans binary payloads across partiti
   assert.equal(status.partitions[1].recordCount, 1n);
 });
 
+test('Node-API binding seeks a partition by sequence without scanning other partitions', (t) => {
+  const { handle } = openStore(t);
+  binding.append(handle, 0, Buffer.from('one'), true);
+  binding.append(handle, 1, Buffer.from('unrelated'), true);
+  binding.append(handle, 0, Buffer.from('three'), true);
+  for (const afterSequence of [1n, 2n, 0n, 1n]) {
+    const page = binding.scan(handle, { partitionId: 0, afterSequence });
+    assert.equal(page.record.sequence, afterSequence === 0n ? 1n : 3n);
+    assert.equal(page.record.partitionId, 0);
+    assert.equal(page.payload.toString(), afterSequence === 0n ? 'one' : 'three');
+  }
+  assert.equal(binding.scan(handle, { partitionId: 0, afterSequence: 3n }).done, true);
+});
+
 test('Node-API binding supports direct partition cursors and durable reopen', (t) => {
   const { directory, handle, segmentSize } = openStore(t);
   binding.append(handle, 0, Buffer.from('ui-one'), true);

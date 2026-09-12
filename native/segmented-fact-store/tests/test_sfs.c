@@ -908,6 +908,148 @@ static void test_multi_partition_global_order_receipt_and_physical_cursor(void)
     remove_temp_directory(directory);
 }
 
+static void test_global_scan_rewinds_eviction_and_append_after_end(void)
+{
+    char *directory = make_temp_directory();
+    sfs_store_t *store;
+    sfs_error_t error;
+    sfs_record_info_t receipts[513], record;
+    sfs_status_t status;
+    sfs_cursor_t cursor = SFS_CURSOR_BEGIN;
+    const uint64_t positions[] = {0u, 48u, 0u, 31u, 7u, 63u, 12u};
+    uint64_t value, payload, expected;
+    size_t index;
+    int pass;
+    CHECK(directory != NULL);
+    store = open_two_partition_store(directory, 2048u);
+    CHECK(store != NULL);
+    memset(receipts, 0, sizeof(receipts));
+    memset(&record, 0, sizeof(record));
+    record.struct_size = sizeof(record);
+    for (value = 1u; value <= 64u; ++value) {
+        receipts[value - 1u].struct_size = sizeof(record);
+        CHECK(sfs_append(store, (uint32_t)(value % 2u), &value, sizeof(value),
+                         SFS_DURABILITY_MEMORY, &receipts[value - 1u], &error) == SFS_OK);
+    }
+    for (index = 0u; index < sizeof(positions) / sizeof(positions[0]); ++index) {
+        cursor = (sfs_cursor_t)SFS_CURSOR_BEGIN;
+        cursor.after_sequence = positions[index];
+        CHECK(sfs_scan(store, &cursor, NULL, 0u, &record, &error) == SFS_BUFFER_TOO_SMALL);
+        CHECK(cursor.after_sequence == positions[index]);
+        CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_OK);
+        CHECK(record.sequence == positions[index] + 1u);
+        CHECK(payload == record.sequence);
+        CHECK(record.flags == 0u);
+    }
+    /* Sequence-only cursors select the first later record in that partition,
+       including rewinds, and then retain a physical address for subsequent reads. */
+    for (index = 0u; index < sizeof(positions) / sizeof(positions[0]); ++index) {
+        cursor = (sfs_cursor_t)SFS_CURSOR_PARTITION(0u);
+        cursor.after_sequence = positions[index];
+        expected = (positions[index] / 2u + 1u) * 2u;
+        CHECK(sfs_scan(store, &cursor, NULL, 0u, &record, &error) == SFS_BUFFER_TOO_SMALL);
+        CHECK(cursor.after_sequence == positions[index] && cursor.segment_id == 0u);
+        CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_OK);
+        CHECK(record.sequence == expected && payload == expected);
+        CHECK(record.partition_id == 0u && record.flags == 0u);
+        CHECK(cursor.segment_id != 0u && cursor.offset > record.frame_offset);
+    }
+    cursor = (sfs_cursor_t)SFS_CURSOR_BEGIN;
+    cursor.after_sequence = 64u;
+    CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_END);
+    for (value = 65u; value <= 512u; ++value) {
+        receipts[value - 1u].struct_size = sizeof(record);
+        CHECK(sfs_append(store, (uint32_t)(value % 2u), &value, sizeof(value),
+                         SFS_DURABILITY_MEMORY, &receipts[value - 1u], &error) == SFS_OK);
+    }
+    memset(&status, 0, sizeof(status));
+    status.struct_size = sizeof(status);
+    CHECK(sfs_status(store, &status, &error) == SFS_OK);
+    CHECK(status.partitions[0].evicted_records > 0u);
+    CHECK(status.partitions[1].evicted_records > 0u);
+    cursor = (sfs_cursor_t)SFS_CURSOR_PARTITION(0u);
+    cursor.after_sequence = 1u;
+    CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_OK);
+    CHECK(record.sequence == status.partitions[0].first_sequence);
+    CHECK((record.flags & SFS_RECORD_GAP_BEFORE) != 0u);
+    cursor = (sfs_cursor_t)SFS_CURSOR_PARTITION(0u);
+    cursor.after_sequence = 400u;
+    CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_OK);
+    CHECK(record.sequence == 402u && record.flags == 0u);
+    cursor = (sfs_cursor_t)SFS_CURSOR_PARTITION(7u);
+    cursor.after_sequence = 1u;
+    CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_ERR_PARTITION_DISABLED);
+    /* The old per-partition positions point into evicted segments. Both a live
+       scan and a cold reader must enumerate exactly the retained originals. */
+    for (pass = 0; pass < 2; ++pass) {
+        cursor = (sfs_cursor_t)SFS_CURSOR_BEGIN;
+        expected = 1u;
+        for (index = 0u; index < 512u; ++index) {
+            const sfs_record_info_t *receipt = &receipts[index];
+            if (receipt->segment_id < status.partitions[receipt->partition_id].first_segment_id) {
+                continue;
+            }
+            CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_OK);
+            CHECK(record.sequence == receipt->sequence);
+            CHECK(payload == receipt->sequence);
+            CHECK(record.partition_id == receipt->partition_id);
+            CHECK(record.frame_offset == receipt->frame_offset);
+            CHECK(record.segment_id == receipt->segment_id);
+            CHECK(((record.flags & SFS_RECORD_GAP_BEFORE) != 0u) == (record.sequence > expected));
+            expected = record.sequence + 1u;
+        }
+        CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_END);
+        if (pass == 0) {
+            CHECK(sfs_close(store, &error) == SFS_OK);
+            store = open_two_partition_store(directory, 2048u);
+            CHECK(store != NULL);
+        }
+    }
+    value = 513u;
+    receipts[512].struct_size = sizeof(record);
+    CHECK(sfs_append(store, 1u, &value, sizeof(value), SFS_DURABILITY_MEMORY,
+                     &receipts[512], &error) == SFS_OK);
+    CHECK(sfs_scan(store, &cursor, &payload, sizeof(payload), &record, &error) == SFS_OK);
+    CHECK(record.sequence == value && payload == value);
+    CHECK(sfs_close(store, &error) == SFS_OK);
+    remove_temp_directory(directory);
+}
+
+static void test_global_scan_position_does_not_cache_payload_or_crc(void)
+{
+    char *directory = make_temp_directory();
+    char segment_path[1024];
+    sfs_store_t *store;
+    sfs_error_t error;
+    sfs_record_info_t receipt, record;
+    sfs_cursor_t cursor = SFS_CURSOR_BEGIN;
+    uint64_t payload = 123u, readback = 0u;
+    uint8_t byte;
+    int descriptor;
+    CHECK(directory != NULL);
+    store = open_store(directory, 2048u);
+    CHECK(store != NULL);
+    memset(&receipt, 0, sizeof(receipt));
+    receipt.struct_size = sizeof(receipt);
+    record.struct_size = sizeof(record);
+    CHECK(sfs_append(store, 0u, &payload, sizeof(payload), SFS_DURABILITY_SYNC, &receipt, &error) == SFS_OK);
+    /* This establishes a read position without handing out a successful read. */
+    CHECK(sfs_scan(store, &cursor, NULL, 0u, &record, &error) == SFS_BUFFER_TOO_SMALL);
+    first_segment_path(segment_path, sizeof(segment_path), directory);
+    descriptor = open(segment_path, O_RDWR);
+    CHECK(descriptor >= 0);
+    CHECK(pread(descriptor, &byte, 1u, (off_t)receipt.frame_offset + 24) == 1);
+    byte ^= 0x80u;
+    CHECK(pwrite(descriptor, &byte, 1u, (off_t)receipt.frame_offset + 24) == 1);
+    CHECK(fsync(descriptor) == 0);
+    CHECK(close(descriptor) == 0);
+    CHECK(sfs_scan(store, &cursor, &readback, sizeof(readback), &record, &error) == SFS_ERR_CORRUPT);
+    CHECK(cursor.after_sequence == 0u);
+    CHECK(strstr(error.message, "CRC32C") != NULL);
+    CHECK(sfs_close(store, &error) == SFS_OK);
+    remove_temp_directory(directory);
+}
+
 static void test_second_writer_open_in_same_process_is_busy(void)
 {
     char *directory = make_temp_directory();
@@ -1096,6 +1238,8 @@ int main(void)
     test_full_record_and_segment_rotation();
     test_partition_quota_evicts_oldest_segment_and_reports_gap();
     test_multi_partition_global_order_receipt_and_physical_cursor();
+    test_global_scan_rewinds_eviction_and_append_after_end();
+    test_global_scan_position_does_not_cache_payload_or_crc();
     test_second_writer_open_in_same_process_is_busy();
     test_interrupted_temporary_segment_creation_is_cleaned_on_open();
     test_log_payload_burst_append_and_scan();

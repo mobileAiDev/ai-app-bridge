@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0-rc.1
+
+- Aligns the Android debug runtime with the `0.3.0-rc.1` Bridge candidate.
+- Includes the current iOS Swift runtime and C persistent-store sources for CocoaPods and Flutter Swift Package Manager integration.
+- Publishes the observed-target and managed execution contracts used by Intent and Script.
+
 ## 0.2.4
 
 - Adds Flutter iOS plugin publication support with vendored AiAppBridgeIOS runtime sources.

@@ -9,7 +9,7 @@ const { EventEmitter } = require('node:events');
 
 const { ObservationCollector } = require('../bin/observation-collector');
 const { targetFor } = require('../bin/target-execution');
-const { FactCache } = require('../bin/fact-cache');
+const { FactCache } = require('../test-support/fact-cache');
 const { FactRecorder } = require('../bin/fact-recorder');
 
 function createSqliteCache(t, budgetBytes = 2 * 1024 * 1024) {
@@ -38,14 +38,14 @@ test('does not register device-only iOS commands without an app or runtime targe
   assert.equal(collector.status().targetCount, 0);
 });
 
-test('bounds persistent observers and stops polling the least recently used target', async () => {
+test('bounds persistent observers and stops polling the least recently used iOS target', async () => {
   const timers = new ManualTimers();
   const calls = [];
   const collector = new ObservationCollector({
     rawRunner: async (command, args) => {
-      calls.push({ command, packageName: args.packageName });
-      return command === 'status'
-        ? { ok: true, debugBridge: { runtimeEpoch: `runtime-${args.packageName}` } }
+      calls.push({ command, bundleId: args.bundleId });
+      return command === 'ios-status'
+        ? { ok: true, debugBridge: { runtimeEpoch: 'ios-123' } }
         : { ok: true, items: [] };
     },
     recordEvidence: async () => {},
@@ -54,28 +54,31 @@ test('bounds persistent observers and stops polling the least recently used targ
     clock: timers.now,
     timers,
     pollIntervalMs: 100,
+    statusIntervalMs: 100,
     maxTargets: 2,
     inactiveTargetTtlMs: 10_000,
   });
 
-  collector.register('tap', { serial: 'android-1', packageName: 'com.example.first' });
+  collector.register('ios-tap', { bundleId: 'first' });
   await timers.advanceBy(1);
-  collector.register('tap', { serial: 'android-1', packageName: 'com.example.second' });
+  collector.register('ios-tap', { bundleId: 'second' });
   collector.start();
   await timers.advanceBy(0);
   calls.length = 0;
 
   await timers.advanceBy(1);
-  collector.register('tap', { serial: 'android-1', packageName: 'com.example.third' });
+  collector.register('ios-tap', { bundleId: 'third' });
   await timers.advanceBy(0);
   assert.deepEqual(
-    collector.status().targets.map((target) => target.packageName),
-    ['com.example.second', 'com.example.third'],
+    collector.status().targets.map((target) => target.bundleId),
+    ['second', 'third'],
   );
   assert.equal(collector.status().targetEvictions, 1);
 
   await timers.advanceBy(100);
-  assert.equal(calls.some((call) => call.packageName === 'com.example.first'), false);
+  assert.equal(calls.some((call) => call.bundleId === 'first'), false);
+  assert.equal(calls.some((call) => call.bundleId === 'second'), true);
+  assert.equal(calls.some((call) => call.bundleId === 'third'), true);
   await collector.stop();
 });
 
@@ -108,6 +111,43 @@ test('expires observers that have not been explicitly used during the target TTL
   assert.equal(collector.status().targetExpirations, 1);
   assert.equal(timers.tasks.size, 0);
   await collector.stop();
+});
+
+test('explicit Android activity extends its expiry and the final expiry drains and stops its device log', async () => {
+  const timers = new ManualTimers();
+  const child = fakeChildProcess();
+  const calls = [];
+  const batches = [];
+  const collector = new ObservationCollector({
+    rawRunner: async command => { calls.push(command); return { ok: true }; },
+    recordEvidence: async () => {},
+    recordDeviceLog: async (_args, batch) => batches.push(batch.lines),
+    spawn: () => child,
+    clock: timers.now,
+    timers,
+    inactiveTargetTtlMs: 250,
+  });
+  collector.start();
+  const args = { serial: 'active-android', packageName: 'example.active', deviceLogScope: 'device' };
+  const registration = collector.register('tree', args);
+  await timers.advanceBy(200);
+  collector.register('tree', args);
+  await timers.advanceBy(100); // The original expiry must not retire an active target.
+  assert.equal(collector.status().targetCount, 1);
+  assert.equal(child.killed, false);
+  collector.noteAction(registration.target, 'new-action');
+  assert.equal(collector.status().targets[0].expiresAtMs, 1_550);
+  await timers.advanceBy(249);
+  assert.equal(collector.status().targetCount, 1);
+  child.stdout.emit('data', 'final partial line');
+  await timers.advanceBy(1);
+  await collector.stop();
+  assert.equal(collector.status().targetCount, 0);
+  assert.equal(collector.status().targetExpirations, 1);
+  assert.equal(child.killed, true);
+  assert.deepEqual(batches, [['final partial line']]);
+  assert.deepEqual(calls, []);
+  assert.equal(timers.tasks.size, 0);
 });
 
 class ManualTimers {
@@ -186,22 +226,14 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-test('registers one background observer per Android target and does not idle-pull four streams', async () => {
+test('registers one Android target without opening an unsolicited SDK connection', async () => {
   const timers = new ManualTimers();
   const calls = [];
   const recorded = [];
-  let cycle = 0;
   const collector = new ObservationCollector({
     rawRunner: async (command, args) => {
       calls.push({ command, args: { ...args } });
-      if (command === 'status') {
-        return { ok: true, debugBridge: { runtimeEpoch: 'android-run-1' } };
-      }
-      cycle += 1;
-      return {
-        ok: true,
-        items: [{ id: cycle * 10, type: command }],
-      };
+      return { ok: true };
     },
     recordEvidence: async (command, args, result, context) => {
       recorded.push({ command, args, result, context });
@@ -228,22 +260,22 @@ test('registers one background observer per Android target and does not idle-pul
 
   collector.start();
   await timers.advanceBy(0);
-  assert.deepEqual(calls.map((call) => call.command), [
-    'status',
-  ]);
-  assert.equal(recorded.length, 1);
-  assert.equal(recorded[0].command, 'status');
-  assert.equal(recorded[0].context.runtimeEpoch, 'android-run-1');
-  assert.equal(recorded[0].context.target.serial, 'android-1');
-
-  calls.length = 0;
-  await timers.advanceBy(100);
-  assert.deepEqual(calls.map((call) => call.command), []);
+  await timers.advanceBy(10_000);
+  collector.register('launch-activity', { serial: 'android-1', packageName: 'com.example.other' });
+  await timers.advanceBy(10_000);
+  assert.deepEqual(calls, []);
+  assert.deepEqual(recorded, []);
+  for (const target of collector.status().targets) {
+    assert.equal(target.backgroundPolling, false);
+    assert.equal(target.runtimeEpoch, null);
+    assert.equal(target.lastSuccessAtMs, null);
+    assert.equal(target.nextPollAtMs, null);
+  }
 
   await collector.stop();
 });
 
-test('collects Android app streams by default without attributing device-wide logcat to the app', async () => {
+test('Android observation neither queries the SDK nor starts device-wide logcat by default', async () => {
   const timers = new ManualTimers();
   const calls = [];
   let spawnCount = 0;
@@ -272,7 +304,7 @@ test('collects Android app streams by default without attributing device-wide lo
   await timers.advanceBy(0);
 
   assert.equal(spawnCount, 0);
-  assert.deepEqual(calls, ['status']);
+  assert.deepEqual(calls, []);
   assert.deepEqual(collector.status().targets[0].deviceLog, {
     enabled: false,
     reason: 'device_scope_opt_in_required',
@@ -393,59 +425,23 @@ test('persists explicitly opted-in logcat as device evidence without app package
   cache.close();
 });
 
-test('resets every Web evidence cursor when the connected generation changes', async () => {
+test('tracks iOS runtime generation changes without querying App capture streams', async () => {
   const timers = new ManualTimers();
   const calls = [];
-  let connectedAtMs = 10_000;
-  let itemId = 100;
+  let runtimeEpoch = 'ios-first';
   const collector = new ObservationCollector({
-    rawRunner: async (command, args) => {
-      calls.push({ command, args: { ...args } });
-      if (command === 'web-status') {
-        return { ok: true, session: { connectedAtMs } };
-      }
-      return { ok: true, items: [{ id: itemId }] };
-    },
-    recordEvidence: async () => {},
-    recordDeviceLog: async () => {},
-    spawn: () => null,
-    clock: timers.now,
-    timers,
-    pollIntervalMs: 100,
-    statusIntervalMs: 100,
+    rawRunner: async command => { calls.push(command); return { ok: true, debugBridge: { runtimeEpoch } }; },
+    recordEvidence: async () => {}, recordDeviceLog: async () => {}, spawn: () => null,
+    clock: timers.now, timers, pollIntervalMs: 100, statusIntervalMs: 100,
   });
-
-  collector.register('web-click', { sessionId: 'web-session-1', targetId: 'main' });
+  collector.register('ios-tap', { deviceId: 'ios-phone', bundleId: 'example.app' });
   collector.start();
   await timers.advanceBy(0);
-  calls.length = 0;
-
-  connectedAtMs = 20_000;
-  itemId = 200;
+  runtimeEpoch = 'ios-second';
   await timers.advanceBy(100);
-  assert.deepEqual(calls.map((call) => call.command), [
-    'web-status',
-    'web-logs',
-    'web-network',
-    'web-state',
-    'web-events',
-  ]);
-  assert.deepEqual(calls.slice(1).map((call) => Object.hasOwn(call.args, 'sinceId')), [
-    false,
-    false,
-    false,
-    false,
-  ]);
-  const target = collector.status().targets[0];
-  assert.equal(target.runtimeEpoch, '20000');
-  assert.equal(target.generationChanges, 1);
-  assert.deepEqual(target.cursors, {
-    logs: 200,
-    network: 200,
-    state: 200,
-    events: 200,
-  });
-
+  assert.deepEqual(calls, ['ios-status', 'ios-status']);
+  assert.equal(collector.status().targets[0].runtimeEpoch, 'ios-second');
+  assert.equal(collector.status().targets[0].generationChanges, 1);
   await collector.stop();
 });
 
@@ -662,42 +658,20 @@ test('stop drains final complete and partial logcat lines and leaves no timer or
   assert.equal(collector.status().deviceLogs[0].queuedLines, 0);
 });
 
-test('waits for every in-flight Web evidence pull before backing off so failed cycles cannot overlap', async () => {
+test('Web facts are never polled or mirrored by the mobile observer', async () => {
   const timers = new ManualTimers();
-  const slowLogs = deferred();
-  let logPulls = 0;
   const collector = new ObservationCollector({
-    rawRunner: async (command) => {
-      if (command === 'web-status') return { ok: true, session: { connectedAtMs: 10_000 } };
-      if (command === 'web-logs') {
-        logPulls += 1;
-        return slowLogs.promise;
-      }
-      if (command === 'web-network') throw new Error('network failed');
-      return { ok: true, items: [] };
-    },
-    recordEvidence: async () => {},
-    recordDeviceLog: async () => {},
-    spawn: () => null,
-    clock: timers.now,
-    timers,
-    pollIntervalMs: 100,
-    statusIntervalMs: 1_000,
-    initialBackoffMs: 50,
+    rawRunner: async () => assert.fail('Web is owned by the ingress FactStore'),
+    recordEvidence: async () => assert.fail('No second Web evidence copy'),
+    recordDeviceLog: async () => {}, spawn: () => null, clock: timers.now, timers,
   });
-
-  collector.register('web-click', { sessionId: 'web-overlap', targetId: 'main' });
+  for (const command of ['web-status', 'web-dom', 'web-click', 'web-logs', 'web-state']) {
+    assert.equal(collector.register(command, { sessionId: 'session', runtimeEpoch: 'epoch', targetId: 'main' }).ignored, true);
+  }
   collector.start();
-  await timers.advanceBy(0);
-  assert.equal(logPulls, 1);
-  await timers.advanceBy(500);
-  assert.equal(logPulls, 1);
-  assert.equal(collector.status().targets[0].nextPollAtMs, null);
-
-  slowLogs.resolve({ ok: true, items: [] });
-  await settleAsyncWork();
-  assert.equal(collector.status().targets[0].failureCount, 1);
-  assert.equal(collector.status().targets[0].nextPollAtMs, timers.nowMs + 50);
+  await timers.advanceBy(10000);
+  assert.equal(collector.status().targetCount, 0);
+  assert.equal(timers.tasks.size, 0);
   await collector.stop();
 });
 
@@ -709,9 +683,6 @@ test('keeps connection hints across duplicate registration and accepts TargetExe
       calls.push({ command, args });
       if (command === 'ios-status') {
         return { ok: true, debugBridge: { runtimeEpoch: 'ios-hinted' } };
-      }
-      if (command === 'web-status') {
-        return { ok: true, session: { connectedAtMs: 123 } };
       }
       return { ok: true, items: [] };
     },
@@ -731,19 +702,17 @@ test('keeps connection hints across duplicate registration and accepts TargetExe
     deviceId: 'ios-hints',
     bundleId: 'com.example.hints',
   });
-  collector.register('web-click', { sessionId: 'web-with-default-target' });
   assert.equal(collector.noteAction(
-    targetFor('web-click', { sessionId: 'web-with-default-target' }),
-    'web-action-1',
+    targetFor('ios-tap', { deviceId: 'ios-hints', bundleId: 'com.example.hints' }),
+    'ios-action-1',
   ), true);
 
   collector.start();
   await timers.advanceBy(0);
   const iosStatus = calls.find((call) => call.command === 'ios-status');
   assert.equal(iosStatus.args.runtimeUrl, 'http://127.0.0.1:19000');
-  const webTarget = collector.status().targets.find((target) => target.kind === 'web');
-  assert.equal(webTarget.targetId, '');
-  assert.equal(webTarget.lastActionId, 'web-action-1');
+  const iosTarget = collector.status().targets.find(target => target.kind === 'ios');
+  assert.equal(iosTarget.lastActionId, 'ios-action-1');
 
   await collector.stop();
 });

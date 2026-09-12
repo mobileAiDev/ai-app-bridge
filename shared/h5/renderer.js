@@ -1,0 +1,94 @@
+(function(request) {
+  const key = '__AAB_H5_STATE_KEY__';
+  const fail = (error, dispatched = false) => ({ok:false,error,dispatched,ambiguous:false});
+  let state = window[key];
+  if (request.operation === 'snapshot' && !state) {
+    state = {document, documentId:request.seed, generation:0, sequence:0, nodes:new WeakMap(), suspended:false};
+    Object.defineProperty(window,key,{value:state});
+    window.addEventListener('pagehide',()=>{state.suspended=true;});
+    window.addEventListener('pageshow',()=>{state.documentId=request.seed+':'+(++state.generation);state.suspended=false;});
+    for (const method of ['pushState','replaceState']) {
+      const original=history[method];history[method]=function(...args){const result=original.apply(this,args);state.documentId=request.seed+':'+(++state.generation);return result;};
+    }
+    for (const event of ['popstate','hashchange']) window.addEventListener(event,()=>{state.documentId=request.seed+':'+(++state.generation);});
+  }
+  if (!state || state.document !== document || state.suspended) return fail('reobserve_required');
+  const str = value => value == null ? '' : String(value);
+  const secure = e => /password|passwd|pwd|passcode/.test([e.type,e.id,e.name,e.autocomplete].join(' ').toLowerCase());
+  const bounds = e => {const r=e.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+  const visible = e => {const s=getComputedStyle(e),r=bounds(e);return s.display!=='none'&&s.visibility!=='hidden'&&s.visibility!=='collapse'&&Number(s.opacity)!==0&&r.width>0&&r.height>0;};
+  const ref = e => {
+    if (!state.nodes.has(e)) state.nodes.set(e,'e'+(++state.sequence));
+    return {elementId:state.nodes.get(e),tag:e.tagName.toLowerCase(),id:str(e.id),name:str(e.getAttribute('name')),
+      type:str(e.getAttribute('type')),text:secure(e)?'':str(e.innerText).slice(0,500),
+      ariaLabel:str(e.getAttribute('aria-label')),href:str(e.href)};
+  };
+  const controls = () => Array.from(document.querySelectorAll('a,button,input,textarea,select,[role],[onclick],[aria-label],[contenteditable="true"]'));
+  const disabled = e => !!e.disabled || e.getAttribute('aria-disabled')==='true';
+  const editable = e => !disabled(e) && !e.readOnly && (e.isContentEditable===true || e.tagName==='TEXTAREA'
+    || e.tagName==='INPUT'&&['text','search','url','tel','email','password','number'].includes(e.type));
+  const interaction = e => {
+    if (disabled(e)) return {status:'disabled'};
+    if (!visible(e)) return {status:'hidden'};
+    const r=bounds(e),left=Math.max(0,r.left),top=Math.max(0,r.top),right=Math.min(innerWidth,r.right),bottom=Math.min(innerHeight,r.bottom);
+    if (right<=left||bottom<=top) return {status:'outside-viewport'};
+    const point={x:(left+right)/2,y:(top+bottom)/2},hit=document.elementFromPoint(point.x,point.y);
+    return hit&&(hit===e||e.contains(hit)) ? {status:'ready',point} : {status:'obscured',point};
+  };
+  if (request.operation === 'snapshot') {
+    const all=controls(), body=str(document.body&&document.body.innerText);
+    return {ok:true,dom:{documentId:state.documentId,url:location.href,title:document.title,readyState:document.readyState,
+      viewport:{width:innerWidth,height:innerHeight,scrollX,scrollY},
+      bodyText:body.slice(0,20000),bodyTextTruncated:body.length>20000,controlCount:all.length,truncated:all.length>1000,
+      controls:all.slice(0,1000).map(e=>({...ref(e),value:secure(e)?'[REDACTED]':str(e.value).slice(0,500),
+        visible:visible(e),disabled:disabled(e),editable:editable(e),interaction:interaction(e),bounds:bounds(e)}))}};
+  }
+  const page=request.pageRef;
+  if (!page || page.documentId!==state.documentId || page.url!==location.href) return fail('reobserve_required');
+  if (request.action==='eval') {
+    try {return {ok:true,result:(0,eval)(request.script),dispatched:true,ambiguous:false};}
+    catch(error){return {ok:false,error:'h5_script_failed',message:str(error.message),dispatched:true,ambiguous:false};}
+  }
+  if (request.action==='scrollBy') {
+    window.scrollBy({left:request.deltaX,top:request.deltaY,behavior:'instant'});
+    return {ok:true,dispatched:true,ambiguous:false,scrollX,scrollY};
+  }
+  const all=controls();
+  if (all.length>5000) return fail('__AAB_H5_ERROR_PREFIX__target_scan_truncated');
+  const expected=request.element;
+  const selected=all.filter(e=>state.nodes.get(e)===expected?.elementId);
+  if (selected.length!==1) return fail('reobserve_required');
+  const element=selected[0];
+  const current = () => document.documentElement.contains(element)&&page.documentId===state.documentId&&page.url===location.href
+    &&Object.entries(ref(element)).every(([key,value])=>expected[key]===value)&&!disabled(element)&&visible(element);
+  if (!current()) return fail('reobserve_required');
+  if (request.action==='scroll') {
+    element.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+    return {ok:true,dispatched:true,ambiguous:false,element:ref(element),bounds:bounds(element),interaction:interaction(element)};
+  }
+  const reachability=interaction(element);
+  if (reachability.status==='outside-viewport') return fail('__AAB_H5_ERROR_PREFIX__target_outside_viewport');
+  if (reachability.status!=='ready') return fail('__AAB_H5_ERROR_PREFIX__target_obscured');
+  const r=bounds(element),{x,y}=reachability.point;
+  const geometry={x,y,width:innerWidth,height:innerHeight,scrollX,scrollY,bounds:r};
+  if (request.operation==='prepare') return {ok:true,geometry,dispatched:false,ambiguous:false};
+  if (!request.geometry || !['x','y','width','height','scrollX','scrollY'].every(key=>geometry[key]===request.geometry[key]) || !request.geometry.bounds || !Object.keys(r).every(key=>r[key]===request.geometry.bounds[key])) return fail('reobserve_required');
+  if (request.action==='click') {
+    if (typeof element.click!=='function') return fail('__AAB_H5_ERROR_PREFIX__target_not_clickable');
+    element.click();return {ok:true,dispatched:true,ambiguous:false,element:expected};
+  }
+  if (request.action==='input') {
+    const tag=element.tagName.toLowerCase(), valueControl=tag==='input'||tag==='textarea';
+    if (!editable(element)) return fail('__AAB_H5_ERROR_PREFIX__target_not_editable');
+    const before=valueControl?element.value:element.innerText;
+    element.focus();
+    if (!current()||!editable(element)||(valueControl?element.value:element.innerText)!==before) return fail('__AAB_H5_ERROR_PREFIX__target_changed',true);
+    if (valueControl) Object.getOwnPropertyDescriptor(tag==='input'?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,'value').set.call(element,request.text);
+    else element.innerText=request.text;
+    element.dispatchEvent(new Event('input',{bubbles:true}));
+    if (!document.documentElement.contains(element)) return fail('__AAB_H5_ERROR_PREFIX__target_changed',true);
+    element.dispatchEvent(new Event('change',{bubbles:true}));
+    return {ok:true,dispatched:true,ambiguous:false,element:expected};
+  }
+  return fail('invalid_h5_operation');
+})

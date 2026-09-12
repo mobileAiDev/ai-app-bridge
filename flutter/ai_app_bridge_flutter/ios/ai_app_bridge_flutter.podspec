@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'ai_app_bridge_flutter'
-  s.version          = '0.2.4'
+  s.version          = '0.3.0-rc.1'
   s.summary          = 'Debug-only Flutter bridge for AI app inspection and control.'
   s.description      = <<-DESC
 AI App Bridge Flutter exposes Flutter widget snapshots, runtime actions,
@@ -26,8 +26,10 @@ debug Flutter apps.
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
   s.swift_version = '5.9'
+  s.preserve_paths = 'ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC/include/module.modulemap'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
+    'OTHER_SWIFT_FLAGS' => '$(inherited) -Xcc -fmodule-map-file="${PODS_TARGET_SRCROOT}/ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC/include/module.modulemap"',
     'HEADER_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}/ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC" "${PODS_TARGET_SRCROOT}/ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC/include" "${PODS_TARGET_SRCROOT}/ai_app_bridge_flutter/Sources/SegmentedFactStoreC/include"'
   }
 end

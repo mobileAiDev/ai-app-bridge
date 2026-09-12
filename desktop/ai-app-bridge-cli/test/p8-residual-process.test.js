@@ -88,7 +88,7 @@ test('P8 JS complete leaves zero residual script-sdk children', { timeout: 10_00
       name: 'p8-residual',
       language: 'javascript',
       source: 'async function main(ctx) { await ctx.call("status", { childPid: process.pid }); return { ok: true }; }\nmodule.exports = { main };',
-      target: { serial: 'p8', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
     },
   });
   t.after(async () => {
@@ -120,7 +120,7 @@ test('P8 cancel does not publish cancelled until the child has exited', async ()
       name: 'p8-cancel-window',
       language: 'javascript',
       source: 'async function main() { await new Promise(() => {}); }\nmodule.exports = { main };',
-      target: { serial: 'p8', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
     },
   });
   const cancelPromise = supervisor.handle({
@@ -148,7 +148,7 @@ test('P8 cancelled hanging JS leaves zero residual script-sdk children', { timeo
       name: 'p8-residual-cancel',
       language: 'javascript',
       source: 'async function main(ctx) { await ctx.call("status", { childPid: process.pid }); await new Promise(() => {}); }\nmodule.exports = { main };',
-      target: { serial: 'p8', packageName: 'com.example.app' },
+      target: { platform: 'android', serial: 'p8', packageName: 'com.example.app' },
     },
   });
   t.after(() => supervisor.handle({ operation: 'cancel', operationId: hanging.operationId }));

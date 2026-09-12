@@ -24,7 +24,7 @@ function createScriptCapturePort({ query } = {}) {
       timeoutMs: timeoutMsOf(args, executionContext),
       runtimeEpoch: executionContext.runtimeEpoch ?? args.runtimeEpoch ?? null,
       sinceMs: args.sinceMs ?? null,
-      limit: args.limit ?? 200,
+      limit: args.limit ?? (commandName.startsWith('web-') ? 16 : 200),
       serial: args.serial,
       packageName: args.packageName,
     });
