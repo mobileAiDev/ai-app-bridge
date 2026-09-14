@@ -1,6 +1,20 @@
-# 0.3.3 修复与发行交接
+# 0.3.3 / 0.3.4 修复与发行交接
 
 本次统一发布 CLI/MCP、Android SDK/Gradle 插件、iOS Git tag、Flutter 与 Web SDK。发行包确认可下载后再升级本机和消费项目；源码内的发行版本清单先随标签冻结。
+
+## 0.3.4 追加修复
+
+0.3.3 已完成各渠道发布和 npm latest/next 同步。重连本机 MCP 时确认一个新问题：MCP 的绝对 ADB 路径与 CLI 的 PATH 查找最终使用同一可执行文件，但原始环境字符串参与 Runtime 指纹，导致 `runtime_configuration_mismatch`。
+
+0.3.4 按实际可执行文件路径判断 ADB 身份，支持 PATH、相对路径和符号链接的等价写法，并在启动时固定解析结果；实际选择其他 ADB 仍拒绝混用。缺少 ADB 不阻塞没有 Android 设备依赖的能力。本次 SDK 仅同步版本，设备执行行为沿用 0.3.3。
+
+验证目录为 `build/ai_app_bridge_artifacts/publish-034-20260914-01/`：
+
+- 真实 CLI/MCP 入口的新增回归先复现原错误，再验证双向连接、同一 Script 结果互读、不同工作目录、符号链接、重启后读取，以及不同 ADB 的派发前拒绝。
+- 最终 CLI 全套 **1,287 项通过**；相关入口检查 29 项通过。
+- 0.3.4 的实际 npm tarball 完成干净安装、native 编译及 CLI/MCP 共享 Runtime 协议检查；SHA-256 为 `726d24ae788db3eddabc484b2ef3e095eb6d50e1dd1c3ba27ef610ab33af735b`。
+- Android release AAR 与 Gradle 插件构建通过，iOS native 示例 arm64 构建通过。Flutter dry-run 仅剩提交前工作树修改警告，冻结提交后再完成发布检查。
+- 没有以本轮检查代替完整跨平台 App 业务回归。消费端将在公开 0.3.4 产物确认后继续升级。
 
 ## 修复范围
 

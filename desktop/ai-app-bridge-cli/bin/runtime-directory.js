@@ -9,6 +9,7 @@ const { hostFactStoreTarget } = require('./shared-kernel/host-fact-store');
 const { defaultDirectory: ownershipDirectory } = require('./shared-kernel/device-ownership-store');
 const { protocol } = require('./runtime-protocol');
 const { canonicalPath } = require('./shared-kernel/canonical-path');
+const { executablePath } = require('./shared-kernel/executable-path');
 
 let fingerprint;
 function codeFingerprint() {
@@ -49,9 +50,10 @@ function runtimeLocation() {
 }
 
 function runtimeIdentity(location = runtimeLocation()) {
-  const names = ['ADB', 'AI_APP_BRIDGE_ADB_TIMEOUT_MS', 'AI_APP_BRIDGE_DEVICECTL', 'AI_APP_BRIDGE_FACT_CACHE',
+  const names = ['AI_APP_BRIDGE_ADB_TIMEOUT_MS', 'AI_APP_BRIDGE_DEVICECTL', 'AI_APP_BRIDGE_FACT_CACHE',
     'AI_APP_BRIDGE_IOS_TEAM_ID', 'AI_APP_BRIDGE_PYTHON', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPMENT_TEAM', 'DEVELOPER_DIR', 'XCODEBUILD'];
   const config = { facts: location.facts, profile: location.profile, ownership: canonicalPath(ownershipDirectory()),
+    adb: executablePath(process.env.ADB || 'adb') ?? { unavailable: process.env.ADB || 'adb' },
     environment: Object.fromEntries(names.map(name => [name, process.env[name] ?? null])) };
   return { protocol, code: codeFingerprint(), config: createHash('sha256').update(JSON.stringify(config)).digest('hex') };
 }

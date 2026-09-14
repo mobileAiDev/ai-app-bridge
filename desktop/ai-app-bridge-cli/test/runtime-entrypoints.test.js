@@ -21,9 +21,9 @@ function fixture(t) {
     for (const client of clients) await client.close({ stopRuntime: false });
     fs.rmSync(directory, { recursive: true, force: true });
   });
-  return { directory, env, cli, async mcp(cwd = directory) {
+  return { directory, env, cli, async mcp(cwd = directory, overrides = {}) {
     const index = clients.length;
-    const client = createMcpClient({ serverPath: path.resolve(__dirname, '../bin/mcp-server.js'), cwd, env,
+    const client = createMcpClient({ serverPath: path.resolve(__dirname, '../bin/mcp-server.js'), cwd, env: { ...env, ...overrides },
       transcriptPath: path.join(directory, `mcp-${index}.jsonl`), stderrPath: path.join(directory, `mcp-${index}.log`) });
     clients.push(client);
     await client.initialize();
@@ -40,6 +40,55 @@ async function waitFor(run, state, states) {
 }
 const questionScript = { schemaVersion: 'aab.code-script/v1', language: 'javascript', permissions: [], policy: { timeoutMs: 20000 },
   source: "module.exports.main = async ctx => await ctx.askAgent({question:'Keep this task alive across connections'});" };
+
+test('CLI PATH lookup and explicit MCP ADB share one runtime and Script result', { timeout: 20000 }, async t => {
+  const f = fixture(t);
+  const bin = path.join(f.directory, 'tools'); fs.mkdirSync(bin);
+  const adb = path.join(bin, process.platform === 'win32' ? 'adb.exe' : 'adb');
+  fs.copyFileSync(process.execPath, adb); fs.chmodSync(adb, 0o755);
+  const automatic = { ADB: undefined, PATH: `tools${path.delimiter}${process.env.PATH || ''}` };
+  const source = "module.exports.main = async ctx => ({ answer: await ctx.askAgent({question:'Same ADB?'}), adb: process.env.ADB });";
+  const started = await f.cli('script', { operation: 'start', script: { ...questionScript, source } }, { env: automatic });
+  assert.equal(started.value.ok, true, JSON.stringify(started));
+  const otherDirectory = path.join(f.directory, 'other'); fs.mkdirSync(otherDirectory);
+  const { run } = await f.mcp(otherDirectory, { ADB: adb });
+  const waiting = await waitFor(run, await run('script', { operation: 'status', operationId: started.value.operationId }),
+    ['waiting_for_agent', 'failed', 'cancelled']);
+  assert.equal(waiting.status, 'waiting_for_agent', JSON.stringify(waiting));
+  const question = waiting.events.find(event => event.type === 'agent_question_created');
+  const decided = await run('script', { operation: 'decide', operationId: waiting.operationId,
+    requestId: question.requestId, revision: question.revision, decision: 'same executable' });
+  assert.equal((await waitFor(run, decided, ['completed', 'failed', 'cancelled'])).status, 'completed');
+  const result = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: automatic });
+  assert.deepEqual(result.value.result, { answer: 'same executable', adb: fs.realpathSync(adb) }, JSON.stringify(result));
+  const owner = await run('runtime', { operation: 'status' });
+  assert.equal((await f.cli('runtime', { operation: 'status' }, { env: automatic })).value.runtimeId, owner.runtimeId);
+  const other = path.join(f.directory, 'other-adb'); fs.copyFileSync(adb, other); fs.chmodSync(other, 0o755);
+  const rejected = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: { ADB: other } });
+  assert.equal(rejected.value.error, 'runtime_configuration_mismatch');
+  assert.equal(rejected.value.dispatched, false);
+  if (process.platform !== 'win32') {
+    const alias = path.join(f.directory, 'adb-alias'); fs.symlinkSync(adb, alias);
+    const aliased = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: { ADB: alias } });
+    assert.deepEqual(aliased.value.result, result.value.result);
+  }
+  await run('runtime', { operation: 'stop' });
+  const recovered = await run('script', { operation: 'result', operationId: waiting.operationId });
+  assert.deepEqual(recovered.result, result.value.result);
+  const reverse = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: automatic });
+  assert.deepEqual(reverse.value.result, result.value.result);
+});
+
+test('a host without ADB can still start a runtime and execute device-independent Scripts', { timeout: 20000 }, async t => {
+  const f = fixture(t);
+  const options = { env: { ADB: path.join(f.directory, 'not-installed-adb') } };
+  const started = await f.cli('script', { operation: 'start', script: { ...questionScript,
+    source: 'module.exports.main = async () => 42;' } }, options);
+  const final = await waitFor(async (command, args) => (await f.cli(command, args, options)).value,
+    started.value, ['completed', 'failed', 'cancelled']);
+  assert.equal(final.status, 'completed', JSON.stringify(final));
+  assert.equal((await f.cli('script', { operation: 'result', operationId: started.value.operationId }, options)).value.result, 42);
+});
 
 test('runtime replies retain JSON false/zero/null, raw XML, bytes and separate history', () => {
   for (const value of [false, 0, null, { empty: '', accepted: false }, '<hierarchy/>', Buffer.from([0, 255, 1])]) {

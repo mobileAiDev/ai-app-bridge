@@ -37,7 +37,7 @@ CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Scrip
 - `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。
 - Android 和 iOS 的 `logs` / `network` / `state` / `events` 使用手机侧持久存储，连接时通过 `history:true` 查询保留的事实；Host 分别保存执行与观察证据。Web 采集在接收时写入 Host FactStore。每次查询均需核对 refs、目标、epoch、coverage 和保留范围。
 
-`0.3.3` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码 tag；npm 使用默认 `latest`，Flutter 使用 pub.dev 稳定版。
+`0.3.4` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码 tag；npm 使用默认 `latest`，Flutter 使用 pub.dev 稳定版。
 本地构建和发布顺序见[发行指南](desktop/ai-app-bridge-cli/docs/RELEASE.md)。Script 为可选能力；
 执行结束、纯代码断言和有设备证据的结果分别统计。当前设备强断言仅支持完整单页，
 多页查询可以取数，但尚不支持合并为一个完整窗口断言。恢复仅适用于显式可重入
@@ -109,7 +109,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.3")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.4")
 }
 ```
 
@@ -142,7 +142,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.3"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.4"
 }
 
 aiAppBridge {
@@ -157,7 +157,7 @@ aiAppBridge {
 在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.3")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.4")
 ```
 
 在 debug app 进程启动一次 runtime：
@@ -173,7 +173,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 安装桌面 CLI，并检查完整 iOS 控制栈：
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.3
+npm install -g @mobileaidev/ai-app-bridge@0.3.4
 ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -188,7 +188,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.3
+  ai_app_bridge_flutter: 0.3.4
 ```
 
 初始化一次：
@@ -251,7 +251,7 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 ### 安装 MCP server
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.3
+npm install -g @mobileaidev/ai-app-bridge@0.3.4
 ```
 
 在你的 AI agent / 模型客户端 / IDE 的 MCP 配置里添加。

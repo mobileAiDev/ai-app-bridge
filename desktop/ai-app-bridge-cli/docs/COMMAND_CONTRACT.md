@@ -73,6 +73,11 @@ only after proving the lock is free and before dispatching any command.
 Code, bundled runtime artifacts, native-store binary, Node version, FactStore
 profile and provider configuration must match the owner. Mismatch rejects
 execution with `runtime_code_mismatch` or `runtime_configuration_mismatch`.
+ADB is compared by its resolved executable path: automatic PATH lookup, an
+explicit path and symlinks to the same executable share the same configuration.
+Startup pins that executable for subsequent requests; selecting a different ADB
+still requires an explicit runtime stop. Missing ADB does not block capabilities
+that do not use it.
 `runtime status` reports the owner and compatibility; explicit `runtime stop`
 remains available from a different build/configuration. An unresponsive owner
 returns `runtime_unresponsive` without killing or replacing it. Lost execution

@@ -83,7 +83,7 @@ async function sampleMain(ctx) {
     if (status.result.app?.packageName !== packageName || !Number.isFinite(status.result.updatedAtMs)
       || !Number.isInteger(status.result.debugBridge?.port) || typeof status.result.debugBridge.runtimeEpoch !== 'string') throw new Error('sample_status_identity_missing');
     if (status.result.capturePersistence?.persistent !== true || status.result.capturePersistence?.lifecycleState !== 'OPEN'
-      || status.result.debugBridge.version !== '0.3.0-rc.1') throw new Error('current_rc_persistent_sample_required');
+      || status.result.debugBridge.version !== ctx.inputs.expectedSdkVersion) throw new Error('current_persistent_sample_required');
     const deviceSinceMs = status.result.updatedAtMs;
     const expectedUrl = `http://127.0.0.1:${status.result.debugBridge.port}/v1/logs?limit=1`;
     results.initialCounter = initialCounter;
@@ -172,11 +172,11 @@ async function main(options) {
       throw new Error('sample_native_test_activity_required');
     }
     if (status.capturePersistence?.persistent !== true || status.capturePersistence?.lifecycleState !== 'OPEN'
-      || status.debugBridge?.version !== '0.3.0-rc.1') throw new Error('current_rc_persistent_sample_required');
+      || status.debugBridge?.version !== require('../../package.json').version) throw new Error('current_persistent_sample_required');
     const sourcePath = path.join(options.out, 'script.js');
     fs.writeFileSync(sourcePath, `'use strict';\nmodule.exports.main = ${sampleMain.toString()};\n`);
     const start = await run('script', { operation: 'start', script: { schemaVersion: 'aab.code-script/v1', name: 'native-sample-capture-loop', language: 'javascript', sourcePath,
-      target: { platform: 'android', ...report.target }, inputs: { out: options.out }, policy: { timeoutMs: 120000, restartPolicy: 'none' } } });
+      target: { platform: 'android', ...report.target }, inputs: { out: options.out, expectedSdkVersion: require('../../package.json').version }, policy: { timeoutMs: 120000, restartPolicy: 'none' } } });
     write('script-start.json', start);
     if (start.ok !== true) throw new Error(`script_start:${start.error}`);
     operationId = start.operationId;

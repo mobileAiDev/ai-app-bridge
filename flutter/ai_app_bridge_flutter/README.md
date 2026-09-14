@@ -20,10 +20,10 @@ To pin this release, use:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.3
+  ai_app_bridge_flutter: 0.3.4
 ```
 
-The plugin's Android debug variant includes the `0.3.3` Android runtime from
+The plugin's Android debug variant includes the `0.3.4` Android runtime from
 JitPack and starts the bridge server on the device. The iOS plugin starts the
 Swift runtime from the app process. Release builds should not expose the debug
 runtime automatically.

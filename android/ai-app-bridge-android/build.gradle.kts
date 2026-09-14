@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "io.github.mobileaidev.aiappbridge"
-version = "0.3.3"
+version = "0.3.4"
 
 val jitpackGroup = providers.environmentVariable("GROUP").orNull
 val jitpackArtifact = providers.environmentVariable("ARTIFACT").orNull

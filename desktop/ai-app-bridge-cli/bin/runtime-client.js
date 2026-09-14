@@ -8,6 +8,7 @@ const { CommandError, commandFailure } = require('./command-errors');
 const { validateRunRequest } = require('./command-request');
 const { protocol, maxMessageBytes, readJson, decodeReply } = require('./runtime-protocol');
 const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, readEndpoint, prepareDirectory } = require('./runtime-directory');
+const { executablePath } = require('./shared-kernel/executable-path');
 const starting = new Map();
 
 // Transport failures do not retry execution or cancel its owner. Once the
@@ -75,9 +76,12 @@ function launch(location) {
   const log = fs.openSync(location.logFile, 'a', 0o600);
   let child;
   try {
+    // Pin the provider chosen by this client before requests change cwd. Other
+    // clients may reach the same executable through a different PATH or alias.
+    const adb = executablePath(process.env.ADB || 'adb');
     child = fork(path.join(__dirname, 'execution-runtime.js'), [], {
       detached: true, execArgv: [], stdio: ['ignore', log, log, 'ipc'],
-      env: { ...process.env, AI_APP_BRIDGE_FACT_STORE_DIR: location.facts },
+      env: { ...process.env, ...(adb ? { ADB: adb } : {}), AI_APP_BRIDGE_FACT_STORE_DIR: location.facts },
     });
   } finally { fs.closeSync(log); }
   return new Promise((resolve, reject) => {

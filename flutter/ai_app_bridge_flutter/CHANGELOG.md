@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4
+
+- Aligns Android and iOS versions with the coordinated Bridge `0.3.4` release.
+- The companion CLI/MCP now shares one Runtime when automatic and explicit ADB paths resolve to the same executable.
+- Flutter and device SDK execution behavior is unchanged from 0.3.3.
+
 ## 0.3.3
 
 - Aligns Android and iOS runtime versions with the coordinated Bridge `0.3.3` release.

@@ -135,7 +135,7 @@ async function main(options) {
     const deadline = Date.now() + 20000;
     let last;
     do {
-      try { last = await run('status'); if (last.app?.packageName === PACKAGE && last.debugBridge?.version === '0.3.0-rc.1') { write(path.join(out, `${name}-status.json`), last); return; } }
+      try { last = await run('status'); if (last.app?.packageName === PACKAGE && last.debugBridge?.version === require(path.join(CLI, 'package.json')).version) { write(path.join(out, `${name}-status.json`), last); return; } }
       catch (error) { last = { error: error.message }; }
       await new Promise((resolve) => setTimeout(resolve, 150));
     } while (Date.now() < deadline);

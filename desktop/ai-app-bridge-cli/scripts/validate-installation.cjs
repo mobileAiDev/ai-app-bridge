@@ -36,7 +36,7 @@ function npmInstall() {
 
 function inspectPackage(packageRoot) {
   const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
-  assert.equal(pkg.version, '0.3.0-rc.1');
+  assert.equal(pkg.version, require('../package.json').version);
   const forbidden = [];
   const walk = (directory) => { for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const file = path.join(directory, entry.name);
@@ -100,7 +100,7 @@ async function mcp(packageRoot) {
   };
   try {
     const init = await rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'installation-validation', version: '1' } });
-    assert.equal(init.serverInfo.version, '0.3.0-rc.1');
+    assert.equal(init.serverInfo.version, require('../package.json').version);
     const list = await rpc('tools/list', {});
     assert(list.tools.some((item) => item.name === 'capabilities'));
     const capabilities = await tool('capabilities', {});

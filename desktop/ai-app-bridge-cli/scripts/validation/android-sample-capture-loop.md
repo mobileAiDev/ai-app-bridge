@@ -2,7 +2,7 @@
 
 固定包名 `io.github.mobileaidev.aiappbridge.sample`；必须显式传 `--serial` 和新的 `--out`。脚本不自动安装、启动、清理数据或选择设备。先由执行者准备真实 sample 的 `DebugBridgeNativeTestActivity`，并确保 SDK 的持久后端已正常 attach。
 
-操作前严格检查手机 status 的 `debugBridge.version === '0.3.0-rc.1'`、`capturePersistence.persistent === true`、`lifecycleState === 'OPEN'`，以及当前原生测试 Activity。自动捕获来源字符串核自 Android `AiAppOkHttpAutoCapture.kt` 的 `source = "okhttp-auto"`。
+操作前严格检查手机 status 的 `debugBridge.version` 等于当前 CLI 包版本、`capturePersistence.persistent === true`、`lifecycleState === 'OPEN'`，以及当前原生测试 Activity。自动捕获来源字符串核自 Android `AiAppOkHttpAutoCapture.kt` 的 `source = "okhttp-auto"`。
 
 ```sh
 node desktop/ai-app-bridge-cli/scripts/validation/android-sample-capture-loop.js \
