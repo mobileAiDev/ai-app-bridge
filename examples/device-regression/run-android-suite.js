@@ -23,10 +23,11 @@ const settingsExpected = {
   'settings-restored': { 'flutter.ls_theme': 'system', 'flutter.ls_color': 'system' },
 };
 
-async function main(out, serial, selectedCase) {
+async function main(out, serial, selectedCase, scenarioPath) {
   assert(['b46093e6', 'FYZLAU49X8OVQGJ7'].includes(serial), 'An explicitly authorized OPPO serial is required');
   fs.mkdirSync(out);
-  const suitePath = path.join(__dirname, 'android-business-suite.v1.json');
+  const suitePath = scenarioPath ? path.resolve(scenarioPath)
+    : path.join(__dirname, 'android-business-suite.v1.json');
   const suite = read(suitePath);
   if (selectedCase) assert(suite.cases.some(entry => entry.id === selectedCase), 'Unknown declared case');
   const selectedCases = selectedCase ? suite.cases.filter(entry => entry.id === selectedCase) : suite.cases;
@@ -377,8 +378,8 @@ async function main(out, serial, selectedCase) {
 }
 
 if (require.main === module) {
-  const [out, serial, selectedCase] = process.argv.slice(2);
-  if (!out || !serial) throw Error('Usage: run-android-suite.js NEW_OUTPUT_DIR AUTHORIZED_OPPO_SERIAL [CASE_ID]');
-  main(path.resolve(out), serial, selectedCase).catch(error => { console.error(error.stack); process.exitCode = 1; });
+  const [out, serial, selectedCase, scenarioPath] = process.argv.slice(2);
+  if (!out || !serial) throw Error('Usage: run-android-suite.js NEW_OUTPUT_DIR AUTHORIZED_OPPO_SERIAL [CASE_ID] [FROZEN_SUITE]');
+  main(path.resolve(out), serial, selectedCase, scenarioPath).catch(error => { console.error(error.stack); process.exitCode = 1; });
 }
 module.exports = { main };

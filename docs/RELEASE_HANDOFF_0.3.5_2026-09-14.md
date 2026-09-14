@@ -24,4 +24,18 @@
 
 Reader 当前完整 JS 业务脚本已完成 23 个断言；其 SDK 升级安装后的版本复核单独记录。Kiwix 从手机上的 0.2.11 重建并安装至 0.3.5；原生与 WKWebView 连续业务脚本 script-1789376263916-1 完成 27 个断言，耗时 99.615 秒。旧示例在重启后假定自动显示书签列表，本版改为明确打开列表；数据库独立读取确认保存结果。
 
-发布顺序为冻结提交/tag、验证 JitPack Android SDK/插件、npm CLI/Web、pub Flutter，再从公开渠道升级消费项目与本机。发布成功回执和消费项目构建/安装记录将在本目录补齐；在回执齐全前不得把准备完成记为已发布。
+发行提交为 `e7253a1e52d841d73d6e5904c42eb43484753447`，tag `0.3.5` 与源分支已推送，main 已推进到发行提交，[正式 GitHub Release](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.3.5) 已创建。npm CLI/Web 的 latest 与 next 均为 0.3.5；pub Flutter 与 JitPack SDK/插件均已发布并从公共渠道核对。公共 CLI tarball SHA-256 为 `c42138015fe7182cea7bc1bebe199a9be32c1739d4655f25502606c449ead0c4`，公共 Flutter archive 为 `2edb46cbc784e852b34a0de30957978e86ef8b891dff37e0011cf9736db54107`。
+
+本机 CLI、全局依赖和新启动的 MCP 已升至 0.3.5；新 MCP 与 CLI 读取同一个 compatible Runtime。旧默认 Runtime 使用公开 stop 结束，未删锁。未声明既有 Codex MCP 连接已自动热升级。
+
+## 后续业务结果
+
+- NotallyX 已官方安装并实读 SDK 0.3.5，核心 7/7 通过；14 阶段、15 个数据库快照、59 个 UI 检查点、160 次 mutation。完整目录仍有 134 个 scenario、311 个 variant 未跑，总报告 ok=false 保留。
+- Flexify 按公开 pub 0.3.5 构建并官方安装，live SDK 0.3.5；Script 完成 16 个断言，独立静止 SQLite 13 项和旧行保护 6 项通过，精确结果为 2 组、14 次、625 kg。两次 Flutter CLI 的 VM Service 转发失败均保留；使用该 Flutter 版本规定的 LLDB 初始化运行确切 App PID 后完成业务。启动准备不算 Script 时间，结束后停止本次 App 和调试器。
+- Memos 注入 Web SDK 0.3.5，JS 15 个断言、Python 13 个断言通过；独立 SQLite 各 12 项检查通过，覆盖创建、编辑、取消删除和旧笔记保护。登录示例按实测 English UI 使用 Sign in。页面 checkbox 仍与保存的 `[x]` 内容有差异，任务勾选渲染不计通过。
+- Reader 依赖文件已升级至公开 JitPack 0.3.5，Debug 构建通过。POS 依赖已升级至 0.3.5，SIT/UAT Debug 构建通过，未安装收银 App。两处消费项目原有业务修改未混入 Bridge 提交。
+- Wikipedia 0.3.5 新 APK 已通过官方 Intent 安装与哈希验证；LocalSend 已解析公开 Flutter 0.3.5 并构建 APK。OnePlus 在 Wikipedia 安装后再次离线，Reader/LocalSend 新版安装和这三个 App 的新版 live SDK/后续业务仍待设备继续。不能用旧 SDK 业务结果替代。
+
+Wikipedia 与 Android 组合控制器现在可接收显式冻结的 manifest/suite 路径，便于升级 APK 后保留旧样本历史；安装包哈希、脚本/校验器哈希、业务和时限检查均保留。Web remote-smoke 依赖已升级到公共 npm 0.3.5。
+
+四份本地报告与 `release-status.json`、`consumer-versions.json` 已补齐。自然安装中途取消、未执行的静态风险专项和全部 115 条能力组合仍未验收，不能据本次发布标记全量跨平台独立通过。

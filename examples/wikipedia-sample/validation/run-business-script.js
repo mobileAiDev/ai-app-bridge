@@ -19,10 +19,11 @@ const write = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null
 const terminal = state => ['completed', 'failed', 'cancelled', 'timeout', 'interrupted'].includes(state.status);
 const quote = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 
-async function main(out, serial) {
+async function main(out, serial, scenarioPath) {
   assert(['b46093e6', 'FYZLAU49X8OVQGJ7'].includes(serial), 'An explicitly authorized OPPO serial is required');
   fs.mkdirSync(out);
-  const manifestPath = path.join(__dirname, 'wikipedia-business.manifest.v1.json');
+  const manifestPath = scenarioPath ? path.resolve(scenarioPath)
+    : path.join(__dirname, 'wikipedia-business.manifest.v1.json');
   const manifest = read(manifestPath);
   const target = { platform: 'android', serial, packageName: PACKAGE };
   const env = { AI_APP_BRIDGE_RUNTIME_HOME: path.join(out, 'runtime'),
@@ -184,8 +185,8 @@ async function main(out, serial) {
 }
 
 if (require.main === module) {
-  const [directory, serial] = process.argv.slice(2);
-  if (!directory || !serial) throw Error('Usage: run-business-script.js NEW_OUTPUT_DIR SERIAL');
-  main(path.resolve(directory), serial).catch(error => { console.error(error.stack); process.exitCode = 1; });
+  const [directory, serial, scenarioPath] = process.argv.slice(2);
+  if (!directory || !serial) throw Error('Usage: run-business-script.js NEW_OUTPUT_DIR SERIAL [FROZEN_MANIFEST]');
+  main(path.resolve(directory), serial, scenarioPath).catch(error => { console.error(error.stack); process.exitCode = 1; });
 }
 module.exports = { main, inventory };

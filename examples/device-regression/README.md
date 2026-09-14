@@ -29,6 +29,11 @@ node examples/device-regression/run-android-suite.js \
   build/ai_app_bridge_artifacts/localsend-focused-NEW b46093e6 localsend
 ```
 
+After an SDK upgrade, copy the suite manifest to a new file and pin the newly
+built APK hash. Pass that file as the fourth argument, after the selected case.
+Keep the original Script and oracle hashes and all acceptance gates. The runner
+still requires an exact installed APK match and archives the selected manifest.
+
 Focused reports list the other cases as unexecuted. No previous result becomes a
 current pass. The suite retains each source and scenario manifest, installed APK
 and data hashes, independent result reads, continuous execution events and full

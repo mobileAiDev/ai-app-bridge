@@ -76,7 +76,7 @@ def main(ctx):
         observation = read()
         act(observation, one(observation, lambda node: node['id'] == 'signin-password', 'password'),
             'web-input', {'value': credentials['password']})
-        button('登录')
+        button('Sign in')
         observation = until('authenticated home', None,
                             lambda value: urlparse(value['result']['dom']['url']).path == '/')
     if ctx.inputs.get('negativeOnly') is True:

@@ -38,6 +38,13 @@ article before writing a Script. An unreachable real article or missing target
 must remain a failed/inconclusive gate. Network requests and database contents
 need independent evidence in addition to screenshots and action receipts.
 
+For a newly built SDK revision, copy the business manifest to a new file, pin
+the actual APK SHA-256 and choose unused synthetic collection names. Pass that
+manifest as the optional third argument to `validation/run-business-script.js`,
+after the new output directory and authorized serial. The original Script and
+oracle source hashes and all business checks remain required; the runner saves
+the selected manifest with its evidence.
+
 ## Current business evidence: 2026-09-12
 
 The real official search/article network now works on the authorized OPPO. Intent

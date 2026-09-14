@@ -54,7 +54,7 @@ module.exports.main = async function main(ctx) {
     await act(observation, one(observation, node => node.id === 'signin-username', 'username'), 'web-input', { value: credentials.username });
     observation = await read();
     await act(observation, one(observation, node => node.id === 'signin-password', 'password'), 'web-input', { value: credentials.password });
-    await button('登录');
+    await button('Sign in');
     observation = await until('authenticated home', undefined, value => new URL(value.result.dom.url).pathname === '/');
   }
   if (negativeOnly) {
