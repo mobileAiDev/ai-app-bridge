@@ -13,8 +13,21 @@
 - 真实 CLI/MCP 入口的新增回归先复现原错误，再验证双向连接、同一 Script 结果互读、不同工作目录、符号链接、重启后读取，以及不同 ADB 的派发前拒绝。
 - 最终 CLI 全套 **1,287 项通过**；相关入口检查 29 项通过。
 - 0.3.4 的实际 npm tarball 完成干净安装、native 编译及 CLI/MCP 共享 Runtime 协议检查；SHA-256 为 `726d24ae788db3eddabc484b2ef3e095eb6d50e1dd1c3ba27ef610ab33af735b`。
-- Android release AAR 与 Gradle 插件构建通过，iOS native 示例 arm64 构建通过。Flutter dry-run 仅剩提交前工作树修改警告，冻结提交后再完成发布检查。
-- 没有以本轮检查代替完整跨平台 App 业务回归。消费端将在公开 0.3.4 产物确认后继续升级。
+- Android release AAR 与 Gradle 插件构建通过，iOS native 示例 arm64 构建通过。Flutter 冻结提交后的 dry-run 为 0 warnings。
+- 没有以本轮检查代替完整跨平台 App 业务回归。
+
+### 0.3.4 已发布与消费升级
+
+发行提交 `ef7043b17afeced38077e0c38fded7aa7586c5bd` 和不可变标签 `0.3.4` 已推送，GitHub Release 为 <https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.3.4>。
+
+- npm CLI/MCP 与 Web 的 latest、next 都为 0.3.4；JitPack SDK/插件公开下载及 class 内容检查通过；pub.dev 的 0.3.4 索引、版本元数据和归档均已核验。Flutter 归档 SHA-256 为 `9ce92c8d6c991321edabf9571ae0bebd96747969ca65c5bcd35a4729a9dcd1b5`。
+- 本机全局 CLI 和当前 Codex MCP 均使用 0.3.4。同一 Runtime 下，CLI 自动查找 ADB、MCP 显式设置 ADB，能够互读原始安装结果。用于诊断的临时环境对齐已撤掉；没有删除旧 FactStore 或执行记录。
+- Reader 依赖升级后构建通过。当前 MCP 启动 `intent-1789369009446-1` 安装，CLI 读取到 completed、verified；OPPO 真机 status 返回 SDK 0.3.4、持久存储 OPEN。
+- 收银项目 SDK/plugin 版本统一为 0.3.4，SIT Debug 和 UAT Debug 构建通过；本轮未部署收银机。
+- Android native 和 NotallyX 示例构建通过。供 Wikipedia/VLC/Organic Maps 引用的本地 Debug AAR 已重新打包并核验版本 0.3.4；原生 iOS 示例引用同一 0.3.4 Swift package。
+- Flexify/LocalSend 在公开包可解析后升级到 pub.dev 0.3.4，锁文件哈希与公开归档一致；Flexify SwiftPM 和 LocalSend CocoaPods 解析到 0.3.4。Web remote-smoke 依赖及加载检查通过。Memos 继续使用当前仓库 Web SDK 与 CLI。
+
+具体路径和证据见该发行目录中的 `consumer-versions.json`、`live-codex-mcp-034.json`、`reader-launch-status.json` 及各构建日志。Reader、收银项目原有业务改动保留，依赖升级没有混入这些改动的提交。
 
 ## 修复范围
 

@@ -16,7 +16,7 @@ def replace(relative, before, after):
     target.write_text(source.replace(before, after))
 
 replace('app/pubspec.yaml', '\ndependencies:\n',
-        '\ndependencies:\n  ai_app_bridge_flutter: 0.3.3\n')
+        '\ndependencies:\n  ai_app_bridge_flutter: 0.3.4\n')
 replace('app/lib/main.dart', "import 'package:flutter/material.dart';",
         "import 'package:ai_app_bridge_flutter/ai_app_bridge_flutter.dart';\nimport 'package:flutter/material.dart';")
 replace('app/lib/main.dart', '  runApp(\n',
@@ -31,7 +31,7 @@ manifest = {
     'upstreamCommit': 'af0416be50770a97760f7070684bc667b759a15c',
     'packageName': 'org.localsend.localsend_app.bridge_sample',
     'flutterVersion': '3.41.9',
-    'bridgeVersion': '0.3.3',
+    'bridgeVersion': '0.3.4',
     'modifiedFiles': {f: hashlib.sha256((upstream / f).read_bytes()).hexdigest() for f in files},
 }
 (sample / 'build').mkdir(exist_ok=True)
