@@ -42,7 +42,7 @@ function uniqueBlock(lines, predicate, error) {
   return { header: lines[indexes[0]].trim(), lines: block(lines, indexes[0]) };
 }
 
-function parsePermissionState(text, { packageName, permission, userId }) {
+function parsePermissionState(text, { packageName, permission, userId }, definitions) {
   const pkg = uniqueBlock(text.split(/\r?\n/), line => line.startsWith(`Package [${packageName}] (`), 'permission_package_not_found');
   const appId = pkg.lines.map(line => /^\s+(?:appId|userId)=(\d+)\s*$/.exec(line)).filter(Boolean);
   if (appId.length !== 1 || Number(appId[0][1]) >= 100000) throw new CommandError('permission_state_unsupported', 'Android package appId is unavailable or ambiguous.');
@@ -50,6 +50,21 @@ function parsePermissionState(text, { packageName, permission, userId }) {
   if (!/\binstalled=true\b/.test(user.header)) throw new CommandError('permission_package_not_installed', 'The package is not installed for the requested Android user.');
   const runtime = uniqueBlock(user.lines, line => line === 'runtime permissions:', 'runtime_permission_not_found');
   const matches = runtime.lines.filter(line => line.trim().startsWith(`${permission}:`));
+  if (!matches.length && definitions !== undefined) {
+    // Android 7 omits untouched runtime permissions. Establish that the app
+    // requests a runtime permission and has no install grant before interpreting
+    // the absent PackageManager state as denied with no flags.
+    const requested = uniqueBlock(pkg.lines, line => line === 'requested permissions:', 'runtime_permission_not_found');
+    const targetSdk = pkg.lines.flatMap(line => [...line.matchAll(/\btargetSdk=(\d+)\b/g)]);
+    const definition = uniqueBlock(definitions.split(/\r?\n/), line => line.startsWith(`Permission [${permission}] (`), 'runtime_permission_not_found');
+    const protection = definition.lines.flatMap(line => [...line.matchAll(/\bprot=([^\s]+)/g)]);
+    if (targetSdk.length === 1 && Number(targetSdk[0][1]) >= 23
+        && requested.lines.some(line => line.trim() === permission)
+        && protection.length === 1 && protection[0][1].split('|')[0] === 'dangerous'
+        && !pkg.lines.some(line => line.trim().startsWith(`${permission}:`))) {
+      return { packageName, permission, userId, uid: userId * 100000 + Number(appId[0][1]), granted: false, flags: [] };
+    }
+  }
   const match = matches.length === 1 && /^\s*[^:]+:\s+granted=(true|false),\s*flags=\[([^\]]*)\]\s*$/.exec(matches[0]);
   if (!matches.length) throw new CommandError('runtime_permission_not_found', 'The requested permission has no runtime permission record for this package and user.');
   if (!match) throw new CommandError('permission_state_unsupported', 'Android returned an unrecognized runtime permission record.');
@@ -70,8 +85,15 @@ async function readPermissionState(args, run = execute) {
       userId = Number(current);
     }
     const dump = await androidCommand(args, ['shell', 'dumpsys', 'package', args.packageName], run);
+    let state;
+    try { state = parsePermissionState(dump.stdout, { ...args, userId }); }
+    catch (error) {
+      if (error.code !== 'runtime_permission_not_found') throw error;
+      const definitions = await androidCommand(args, ['shell', 'dumpsys', 'package', 'permissions'], run);
+      state = parsePermissionState(dump.stdout, { ...args, userId }, definitions.stdout);
+    }
     return { ok: true, source: 'android-package-manager', serial: args.serial,
-      ...parsePermissionState(dump.stdout, { ...args, userId }), capturedAtMs: Date.now() };
+      ...state, capturedAtMs: Date.now() };
   } catch (error) {
     if (error instanceof CommandError) throw error;
     throw new CommandError('permission_query_failed', 'Android permission state could not be read.', { details: { cause: error.code || null } });
@@ -125,7 +147,17 @@ function activityIdentity(value) {
 // the actual dialog, and PackageManager independently verifies the named permission.
 function parsePermissionRequest(text) {
   const lines = text.split(/\r?\n/);
-  const tops = lines.filter(line => /^\s*topResumedActivity=/.test(line)).map(activityIdentity);
+  let tops = lines.filter(line => /^\s*topResumedActivity=/.test(line)).map(activityIdentity);
+  if (!tops.length) {
+    // Before multi-resume, ActivityManager records one focused Activity and
+    // each stack's resumed Activity. Both identities must agree.
+    tops = lines.filter(line => /^\s*mFocusedActivity:/.test(line)).map(activityIdentity);
+    const resumed = lines.filter(line => /^\s*mResumedActivity:/.test(line)).map(activityIdentity);
+    if (tops.length !== 1 || !tops[0] || !resumed.some(value => value && value.token === tops[0].token
+        && value.component === tops[0].component && value.userId === tops[0].userId)) {
+      throw new CommandError('permission_request_unsupported', 'The focused and resumed Android Activity identities did not agree.');
+    }
+  }
   if (tops.length !== 1 || !tops[0]) throw new CommandError('permission_request_unsupported', 'One top-resumed Android Activity could not be identified.');
   const records = lines.flatMap((line, i) => /^\s*\* Hist\s+#\d+: ActivityRecord\{/.test(line) ? [{ ...activityIdentity(line), lines: block(lines, i) }] : []);
   const requests = records.filter(record => record.lines.some(line => line.trim().startsWith('Intent {') && line.includes(`act=${REQUEST_PERMISSIONS} `)));

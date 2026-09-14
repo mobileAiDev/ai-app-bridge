@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const ROOT = path.resolve(__dirname, '../../../..');
 const { createScriptSupervisor } = require('../../../../desktop/ai-app-bridge-cli/bin/script/script-supervisor');
 const { hashFile } = require('../oracles');
 const pkg = 'io.github.mobileaidev.notallyx.sample';
@@ -95,9 +96,9 @@ test('all seven label phases execute through real Node Script children against a
     state.scene = 'overview'; // Explicit simulated controller launch; business state remains intact.
     const directory = path.join(out, phase); fs.mkdirSync(directory);
     const supervisor = createScriptSupervisor();
-    let current = await supervisor.handle({ operation: 'start', actions, script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'labels-ui-state-machine',
-      sourcePath: path.resolve(__dirname, '../regression-script.js'), target: { serial: 'simulation', packageName: pkg },
-      inputs: { out: directory, runId: 'offline-seven-label-phases', phase, ...names }, policy: { timeoutMs: 12000, onFailure: 'fail', restartPolicy: 'none' } } });
+    let current = await supervisor.handle({ operation: 'start', actions, mutationLease: require(path.join(ROOT, 'desktop/ai-app-bridge-cli/bin/shared-kernel/device-mutation-lease')).createDeviceMutationLease({ directory: path.join(out, 'ownership') }), script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'labels-ui-state-machine',
+      sourcePath: path.resolve(__dirname, '../regression-script.js'), target: { platform: 'android', serial: 'simulation', packageName: pkg },
+      inputs: { out: directory, runId: 'offline-seven-label-phases', phase, ...names }, policy: { timeoutMs: 12000, restartPolicy: 'none' } } });
     const deadline = Date.now() + 15000;
     while (!['completed', 'failed', 'cancelled'].includes(current.status) && Date.now() < deadline) current = await supervisor.handle({ operation: 'wait', operationId: current.operationId, waitMs: 100, afterSequence: current.eventSequence });
     assert.equal(current.status, 'completed', JSON.stringify({ phase, status: current.status, error: current.error }));
@@ -112,9 +113,9 @@ test('all seven label phases execute through real Node Script children against a
     Object.assign(state, { scene: 'overview', labels: ['Project', 'Prefix-a', 'Prefix-ab'], notes: [['Project', 'Prefix-a'], ['Prefix-ab']], keyboard: false });
     noopInput = true; const previousSaves = saves, previousInputs = attemptedInputs.length, directory = path.join(out, `${phase}-noop`); fs.mkdirSync(directory);
     const supervisor = createScriptSupervisor();
-    let current = await supervisor.handle({ operation: 'start', actions, script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'input-noop-negative',
-      sourcePath: path.resolve(__dirname, '../regression-script.js'), target: { serial: 'simulation', packageName: pkg },
-      inputs: { out: directory, runId: 'offline-input-noop', phase, ...names }, policy: { timeoutMs: 2500, onFailure: 'fail', restartPolicy: 'none' } } });
+    let current = await supervisor.handle({ operation: 'start', actions, mutationLease: require(path.join(ROOT, 'desktop/ai-app-bridge-cli/bin/shared-kernel/device-mutation-lease')).createDeviceMutationLease({ directory: path.join(out, 'ownership') }), script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'input-noop-negative',
+      sourcePath: path.resolve(__dirname, '../regression-script.js'), target: { platform: 'android', serial: 'simulation', packageName: pkg },
+      inputs: { out: directory, runId: 'offline-input-noop', phase, ...names }, policy: { timeoutMs: 2500, restartPolicy: 'none' } } });
     const deadline = Date.now() + 5000;
     while (!['completed', 'failed', 'cancelled'].includes(current.status) && Date.now() < deadline) current = await supervisor.handle({ operation: 'wait', operationId: current.operationId, waitMs: 100, afterSequence: current.eventSequence });
     assert.equal(current.status, 'failed', `${phase} must not pass when input did not change`); assert.equal(saves, previousSaves, 'Save must never dispatch with unverified input text');
@@ -127,8 +128,8 @@ test('all seven label phases execute through real Node Script children against a
       dispatched++; throw new Error('must not dispatch against background'); };
     const directory = fs.mkdtempSync(path.join(out, 'blocked-top-')), supervisor = createScriptSupervisor();
     let current = await supervisor.handle({ operation: 'start', actions: blockedActions, script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'blocked-foreground',
-      sourcePath: path.resolve(__dirname, '../regression-script.js'), target: { serial: 'simulation', packageName: pkg }, inputs: { out: directory, runId: 'blocked-top', phase: 'labels-duplicate', ...names },
-      policy: { timeoutMs: 700, onFailure: 'fail', restartPolicy: 'none' } } });
+      sourcePath: path.resolve(__dirname, '../regression-script.js'), target: { platform: 'android', serial: 'simulation', packageName: pkg }, inputs: { out: directory, runId: 'blocked-top', phase: 'labels-duplicate', ...names },
+      policy: { timeoutMs: 700, restartPolicy: 'none' } } });
     const deadline = Date.now() + 2000;
     while (!['completed', 'failed', 'cancelled'].includes(current.status) && Date.now() < deadline) current = await supervisor.handle({ operation: 'wait', operationId: current.operationId, waitMs: 100, afterSequence: current.eventSequence });
     assert.equal(current.status, 'failed'); assert.equal(dispatched, 0);

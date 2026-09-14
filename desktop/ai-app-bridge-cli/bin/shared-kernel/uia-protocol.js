@@ -90,7 +90,7 @@ function actionRequest(binding, { timeoutMs, actionId = randomUUID(), clickPolic
 function validDescriptor(value, root) {
   return record(value) && validRoot(root) && value.schemaVersion === runtimeSchema
     && isUuid(value.bootId) && isUuid(value.runtimeEpoch) && isHash(value.dexSha256)
-    && Number.isSafeInteger(value.pid) && value.pid > 0 && Number.isSafeInteger(value.apiLevel) && value.apiLevel >= 33
+    && Number.isSafeInteger(value.pid) && value.pid > 0 && Number.isSafeInteger(value.apiLevel) && value.apiLevel >= 25
     && value.socketName === `aab-uia-${value.runtimeEpoch}` && isHash(value.token)
     && value.sessionPath === `${root}/sessions/${value.runtimeEpoch}` && typeof value.running === 'boolean';
 }

@@ -19,6 +19,18 @@ test('cancel-install is an explicit mutation with an original actionId and its o
   assert.equal(isAndroidMutation('device-ownership', args), false, 'Reconciliation must acquire its own lock around the retained original');
 });
 
+test('cancel-install with no pending action cannot report that an unknown installation was cancelled', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'install-cancel-idle-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const lease = createDeviceMutationLease({ directory });
+  const result = await deviceOwnership({ operation: 'cancel-install', serial: 'phone', actionId: 'unknown' }, {
+    lease, installPortFactory: () => assert.fail('No pending installation may be dispatched'),
+  });
+  assert.equal(result.ok, false); assert.equal(result.error, 'install_action_not_pending');
+  assert.equal(result.actionId, 'unknown'); assert.equal(result.dispatched, false); assert.equal(result.recovered, false);
+  assert.equal((await deviceOwnership({ operation: 'reconcile', serial: 'phone' }, { lease })).ok, true);
+});
+
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'install-cancel-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

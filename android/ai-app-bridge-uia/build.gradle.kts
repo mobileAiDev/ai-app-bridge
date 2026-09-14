@@ -33,7 +33,7 @@ tasks.register<JavaExec>("buildRuntimeDex") {
     outputs.file(dexJar)
     doFirst {
         dexJar.get().asFile.parentFile.mkdirs()
-        args("--min-api", "33", "--lib", androidJar.get().absolutePath,
+        args("--min-api", "25", "--lib", androidJar.get().absolutePath,
             "--output", dexJar.get().asFile.absolutePath, tasks.jar.get().archiveFile.get().asFile.absolutePath)
     }
 }
@@ -51,7 +51,7 @@ tasks.register("buildRuntimeBundle") {
         bundleManifest.get().asFile.writeText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(mapOf(
             "schemaVersion" to "aab.uia.bundle.v1", "mainClass" to "io.github.mobileaidev.aiappbridge.uia.UiaRuntime",
             "artifact" to dexJar.get().asFile.name, "sha256" to sha(dexJar.get().asFile),
-            "minApi" to 33, "compileApi" to 35, "buildTools" to "36.0.0",
+            "minApi" to 25, "compileApi" to 35, "buildTools" to "36.0.0",
             "androidJarSha256" to sha(androidJar.get()), "d8JarSha256" to sha(d8Jar.get()), "sources" to sourceHashes
         ))) + "\n")
     }

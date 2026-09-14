@@ -887,9 +887,9 @@ test('iOS default screenshots use the shared bounded artifact lifecycle', async 
             result: {
               devices: [{
                 identifier: 'ios-artifact-device',
-                deviceProperties: { name: 'iPhone', developerModeStatus: 'enabled' },
+                deviceProperties: { name: 'iPhone', developerModeStatus: 'enabled', ddiServicesAvailable: true },
                 hardwareProperties: { platform: 'iOS', udid: 'ios-artifact-udid' },
-                connectionProperties: { pairingState: 'paired' },
+                connectionProperties: { pairingState: 'paired', tunnelState: 'connected' },
               }],
             },
           }));
@@ -920,8 +920,9 @@ test('iOS default screenshots use the shared bounded artifact lifecycle', async 
   }
 });
 
-test('iOS doctor fails fast when the selected device cannot expose a debug runtime tunnel', async () => {
+test('iOS doctor probes selected device details before refusing an unavailable debug runtime tunnel', async () => {
   let unexpectedDeviceCalls = 0;
+  let detailCalls = 0;
   let httpCalls = 0;
   const provider = new IOSBridgeProvider({
     execFile(command, args, options, callback) {
@@ -955,6 +956,12 @@ test('iOS doctor fails fast when the selected device cannot expose a debug runti
         callback(null, '', '');
         return;
       }
+      if (args.includes('details')) {
+        assert.equal(args[args.indexOf('--device') + 1], 'device-unavailable');
+        detailCalls += 1;
+        callback(Object.assign(new Error('Device details unavailable'), { code: 1 }), '', '');
+        return;
+      }
       unexpectedDeviceCalls += 1;
       callback(new Error('unexpected devicectl call'), '', '');
     },
@@ -973,6 +980,8 @@ test('iOS doctor fails fast when the selected device cannot expose a debug runti
   assert.equal(result.ready, false);
   assert.equal(result.checks.find((check) => check.name === 'runtime').error, 'ios_tunnel_unavailable');
   assert.equal(unexpectedDeviceCalls, 0);
+  assert.equal(detailCalls, 1);
+  assert.equal(result.selectedDevice.connectionProbe.ok, false);
   assert.equal(httpCalls, 0);
 });
 

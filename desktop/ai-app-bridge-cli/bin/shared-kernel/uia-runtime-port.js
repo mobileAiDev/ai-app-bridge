@@ -37,7 +37,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
       manifest = JSON.parse(fs.readFileSync(path.join(bundleDirectory, 'manifest.json'), 'utf8'));
       bytes = fs.readFileSync(path.join(bundleDirectory, 'ai-app-bridge-uia.jar'));
     } catch (error) { throw failure('uia_runtime_bundle_unavailable', 'The installed CLI has no complete UIA runtime bundle.', { cause: error.code }); }
-    if (manifest?.schemaVersion !== 'aab.uia.bundle.v1' || manifest.mainClass !== mainClass || manifest.minApi !== 33
+    if (manifest?.schemaVersion !== 'aab.uia.bundle.v1' || manifest.mainClass !== mainClass || manifest.minApi !== 25
       || manifest.artifact !== 'ai-app-bridge-uia.jar' || bytes.length > 2 * 1024 * 1024 || protocol.digest(bytes) !== manifest.sha256) {
       throw failure('uia_runtime_bundle_invalid', 'The UIA runtime artifact does not match its bundle manifest.');
     }
@@ -133,7 +133,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
 
   async function installAsset(asset) {
     const level = await shell('getprop ro.build.version.sdk');
-    if (!/^[0-9]+$/.test(level) || Number(level) < 33) throw failure('uia_android_api_33_required', 'UIA node execution requires Android API 33 or newer.', { apiLevel: level });
+    if (!/^[0-9]+$/.test(level) || Number(level) < 25) throw failure('uia_android_api_25_required', 'UIA node execution requires Android API 25 or newer.', { apiLevel: level });
     const destination = `${root}/runtime-${asset.manifest.sha256}.jar`;
     await shell(`umask 077\nmkdir -p ${quote(root)} && chmod 700 ${quote(root)}`);
     const existingHash = await shell(`if [ -f ${quote(destination)} ]; then ${sha256FileScript(destination)}; else printf '%s' null; fi`);

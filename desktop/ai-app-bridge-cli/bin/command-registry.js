@@ -10,7 +10,7 @@ const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provi
 const commandDefinitions = [
   { command: 'runtime', domain: 'execution', summary: 'Inspect, start or orderly stop the shared local execution runtime. CLI exit and MCP disconnect leave operations running; stop cancels and drains them.', targetKind: 'host-runtime', options: ['operation'] },
   { command: 'device-ownership', domain: 'execution', summary: 'Read ownership, reconcile original completion, explicitly cancel a retained install by actionId, or read a retained UIA receipt by serial/runtimeEpoch/actionId. Installation cancellation abandons its original PM session; it does not roll back an installed APK.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
-  { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start or orderly stop the Android API 33+ UIA node runtime. Start checks the phone process lock; unacknowledged original receipts are retained.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
+  { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start or orderly stop the Android API 25+ UIA node runtime. Start checks the phone process lock; unacknowledged original receipts are retained.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
   { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator XML for the current foreground window.', options: ['serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
@@ -70,7 +70,7 @@ const commandDefinitions = [
   { command: 'ios-devices', domain: 'ios', summary: 'List iOS devices known to xcrun devicectl.', targetKind: 'ios-device', options: ['deviceId'] },
   { command: 'ios-install-app', domain: 'ios', summary: 'Install an iOS .app bundle through devicectl.', targetKind: 'ios-app', options: ['deviceId', 'appPath'] },
   { command: 'ios-launch-app', domain: 'ios', summary: 'Launch an iOS app by bundle identifier through devicectl.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'terminateExisting'] },
-  { command: 'ios-execution', domain: 'ios', summary: 'Read SDK or WDA execution/physical ownership, cancel an original action, read its durable completion, or reconcile unknown ownership without replay.', targetKind: 'ios-app', options: ['operation', 'deviceId', 'bundleId', 'kind', 'actionId', 'runtimeEpoch', 'runtimeUrl', 'iosHost', 'iosPort', 'wdaRunnerBundleId', 'wdaUrl', 'devicectl', 'timeoutMs'] },
+  { command: 'ios-execution', domain: 'ios', summary: 'Read SDK or WDA execution/physical ownership, cancel an original action, read its durable completion, or reconcile unknown ownership without replay.', targetKind: 'ios-app', options: ['operation', 'deviceId', 'bundleId', 'kind', 'actionId', 'runtimeEpoch', 'runtimeUrl', 'iosHost', 'iosPort', 'wdaRunnerBundleId', 'wdaUrl', 'devicectl', 'timeoutMs', 'setupResultPath'] },
   { command: 'ios-status', domain: 'ios', summary: 'Read AiAppBridgeIOS runtime status.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
   { command: 'ios-tree', domain: 'ios', summary: 'Read UIKit tree from the AiAppBridgeIOS runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
   { command: 'ios-logs', domain: 'ios', summary: 'Read in-app iOS log records.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'sinceId', 'sinceMs', 'limit'] },
@@ -202,7 +202,7 @@ define('orientation', require('./shared-kernel/ios-native-target').orientationSc
 define('selector', { type: 'string', minLength: 1 });
 define('spec', { type: 'object', additionalProperties: true });
 define('targetRef', require('./shared-kernel/uia-protocol').targetRefSchema);
-define('adb serial packageName artifactDir deviceId bundleId iosHost runtimeUrl wdaUrl wdaSessionId devicectl xcodebuild host path token appPath apkPath activity component action data initialRoute outFile permission op mode targetText requireText absentText requireActivity resourceId textFilter resourceIdFilter classFilter urlFilter method pageUrlFilter socketName targetId sessionId accessibilityId elementId wdaProjectPath wdaBundleId teamId displayUniqueId tag level grep since factCursor cursor runtimeEpoch afterActionId mobileFactId targetKey requestId deviceLogScope logcatFormat format agentModule pythonPath goal intent operationId recordingDir namespace outputDir archiveDir manifestSha256 name reason provider adapter', { type: 'string', minLength: 1 });
+define('adb serial packageName artifactDir deviceId bundleId iosHost runtimeUrl wdaUrl wdaSessionId devicectl xcodebuild host path token setupResultPath appPath apkPath activity component action data initialRoute outFile permission op mode targetText requireText absentText requireActivity resourceId textFilter resourceIdFilter classFilter urlFilter method pageUrlFilter socketName targetId sessionId accessibilityId elementId wdaProjectPath wdaBundleId teamId displayUniqueId tag level grep since factCursor cursor runtimeEpoch afterActionId mobileFactId targetKey requestId deviceLogScope logcatFormat format agentModule pythonPath goal intent operationId recordingDir namespace outputDir archiveDir manifestSha256 name reason provider adapter', { type: 'string', minLength: 1 });
 define('text value script payload', { type: 'string' });
 define('aaptPath apksignerPath', { type: 'string', minLength: 1 });
 define('full compact visibleOnly clear follow appPid force hideKeyboard noAutoHideKeyboard allowDowngrade clearTask exact skipFlutterLaunch includeResponseBody keepForward noBodies startWda terminateExisting clearFirst refresh includeActions history includeRecordedPayloads grepCaseSensitive includeCatalog', { type: 'boolean' });
@@ -355,14 +355,15 @@ function commandSchema(command) {
       actionId: { type: 'string', minLength: 1, maxLength: 256 }, runtimeEpoch: optionTypes.runtimeEpoch,
       wdaRunnerBundleId: optionTypes.wdaRunnerBundleId, wdaUrl: optionTypes.wdaUrl,
       runtimeUrl: optionTypes.runtimeUrl, iosHost: optionTypes.iosHost, iosPort: optionTypes.iosPort,
-      devicectl: optionTypes.devicectl, timeoutMs: optionTypes.timeoutMs },
+      devicectl: optionTypes.devicectl, timeoutMs: optionTypes.timeoutMs, setupResultPath: optionTypes.setupResultPath },
     required: ['operation', 'deviceId'], oneOf: [
       { properties: { kind: { enum: ['h5', 'flutter'] }, wdaRunnerBundleId: false, wdaUrl: false },
         anyOf: [
-          { properties: { operation: { enum: ['status', 'reconcile'] }, kind: false, actionId: false, runtimeEpoch: false } },
-          { properties: { operation: { enum: ['result', 'cancel'] } }, required: ['bundleId', 'kind', 'actionId', 'runtimeEpoch'] },
+          { properties: { operation: { const: 'status' }, kind: false, actionId: false, runtimeEpoch: false, setupResultPath: false } },
+          { properties: { operation: { const: 'reconcile' }, kind: false, actionId: false, runtimeEpoch: false } },
+          { properties: { operation: { enum: ['result', 'cancel'] }, setupResultPath: false }, required: ['bundleId', 'kind', 'actionId', 'runtimeEpoch'] },
         ] },
-      { properties: { kind: { const: 'wda' }, bundleId: false, runtimeUrl: false, iosHost: false, iosPort: false },
+      { properties: { kind: { const: 'wda' }, bundleId: false, runtimeUrl: false, iosHost: false, iosPort: false, setupResultPath: false },
         required: ['kind', 'wdaRunnerBundleId'], anyOf: [
           { properties: { operation: { enum: ['status', 'reconcile'] }, actionId: false, runtimeEpoch: false } },
           { properties: { operation: { enum: ['result', 'cancel'] } }, required: ['actionId', 'runtimeEpoch'] },

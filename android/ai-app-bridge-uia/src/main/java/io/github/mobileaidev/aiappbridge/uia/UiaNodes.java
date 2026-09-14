@@ -70,7 +70,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
     private Snapshot read() throws Exception {
         AccessibilityWindowInfo focused = null;
         for (AccessibilityWindowInfo window : connection.windows()) {
-            if (window.getDisplayId() != 0 || !window.isFocused()) continue;
+            if (UiaConnection.displayId(window) != 0 || !window.isFocused()) continue;
             if (focused != null) throw new Wire.Failure("uia_focused_window_not_unique");
             focused = window;
         }
@@ -78,7 +78,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         AccessibilityNodeInfo root = focused.getRoot();
         if (root == null) throw new Wire.Failure("uia_focused_root_unavailable");
         Snapshot snapshot = new Snapshot();
-        snapshot.window = new JSONObject().put("id", focused.getId()).put("displayId", focused.getDisplayId())
+        snapshot.window = new JSONObject().put("id", focused.getId()).put("displayId", UiaConnection.displayId(focused))
             .put("type", focused.getType()).put("focused", true).put("title", nullable(focused.getTitle()));
         snapshot.root = walk(root, null, snapshot, 0);
         return snapshot;

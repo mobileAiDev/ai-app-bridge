@@ -20,10 +20,10 @@ async function fixture(t, suppliedTree, { screenshotActivity, afterTree } = {}) 
   const png = path.join(out, 'screen.png'); fs.writeFileSync(png, PNG);
   const tree = suppliedTree || { root: { ...visible, children: [makeNode('EnterTitle', 'Unique'), makeNode('EnterBody', '正确正文')] } };
   tree.activity ||= 'example.EditorActivity';
-  const target = { serial: 'simulation', packageName: pkg };
+  const target = { platform: 'android', serial: 'simulation', packageName: pkg };
   const phaseStartedAtMs = Date.now();
   let treeReads = 0;
-  const host = createScriptHostPort({ target: { serial: 'simulation', packageName: pkg }, executionId: 'script-simulation', actions: async (command) => {
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'simulation', packageName: pkg }, executionId: 'script-simulation', actions: async (command) => {
     if (command === 'tree') return ++treeReads > 1 && afterTree ? afterTree : tree;
     if (command === 'screenshot') return { ok: true, path: png, foregroundMatchesPackage: true, artifact: { sha256: hashFile(png) }, width: 1, height: 1, foreground: { packageName: pkg, activity: screenshotActivity || tree.activity } };
     throw new Error('No device mutation allowed in fixture');
@@ -135,17 +135,17 @@ test('candidate create phase executes in a real Node Script child with current H
       ? [{ ...makeNode('EnterTitle', title), bounds: bounds(0) }, { ...makeNode('EnterBody', body), bounds: bounds(200) }]
       : [{ ...makeNode('TakeNote', ''), bounds: bounds(400) }, { ...visible, resourceName: `${pkg}:id/MainListView`, className: 'androidx.recyclerview.widget.RecyclerView', bounds: { left: 0, top: 0, right: 400, bottom: 800 } }, { ...visible, className: 'com.google.android.material.card.MaterialCardView', visible: revealed, effectiveVisible: revealed, bounds: { left: 0, top: 0, right: 400, bottom: 300 }, children: [makeNode('Title', title), makeNode('Note', body)] }] } };
     if (command === 'swipe') { assert(args.startY > args.endY && args.endY >= 0 && args.startY <= 800); revealed = true; return { ok: true }; }
-    if (command === 'tap') { assert.equal(args.tapY, 450); assert.equal(args.appLocalAction, true); screen = 'editor'; return { ok: true }; }
-    if (command === 'input-text') { assert.equal(args.appLocalAction, true); assert(args.requestId); if (args.tapY === 50) title = args.text; else if (args.tapY === 250) body = args.text; else throw new Error('wrong editor coordinate'); return { ok: true }; }
+    if (command === 'tap') { assert.equal(args.tapY, 450); assert.equal(args.scope, 'app'); screen = 'editor'; return { ok: true }; }
+    if (command === 'input-text') { assert.equal(args.packageName, pkg); assert(args.requestId); if (args.tapY === 50) title = args.text; else if (args.tapY === 250) body = args.text; else throw new Error('wrong editor coordinate'); return { ok: true }; }
     if (command === 'keyevent') { if (args.keyCode === 4) screen = 'overview'; return { ok: true }; }
     if (command === 'screenshot') { fs.writeFileSync(args.outFile, PNG); return { ok: true, path: args.outFile, artifact: { sha256: hashFile(args.outFile) }, foregroundMatchesPackage: true }; }
     throw new Error(`unexpected command:${command}`);
   };
   const supervisor = createScriptSupervisor();
-  let current = await supervisor.handle({ operation: 'start', actions, script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'candidate-offline-real-child',
-    sourcePath: path.join(validation, 'regression-script.js'), target: { serial: 'simulation', packageName: pkg },
+  let current = await supervisor.handle({ operation: 'start', actions, mutationLease: require(path.join(ROOT, 'desktop/ai-app-bridge-cli/bin/shared-kernel/device-mutation-lease')).createDeviceMutationLease({ directory: path.join(out, 'ownership') }), script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'candidate-offline-real-child',
+    sourcePath: path.join(validation, 'regression-script.js'), target: { platform: 'android', serial: 'simulation', packageName: pkg },
     inputs: { out, runId: 'real-child-simulated-provider', phase: 'create', title: 'Unique', originalBody: '第一行\nsecond line', editedBody: 'edited' },
-    policy: { timeoutMs: 5000, onFailure: 'fail', restartPolicy: 'none' } } });
+    policy: { timeoutMs: 5000, restartPolicy: 'none' } } });
   assert.equal(current.ok, true, current.error);
   const deadline = Date.now() + 7000;
   while (!['completed', 'failed', 'cancelled'].includes(current.status) && Date.now() < deadline) {
@@ -233,10 +233,10 @@ test('all three list phases execute in real Node Script children with simulated 
   };
   for (const [phase, checkpoints] of [['list-create', 5], ['list-hierarchy', 8], ['list-restart', 3]]) {
     const phaseOut = path.join(out, phase); const supervisor = createScriptSupervisor();
-    let current = await supervisor.handle({ operation: 'start', actions, script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: phase,
-      sourcePath: path.join(validation, 'regression-script.js'), target: { serial: 'simulation', packageName: pkg },
+    let current = await supervisor.handle({ operation: 'start', actions, mutationLease: require(path.join(ROOT, 'desktop/ai-app-bridge-cli/bin/shared-kernel/device-mutation-lease')).createDeviceMutationLease({ directory: path.join(out, 'ownership') }), script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: phase,
+      sourcePath: path.join(validation, 'regression-script.js'), target: { platform: 'android', serial: 'simulation', packageName: pkg },
       inputs: { out: phaseOut, runId: 'list-real-child-simulated-provider', phase, listTitle: 'Unique list' },
-      policy: { timeoutMs: 12000, onFailure: 'fail', restartPolicy: 'none' } } });
+      policy: { timeoutMs: 12000, restartPolicy: 'none' } } });
     const deadline = Date.now() + 14000;
     while (!['completed', 'failed', 'cancelled'].includes(current.status) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -369,9 +369,9 @@ test('duplicate and conflicting rename execute in real Node children using exact
   for (const phase of ['labels-duplicate', 'labels-conflict']) {
     screen = 'overview';
     const supervisor = createScriptSupervisor(), directory = path.join(out, phase); fs.mkdirSync(directory);
-    let current = await supervisor.handle({ operation: 'start', actions, script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'label-negative-simulated-provider',
-      sourcePath: path.join(validation, 'regression-script.js'), target: { serial: 'simulation', packageName: pkg },
-      inputs: { out: directory, runId: 'label-negative-offline', phase, label: names[0], labelA: names[1], labelAb: names[2] }, policy: { timeoutMs: 10000, onFailure: 'fail', restartPolicy: 'none' } } });
+    let current = await supervisor.handle({ operation: 'start', actions, mutationLease: require(path.join(ROOT, 'desktop/ai-app-bridge-cli/bin/shared-kernel/device-mutation-lease')).createDeviceMutationLease({ directory: path.join(out, 'ownership') }), script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', name: 'label-negative-simulated-provider',
+      sourcePath: path.join(validation, 'regression-script.js'), target: { platform: 'android', serial: 'simulation', packageName: pkg },
+      inputs: { out: directory, runId: 'label-negative-offline', phase, label: names[0], labelA: names[1], labelAb: names[2] }, policy: { timeoutMs: 10000, restartPolicy: 'none' } } });
     const deadline = Date.now() + 12000;
     while (!['completed', 'failed', 'cancelled'].includes(current.status) && Date.now() < deadline) current = await supervisor.handle({ operation: 'wait', operationId: current.operationId, waitMs: 100, afterSequence: current.eventSequence });
     assert.equal(current.status, 'completed', JSON.stringify({ status: current.status, error: current.error }));

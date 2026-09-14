@@ -3,6 +3,7 @@ package io.github.mobileaidev.aiappbridge.uia;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.UiAutomation;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -34,6 +35,9 @@ public final class UiaConnection implements AutoCloseable {
     private final int callbackTransaction;
     private final Object connection;
     private final Method performAction;
+    private final Object interactionClient;
+    private final Method clearCache;
+    private final int automationConnectionId;
 
     /** The process entry point must prepare its main Looper before opening this connection. */
     public UiaConnection() throws Exception {
@@ -52,8 +56,13 @@ public final class UiaConnection implements AutoCloseable {
         disconnect = UiAutomation.class.getMethod("disconnect");
         Method connect = UiAutomation.class.getMethod("connect", int.class);
         Method connectionId = UiAutomation.class.getMethod("getConnectionId");
-        Method getConnection = Class.forName("android.view.accessibility.AccessibilityInteractionClient")
-            .getMethod("getConnection", int.class);
+        Class<?> clientType = Class.forName("android.view.accessibility.AccessibilityInteractionClient");
+        interactionClient = clientType.getMethod("getInstance").invoke(null);
+        Method getConnection = clientType.getMethod("getConnection", int.class);
+        // Android 13 introduced per-connection caches. Earlier versions have one
+        // process cache; this process owns exactly one UiAutomation connection.
+        clearCache = Build.VERSION.SDK_INT >= 33
+            ? clientType.getMethod("clearCache", int.class) : clientType.getMethod("clearCache");
         performAction = Class.forName("android.accessibilityservice.IAccessibilityServiceConnection")
             .getMethod("performAccessibilityAction", int.class, long.class, int.class, Bundle.class,
                 int.class, callbackType, long.class);
@@ -65,7 +74,8 @@ public final class UiaConnection implements AutoCloseable {
             created = (UiAutomation) UiAutomation.class.getConstructor(Looper.class, connectionType)
                 .newInstance(callbackThread.getLooper(), connectionImplementation.getConstructor().newInstance());
             connect.invoke(created, UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES);
-            connection = getConnection.invoke(null, connectionId.invoke(created));
+            automationConnectionId = (Integer) connectionId.invoke(created);
+            connection = getConnection.invoke(interactionClient, automationConnectionId);
             if (connection == null) throw new IllegalStateException("uia_connection_unavailable");
             AccessibilityServiceInfo info = created.getServiceInfo();
             info.flags |= AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
@@ -88,9 +98,15 @@ public final class UiaConnection implements AutoCloseable {
     }
 
     /** Clear the local window/node cache before querying the platform's current window inventory. */
-    public List<AccessibilityWindowInfo> windows() {
-        if (!automation.clearCache()) throw new IllegalStateException("uia_cache_clear_failed");
+    public List<AccessibilityWindowInfo> windows() throws Exception {
+        if (Build.VERSION.SDK_INT >= 33) clearCache.invoke(interactionClient, automationConnectionId);
+        else clearCache.invoke(interactionClient);
         return automation.getWindows();
+    }
+
+    static int displayId(AccessibilityWindowInfo window) {
+        // Before API 30, getWindows() exposes only the default display.
+        return Build.VERSION.SDK_INT >= 30 ? window.getDisplayId() : android.view.Display.DEFAULT_DISPLAY;
     }
 
     public long sourceId(AccessibilityNodeInfo node) throws Exception {

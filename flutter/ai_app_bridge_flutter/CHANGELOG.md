@@ -1,3 +1,8 @@
+## 0.3.5
+
+* Align the published Android and iOS SDK dependencies with Bridge 0.3.5.
+* Host UIA compatibility and iOS connection/ownership fixes ship in the matching CLI release.
+
 # Changelog
 
 ## 0.3.4

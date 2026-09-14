@@ -4,6 +4,7 @@ const { randomUUID } = require('node:crypto');
 const { CommandError } = require('./command-errors');
 const fs = require('node:fs');
 const { originalDeviceOutcome, deviceCommandProof } = require('./ios-device-outcome');
+const { initializationProof, recoverLegacySetup } = require('./ios-wda-startup');
 const managed = require('./shared-kernel/managed-sdk-execution');
 const { runDeviceEffect } = require('./shared-kernel/device-mutation-lease');
 const { checkExecution, runExecution } = require('./shared-kernel/execution-scope');
@@ -75,12 +76,23 @@ async function executeIOSAction({ port, kind, payload, status, target, timeoutMs
   }, result => result.executionReceipt);
 }
 
-async function reconcileIOS({ lease, device, args, createPort }) {
+async function reconcileIOS({ lease, device, args, createPort, readWdaTestSummary }) {
+  const original = args.setupResultPath ? lease.status(iosDeviceKey(device)).ownership : null;
   const result = await lease.reconcile(iosDeviceKey(device), async pending => {
     if (pending.target?.deviceId !== device.udid
         || args.bundleId && pending.target?.bundleId && pending.target.bundleId !== args.bundleId) {
       return { settled: false, error: 'ios_original_completion_identity_required' };
     }
+    if (pending.kind === 'ios-wda-start' || pending.kind === 'ios-command' && pending.command === 'ios-setup') {
+      try {
+        const proof = pending.kind === 'ios-wda-start'
+          ? initializationProof(await readWdaTestSummary(pending.invocation.resultBundlePath), pending.invocation, device.udid)
+          : original?.pending?.id === pending.id && await recoverLegacySetup({ pending, owner: original.owner,
+            resultPath: args.setupResultPath, device, readSummary: readWdaTestSummary });
+        return proof || { settled: false, error: 'ios_original_wda_startup_outcome_unresolved' };
+      } catch (error) { return { settled: false, error: 'ios_wda_startup_completion_unavailable', cause: error.code || 'invalid_result' }; }
+    }
+    if (args.setupResultPath) return { settled: false, error: 'ios_original_completion_identity_required' };
     if (pending.kind === 'ios-command') {
       const invocation = pending.invocation;
       const index = Array.isArray(invocation?.arguments) ? invocation.arguments.indexOf('--json-output') : -1;

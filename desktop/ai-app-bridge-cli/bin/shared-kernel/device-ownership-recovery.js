@@ -100,6 +100,11 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
       if (cleanup.errors.length) (recovered.cleanupErrors ||= []).push(...cleanup.errors);
     }
   }
+  if (args.operation === 'cancel-install' && recovered.ok && recovered.recovered === false) {
+    return { ...recovered, ok: false, error: 'install_action_not_pending', actionId: args.actionId,
+      message: 'No pending installation matches this action. Nothing was cancelled; read the original installation result to determine its outcome.',
+      dispatched: false, ambiguous: false };
+  }
   return recovered;
 }
 

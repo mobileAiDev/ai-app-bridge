@@ -298,6 +298,13 @@ as `status` and `keyboard-state` whose `evidenceRefs` can be empty. References
 are preserved unchanged; these metadata fields do not create a capture ref or
 make incomplete or missing evidence valid for a device assertion.
 
+Python uses `ctx.assert_({...})` with one dictionary argument; `assert` is a
+Python keyword. JavaScript uses `ctx.assert({...})`. Both return a verdict that
+the script must check. A `status` response alone supplies no UI tree evidence,
+and `capture_page_limit` means that capture is incomplete. Drain the documented
+capture cursor before making a completeness assertion; do not relabel a partial
+capture as passed.
+
 `ctx.assert` returns `{verdict, name, scope, reason?}`. Verdict is `passed`,
 `failed`, or `inconclusive`; it does not throw or stop the program. Code must
 check the verdict and implement the intended stopping behavior. `throw` alone

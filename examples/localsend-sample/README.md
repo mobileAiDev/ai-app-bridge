@@ -73,18 +73,17 @@ Preparation from the Bridge repository root:
 
 1. Download `source.json.archiveUrl`, verify `archiveSha256`, and extract it into
    an empty `examples/localsend-sample/upstream` with one leading path removed.
-2. Confirm `ai_app_bridge_flutter: 0.3.4` is available on pub.dev; its Android dependency resolves Bridge `0.3.4` from JitPack.
+2. Confirm `ai_app_bridge_flutter: 0.3.5` is available on pub.dev; its Android dependency resolves Bridge `0.3.5` from JitPack.
 3. Run `python3 examples/localsend-sample/integrate.py` once on the fresh source.
 4. From `upstream/app`, use the pinned Flutter SDK to run `flutter pub get` and
    `flutter build apk --debug --target-platform android-arm64`. The upstream
    `.fvmrc` also pins this SDK; `fvm flutter` uses the same version.
 
 The integration changes only the Flutter dependency and initialization,
-navigator observer, debug application ID and Android debug runtime dependency.
-The Flutter plugin's published Android 0.2.8 dependency is explicitly excluded
-in this sample and replaced with the AAR built from this working tree.
-`build/integration.json` records its SHA-256 and each modified upstream file.
-Rebuilding the Android AAR requires refreshing the integration manifest before
+navigator observer and debug application ID. The published Flutter plugin
+resolves its Android SDK from the matching public JitPack coordinate.
+`build/integration.json` records the Bridge version and hashes of the modified
+upstream files. Preserve the resolved pub lockfile and actual APK hash when
 freezing a new test build.
 
 The installed package is `org.localsend.localsend_app.bridge_sample`. Test runs

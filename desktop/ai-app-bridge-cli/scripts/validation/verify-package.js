@@ -59,7 +59,7 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     npmAllowScriptsAdvisory: installLog.includes('not yet covered by allowScripts'), device: 'controlled ADB only; no real device' };
   try {
     const bundle = JSON.parse(fs.readFileSync(path.join(installed, 'runtime/uia/manifest.json')));
-    assert.equal(bundle.schemaVersion, 'aab.uia.bundle.v1'); assert.equal(bundle.minApi, 33);
+    assert.equal(bundle.schemaVersion, 'aab.uia.bundle.v1'); assert.equal(bundle.minApi, 25);
     assert.equal(bundle.sha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(installed, 'runtime/uia/ai-app-bridge-uia.jar'))).digest('hex'));
     assert.equal(bundle.sha256, uia.peer.dexSha256); report.uiaBundle = { sha256: bundle.sha256, minApi: bundle.minApi };
     await client.initialize();

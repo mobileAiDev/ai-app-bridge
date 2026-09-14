@@ -135,6 +135,9 @@ module.exports.main = async ctx => {
   await call('ios-launch-app', { terminateExisting: true });
   const created = await call('ios-wda-session', { operation: 'create' });
   sessionId = created.result.session.sessionId;
+  await waitNative('real App restart restores the reader toolbar in a new process', read =>
+    read.result.session.processId !== previousProcessId && has(read, 'Show Bookmarks'));
+  await nativeTap('Show Bookmarks');
   await waitNative('real App restart preserves both bookmark entries', read =>
     read.result.session.processId !== previousProcessId && has(read, 'freeCodeCamp on Kiwix') && has(read, 'Climate change'));
   await nativeTap('freeCodeCamp on Kiwix');

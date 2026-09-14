@@ -23,6 +23,23 @@ function deviceCommandRejection(reply, args, error) {
 function originalDeviceRejection(reply, args) {
   const command = args.slice(0, 3).join(' ');
   if (!matchesInvocation(reply, args) || reply.info.outcome !== 'failed') return null;
+  // CoreDevice rejects this launch while acquiring its prerequisites, before
+  // contacting the application service. Match the original structured failure,
+  // not stderr text or a general tunnel/timeout error.
+  const usage = reply.error;
+  const requested = usage?.userInfo?.RequestedDeviceStates?.array;
+  const available = usage?.userInfo?.CurrentlyAssertableStates?.array;
+  const prerequisites = ['com.apple.coredevice.remoteServiceDiscoveryTrustedConnectivityAvailable',
+    'com.apple.coredevice.coreDeviceServicesLoaded', 'com.apple.coredevice.powerAssertionTaken'];
+  if (command === 'device process launch' && !reply.result
+      && usage?.domain === 'com.apple.dt.CoreDeviceError' && usage.code === 4016
+      && Array.isArray(available) && available.length === 0
+      && Array.isArray(requested) && requested.length === prerequisites.length
+      && prerequisites.every(state => requested.some(value => value?.string === state))) {
+    return { ok: false, error: 'ios_device_unavailable',
+      message: 'CoreDevice rejected the launch before dispatch because the device connection and services were unavailable. Restore the device connection before launching again.',
+      settled: true, dispatched: false, ambiguous: false, deviceOutcome: reply };
+  }
   const errors = [];
   function visit(value, depth) {
     if (!value || typeof value !== 'object' || depth > 16 || errors.length > 32) return;

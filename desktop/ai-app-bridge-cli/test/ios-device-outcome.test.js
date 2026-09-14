@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
-const { deviceCommandRejection } = require('../bin/ios-device-outcome');
+const { deviceCommandRejection, originalDeviceOutcome } = require('../bin/ios-device-outcome');
 const { IOSBridgeProvider } = require('../bin/ios-provider');
 const { createDeviceMutationLease } = require('../bin/shared-kernel/device-mutation-lease');
 
@@ -21,6 +21,38 @@ function notInstalled(args) {
     } } } } };
 }
 const args = ['device', 'process', 'launch', '--device', 'phone', '--terminate-existing', 'sample.app', '--timeout', '30', '--json-output', '/original.json'];
+function usageAssertionRejected(args) {
+  return { info: { arguments: ['devicectl', ...args], commandType: 'devicectl.device.process.launch', outcome: 'failed' },
+    error: { code: 4016, domain: 'com.apple.dt.CoreDeviceError', userInfo: {
+      CurrentlyAssertableStates: { array: [] },
+      RequestedDeviceStates: { array: [
+        { string: 'com.apple.coredevice.remoteServiceDiscoveryTrustedConnectivityAvailable' },
+        { string: 'com.apple.coredevice.coreDeviceServicesLoaded' },
+        { string: 'com.apple.coredevice.powerAssertionTaken' },
+      ] },
+    } } };
+}
+test('original launch usage assertion rejection settles before dispatch; transport loss remains unknown', () => {
+  const reply = usageAssertionRejected(args);
+  const outcome = deviceCommandRejection(reply, args, { code: 1 });
+  assert.equal(outcome?.error, 'ios_device_unavailable');
+  assert.equal(outcome.settled, true); assert.equal(outcome.dispatched, false); assert.equal(outcome.ambiguous, false);
+  assert.deepEqual(originalDeviceOutcome(reply, args), outcome);
+  for (const edit of [
+    value => { value.error.code = 4017; },
+    value => { value.error.domain = 'unrelated'; },
+    value => { delete value.error.userInfo.CurrentlyAssertableStates; },
+    value => { value.error.userInfo.RequestedDeviceStates.array = []; },
+    value => { value.error.userInfo.CurrentlyAssertableStates.array = [{ string: 'com.apple.coredevice.powerAssertionTaken' }]; },
+    value => { value.result = { process: { processIdentifier: 100 } }; },
+  ]) {
+    const unrelated = structuredClone(reply); edit(unrelated);
+    assert.equal(originalDeviceOutcome(unrelated, args), null);
+  }
+  assert.equal(originalDeviceOutcome(reply, [...args, 'another.app']), null);
+  assert.equal(deviceCommandRejection(reply, args, { code: 'provider_timeout' }), null);
+  assert.equal(deviceCommandRejection(reply, args, { code: 1, killed: true }), null);
+});
 function installLimit(args) {
   return { info: { arguments: ['devicectl', ...args], commandType: 'devicectl.device.install.app', jsonVersion: 4, outcome: 'failed' },
     error: { code: 3002, domain: 'com.apple.dt.CoreDeviceError', userInfo: { NSUnderlyingError: { error: {
@@ -53,7 +85,7 @@ test('public install returns the specific free-profile error and releases only i
     setImmediate(() => {
       if (argv.includes('list')) {
         fs.writeFileSync(report, JSON.stringify({ result: { devices: [{ identifier: 'phone', hardwareProperties: { udid: 'udid' },
-          deviceProperties: { developerModeStatus: 'enabled' }, connectionProperties: {} }] } }));
+          deviceProperties: { developerModeStatus: 'enabled', ddiServicesAvailable: true }, connectionProperties: { tunnelState: 'connected' } }] } }));
         callback(null, '', ''); return;
       }
       fs.writeFileSync(report, JSON.stringify(installLimit(argv.slice(1))));
@@ -103,7 +135,7 @@ test('public provider releases known rejected launches and retains genuinely unk
     setImmediate(() => {
       if (argv.includes('list')) {
         fs.writeFileSync(report,JSON.stringify({result:{devices:[{identifier:'phone',hardwareProperties:{udid:'udid'},
-          deviceProperties:{developerModeStatus:'enabled'},connectionProperties:{}}]}}));
+          deviceProperties:{developerModeStatus:'enabled',ddiServicesAvailable:true},connectionProperties:{tunnelState:'connected'}}]}}));
         callback(null,'',''); return;
       }
       launches++;
@@ -125,7 +157,10 @@ test('public provider releases known rejected launches and retains genuinely unk
   assert.equal(blocked.error,'device_ownership_unresolved'); assert.equal(launches,4);
 });
 
-test('a fresh provider reconciles a retained original devicectl completion without SDK access or replay', async t => {
+for (const [name, response, expectedError] of [
+  ['app not installed', notInstalled, 'ios_app_not_installed'],
+  ['usage assertion unavailable', usageAssertionRejected, 'ios_device_unavailable'],
+]) test(`a fresh provider reconciles original ${name} without SDK access or replay`, async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-ios-command-recovery-'));
   let originalPath, originalArgs, launches = 0;
   t.after(() => { if (originalPath) fs.rmSync(originalPath, { force: true }); fs.rmSync(directory, { recursive: true, force: true }); });
@@ -133,7 +168,7 @@ test('a fresh provider reconciles a retained original devicectl completion witho
     const report = argv[argv.indexOf('--json-output') + 1];
     setImmediate(() => {
       if (argv.includes('list')) {
-        fs.writeFileSync(report, JSON.stringify({ result: { devices: [{ identifier: 'phone', hardwareProperties: { udid: 'udid' }, deviceProperties: {}, connectionProperties: {} }] } }));
+        fs.writeFileSync(report, JSON.stringify({ result: { devices: [{ identifier: 'phone', hardwareProperties: { udid: 'udid' }, deviceProperties: { ddiServicesAvailable: true }, connectionProperties: { tunnelState: 'connected' } }] } }));
         callback(null, '', ''); return;
       }
       launches++; originalPath = report; originalArgs = argv.slice(1);
@@ -147,12 +182,12 @@ test('a fresh provider reconciles a retained original devicectl completion witho
   const fresh = new IOSBridgeProvider({ lease: createDeviceMutationLease({ directory }), execFile: execute });
   const recover = () => fresh.run('ios-execution', { operation: 'reconcile', deviceId: 'phone' });
   assert.equal((await recover()).error, 'device_ownership_unresolved');
-  fs.writeFileSync(originalPath, JSON.stringify(notInstalled([...originalArgs, 'another-invocation'])));
+  fs.writeFileSync(originalPath, JSON.stringify(response([...originalArgs, 'another-invocation'])));
   assert.equal((await recover()).error, 'device_ownership_unresolved');
-  fs.writeFileSync(originalPath, JSON.stringify(notInstalled(originalArgs)));
+  fs.writeFileSync(originalPath, JSON.stringify(response(originalArgs)));
   const recovered = await recover();
   assert.equal(recovered.recovered, true, JSON.stringify(recovered));
-  assert.equal(recovered.executionReceipt.outcome.error, 'ios_app_not_installed');
+  assert.equal(recovered.executionReceipt.outcome.error, expectedError);
   assert.equal(launches, 1, 'Reconciliation must only read the original response');
   assert.equal(fresh.lease.status('ios:udid').phase, 'idle');
 });

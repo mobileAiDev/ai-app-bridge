@@ -67,6 +67,42 @@ test('permission query scopes exact package, Android user and runtime section; p
   ]) assert.throws(() => parsePermissionState(text, args), error => error.code === code);
 });
 
+test('Android 7 absent runtime state requires a declared dangerous permission and a modern target SDK', () => {
+  const dump = `Packages:
+  Package [${packageName}] (abcd):
+    userId=10488
+    versionCode=1 minSdk=23 targetSdk=35
+    requested permissions:
+      ${permission}
+    install permissions:
+      android.permission.INTERNET: granted=true
+    User 10: installed=true
+      runtime permissions:
+`;
+  const definitions = `Permissions:
+  Permission [${permission}] (abcd):
+    sourcePackage=android
+    uid=1000 gids=null type=0 prot=dangerous
+`;
+  assert.deepEqual(parsePermissionState(dump, params, definitions), {
+    packageName, permission, userId: 10, uid: 1010488, granted: false, flags: [],
+  });
+  for (const [text, metadata] of [[dump, undefined], [dump, definitions.replace('dangerous', 'normal')],
+    [dump.replace('targetSdk=35', 'targetSdk=22'), definitions],
+    [dump.replace(`      ${permission}\n`, ''), definitions],
+    [dump.replace('android.permission.INTERNET: granted=true', `${permission}: granted=true`), definitions]]) {
+    assert.throws(() => parsePermissionState(text, params, metadata));
+  }
+});
+
+test('Android 7 permission requester uses the matching focused and resumed Activity identities', () => {
+  const legacy = activities().replace('topResumedActivity=', 'mFocusedActivity:')
+    + '  mResumedActivity: ActivityRecord{abc u10 vendor.dialog/.Request t12}\n';
+  assert.equal(parsePermissionRequest(legacy).request.requesterUid, 1010488);
+  assert.throws(() => parsePermissionRequest(legacy.replace('mResumedActivity: ActivityRecord{abc', 'mResumedActivity: ActivityRecord{other')));
+  assert.throws(() => parsePermissionRequest(legacy + '  mFocusedActivity: ActivityRecord{other u10 other.app/.Main t9}\n'));
+});
+
 test('current user is resolved once before fixture mutation; success requires an independent read for the same user', async () => {
   const calls = []; let changed = false;
   const run = async (_command, values) => {

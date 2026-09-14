@@ -126,3 +126,7 @@ remain pending. Provider switching and explicit cached-WebView selection within
 one Intent have separate real-device evidence. See [H5 editor results](../../docs/IOS_H5_EDITOR_BUSINESS_2026-09-11.md),
 [current hybrid results](../../docs/IOS_HYBRID_BUSINESS_2026-09-11.md)
 and [earlier native results](../../docs/IOS_NATIVE_BUSINESS_2026-09-10.md).
+
+## 0.3.5 device revalidation (2026-09-14)
+
+The sample was rebuilt, officially installed, and its live SDK verified as 0.3.5 on the iPhone 17 Pro Max. A fresh native/H5 Intent established the editor and bookmark baseline. The editor/bookmark Script completed 27 assertions in 99.615 seconds, including a new process, explicit bookmark-sheet navigation, and reopening the exact saved lesson. The earlier attempt remains failed: it assumed bookmarks would be visible automatically after restart, while the App restored the reader. The Script now explicitly opens Show Bookmarks; the saved-bookmark assertions are retained. External quiescent Core Data verification is recorded alongside the run under build/ai_app_bridge_artifacts/uia-035/. This covers editor state and bookmark persistence, not durable lesson progress or exercise grading.

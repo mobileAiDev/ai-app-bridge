@@ -102,6 +102,7 @@ async function main(options) {
   const inventory = require(path.join(frozen, 'feature-inventory.json'));
   const scenarios = require(path.join(frozen, 'scenarios.json'));
   const target = { serial: options.serial, packageName: PACKAGE };
+  const scriptTarget = { platform: 'android', ...target };
   const sourcePath = path.join(frozen, 'regression-script.js');
   const identity = { apkSha256: hash(options.apk), scriptSha256: hash(sourcePath), inventorySha256: hash(path.join(frozen, 'feature-inventory.json')),
     scenariosSha256: hash(path.join(frozen, 'scenarios.json')), hostCodeManifestSha256: hash(path.join(frozen, 'host-code-manifest.json')), runId: options.runId, target, assignmentCommon: options.assignmentLabel || null };
@@ -126,7 +127,8 @@ async function main(options) {
     return binary ? bytes : bytes.toString();
   };
   const run = async (command, args = {}) => {
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: { ...target, ...args } } }));
+    const arguments_ = command === 'script' ? args : { ...target, ...args };
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: arguments_ } }));
     if (result.ok === false || result.error) throw new Error(`${command}:${result.error || 'not_ok'}`);
     return result;
   };
@@ -155,7 +157,7 @@ async function main(options) {
     const directory = path.join(out, phase); fs.mkdirSync(directory);
     const startedAtMs = Date.now();
     const start = await run('script', { operation: 'start', script: { schemaVersion: 'aab.code-script/v1', name: `notallyx-text-${phase}`, language: 'javascript', sourcePath,
-      target, inputs: { out: directory, runId: options.runId, phase, title, originalBody, editedBody, label, listTitle, labelA, labelAb, labelRenamed, assignmentCommon, assignmentMembers }, policy: { timeoutMs: 120000, onFailure: 'fail', restartPolicy: 'none' } } });
+      target: scriptTarget, inputs: { out: directory, runId: options.runId, phase, title, originalBody, editedBody, label, listTitle, labelA, labelAb, labelRenamed, assignmentCommon, assignmentMembers }, policy: { timeoutMs: 120000, restartPolicy: 'none' } } });
     write(path.join(directory, 'start.json'), start); operationId = start.operationId;
     if (!operationId) throw new Error('script_operation_missing');
     let current = start;
@@ -165,16 +167,19 @@ async function main(options) {
       current = await run('script', { operation: 'wait', operationId, waitMs: 1000, afterSequence: current.eventSequence || 0 });
       if (['paused', 'intervention_required'].includes(current.status)) throw new Error(`script_attention:${current.status}`);
     }
-    const final = await run('script', { operation: 'status', operationId, afterSequence: 0, limit: 4096 });
+    const final = await run('script', { operation: 'status', operationId, afterSequence: 0, limit: 1000 });
     hostPhases[operationId] = final;
     write(path.join(directory, 'final.json'), final);
     const phaseRecord = { phase, operationId, executionStatus: current.status, startedAtMs, finishedAtMs: Date.now() }; phases.push(phaseRecord); operationId = null;
     if (current.status !== 'completed') throw new Error(`script_phase_failed:${phase}:${current.error || current.status}`);
-    const result = JSON.parse(fs.readFileSync(path.join(directory, 'result.json'), 'utf8'));
+    const persisted = await run('script', { operation: 'result', operationId: phaseRecord.operationId });
+    write(path.join(directory, 'persisted-result.json'), persisted);
+    const result = persisted.result;
+    if (persisted.persisted !== true || !isDeepStrictEqual(result, JSON.parse(fs.readFileSync(path.join(directory, 'result.json'), 'utf8')))) throw new Error('persisted_script_result_mismatch');
     if (result.runId !== options.runId || result.phase !== phase) throw new Error('script_result_identity_mismatch');
     if (final.history?.hasMore !== false || final.history?.gap) throw new Error('complete_host_phase_history_required');
     const actions = final.history.items.filter((item) => item.kind === 'call_completed' && item.actionId);
-    if (actions.some((item) => item.executionId !== phaseRecord.operationId || item.payloadSummary?.error || !isDeepStrictEqual(item.target, target))
+    if (actions.some((item) => item.executionId !== phaseRecord.operationId || item.payloadSummary?.error || !isDeepStrictEqual(item.target, scriptTarget))
       || new Set(actions.map((item) => item.actionId)).size !== actions.length || result.mutations !== actions.length) throw new Error('host_mutation_history_mismatch');
     sequence += actions.length;
     phaseRecord.hostMutationCount = actions.length;
@@ -228,7 +233,7 @@ async function main(options) {
     const timestampValid = editedNote && editedNote.modifiedTimestamp >= createdNotes[0].modifiedTimestamp && editedNote.timestamp === createdNotes[0].timestamp;
     normal.checks.push({ field: 'created_body_then_same_id_edit', verdict: initial.verdict }, { field: 'prior_notes_preserved', verdict: preserved ? 'passed' : 'failed' }, { field: 'timestamps_preserved_and_monotonic', verdict: timestampValid ? 'passed' : 'failed' });
     normal.verdict = normal.checks.every((check) => check.verdict === 'passed') ? 'passed' : 'failed'; normal.ok = normal.verdict === 'passed'; record('note.text_crud.normal', normal);
-    record('note.text_crud.normal', checkTextUi({ id: 'note.text_crud.normal:oracle:2', runId: options.runId, title, hostPhases, target,
+    record('note.text_crud.normal', checkTextUi({ id: 'note.text_crud.normal:oracle:2', runId: options.runId, title, hostPhases, target: scriptTarget,
       checkpoints: [...createdUi.checkpoints, ...editedUi.checkpoints], expectedCheckpoints: [
         { name: 'created-editor', screen: 'editor', body: originalBody }, { name: 'created-overview', screen: 'overview', body: originalBody },
         { name: 'reopened-editor', screen: 'editor', body: originalBody }, { name: 'edited-editor', screen: 'editor', body: editedBody }, { name: 'edited-overview', screen: 'overview', body: editedBody },
@@ -240,7 +245,7 @@ async function main(options) {
     const restart = checkSnapshot(restarted, { id: 'note.text_crud.restart:oracle:1', notes: [{ where: { title }, fields: { id: noteId, type: 'NOTE', folder: 'NOTES', body: editedBody } }] });
     restart.checks.push({ field: 'whole_note_rows_survive_restart', verdict: isDeepStrictEqual(edited.data.notes, restarted.data.notes) ? 'passed' : 'failed' });
     restart.verdict = restart.checks.every((check) => check.verdict === 'passed') ? 'passed' : 'failed'; restart.ok = restart.verdict === 'passed'; record('note.text_crud.restart', restart);
-    record('note.text_crud.restart', checkTextUi({ id: 'note.text_crud.restart:oracle:2', runId: options.runId, title, hostPhases, target,
+    record('note.text_crud.restart', checkTextUi({ id: 'note.text_crud.restart:oracle:2', runId: options.runId, title, hostPhases, target: scriptTarget,
       checkpoints: restartUi.checkpoints, expectedCheckpoints: [
         { name: 'restart-overview', screen: 'overview', body: editedBody }, { name: 'restart-editor', screen: 'editor', body: editedBody }, { name: 'restart-returned', screen: 'overview', body: editedBody },
       ] }));
@@ -256,7 +261,7 @@ async function main(options) {
     const unaffected = isDeepStrictEqual(restarted.data.notes.filter((note) => note.id !== noteId), organized.data.notes.filter((note) => note.id !== noteId));
     organizeDb.checks.push({ field: 'other_note_rows_unchanged', verdict: unaffected ? 'passed' : 'failed' });
     organizeDb.verdict = organizeDb.checks.every((check) => check.verdict === 'passed') ? 'passed' : 'failed'; organizeDb.ok = organizeDb.verdict === 'passed';
-    const organizeOracle = checkTextUi({ id: 'observed.label-pin-color:ui', runId: options.runId, title, hostPhases, target, checkpoints: organizeUi.checkpoints,
+    const organizeOracle = checkTextUi({ id: 'observed.label-pin-color:ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: organizeUi.checkpoints,
       expectedCheckpoints: ['label-pinned-editor', 'organized-editor'].map((name) => ({ name, screen: 'editor', body: editedBody, requiredSelectors: [{ text: label }, { contentDescription: '取消固定' }] }))
         .concat([{ name: 'organized-overview', screen: 'overview', body: editedBody, requiredSelectors: [{ text: label }] }]) });
     observedFlows.push({ id: 'single-note-label-pin-color', scenarioIds: related, oracleResults: [organizeDb, organizeOracle],
@@ -307,7 +312,7 @@ async function main(options) {
       ...['list-child-restored', 'list-hierarchy-reopened'].map((name) => ({ name, screen: 'list-editor', items: uiItems(true, true, true) })),
       ...['list-hierarchy-overview', 'list-hierarchy-returned'].map((name) => ({ name, screen: 'list-overview', items: uiItems(true, true, true) })),
     ];
-    record('list.hierarchy.normal', checkTextUi({ id: 'list.hierarchy.normal:oracle:2', runId: options.runId, title: listTitle, target, hostPhases,
+    record('list.hierarchy.normal', checkTextUi({ id: 'list.hierarchy.normal:oracle:2', runId: options.runId, title: listTitle, target: scriptTarget, hostPhases,
       checkpoints: [...listCreatedUi.checkpoints, ...hierarchyUi.checkpoints], expectedCheckpoints: listChecks }));
     Object.assign(executions.at(-1), { executionStatus: 'completed', finishedAtMs: Date.now(), sourceScriptOperationIds: [listCreatedUi.operationId, hierarchyUi.operationId] });
     executions.push({ scenarioId: 'list.hierarchy.restart', attempt: 1, executionStatus: 'running', startedAtMs: listStarted, sharedPrefixScenarioId: 'list.hierarchy.normal' });
@@ -317,7 +322,7 @@ async function main(options) {
       && isDeepStrictEqual(hierarchical.data.labels, listRestarted.data.labels) ? 'passed' : 'failed' });
     listRestart.verdict = listRestart.checks.every((check) => check.verdict === 'passed') ? 'passed' : 'failed'; listRestart.ok = listRestart.verdict === 'passed';
     record('list.hierarchy.restart', listRestart);
-    record('list.hierarchy.restart', checkTextUi({ id: 'list.hierarchy.restart:oracle:2', runId: options.runId, title: listTitle, target, hostPhases,
+    record('list.hierarchy.restart', checkTextUi({ id: 'list.hierarchy.restart:oracle:2', runId: options.runId, title: listTitle, target: scriptTarget, hostPhases,
       checkpoints: listRestartUi.checkpoints, expectedCheckpoints: ['list-restart-overview', 'list-restart-editor', 'list-restart-returned'].map((name) =>
         ({ name, screen: name === 'list-restart-editor' ? 'list-editor' : 'list-overview', items: uiItems(true, true, true) })) }));
     Object.assign(executions.at(-1), { executionStatus: 'completed', finishedAtMs: Date.now(), sourceScriptOperationIds: [listCreatedUi.operationId, hierarchyUi.operationId, listRestartUi.operationId] });
@@ -329,17 +334,17 @@ async function main(options) {
     const preparedUi = await scriptPhase('labels-prepare'); const labelsPrepared = snapshot('labels-prepared-db');
     const preparedDb = checkLabelTransition({ id: 'labels.prepare:database', before: listRestarted, after: labelsPrepared,
       transition: { type: 'prepare', noteIds: [noteId, listId], labelA, labelAb } });
-    const preparedTextUi = checkTextUi({ id: 'labels.prepare:text-ui', runId: options.runId, title, hostPhases, target, checkpoints: preparedUi.checkpoints,
+    const preparedTextUi = checkTextUi({ id: 'labels.prepare:text-ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: preparedUi.checkpoints,
       expectedCheckpoints: ['labels-text-assigned-editor', 'labels-text-assigned-overview'].map((name) => ({ name, screen: name.endsWith('editor') ? 'editor' : 'overview',
         body: editedBody, requiredSelectors: [{ text: label }, { text: labelA }] })) });
-    const preparedListUi = checkTextUi({ id: 'labels.prepare:list-ui', runId: options.runId, title: listTitle, hostPhases, target, checkpoints: preparedUi.checkpoints,
+    const preparedListUi = checkTextUi({ id: 'labels.prepare:list-ui', runId: options.runId, title: listTitle, hostPhases, target: scriptTarget, checkpoints: preparedUi.checkpoints,
       expectedCheckpoints: ['labels-list-assigned-editor', 'labels-list-assigned-overview'].map((name) => ({ name, screen: name.endsWith('editor') ? 'list-editor' : 'list-overview',
         items: uiItems(true, true, true), requiredSelectors: [{ text: labelAb }] })) });
     acceptLabelStep('labels-prepare', [preparedDb, preparedTextUi, preparedListUi]);
 
     const labelsNegativeExecution = { scenarioId: 'labels.manage.negative', attempt: 1, executionStatus: 'running', startedAtMs: Date.now() };
     executions.push(labelsNegativeExecution);
-    const labelsUi = (phase, names, present, absent = [], inputs = []) => checkTextUi({ id: `${phase.phase}:ui`, runId: options.runId, title, hostPhases, target,
+    const labelsUi = (phase, names, present, absent = [], inputs = []) => checkTextUi({ id: `${phase.phase}:ui`, runId: options.runId, title, hostPhases, target: scriptTarget,
       checkpoints: phase.checkpoints, expectedCheckpoints: [...names.map((name) => ({ name, screen: 'labels', labels: { present, absent } })), ...inputs] });
     await launch('labels-prepared');
     const duplicateUi = await scriptPhase('labels-duplicate'); const duplicateRejected = snapshot('labels-duplicate-db');
@@ -358,18 +363,18 @@ async function main(options) {
     const renameUi = await scriptPhase('labels-rename'); const labelsRenamed = snapshot('labels-renamed-db');
     const renamedDb = checkLabelTransition({ id: 'labels.rename:database', before: conflictRejected, after: labelsRenamed,
       transition: { type: 'rename', old: labelA, new: labelRenamed } });
-    const renamedScreen = checkTextUi({ id: 'labels.rename:management-ui', runId: options.runId, title, hostPhases, target, checkpoints: renameUi.checkpoints,
+    const renamedScreen = checkTextUi({ id: 'labels.rename:management-ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: renameUi.checkpoints,
       expectedCheckpoints: ['labels-renamed-manager', 'labels-renamed-navigation'].map((name) => ({ name, screen: name.endsWith('navigation') ? 'label-navigation' : 'labels',
         labels: { present: [label, labelRenamed, labelAb], absent: [labelA] } })) });
-    const renamedText = checkTextUi({ id: 'labels.rename:text-ui', runId: options.runId, title, hostPhases, target, checkpoints: renameUi.checkpoints,
+    const renamedText = checkTextUi({ id: 'labels.rename:text-ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: renameUi.checkpoints,
       expectedCheckpoints: [{ name: 'labels-renamed-text', screen: 'editor', body: editedBody, requiredSelectors: [{ text: label }, { text: labelRenamed }], absentSelectors: [{ text: labelA }, { text: labelAb }] }] });
-    const renamedList = checkTextUi({ id: 'labels.rename:list-ui', runId: options.runId, title: listTitle, hostPhases, target, checkpoints: renameUi.checkpoints,
+    const renamedList = checkTextUi({ id: 'labels.rename:list-ui', runId: options.runId, title: listTitle, hostPhases, target: scriptTarget, checkpoints: renameUi.checkpoints,
       expectedCheckpoints: [{ name: 'labels-renamed-list', screen: 'list-editor', items: uiItems(true, true, true), requiredSelectors: [{ text: labelAb }], absentSelectors: [{ text: labelA }, { text: labelRenamed }] }] });
     acceptLabelStep('labels-rename', [renamedDb, renamedScreen, renamedText, renamedList]);
     await launch('labels-renamed');
     const cancelledUi = await scriptPhase('labels-cancel-delete'); const labelsCancelled = snapshot('labels-cancelled-db');
     const cancelDb = compareCanonical(labelsRenamed, labelsCancelled, { id: 'labels.cancel:database', ignoreFields: [] });
-    const cancelScreen = checkTextUi({ id: 'labels.cancel:ui', runId: options.runId, title, hostPhases, target, checkpoints: cancelledUi.checkpoints,
+    const cancelScreen = checkTextUi({ id: 'labels.cancel:ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: cancelledUi.checkpoints,
       expectedCheckpoints: [{ name: 'labels-before-cancel', screen: 'labels', labels: { present: [label, labelRenamed, labelAb], absent: [labelA] } },
         { name: 'labels-cancel-dialog', screen: 'label-delete-dialog', dialog: 'delete-label-confirmation' },
         { name: 'labels-delete-cancelled', screen: 'labels', labels: { present: [label, labelRenamed, labelAb], absent: [labelA] } }] });
@@ -380,12 +385,12 @@ async function main(options) {
     await launch('labels-cancelled');
     const deletedUi = await scriptPhase('labels-delete'); const labelsDeleted = snapshot('labels-deleted-db');
     const deleteDb = checkLabelTransition({ id: 'labels.delete:database', before: labelsCancelled, after: labelsDeleted, transition: { type: 'delete', value: labelRenamed } });
-    const deletedScreen = checkTextUi({ id: 'labels.delete:management-ui', runId: options.runId, title, hostPhases, target, checkpoints: deletedUi.checkpoints,
+    const deletedScreen = checkTextUi({ id: 'labels.delete:management-ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: deletedUi.checkpoints,
       expectedCheckpoints: [{ name: 'labels-before-delete', screen: 'labels', labels: { present: [label, labelRenamed, labelAb], absent: [labelA] } },
         { name: 'labels-confirm-delete-dialog', screen: 'label-delete-dialog', dialog: 'delete-label-confirmation' },
         { name: 'labels-deleted-manager', screen: 'labels', labels: { present: [label, labelAb], absent: [labelA, labelRenamed] } },
         { name: 'labels-deleted-navigation', screen: 'label-navigation', labels: { present: [label, labelAb], absent: [labelA, labelRenamed] } }] });
-    const deletedNoteChecks = (phase, prefix, list = false) => checkTextUi({ id: `${prefix}:${list ? 'list' : 'text'}-ui`, runId: options.runId, title: list ? listTitle : title, hostPhases, target,
+    const deletedNoteChecks = (phase, prefix, list = false) => checkTextUi({ id: `${prefix}:${list ? 'list' : 'text'}-ui`, runId: options.runId, title: list ? listTitle : title, hostPhases, target: scriptTarget,
       checkpoints: phase.checkpoints, expectedCheckpoints: [`${prefix}-${list ? 'list' : 'text'}-overview`, `${prefix}-${list ? 'list' : 'text'}`].map((name) => ({ name,
         screen: `${list ? 'list-' : ''}${name.endsWith('overview') ? 'overview' : 'editor'}`, ...(list ? { items: uiItems(true, true, true) } : { body: editedBody }),
         requiredSelectors: [{ text: list ? labelAb : label }], absentSelectors: [labelA, labelRenamed, list ? label : labelAb].map((text) => ({ text })) })) });
@@ -400,7 +405,7 @@ async function main(options) {
     await launch('labels-deleted');
     const labelsRestartUi = await scriptPhase('labels-restart'); const labelsRestarted = snapshot('labels-restarted-db');
     const labelRestartDb = compareCanonical(labelsDeleted, labelsRestarted, { id: 'labels.restart:database', ignoreFields: [] });
-    const labelRestartScreen = checkTextUi({ id: 'labels.restart:management-ui', runId: options.runId, title, hostPhases, target, checkpoints: labelsRestartUi.checkpoints,
+    const labelRestartScreen = checkTextUi({ id: 'labels.restart:management-ui', runId: options.runId, title, hostPhases, target: scriptTarget, checkpoints: labelsRestartUi.checkpoints,
       expectedCheckpoints: ['labels-restart-manager', 'labels-restart-navigation'].map((name) => ({ name, screen: name.endsWith('navigation') ? 'label-navigation' : 'labels',
         labels: { present: [label, labelAb], absent: [labelA, labelRenamed] } })) });
     const labelRestartText = deletedNoteChecks(labelsRestartUi, 'labels-restart'), labelRestartList = deletedNoteChecks(labelsRestartUi, 'labels-restart', true);
@@ -425,7 +430,7 @@ async function main(options) {
         if (!assessment.ok) throw new Error(`assignment_oracle:${name}:${assessment.verdict}`);
       };
       const ui = (phase, titleValue, expectedCheckpoints) => checkTextUi({ id: `${phase.phase}:${titleValue === title ? 'text' : 'list'}-ui`,
-        runId: options.runId, title: titleValue, hostPhases, target, checkpoints: phase.checkpoints, expectedCheckpoints });
+        runId: options.runId, title: titleValue, hostPhases, target: scriptTarget, checkpoints: phase.checkpoints, expectedCheckpoints });
       const selectors = values => values.map(text => ({ text }));
       const dialogs = phase => ['initial', 'changed'].map(suffix => ({ name: `${phase.phase}-${suffix}`, screen: 'assignment-dialog', assignment: { labels: [label, labelAb, assignmentCommon] } }));
       const overviewText = (name, present, absent) => ({ name, screen: 'overview', body: editedBody, requiredSelectors: selectors(present), absentSelectors: selectors(absent) });

@@ -1,12 +1,9 @@
 package io.github.mobileaidev.aiappbridge.uia;
 
 import org.json.JSONObject;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFilePermissions;
+import java.io.File;
+import java.io.IOException;
+import static io.github.mobileaidev.aiappbridge.uia.DurableFiles.canonical;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -17,44 +14,28 @@ final class UiaJournal {
     static final int ACTION_CAPACITY = 256, SESSION_CAPACITY = 64;
     private static final String UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
     private static final String HASH = "[0-9a-f]{64}";
-    private final Path root, sessions, retired;
+    private final File root, sessions, retired;
+    private final DurableFiles files;
 
-    UiaJournal(Path root) { this.root = root; sessions = root.resolve("sessions"); retired = root.resolve("retired"); }
+    UiaJournal(File root, DurableFiles files) { this.files = files; this.root = root; sessions = new File(root, "sessions"); retired = new File(root, "retired"); }
 
-    static void directory(Path path) throws Exception {
-        Files.createDirectories(path, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+    private static List<File> children(File path, int limit) throws Exception {
         canonical(path, true);
-        Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rwx------"));
+        File[] entries = path.listFiles();
+        if (entries == null) throw new IOException("Cannot list journal directory: " + path);
+        if (entries.length > limit) throw new Wire.Failure("uia_journal_capacity_exhausted");
+        return Arrays.asList(entries);
     }
-
-    private static void canonical(Path path, boolean directory) throws Exception {
-        if (!(directory ? Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) : Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
-                || !path.toRealPath().equals(path)) throw new Wire.Failure("uia_invalid_journal_path");
-    }
-
-    private static List<Path> children(Path path, int limit) throws Exception {
-        canonical(path, true);
-        List<Path> result = new ArrayList<>();
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(path)) {
-            for (Path entry : entries) {
-                if (result.size() >= limit) throw new Wire.Failure("uia_journal_capacity_exhausted");
-                result.add(entry);
-            }
-        }
-        return result;
-    }
-
-    private static boolean exists(Path path) { return Files.exists(path, LinkOption.NOFOLLOW_LINKS); }
 
     // An interrupted constructor may leave an empty session, and an interrupted atomic
     // write may leave its .tmp file. Only the committed *.json files authorize completion.
-    private static void layout(Path session) throws Exception {
-        if (!session.getFileName().toString().matches(UUID)) throw new Wire.Failure("uia_invalid_session_record");
-        for (Path item : children(session, 4)) {
-            String name = item.getFileName().toString();
+    private void layout(File session) throws Exception {
+        if (!session.getName().matches(UUID)) throw new Wire.Failure("uia_invalid_session_record");
+        for (File item : children(session, 4)) {
+            String name = item.getName();
             if (name.equals("actions")) {
-                for (Path file : children(item, ACTION_CAPACITY * 2)) {
-                    if (!file.getFileName().toString().matches(HASH + "\\.json(?:\\." + UUID + "\\.tmp)?"))
+                for (File file : children(item, ACTION_CAPACITY * 2)) {
+                    if (!file.getName().matches(HASH + "\\.json(?:\\." + UUID + "\\.tmp)?"))
                         throw new Wire.Failure("uia_invalid_action_record");
                     canonical(file, false);
                 }
@@ -65,16 +46,16 @@ final class UiaJournal {
         }
     }
 
-    private static JSONObject descriptor(Path session) throws Exception {
-        Path file = session.resolve("runtime.json");
-        if (!exists(file)) return null;
+    private JSONObject descriptor(File session) throws Exception {
+        File file = new File(session, "runtime.json");
+        if (!files.exists(file)) return null;
         canonical(file, false);
         JSONObject value = new JSONObject(DurableFiles.read(file, 8192));
         Wire.keys(value, "schemaVersion", "bootId", "runtimeEpoch", "dexSha256", "apiLevel", "pid", "socketName", "token", "sessionPath", "running");
         String epoch = Wire.uuid(value, "runtimeEpoch");
         Wire.uuid(value, "bootId"); Wire.bool(value, "running");
-        Wire.integer(value, "apiLevel", 33, Integer.MAX_VALUE); Wire.integer(value, "pid", 1, Integer.MAX_VALUE);
-        if (!Wire.string(value, "schemaVersion").equals("aab.uia.runtime.v1") || !epoch.equals(session.getFileName().toString())
+        Wire.integer(value, "apiLevel", 25, Integer.MAX_VALUE); Wire.integer(value, "pid", 1, Integer.MAX_VALUE);
+        if (!Wire.string(value, "schemaVersion").equals("aab.uia.runtime.v1") || !epoch.equals(session.getName())
                 || !Wire.string(value, "sessionPath").equals(session.toString())
                 || !Wire.string(value, "socketName").equals("aab-uia-" + epoch)
                 || !Wire.string(value, "dexSha256").matches(HASH) || !Wire.string(value, "token").matches(HASH))
@@ -108,7 +89,9 @@ final class UiaJournal {
                     || !Wire.bool(node, "enabled") || !Wire.bool(node, "visible")) throw new Wire.Failure("uia_invalid_completion_record");
         }
         JSONObject selector = selected.getJSONObject("selector");
-        String actual = Wire.string(target, selector.getString("kind")), expected = selector.getString("value");
+        String kind = selector.getString("kind");
+        String actual = kind.equals("nodeRef") ? Wire.string(value, "ref") : Wire.string(target, kind);
+        String expected = selector.getString("value");
         if (!(selector.getBoolean("exact") ? actual.equals(expected) : actual.contains(expected))
                 || !selector.isNull("packageName") && !same(selector.get("packageName"), target.get("packageName"))
                 || !Wire.bool(action, "clickable")
@@ -116,14 +99,14 @@ final class UiaJournal {
             throw new Wire.Failure("uia_completion_identity_mismatch");
     }
 
-    private static JSONObject actionRecord(Path file, JSONObject peer, String raw) throws Exception {
+    private static JSONObject actionRecord(File file, JSONObject peer, String raw) throws Exception {
         JSONObject record = new JSONObject(raw);
         Wire.keys(record, "schemaVersion", "bootId", "runtimeEpoch", "actionId", "requestJson", "requestSha256", "preparedAtElapsedMs",
             "deadlineElapsedMs", "phase", "interactionId", "receiptJson", "receiptSha256", "acknowledged");
         if (!Wire.RECORD.equals(Wire.string(record, "schemaVersion")) || peer == null
                 || !Wire.uuid(record, "bootId").equals(peer.getString("bootId"))
                 || !Wire.uuid(record, "runtimeEpoch").equals(peer.getString("runtimeEpoch"))
-                || !file.getFileName().toString().equals(Wire.sha256(Wire.actionId(record)) + ".json"))
+                || !file.getName().equals(Wire.sha256(Wire.actionId(record)) + ".json"))
             throw new Wire.Failure("uia_invalid_action_record");
         JSONObject request = Wire.request(Wire.string(record, "requestJson"), Wire.string(record, "requestSha256"),
             peer.getString("bootId"), peer.getString("runtimeEpoch"));
@@ -136,7 +119,7 @@ final class UiaJournal {
         return record;
     }
 
-    private static JSONObject terminalRecord(Path file, JSONObject peer) throws Exception {
+    private JSONObject terminalRecord(File file, JSONObject peer) throws Exception {
         return terminalRecord(actionRecord(file, peer, DurableFiles.read(file, 131072)), peer);
     }
 
@@ -203,16 +186,16 @@ final class UiaJournal {
         for (String key : new String[]{"actionSha256", "requestSha256", "originalDexSha256"})
             if (!Wire.string(identity, key).matches(HASH)) throw new Wire.Failure("uia_completion_identity_mismatch");
         canonical(root, true);
-        Path session = sessions.resolve(epoch);
-        if (!exists(session)) throw new Wire.Failure("uia_original_action_record_not_retained");
+        File session = new File(sessions, epoch);
+        if (!files.exists(session)) throw new Wire.Failure("uia_original_action_record_not_retained");
         canonical(sessions, true); canonical(session, true);
         JSONObject peer = descriptor(session);
         if (peer == null || !peer.getString("bootId").equals(identity.getString("bootId"))
                 || !peer.getString("dexSha256").equals(identity.getString("originalDexSha256")))
             throw new Wire.Failure("uia_completion_identity_mismatch");
-        Path actions = session.resolve("actions"); canonical(actions, true);
-        Path file = actions.resolve(identity.getString("actionSha256") + ".json");
-        if (!exists(file)) throw new Wire.Failure("uia_original_action_record_not_retained");
+        File actions = new File(session, "actions"); canonical(actions, true);
+        File file = new File(actions, identity.getString("actionSha256") + ".json");
+        if (!files.exists(file)) throw new Wire.Failure("uia_original_action_record_not_retained");
         canonical(file, false);
         String prior = DurableFiles.read(file, 131072);
         JSONObject record = actionRecord(file, peer, prior);
@@ -238,7 +221,7 @@ final class UiaJournal {
         terminalRecord(record, peer);
         // Also resync on retry after a possible rename-before-directory-fsync failure.
         // Preserve the first receipt, including its recovery clock, byte for byte.
-        DurableFiles.write(file, record.toString());
+        files.write(file, record.toString());
         return record;
     }
 
@@ -252,25 +235,25 @@ final class UiaJournal {
         if (epoch.equals(activeEpoch)) throw new Wire.Failure("uia_active_session_requires_engine");
         canonical(root, true);
         String disposition = "not_retained";
-        if (exists(sessions)) {
+        if (files.exists(sessions)) {
             canonical(sessions, true);
-            Path session = sessions.resolve(epoch);
-            if (exists(session)) {
+            File session = new File(sessions, epoch);
+            if (files.exists(session)) {
                 canonical(session, true);
                 JSONObject peer = descriptor(session);
                 if (peer == null || !peer.getString("bootId").equals(identity.getString("bootId"))
                         || !peer.getString("dexSha256").equals(identity.getString("originalDexSha256")))
                     throw new Wire.Failure("uia_completion_identity_mismatch");
-                Path actions = session.resolve("actions"); canonical(actions, true);
-                Path file = actions.resolve(identity.getString("actionSha256") + ".json");
-                if (exists(file)) {
+                File actions = new File(session, "actions"); canonical(actions, true);
+                File file = new File(actions, identity.getString("actionSha256") + ".json");
+                if (files.exists(file)) {
                     canonical(file, false);
                     JSONObject record = terminalRecord(file, peer);
                     for (String key : new String[]{"requestSha256", "receiptSha256"})
                         if (!record.getString(key).equals(identity.getString(key))) throw new Wire.Failure("uia_completion_identity_mismatch");
                     // Repeat the durable write even on retry: a previous rename
                     // may have succeeded before its directory fsync failed.
-                    DurableFiles.write(file, record.put("acknowledged", true).toString());
+                    files.write(file, record.put("acknowledged", true).toString());
                     disposition = "acknowledged";
                 }
             }
@@ -281,66 +264,66 @@ final class UiaJournal {
             .put("identity", identity).put("disposition", disposition);
     }
 
-    private static boolean disposable(Path session) throws Exception {
+    private boolean disposable(File session) throws Exception {
         layout(session);
         JSONObject peer = descriptor(session);
-        Path actions = session.resolve("actions");
-        if (!exists(actions)) {
+        File actions = new File(session, "actions");
+        if (!files.exists(actions)) {
             if (peer != null) throw new Wire.Failure("uia_invalid_session_record");
             return true;
         }
         boolean allAcknowledged = true;
         int count = 0;
-        for (Path file : children(actions, ACTION_CAPACITY * 2)) {
-            if (!file.getFileName().toString().endsWith(".json")) continue;
+        for (File file : children(actions, ACTION_CAPACITY * 2)) {
+            if (!file.getName().endsWith(".json")) continue;
             if (++count > ACTION_CAPACITY) throw new Wire.Failure("uia_action_capacity_exhausted");
             if (!terminalRecord(file, peer).getBoolean("acknowledged")) allAcknowledged = false;
         }
         return allAcknowledged;
     }
 
-    private void eraseRetired(Path session) throws Exception {
+    private void eraseRetired(File session) throws Exception {
         layout(session);
-        Path actions = session.resolve("actions");
-        if (exists(actions)) {
-            for (Path file : children(actions, ACTION_CAPACITY * 2)) Files.delete(file);
-            DurableFiles.syncDirectory(actions); Files.delete(actions);
+        File actions = new File(session, "actions");
+        if (files.exists(actions)) {
+            for (File file : children(actions, ACTION_CAPACITY * 2)) DurableFiles.delete(file);
+            files.syncDirectory(actions); DurableFiles.delete(actions);
         }
-        for (Path file : children(session, 4)) Files.delete(file);
-        DurableFiles.syncDirectory(session); Files.delete(session); DurableFiles.syncDirectory(retired);
+        for (File file : children(session, 4)) DurableFiles.delete(file);
+        files.syncDirectory(session); DurableFiles.delete(session); files.syncDirectory(retired);
     }
 
     void prepare(String currentDexHash) throws Exception {
-        directory(sessions); directory(retired); DurableFiles.syncDirectory(root);
-        List<Path> reclaim = new ArrayList<>();
+        files.directory(sessions); files.directory(retired); files.syncDirectory(root);
+        List<File> reclaim = new ArrayList<>();
         int retained = 0;
         // Audit EVERY original session before moving or deleting any of them.
-        for (Path session : children(sessions, SESSION_CAPACITY)) {
+        for (File session : children(sessions, SESSION_CAPACITY)) {
             if (disposable(session)) reclaim.add(session); else retained++;
         }
         if (retained >= SESSION_CAPACITY) throw new Wire.Failure("uia_session_capacity_exhausted");
-        List<Path> interrupted = children(retired, SESSION_CAPACITY);
-        for (Path session : interrupted) layout(session);
+        List<File> interrupted = children(retired, SESSION_CAPACITY);
+        for (File session : interrupted) layout(session);
         // A durable rename into retired/ is the disposal commitment. Sync both
         // parents before deleting bytes, including when resuming after a crash.
-        DurableFiles.syncDirectory(sessions); DurableFiles.syncDirectory(retired);
-        for (Path session : interrupted) eraseRetired(session);
-        for (Path session : reclaim) {
-            Path destination = retired.resolve(session.getFileName());
-            Files.move(session, destination, StandardCopyOption.ATOMIC_MOVE);
-            DurableFiles.syncDirectory(sessions); DurableFiles.syncDirectory(retired);
+        files.syncDirectory(sessions); files.syncDirectory(retired);
+        for (File session : interrupted) eraseRetired(session);
+        for (File session : reclaim) {
+            File destination = new File(retired, session.getName());
+            files.move(session, destination);
+            files.syncDirectory(sessions); files.syncDirectory(retired);
             eraseRetired(destination);
         }
         // Only protocol-owned artifacts are eligible. Original unacknowledged
         // receipt files stay in sessions/ and do not need an old executable.
-        for (Path file : children(root, 256)) {
-            String name = file.getFileName().toString();
+        for (File file : children(root, 256)) {
+            String name = file.getName();
             if (name.matches("runtime-" + HASH + "\\.jar") && !name.equals("runtime-" + currentDexHash + ".jar")
                     || name.matches("runtime-" + HASH + "\\." + UUID + "\\.tmp")
                     || name.matches("runtime\\.json\\." + UUID + "\\.tmp")) {
-                canonical(file, false); Files.delete(file);
+                canonical(file, false); DurableFiles.delete(file);
             }
         }
-        DurableFiles.syncDirectory(root);
+        files.syncDirectory(root);
     }
 }

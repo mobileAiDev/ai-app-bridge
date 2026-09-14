@@ -17,6 +17,7 @@ const { openWdaPort, target: wdaTarget } = require('./ios-wda-port');
 const { prepareWdaProject, wdaBuildEnvironment } = require('./ios-wda-project');
 const { executeWDAAction, reconcileWDA, completionPort } = require('./ios-wda-execution');
 const { deviceCommandRejection, deviceCommandProof } = require('./ios-device-outcome');
+const { initializationProof } = require('./ios-wda-startup');
 const { bindFlutterAction } = require('./shared-kernel/flutter-target');
 const nativeTarget = require('./shared-kernel/ios-native-target');
 const h5Target = require('./shared-kernel/ios-h5-target');
@@ -152,6 +153,22 @@ class IOSBridgeProvider {
     const ctx = this.context(args);
     const raw = await this.devicectlJson(ctx, ['list', 'devices']);
     const devices = parseDevicectlDevices(raw).map(shapeDevice);
+    const selected = selectDeviceFromList(devices, args).device;
+    if (selected && (selected.tunnelState !== 'connected' || selected.ddiServicesAvailable !== true)) {
+      // list devices can describe a sleeping tunnel. A targeted, read-only
+      // details request asks CoreDevice to establish its lazy connection.
+      try {
+        const reply = await this.devicectlJson(ctx, ['device', 'info', 'details', '--device', selected.identifier]);
+        const current = shapeDevice(reply?.result);
+        if (current.identifier !== selected.identifier || !current.udid || current.udid !== selected.udid) {
+          throw bindingFailure('ios_device_identity_mismatch', 'Device details did not match the selected device identifier and UDID.');
+        }
+        devices[devices.indexOf(selected)] = { ...current, connectionProbe: { ok: true, source: 'devicectl.device.info.details' } };
+      } catch (error) {
+        selected.connectionProbe = { ok: false, source: 'devicectl.device.info.details',
+          error: error.code || 'ios_device_probe_failed', message: error.message };
+      }
+    }
     return {
       ok: true,
       devices,
@@ -273,7 +290,9 @@ class IOSBridgeProvider {
       if (start.ok === true) {
         wda = start.status || await this.wdaStatus(args);
       } else {
-        return { ok: false, error: start.error, message: start.message, device, steps };
+        return { ok: false, error: start.error, message: start.message, device, steps,
+          ...(start.executionReceipt ? { settled: start.settled, dispatched: start.dispatched,
+            ambiguous: start.ambiguous, executionReceipt: start.executionReceipt } : {}) };
       }
     }
     steps.push({ name: 'wda', ok: wda.ok === true, url: wda.url || null, error: wda.error || null });
@@ -477,7 +496,7 @@ class IOSBridgeProvider {
       return lookupCompletion(completionPort(port), 'wda', identity, cancelled);
     }
     if (args.operation === 'reconcile') return reconcileIOS({ lease, device, args,
-      createPort: target => this.runtimePort(target, { device }) });
+      createPort: target => this.runtimePort(target, { device }), readWdaTestSummary: file => this.readWdaTestSummary(file) });
     if (args.operation === 'status') return {
       ok: true, device, ownership: lease.status(key),
       runtime: args.bundleId ? await this.runtimeGet(args, '/v1/execution/status', { device, allowUnavailable: true }) : null,
@@ -562,7 +581,9 @@ class IOSBridgeProvider {
       throw bindingFailure('ios_device_not_found', 'deviceId must match the selected devicectl identifier or UDID.');
     }
     if (device.developerModeStatus !== 'enabled' || device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') {
-      throw bindingFailure('ios_tunnel_unavailable', 'The selected iPhone must expose a connected developer tunnel. Unlock/trust the device and let Xcode prepare it.');
+      throw bindingFailure('ios_tunnel_unavailable', device.connectionProbe?.ok === false
+        ? `The selected iPhone did not become ready after a targeted device details request: ${device.connectionProbe.message}`
+        : 'The selected iPhone does not expose ready developer services after the device details request. Inspect ios-doctor for the observed device state.');
     }
     const runtimeBinding = await this.readRuntimePortFile(args, device);
     const host = target.iosHost ?? device.tunnelIPAddress;
@@ -768,25 +789,47 @@ class IOSBridgeProvider {
       };
     } finally { await build.stop(); }
     const logFile = path.join(directory, 'xcodebuild.log');
-    const runtime = spawnWdaProcess(ctx.xcodebuild, [...xcodeArgs, 'test-without-building'], logFile, true);
-    const child = runtime.child;
-    let ready = false;
-    try {
-      while (!runtime.terminal) {
-        checkExecution();
-        const status = await this.wdaStatus({ ...args, deviceId: device.udid, wdaRunnerBundleId });
-        if (status.ok) {
-          ready = true; child.unref();
-          return { ok: true, device, wdaTestBundleId, wdaRunnerBundleId, pid: child.pid, logFile, buildLogFile, prepared, status };
+    const resultBundlePath = path.join(directory, 'result.xcresult');
+    const invocation = { arguments: [...xcodeArgs, '-resultBundlePath', resultBundlePath, 'test-without-building'],
+      resultBundlePath, startedAtMs: Date.now() };
+    return runDeviceEffect({ kind: 'ios-wda-start', command: 'ios-setup', invocation,
+      target: { deviceId: device.udid, bundleId: args.bundleId ?? null } }, async () => {
+      const runtime = spawnWdaProcess(ctx.xcodebuild, invocation.arguments, logFile, true);
+      const child = runtime.child;
+      let ready = false;
+      try {
+        while (!runtime.terminal) {
+          checkExecution();
+          const status = await this.wdaStatus({ ...args, deviceId: device.udid, wdaRunnerBundleId });
+          if (status.ok) {
+            ready = true; child.unref();
+            return { ok: true, device, wdaTestBundleId, wdaRunnerBundleId, pid: child.pid, logFile, buildLogFile, prepared, status,
+              executionReceipt: { kind: 'ios-wda-start', settled: true, dispatched: true, ambiguous: false, invocation,
+                runtimeBinding: status.runtimeBinding } };
+          }
+          await executionSleep(1000);
         }
-        await executionSleep(1000);
+        let proof;
+        if (!runtime.spawnError && runtime.exitCode === 65) {
+          try { proof = initializationProof(await this.readWdaTestSummary(resultBundlePath), invocation, device.udid); }
+          catch { /* An absent or unreadable original XCTest result remains unresolved. */ }
+        }
+        return { ok: false, error: runtime.spawnError ? 'ios_wda_xcodebuild_spawn_failed' : 'ios_wda_xcodebuild_exited',
+          message: runtime.spawnError?.message ?? 'xcodebuild closed before the selected Runner published a bound endpoint.',
+          phase: 'device-test', exitCode: runtime.exitCode, logFile, buildLogFile, prepared, resultBundlePath,
+          ...(runtime.spawnError ? { dispatched: false, ambiguous: false,
+            executionReceipt: { kind: 'ios-wda-start', settled: true, dispatched: false, ambiguous: false, invocation } } : {}),
+          ...(proof ? { ...proof.outcome, executionReceipt: proof } : {}) };
+      } finally {
+        if (!ready) await runtime.stop();
       }
-      return { ok: false, error: runtime.spawnError ? 'ios_wda_xcodebuild_spawn_failed' : 'ios_wda_xcodebuild_exited',
-        message: runtime.spawnError?.message ?? 'xcodebuild closed before the selected Runner published a bound endpoint.',
-        phase: 'device-test', exitCode: runtime.exitCode, logFile, buildLogFile, prepared };
-    } finally {
-      if (!ready) await runtime.stop();
-    }
+    }, result => result.executionReceipt);
+  }
+
+  async readWdaTestSummary(resultBundlePath) {
+    const reply = await execFileText(this.execFile, 'xcrun', ['xcresulttool', 'get', 'test-results', 'summary',
+      '--path', resultBundlePath, '--format', 'json'], { timeoutMs: 10000 });
+    return JSON.parse(reply.stdout);
   }
 
   async requireDevice(args = {}) {
@@ -987,7 +1030,9 @@ function withQuery(endpointPath, query) {
 function iosSetupSuggestion(device, runtime, wda) {
   if (!device) return 'Connect one iPhone, trust this Mac on the device, then rerun ios-doctor.';
   if (device.developerModeStatus !== 'enabled') return 'Enable Developer Mode on the iPhone and rerun ios-setup.';
-  if (device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') return 'Unlock/trust the iPhone and let Xcode finish preparing a connected developer tunnel.';
+  if (device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') return device.connectionProbe?.ok === false
+    ? `The device details probe failed: ${device.connectionProbe.message}`
+    : 'The device details probe did not establish ready developer services. Check the selected device connection and Xcode preparation state.';
   if (wda?.ok !== true) return 'Start the prepared Runner with ios-setup --start-wda --team-id, or supply its exact wdaRunnerBundleId. An optional wdaUrl still requires container binding.';
   if (runtime?.ok !== true) return 'Launch a debug App with AiAppBridgeIOS and supply its exact deviceId and bundleId.';
   return 'Rerun ios-setup after resolving the failing check.';

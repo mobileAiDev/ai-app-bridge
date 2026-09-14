@@ -930,13 +930,19 @@ a mutation already running at timeout returns an ambiguous outcome. These checks
 do not make app touch handlers or business outcomes transactional.
 Explicit coordinate commands retain their primitive role.
 
-UIA observation and semantic clicks require Android API 33 or newer and the
+UIA observation and semantic clicks require Android API 25 or newer and the
 bundled, hash-verified `runtime/uia` module. `uia-tree` opens or reuses one
 UiAutomation connection on the explicit device. XML snapshots carry boot,
 runtime and snapshot IDs; each node has an opaque reference. Ordinary UIA text
 commands, Intent (including installer and permission choices), and JavaScript /
 Python Script calls send that reference and their original action ID to the
 same runtime. They do not convert text matches into physical coordinates.
+
+API 25–32 use the process accessibility cache; API 33+ uses its connection
+cache. Before API 30, Android exposes only the default-display window inventory.
+All versions retain durable file and directory synchronization and original
+Binder callbacks. Device validation covers API 25, 30 and 36; this is not a
+claim that every vendor framework implementation has been tested.
 
 The runtime checks the focused default-display window, unique selector match,
 node attributes and clickable ancestor before one node action. Its guarantee
@@ -966,6 +972,10 @@ ownership with actions. Stop requires committed terminal actions. Explicit start
 checks the phone's OS-managed process lock. A dead process can be reopened only
 after the new process acquires that lock and audits all original action records;
 any nonterminal or corrupt record blocks reopening, including after a reboot.
+The 0.3.5 audit compares a nodeRef selector with the receipt's `binding.ref`;
+the target attributes do not contain a `nodeRef` field. A successful audit may
+retire acknowledged sessions and publish a new epoch. It does not resurrect
+the old process or authorize replay of old actions.
 An HTTP timeout or a stale `running` descriptor does not authorize replacement.
 Authentication tokens
 stay in private phone descriptors and are absent from public status and Host
@@ -1600,9 +1610,33 @@ explicit state assertions, or request Agent help through `ctx.askAgent`.
 
 ### Android 安装超时后的显式取消
 
+`freeze-app` 使用 SIGSTOP 暂停整个 App 进程，包括 SDK HTTP 服务；冻结期间的
+`tree`、`status` 超时是预期行为。它不是只暂停业务 UI。先完成需要的读取，再冻结；
+后续 SDK 验证前必须 `thaw-app`，并重新确认可读。
+
 `device-ownership status` 返回原安装的 `actionId`。若原 commit 回执因 OEM 确认页丢失，
 可用 `device-ownership --operation cancel-install --serial SERIAL --action-id ORIGINAL_ACTION_ID`。
 该命令只对保留的原 PM session 执行 abandon，先持久保存取消任务身份，再派发；
 重连后 `reconcile` 可读取同一任务的原回执。明确成功才解除该安装的设备占用。
 `phase: session-abandoned` 的 `requestSucceeded: null` 表示原安装结果未被推断，
 已经安装的 APK 不会回滚。取消按钮、等待超时或 Host 进程退出本身仍不是完成证据。
+没有待处理安装时返回 `install_action_not_pending`、`recovered:false` 和
+`dispatched:false`。这同时适用于未知 actionId 和已经结算的安装；是否安装成功应读取
+原操作结果。未抓住安装中途的取消不能当作 PM abandon 验证。
+
+### iOS 设备连接与原始失败对账
+
+`devicectl list devices` 可以返回休眠隧道快照。`ios-devices` 对唯一或显式选择的未就绪
+设备执行只读 `device info details`，核对 identifier/UDID 后使用当前隧道和 DDI 状态；
+`connectionProbe` 保留结果。多设备未选择时不会唤醒任意一台。`ios-doctor` 的
+`deviceConnected` 指开发者隧道可用，USB 配对与传输方式另见 selectedDevice。
+
+`ios-execution reconcile` 可以识别原 launch 的 CoreDevice 4016 回执：要求精确调用、
+失败 outcome、完整请求状态以及空的可用状态，且没有启动 result。它是已结算的启动前
+拒绝；一般超时、丢连接和不匹配的 JSON 仍不能解除所有权。
+
+### WDA startup outcome recovery
+
+`ios-setup --start-wda true` records the exact XCTest invocation and result bundle before starting the device test. A completed XCTest failure that explicitly says UI test initialization timed out while enabling automation is a settled failed startup (`ios_wda_automation_confirmation_required`). The Runner launch was dispatched; this does not undo its installation. Confirm Enable UI Automation on the device, then explicitly run setup again.
+
+`ios-execution --operation reconcile --device-id DEVICE` reads the original result bundle after an interrupted Host. For a legacy generic `ios-setup` marker, supply `--setup-result-path ORIGINAL_RESPONSE.json`: recovery requires the original CLI JSON response (or its unwrapped value), its matching retained Host action in the current FactStore, the same device and startup interval, and the original XCTest bundle identified by that response. Missing, mismatched, or generic test failures remain unresolved. This option is accepted only for SDK/command reconciliation, never action cancellation or WDA session recovery. Lock files and original evidence are retained.

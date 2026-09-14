@@ -84,9 +84,9 @@ module.exports.main = async function main(ctx) {
   };
   const tap = async (selector) => {
     if (selector.text && [title, listTitle].includes(selector.text)) await revealOverview(selector.text);
-    const { tapX, tapY } = await target(selector); return call('tap', { tapX, tapY, appLocalAction: true });
+    const { tapX, tapY } = await target(selector); return call('tap', { tapX, tapY, scope: 'app' });
   };
-  const inputSelector = async (selector, text) => { const { tapX, tapY } = await target(selector, true); return call('input-text', { tapX, tapY, text, appLocalAction: true }); };
+  const inputSelector = async (selector, text) => { const { tapX, tapY } = await target(selector, true); return call('input-text', { tapX, tapY, text }); };
   const input = async (name, text) => inputSelector({ resourceName: resource(name) }, text);
   const checkboxClasses = ['android.widget.CheckBox', 'androidx.appcompat.widget.AppCompatCheckBox', 'com.google.android.material.checkbox.MaterialCheckBox'];
   async function createAndAssignLabel(value) {

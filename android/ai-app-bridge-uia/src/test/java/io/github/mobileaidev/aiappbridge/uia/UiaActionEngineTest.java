@@ -267,9 +267,9 @@ public class UiaActionEngineTest {
         Path directory = Files.createTempDirectory("aab-uia-journal-test-");
         Path record = directory.resolve("action.json");
         try {
-            DurableFiles.write(record, "{\"phase\":\"prepared\"}");
-            DurableFiles.write(record, "{\"phase\":\"terminal\",\"receipt\":\"原始回执\"}");
-            assertEquals("原始回执", new JSONObject(DurableFiles.read(record, 1024)).getString("receipt"));
+            JvmPosix.FILES.write((record).toFile() , "{\"phase\":\"prepared\"}");
+            JvmPosix.FILES.write((record).toFile() , "{\"phase\":\"terminal\",\"receipt\":\"原始回执\"}");
+            assertEquals("原始回执", new JSONObject(DurableFiles.read((record).toFile(), 1024)).getString("receipt"));
             try (java.util.stream.Stream<Path> files = Files.list(directory)) { assertEquals(1, files.count()); }
         } finally { Files.deleteIfExists(record); Files.deleteIfExists(directory); }
     }

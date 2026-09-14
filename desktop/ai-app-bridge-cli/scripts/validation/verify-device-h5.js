@@ -44,7 +44,10 @@ async function main({ out, serial, serverPath = path.resolve(__dirname, '../../b
     const deadline = Date.now() + 10000;
     let ready = false;
     while (Date.now() < deadline) {
-      try { adb(['shell', 'run-as', packageName, 'test', '-f', 'files/h5-public/ready.json']); ready = true; break; }
+      try {
+        const marker = JSON.parse(adb(['shell', 'run-as', packageName, 'cat', 'files/h5-public/ready.json']));
+        assert.ok(marker.runtimeEpoch && marker.pageRef); ready = true; break;
+      }
       catch (error) { if (error.status !== 1) throw error; }
       await new Promise(resolve => setTimeout(resolve, 100));
     }

@@ -190,3 +190,35 @@ test('doctor requires a connected device, SDK, and bound WDA even when no WDA UR
   device.ddiServicesAvailable = undefined;
   assert.equal((await provider.doctor(args)).ready, false);
 });
+
+test('completed XCTest automation initialization rejection releases setup ownership with its original result', async t => {
+  const directory = temporary(t), executable = path.join(directory, 'initialization-failure');
+  fs.writeFileSync(executable, ['#!' + process.execPath,
+    "if (process.argv.includes('build-for-testing')) process.exit(0);",
+    "process.exit(65);",
+  ].join('\n'), { mode: 0o755 });
+  const device = createIOSRuntimeFixture(directory, { port: 8100 });
+  const { createDeviceMutationLease } = require('../bin/shared-kernel/device-mutation-lease');
+  const lease = createDeviceMutationLease({ directory: path.join(directory, 'ownership') });
+  const provider = new IOSBridgeProvider({ lease });
+  provider.xcodeVersion = async () => ({ ok: true });
+  provider.wdaStatus = async () => ({ ok: false, error: 'ios_runtime_descriptor_absent' });
+  provider.readWdaTestSummary = async () => ({ result: 'Failed', totalTestCount: 1,
+    failedTests: 1, passedTests: 0, skippedTests: 0, expectedFailures: 0,
+    startTime: (Date.now() - 10) / 1000, finishTime: Date.now() / 1000,
+    devicesAndConfigurations: [{ device: { deviceId: device.config.device.hardwareProperties.udid } }],
+    testFailures: [{ targetName: 'WebDriverAgentRunner',
+      failureText: 'The test runner failed to initialize for UI testing. (Underlying Error: Timed out while enabling automation mode.)' }],
+  });
+  const result = await provider.run('ios-setup', { deviceId: device.args.deviceId, devicectl: device.devicectl,
+    xcodebuild: executable, startWda: true, teamId: 'CONTROLLED' });
+  const start = result.steps.find(step => step.name === 'start-wda');
+  t.after(() => fs.rmSync(path.dirname(start.logFile), { recursive: true, force: true }));
+  assert.equal(result.error, 'ios_wda_automation_confirmation_required');
+  assert.equal(result.settled, true);
+  assert.equal(result.dispatched, true, 'Runner startup was dispatched even though UI test initialization failed');
+  assert.equal(result.ambiguous, false);
+  assert.equal(lease.status('ios:' + device.config.device.hardwareProperties.udid).phase, 'idle');
+  assert.equal(result.executionReceipt.kind, 'ios-wda-start');
+  assert.equal(result.executionReceipt.summarySha256.length, 64);
+});
