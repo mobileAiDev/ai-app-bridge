@@ -22,11 +22,11 @@
 
 本轮详细证据位于 Git 忽略目录 build/ai_app_bridge_artifacts/uia-035/。保留 SUMMARY.md、BUG_RECHECK.md、COVERAGE.md、ISSUES.md 及原回执、截图、录制和独立存储检查。原 grok-validation-034-20260914-150831 报告作为历史原件保留。
 
-Reader 当前完整 JS 业务脚本已完成 23 个断言；其 SDK 升级安装后的版本复核单独记录。Kiwix 从手机上的 0.2.11 重建并安装至 0.3.5；原生与 WKWebView 连续业务脚本 script-1789376263916-1 完成 27 个断言，耗时 99.615 秒。旧示例在重启后假定自动显示书签列表，本版改为明确打开列表；数据库独立读取确认保存结果。
+Reader 已通过官方 Intent 安装并实读 SDK 0.3.5；完整 JS 业务脚本 script-1789387729271-2 完成 23 个断言，耗时 24.084 秒，覆盖章节、字号、书架返回重开及事件。Kiwix 从手机上的 0.2.11 重建并安装至 0.3.5；原生与 WKWebView 连续业务脚本 script-1789376263916-1 完成 27 个断言，耗时 99.615 秒。旧示例在重启后假定自动显示书签列表，本版改为明确打开列表；数据库独立读取确认保存结果。
 
-发行提交为 `e7253a1e52d841d73d6e5904c42eb43484753447`，tag `0.3.5` 与源分支已推送，main 已推进到发行提交，[正式 GitHub Release](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.3.5) 已创建。npm CLI/Web 的 latest 与 next 均为 0.3.5；pub Flutter 与 JitPack SDK/插件均已发布并从公共渠道核对。公共 CLI tarball SHA-256 为 `c42138015fe7182cea7bc1bebe199a9be32c1739d4655f25502606c449ead0c4`，公共 Flutter archive 为 `2edb46cbc784e852b34a0de30957978e86ef8b891dff37e0011cf9736db54107`。
+发行提交为 `e7253a1e52d841d73d6e5904c42eb43484753447`，tag `0.3.5` 已推送，源分支和 main 均含发行提交及后续 `79ea89c` 示例更新，[正式 GitHub Release](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.3.5) 已创建。npm CLI/Web 的 latest 与 next 均为 0.3.5；pub Flutter 与 JitPack SDK/插件均已发布并从公共渠道核对。公共 CLI tarball SHA-256 为 `c42138015fe7182cea7bc1bebe199a9be32c1739d4655f25502606c449ead0c4`，公共 Flutter archive 为 `2edb46cbc784e852b34a0de30957978e86ef8b891dff37e0011cf9736db54107`。
 
-本机 CLI、全局依赖和新启动的 MCP 已升至 0.3.5；新 MCP 与 CLI 读取同一个 compatible Runtime。旧默认 Runtime 使用公开 stop 结束，未删锁。未声明既有 Codex MCP 连接已自动热升级。
+本机 CLI、全局依赖和新启动的 MCP 已升至 0.3.5；新 MCP 与 CLI 读取同一个 compatible Runtime。原 Codex MCP 连接读取该 Runtime 时实测 compatible:false，仍持有旧代码，需重连加载新版。原回执保存为 connected-codex-mcp-runtime-after-upgrade.json。旧默认 Runtime 使用公开 stop 结束，未删锁。
 
 ## 后续业务结果
 
@@ -34,7 +34,9 @@ Reader 当前完整 JS 业务脚本已完成 23 个断言；其 SDK 升级安装
 - Flexify 按公开 pub 0.3.5 构建并官方安装，live SDK 0.3.5；Script 完成 16 个断言，独立静止 SQLite 13 项和旧行保护 6 项通过，精确结果为 2 组、14 次、625 kg。两次 Flutter CLI 的 VM Service 转发失败均保留；使用该 Flutter 版本规定的 LLDB 初始化运行确切 App PID 后完成业务。启动准备不算 Script 时间，结束后停止本次 App 和调试器。
 - Memos 注入 Web SDK 0.3.5，JS 15 个断言、Python 13 个断言通过；独立 SQLite 各 12 项检查通过，覆盖创建、编辑、取消删除和旧笔记保护。登录示例按实测 English UI 使用 Sign in。页面 checkbox 仍与保存的 `[x]` 内容有差异，任务勾选渲染不计通过。
 - Reader 依赖文件已升级至公开 JitPack 0.3.5，Debug 构建通过。POS 依赖已升级至 0.3.5，SIT/UAT Debug 构建通过，未安装收银 App。两处消费项目原有业务修改未混入 Bridge 提交。
-- Wikipedia 0.3.5 新 APK 已通过官方 Intent 安装与哈希验证；LocalSend 已解析公开 Flutter 0.3.5 并构建 APK。OnePlus 在 Wikipedia 安装后再次离线，Reader/LocalSend 新版安装和这三个 App 的新版 live SDK/后续业务仍待设备继续。不能用旧 SDK 业务结果替代。
+- LocalSend 已解析公开 Flutter 0.3.5、构建 APK、官方安装并实读 SDK 0.3.5。用户完成系统文件管理器隐私认证后，script-1789388141277-1 固定业务 148 个断言通过，耗时 108.303 秒，14 张截图；独立检查确认偏好和网络均已恢复、离线归档完整。第一轮隐私锁失败和一次初始页面不符的中间运行保留，不计通过；未声称完成文件传输或完整四 App 组合验收。
+- Wikipedia 0.3.5 新 APK 已通过官方 Intent 安装、哈希和 live SDK 验证。script-1789388391621-1 的原业务基线通过，月球输入执行成功，但实际 prefixsearch 请求约 20.2 秒后 Read timed out，页面显示无法连接维基百科。文章和阅读列表仍待可用网络；没有放宽成功请求断言。具体网络根因未确定。
+- OnePlus 重新连接后曾再次出现旧 UIA epoch ECONNRESET，公开 start 成功审计并创建新 epoch abe12ad2-3bb5-416d-b0e2-c832c3def3ca，之后 Reader 完整业务通过。该自然恢复证据补充在 oneplus-uia-recovered-before-reader-035.json；没有删除锁。
 
 Wikipedia 与 Android 组合控制器现在可接收显式冻结的 manifest/suite 路径，便于升级 APK 后保留旧样本历史；安装包哈希、脚本/校验器哈希、业务和时限检查均保留。Web remote-smoke 依赖已升级到公共 npm 0.3.5。
 
