@@ -7,7 +7,7 @@ import WebKit
 public final class AiAppBridge {
     public static let shared = AiAppBridge()
 
-    private let bridgeVersion = "0.3.2"
+    private let bridgeVersion = "0.3.3"
     private let runtimeEpoch = UUID().uuidString
     private lazy var h5Bridge = IOSH5Bridge(runtimeEpoch: runtimeEpoch)
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")

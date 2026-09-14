@@ -15,6 +15,7 @@ const { checksumOf } = require('../shared-kernel/evidence-schema');
 const { createProductionIntentDeviceAdapter } = require('./intent-production-adapter');
 const { createIntentWorker } = require('./intent-worker');
 const { prepareInstallJob, settlementProof } = require('../shared-kernel/android-install-execution');
+const { sha256FileScript } = require('../shared-kernel/android-sha256');
 
 async function sha256(file) {
   const hash = crypto.createHash('sha256');
@@ -86,7 +87,9 @@ async function installedIdentity(args, artifact, run = execute) {
   }
   const devicePath = paths[0].slice('package:'.length);
   try {
-    const digest = (await command(['shell', 'sha256sum', devicePath])).stdout.trim().split(/\s+/)[0];
+    const script = sha256FileScript(devicePath);
+    const quoted = `'${script.replaceAll("'", "'\\''")}'`;
+    const digest = (await command(['shell', 'sh', '-c', quoted])).stdout.trim().split(/\s+/)[0];
     if (!/^[a-f0-9]{64}$/.test(digest)) return { known: false, installed: true, identityMatches: false, error: 'installed_hash_unavailable' };
     return { known: true, installed: true, path: devicePath, sha256: digest, identityMatches: digest === artifact.sha256,
       identitySource: 'exact installed APK bytes compared with the locally verified manifest and signer' };

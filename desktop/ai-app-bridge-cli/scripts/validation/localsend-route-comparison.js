@@ -11,7 +11,7 @@ const { createMcpClient, payloadOf } = require('./mcp-jsonrpc-client');
 const executeFile = promisify(execFile);
 
 const PACKAGE = 'org.localsend.localsend_app.debug';
-const MODES = ['batch', 'plain-js', 'script'];
+const MODES = ['plain-js', 'script'];
 const EXPECTATION = Object.freeze({
   openLabel: '在浏览器中打开其中一个链接：',
   homeLabels: ['通过链接接收', '接收', '发送', '设置'],
@@ -49,7 +49,7 @@ function hasHomeLabel(texts, label, source, expectation) {
     && texts.some((text) => normal(text) === normal(expectation.homeLabels.slice(1).join('')));
 }
 
-// This oracle is outside all three execution modes and never reads Script's verdict.
+// This oracle is outside both execution modes and never reads Script's verdict.
 function evaluateOracle(evidence, expectation = EXPECTATION) {
   const checks = [];
   for (const [phase, opened] of [['before', false], ['opened', true], ['returned', false]]) {
@@ -79,13 +79,13 @@ function evaluateOracle(evidence, expectation = EXPECTATION) {
 
 function buildSteps(target, directory) {
   const command = (id, name, args = {}) => ({ id, command: name, arguments: { ...target, feedback: 'off', ...args } });
-  const homeWait = { targetText: EXPECTATION.homeLabels[0], requireText: '接收,发送,设置', absentText: EXPECTATION.openLabel, timeoutSec: 12, intervalMs: 250 };
+  const homeWait = { targetText: EXPECTATION.homeLabels[0], requireText: ['接收', '发送', '设置'], absentText: [EXPECTATION.openLabel], provider: 'flutter', timeoutMs: 12000, intervalMs: 250 };
   return [
     command('before-wait', 'wait-text', homeWait),
     command('before-screenshot', 'screenshot', { outFile: path.join(directory, 'before.png') }),
     command('before-nodes', 'flutter-nodes'),
     command('open', 'tap-flutter-text', { targetText: '通过链接接收' }),
-    command('opened-wait', 'wait-text', { targetText: EXPECTATION.openLabel, timeoutSec: 12, intervalMs: 250 }),
+    command('opened-wait', 'wait-text', { targetText: EXPECTATION.openLabel, provider: 'flutter', timeoutMs: 12000, intervalMs: 250 }),
     command('opened-screenshot', 'screenshot', { outFile: path.join(directory, 'opened.png') }),
     command('opened-nodes', 'flutter-nodes'),
     command('back', 'tap-flutter-text', { targetText: '返回' }),
@@ -116,20 +116,13 @@ async function prepareHome(client, target) {
   }
   const ready = await mcpRun(client, 'wait-text', {
     ...target, feedback: 'off', targetText: EXPECTATION.homeLabels[0],
-    requireText: '接收,发送,设置', absentText: EXPECTATION.openLabel, timeoutSec: 12, intervalMs: 250,
+    requireText: ['接收', '发送', '设置'], absentText: [EXPECTATION.openLabel], provider: 'flutter', timeoutMs: 12000, intervalMs: 250,
   });
   return { ok: ready.ok === true, nodes, back, ready, recoveryPerformed: open };
 }
 
 async function executeMode(client, mode, target, steps, directory) {
   const rowsPath = path.join(directory, 'rows.json');
-  if (mode === 'batch') {
-    const result = await mcpRun(client, 'batch', { steps, stopOnError: true, includeRaw: true, maxSteps: steps.length });
-    writeJson(path.join(directory, 'batch-response.json'), result);
-    const rows = result.steps || [];
-    writeJson(rowsPath, rows);
-    return { rows, executionStatus: result.ok ? 'completed' : 'failed' };
-  }
   if (mode === 'plain-js') {
     const rows = [];
     for (const step of steps) {
@@ -141,13 +134,14 @@ async function executeMode(client, mode, target, steps, directory) {
     }
     return { rows, executionStatus: rows.length === steps.length && rows.every((row) => row.ok) ? 'completed' : 'failed' };
   }
-  const operationId = `localsend-compare-${crypto.randomUUID()}-${path.basename(directory)}`;
+  const name = `localsend-compare-${crypto.randomUUID()}-${path.basename(directory)}`;
   const script = {
-    schemaVersion: 'aab.code-script/v1', name: operationId, language: 'javascript', source: SCRIPT_SOURCE, target: { platform: 'android', ...target },
+    schemaVersion: 'aab.code-script/v1', name, language: 'javascript', source: SCRIPT_SOURCE, target: { platform: 'android', ...target },
     inputs: { steps, rowsPath }, policy: { restartPolicy: 'none', timeoutMs: 90_000 },
   };
   writeJson(path.join(directory, 'script-input.json'), script);
-  let state = await mcpRun(client, 'script', { operation: 'start', operationId, script });
+  let state = await mcpRun(client, 'script', { operation: 'start', script });
+  const operationId = state.operationId;
   writeJson(path.join(directory, 'script-start.json'), state);
   const snapshots = [state];
   const deadline = Date.now() + 110_000;
@@ -218,7 +212,7 @@ function parseArgs(argv) {
   }
   if (!args.serial || args.packageName !== PACKAGE) throw new Error(`Explicit --serial and --packageName ${PACKAGE} are required`);
   const rounds = args.rounds == null ? 3 : Number(args.rounds);
-  if (!Number.isInteger(rounds) || rounds < 3) throw new Error('--rounds must be an integer of at least 3');
+  if (!Number.isInteger(rounds) || rounds < 1) throw new Error('--rounds must be a positive integer');
   const port = args.port == null ? undefined : Number(args.port);
   if (port != null && (!Number.isInteger(port) || port < 1 || port > 65535)) throw new Error('Invalid --port');
   return { ...args, rounds, port, out: path.resolve(args.out || path.resolve(__dirname, '../../../../.tools', `localsend-route-comparison-${Date.now()}`)) };
@@ -243,8 +237,8 @@ async function main(argv = process.argv.slice(2)) {
   });
   const report = {
     schemaVersion: 'aab.localsend-route-comparison/v1', target, startedAt: new Date().toISOString(),
-    scope: 'Current-worktree comparison of three interaction methods. Not a released-baseline benchmark; no model latency, token cost, or model turn savings are estimated.',
-    measurement: 'Execution wall includes command transport, waits, device work, raw result persistence and Script status monitoring. Preparation and screenshot OCR/oracle time are reported separately. Batch writes collected raw rows once; plain JS and Script flush rows after each step.',
+    scope: 'Current-worktree comparison of plain JS calls and Script. Not a released-baseline benchmark; no model latency, token cost, or model turn savings are estimated.',
+    measurement: 'Execution wall includes command transport, waits, device work, raw result persistence and Script status monitoring. Preparation and screenshot OCR/oracle time are reported separately. Both modes flush rows after each step.',
     expectedPackage: PACKAGE, expectation: EXPECTATION, negativeOracleRequested: Boolean(options['negative-oracle']), plan, trials: [],
     hostFactStore,
     scriptMonitoring: { waitMs: 1000, requestTimeoutMs: 10_000, returnsEarlyOnProgress: true, countedAs: 'MCP requests, not model calls' },

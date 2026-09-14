@@ -9,7 +9,7 @@ const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provi
 
 const commandDefinitions = [
   { command: 'runtime', domain: 'execution', summary: 'Inspect, start or orderly stop the shared local execution runtime. CLI exit and MCP disconnect leave operations running; stop cancels and drains them.', targetKind: 'host-runtime', options: ['operation'] },
-  { command: 'device-ownership', domain: 'execution', summary: 'Read device ownership, reconcile original completion and pending acknowledgements, or query a retained UIA receipt from Host FactStore by serial/runtimeEpoch/actionId. Never force-release or replay.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
+  { command: 'device-ownership', domain: 'execution', summary: 'Read ownership, reconcile original completion, explicitly cancel a retained install by actionId, or read a retained UIA receipt by serial/runtimeEpoch/actionId. Installation cancellation abandons its original PM session; it does not roll back an installed APK.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
   { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start or orderly stop the Android API 33+ UIA node runtime. Start checks the phone process lock; unacknowledged original receipts are retained.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
@@ -22,7 +22,7 @@ const commandDefinitions = [
   { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
   { command: 'install-apk', domain: 'app', summary: 'Start a supervised Intent installation. Use intent observe/decide for actual system UI; completion binds the original phone job/session and independently verifies installed APK bytes. Requires Android SDK aapt/apksigner.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'timeoutMs', 'adb', 'adbTimeoutMs', 'aaptPath', 'apksignerPath', 'recordingDir'] },
   { command: 'clear-app-data', domain: 'app', summary: 'Clear app data once through explicit method: pm-clear (default) or runtime. No fallback on failure.', targetApp: true, options: ['serial', 'packageName', 'method'] },
-  { command: 'freeze-app', domain: 'app', summary: 'Optionally stop target app processes with SIGSTOP when dynamic UI needs stable evidence.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
+  { command: 'freeze-app', domain: 'app', summary: 'Stop target App processes with SIGSTOP, including the SDK socket. Capture first; thaw before SDK reads or actions.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
   { command: 'thaw-app', domain: 'app', summary: 'Resume target app processes with SIGCONT before reads, waits, captures, actions, or final handoff.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
   { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra', 'clearTask'] },
   { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
@@ -126,7 +126,7 @@ const isolatedCommandDefinitions = [
   {
     command: 'script',
     domain: 'execution',
-    summary: 'Run a trusted-local-code JavaScript or Python Script. Operations: start, status, wait, pause, resume, decide, cancel, runtime-status. Commands and assertions return results for Script code to handle; uncaught errors fail execution. Script source is not an OS sandbox.',
+    summary: 'Run a trusted-local-code JavaScript or Python Script. Operations: start, status, wait, result, pause, resume, decide, cancel, runtime-status. Commands and assertions return results for Script code to handle; uncaught errors fail execution. Script source is not an OS sandbox.',
     options: ['operation', 'waitMs', 'afterSequence', 'recordingDir'],
     runtime: 'trusted-local-code',
   },
@@ -238,13 +238,15 @@ const isolatedByName = new Map(isolatedCommandDefinitions.map(d => [d.command, d
 function isMutationCommand(command, args = {}) {
   if (command === 'web-command' && args.name === 'domSnapshot') return false;
   return mutationCommands.has(command) || (command === 'logcat' && args.clear === true)
+    || (command === 'device-ownership' && args.operation === 'cancel-install')
     || (command === 'ios-wda-session' && args.operation !== 'status')
     || (command === 'uia-runtime' && args.operation !== 'status')
     || ((command === 'webview-network' || command === 'webview-console') && args.script !== undefined);
 }
 
 function isAndroidMutation(command, args = {}) {
-  return isMutationCommand(command, args) && command !== 'runtime' && !command.startsWith('ios-') && !command.startsWith('web-');
+  return isMutationCommand(command, args) && !['runtime', 'device-ownership'].includes(command)
+    && !command.startsWith('ios-') && !command.startsWith('web-');
 }
 
 function executionTimeoutMs(command, args = {}) {
@@ -307,12 +309,13 @@ function commandSchema(command) {
     properties: { operation: { enum: ['start', 'status', 'stop'] } } };
   if (definition.domain === 'web') return require('./web/command-schema').webSchema(command);
   if (command === 'device-ownership') return { type: 'object', additionalProperties: false,
-    properties: { operation: { enum: ['status', 'reconcile', 'receipt'] }, serial: { type: 'string', minLength: 1 },
+    properties: { operation: { enum: ['status', 'reconcile', 'receipt', 'cancel-install'] }, serial: { type: 'string', minLength: 1 },
       runtimeEpoch: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' },
       actionId: { type: 'string', minLength: 1, maxLength: 1024 }, timeoutMs: { type: 'integer', minimum: 1, maximum: 30000 } },
     required: ['operation', 'serial'], oneOf: [
       { properties: { operation: { enum: ['status', 'reconcile'] }, runtimeEpoch: false, actionId: false } },
       { properties: { operation: { const: 'receipt' }, timeoutMs: false }, required: ['runtimeEpoch', 'actionId'] },
+      { properties: { operation: { const: 'cancel-install' }, runtimeEpoch: false }, required: ['actionId'] },
     ] };
   if (require('./ios-wda-port').commands.has(command)) {
     const names = ['deviceId', 'wdaRunnerBundleId', 'wdaUrl', 'devicectl', 'timeoutMs', ...executionOptions];
@@ -355,9 +358,9 @@ function commandSchema(command) {
       devicectl: optionTypes.devicectl, timeoutMs: optionTypes.timeoutMs },
     required: ['operation', 'deviceId'], oneOf: [
       { properties: { kind: { enum: ['h5', 'flutter'] }, wdaRunnerBundleId: false, wdaUrl: false },
-        required: ['bundleId'], anyOf: [
+        anyOf: [
           { properties: { operation: { enum: ['status', 'reconcile'] }, kind: false, actionId: false, runtimeEpoch: false } },
-          { properties: { operation: { enum: ['result', 'cancel'] } }, required: ['kind', 'actionId', 'runtimeEpoch'] },
+          { properties: { operation: { enum: ['result', 'cancel'] } }, required: ['bundleId', 'kind', 'actionId', 'runtimeEpoch'] },
         ] },
       { properties: { kind: { const: 'wda' }, bundleId: false, runtimeUrl: false, iosHost: false, iosPort: false },
         required: ['kind', 'wdaRunnerBundleId'], anyOf: [

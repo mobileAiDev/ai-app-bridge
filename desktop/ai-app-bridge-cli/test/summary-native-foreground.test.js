@@ -6,6 +6,39 @@ const actual = require('./fixtures/notallyx-backup-dialog-native-tree.json');
 const summarize = rawTree => summarizeTree({ provider: 'native', rawTree, rawTreeId: 'foreground-test' });
 const node = (id, extra = {}) => ({ id, text: id, visible: true, effectiveVisible: true, children: [], ...extra });
 
+test('Reader back transition selects the focused shelf instead of the still-attached exiting page', () => {
+  const shelf = { windowId: 'shelf', type: 'activity', activityDecor: true, focused: true,
+    focusable: true, focusOwnerWindowId: 'shelf', root: node('shelf') };
+  const exiting = { windowId: 'reading', type: 'window', activityDecor: false, focused: false,
+    focusable: true, focusOwnerWindowId: null, root: node('read_pv_page') };
+  const result = summarize({ activity: 'reader.MainActivity', root: shelf.root, windows: [shelf, exiting] });
+  assert.equal(result.activity, 'reader.MainActivity');
+  assert.deepEqual(result.nodes.map(n => n.text), ['shelf']);
+});
+
+test('focus selection keeps a focused dialog and nonfocusable popup above its owner', () => {
+  const activity = { windowId: 'activity', type: 'activity', activityDecor: true, focused: false, focusable: true,
+    focusOwnerWindowId: 'dialog', root: node('activity') };
+  const dialog = { windowId: 'dialog', type: 'dialog', focused: true, focusable: true,
+    focusOwnerWindowId: 'dialog', root: node('dialog') };
+  const exiting = { windowId: 'exiting', focused: false, focusable: true, focusOwnerWindowId: null, root: node('exiting') };
+  assert.deepEqual(summarize({ windows: [activity, dialog, exiting] }).nodes.map(n => n.text), ['dialog']);
+  const popup = { windowId: 'popup', type: 'popup', focused: false, focusable: false,
+    focusOwnerWindowId: 'dialog', root: node('popup') };
+  assert.deepEqual(summarize({ windows: [activity, dialog, exiting, popup] }).nodes.map(n => n.text), ['popup']);
+});
+
+test('opening Reader search uses the new Activity while focus still belongs to the previous page', () => {
+  // Reduced from the OPPO 0.3.2 SearchActivity transition captured on 2026-09-14.
+  const old = { windowId: 'shelf', activityDecor: false, focused: true, focusable: true,
+    focusOwnerWindowId: 'shelf', root: node('shelf') };
+  const current = { windowId: 'search', activityDecor: true, focused: false, focusable: true,
+    focusOwnerWindowId: null, root: node('search') };
+  const result = summarize({ activity: 'reader.SearchActivity', root: current.root, windows: [old, current] });
+  assert.equal(result.activity, 'reader.SearchActivity');
+  assert.deepEqual(result.nodes.map(n => n.text), ['search']);
+});
+
 test('real long NotallyX settings page cannot displace the foreground backup dialog', () => {
   const result = summarize(actual);
   assert.equal(result.ok, true);

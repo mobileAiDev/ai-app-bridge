@@ -133,9 +133,11 @@ Archive integrity alone does not establish a passed business assertion.
 
 ## Explicit recording for one execution
 
-Add `recordingDir: "/absolute/existing-parent/new-recording"` to the
+Add `recordingDir: "/absolute/output/recording"` to the
 **arguments of `script start` or `intent start`**, alongside `script` or
-`goal`/`target`. The parent must exist and the directory must be new.
+`goal`/`target`. Missing parents are created; the directory may be new or empty.
+The Host claims it before admitting work. Nonempty directories are rejected to
+preserve existing evidence, with `field:"recordingDir"` and no admitted operation ID.
 This is opt-in file output for this execution; ordinary live calls do not
 copy mobile payloads to a Host history database.
 

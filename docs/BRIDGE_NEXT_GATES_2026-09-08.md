@@ -1,5 +1,7 @@
 # Bridge 后续关口与范围
 
+当前收尾转入 [0.3.3 修复与发行交接](RELEASE_HANDOFF_2026-09-14.md)，以下保留原阶段记录。
+
 本轮复核依据是用户的产品目标、当前源码、[总计划](SCRIPT_INTENT_RUNTIME_CAPTURE_MASTER_PLAN.md)与已保存的真机验证。交付对象始终是 Bridge：Intent 支持日常操作并积累真实证据，Agent 据此编写 Script，Script 在固定前提下连续回归并留下本轮证据。测试脚本和业务预期仍由 Agent 编排。
 
 ## 2026-09-12 样本收敛与当前顺序

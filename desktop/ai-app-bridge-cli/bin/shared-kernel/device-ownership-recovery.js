@@ -4,6 +4,7 @@ const { getProcessDeviceMutationLease } = require('./device-mutation-lease');
 const protocols = { flutter: require('./flutter-execution'), native: require('./native-execution'), h5: require('./h5-execution') };
 const shellProtocol = require('./android-shell-execution');
 const installProtocol = require('./android-install-execution');
+const { cancellationProof } = require('./android-install-cancellation');
 const uiaProtocol = require('./uia-protocol');
 const { createUiaRuntimePort } = require('./uia-runtime-port');
 const acknowledgements = require('./device-acknowledgements');
@@ -16,6 +17,8 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
   const bridge = ports || require('../device-provider');
   const installCleanup = [];
   const recovered = await lease.reconcile(args.serial, async pending => {
+    if (args.operation === 'cancel-install' && (pending.kind !== 'android-install' || pending.actionId !== args.actionId))
+      return { settled: false, error: 'install_action_mismatch', actionId: pending.actionId };
     if (pending.kind === 'uia-node') {
       if (!uiaProtocol.validIdentity(pending) || pending.target.serial !== args.serial) return { settled: false, error: 'invalid_uia_execution_identity' };
       try {
@@ -32,11 +35,19 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
       }
       try {
         const port = installPortFactory({ ...pending.target, timeoutMs: args.timeoutMs ?? 5000 });
-        const result = await port.read(pending, true);
+        let result, readError;
+        try { result = await port.read(pending, true); }
+        catch (error) { readError = error; }
         const proof = installProtocol.settlementProof(result, pending);
-        if (!proof) return { settled: false, error: 'install_completion_unavailable', actionId: pending.actionId };
-        installCleanup.push({ port, pending, result });
-        return proof;
+        if (proof) {
+          installCleanup.push({ port, pending, result });
+          return proof;
+        }
+        const cancellation = args.operation === 'cancel-install' ? await port.cancelInstall(pending) : await port.readCancellation?.(pending);
+        const cancelled = cancellationProof(cancellation, pending);
+        if (!cancelled) return { settled: false, error: readError?.code || 'install_completion_unavailable', actionId: pending.actionId };
+        installCleanup.push({ port, pending, result: cancellation, cancelled: true });
+        return cancelled;
       } catch (error) { return { settled: false, error: error.code || 'install_completion_query_failed' }; }
     }
     if (pending.kind === 'android-shell') {
@@ -71,8 +82,8 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
   });
   // Reconciliation fsyncs each exact proof before its phone copy may be retired.
   // Even a later unresolved reservation cannot invalidate an earlier settlement.
-  for (const { port, pending, result } of installCleanup) {
-    try { await port.acknowledge(pending, result); }
+  for (const { port, pending, result, cancelled } of installCleanup) {
+    try { await (cancelled ? port.acknowledgeCancellation(pending, result) : port.acknowledge(pending, result)); }
     catch (error) { (recovered.cleanupErrors ||= []).push({ actionId: pending.actionId, error: error.code || 'install_cleanup_failed' }); }
   }
   if (recovered.error !== 'target_busy') {

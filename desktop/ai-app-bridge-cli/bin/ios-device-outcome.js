@@ -1,5 +1,14 @@
 'use strict';
 const { isDeepStrictEqual } = require('node:util');
+const { checksumOf } = require('./shared-kernel/evidence-schema');
+
+function matchesInvocation(reply, args) {
+  if (!Array.isArray(args)) return false;
+  const type = { 'device process launch': 'devicectl.device.process.launch',
+    'device install app': 'devicectl.device.install.app' }[args.slice(0, 3).join(' ')];
+  return Boolean(type && reply?.info?.commandType === type
+    && isDeepStrictEqual(reply.info.arguments, ['devicectl', ...args]));
+}
 
 // A normal process exit alone cannot settle a remote action. Only the original
 // devicectl JSON response, with its exact arguments and explicit OS rejection,
@@ -13,12 +22,7 @@ function deviceCommandRejection(reply, args, error) {
 // response and exact invocation with the pending operation before using it.
 function originalDeviceRejection(reply, args) {
   const command = args.slice(0, 3).join(' ');
-  const type = command === 'device process launch' ? 'devicectl.device.process.launch'
-    : command === 'device install app' ? 'devicectl.device.install.app' : null;
-  if (!type
-      || reply?.info?.jsonVersion !== 4 || reply.info.outcome !== 'failed'
-      || reply.info.commandType !== type
-      || !isDeepStrictEqual(reply.info.arguments, ['devicectl', ...args])) return null;
+  if (!matchesInvocation(reply, args) || reply.info.outcome !== 'failed') return null;
   const errors = [];
   function visit(value, depth) {
     if (!value || typeof value !== 'object' || depth > 16 || errors.length > 32) return;
@@ -36,6 +40,12 @@ function originalDeviceRejection(reply, args) {
       message: 'The selected iPhone has reached the free developer profile App limit. Remove an explicitly selected test App before installing another.',
       settled: true, dispatched: true, ambiguous: false, deviceOutcome: reply };
   }
+  if (errors.some(value => value.domain === 'com.apple.dt.CoreDeviceError' && value.code === 10002)
+      && errors.some(value => value.domain === 'NSOSStatusErrorDomain' && value.code === -10814)) {
+    return { ok: false, error: 'ios_app_not_installed',
+      message: 'The requested App is not installed on the selected iPhone.',
+      settled: true, dispatched: true, ambiguous: false, deviceOutcome: reply };
+  }
   const reason = errors.find(value => value.domain === 'FBSOpenApplicationErrorDomain' && [3, 7].includes(value.code));
   if (!errors.some(value => value.domain === 'FBSOpenApplicationServiceErrorDomain' && value.code === 1) || !reason) return null;
   return { ok: false, error: reason.code === 7 ? 'ios_device_locked' : 'ios_app_launch_rejected',
@@ -44,4 +54,16 @@ function originalDeviceRejection(reply, args) {
     settled: true, dispatched: true, ambiguous: false, deviceOutcome: reply };
 }
 
-module.exports = { deviceCommandRejection, originalDeviceRejection };
+function originalDeviceOutcome(reply, args) {
+  if (!matchesInvocation(reply, args)) return null;
+  if (reply.info.outcome === 'failed') return originalDeviceRejection(reply, args);
+  if (reply.info.outcome !== 'success' || !reply.result) return null;
+  return { ok: true, settled: true, dispatched: true, ambiguous: false, deviceOutcome: reply };
+}
+
+function deviceCommandProof(outcome, invocation) {
+  return { kind: 'ios-command', settled: true, dispatched: outcome.dispatched, ambiguous: false,
+    invocation, outcome, responseSha256: checksumOf(outcome.deviceOutcome) };
+}
+
+module.exports = { deviceCommandRejection, originalDeviceRejection, originalDeviceOutcome, deviceCommandProof };

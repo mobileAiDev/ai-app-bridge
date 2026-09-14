@@ -7,6 +7,22 @@ const test = require('node:test');
 const { parseArgs } = require('../bin/ai-app-bridge');
 const cli = path.resolve(__dirname, '../bin/ai-app-bridge.js');
 
+for (const flag of ['--version', '-V', 'version']) {
+  test(`CLI ${flag} prints the installed package version without a device or Runtime`, () => {
+    const result = spawnSync(process.execPath, [cli, flag], { encoding: 'utf8',
+      env: { ...process.env, ADB: '/missing-version-test-adb' } });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(result.stdout.trim(), require('../package.json').version);
+    assert.equal(result.stderr, '');
+  });
+}
+
+test('CLI without arguments shows help without starting a device command', () => {
+  const result = spawnSync(process.execPath, [cli], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /^Usage: ai-app-bridge/);
+});
+
 test('raw CLI preserves value tokens and the two repeatable launch fields', () => {
   assert.deepEqual(parseArgs(['launch-activity', '--serial', 'device',
     '--category', 'first', '--category', 'second', '--extra', 'one=1',

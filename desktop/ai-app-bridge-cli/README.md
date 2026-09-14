@@ -7,7 +7,7 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This release is `0.3.2`, distributed through the npm `latest` dist-tag.
+This release is `0.3.3`, distributed through the npm `latest` dist-tag.
 The default installation includes the Script/Intent and capture contracts below.
 The `next` dist-tag also points to this release until a newer candidate is published.
 The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
@@ -56,7 +56,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.3.2
+npm install -g @mobileaidev/ai-app-bridge@0.3.3
 
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
@@ -338,12 +338,11 @@ explicit original/redacted hashes. A busy FactStore preserves pending cleanup.
 API 36 on OPPO PGFM10 and OnePlus PKR110 is the current real-device scope. See
 the [command contract](docs/COMMAND_CONTRACT.md#semantic-targets-and-text-waits).
 
-For dynamic or transient screens, MCP agents can use `freeze-app`/`thaw-app` as
-an optional stabilization control: thaw before reads, actions, waits, or
-captures; freeze after evidence capture only when a changing UI would make
-reasoning unreliable; and thaw before the next app operation or before
-finishing so the app is not left frozen. Static screens and ordinary form
-flows usually do not need freezing.
+`freeze-app` sends SIGSTOP to the target App processes, including the Bridge
+SDK and its socket. It is a process control command, not a way to obtain live
+SDK observations of a frozen page. Capture evidence first; use `thaw-app` before
+further reads, actions, waits or captures and before finishing. Ordinary Intent
+and Script flows do not need freezing.
 For visible state changes such as panels, dialogs, page transitions, tabs, or
 button-triggered content, verify with both `screenshot` and `tree`/`uia-tree`;
 do not conclude success from UI tree alone.
@@ -388,3 +387,15 @@ debug dependency exposes multiple launcher entries, it returns
 `launcher_ambiguous` with the candidates instead of guessing. Use
 `launch-activity` or `launch-app --activity/--component` to choose the intended
 entry point explicitly.
+
+### Upgrading the running CLI and MCP
+
+`ai-app-bridge --version` (also `-V`) reads the installed entrypoint's package
+version without requiring a device. Upgrading npm replaces files; it does not
+replace an MCP process already connected to Cursor or another client. Stop the
+shared Runtime with `ai-app-bridge runtime --operation stop` when existing work
+has finished, then reconnect the client's MCP server. The MCP initialize
+response reports `serverInfo.version`; refresh cached tool descriptions in the
+client when they still show removed commands such as `batch` or `smoke`.
+A running Runtime from different source code reports `runtime_code_mismatch`
+until explicitly stopped, so in-flight work is not silently moved to new code.

@@ -17,6 +17,7 @@ for an orderly runtime shutdown, or intent/script --operation cancel for a task.
 Commands:
 ${[...isolatedCommandDefinitions, ...commandDefinitions].map(d => `  ${d.command.padEnd(22)} ${d.summary}`).join('\n')}
   help                   Show this help.
+  --version, -V          Show the installed CLI/MCP package version.
 
 Use --help <command> to inspect its JSON input schema.
 For intent/script/evidence, add --operation to read only that operation.
@@ -37,7 +38,13 @@ async function main() {
   process.once('SIGINT', disconnect);
   process.once('SIGTERM', disconnect);
   try {
-    const parsed = parseArgs(process.argv.slice(2));
+    const argv = process.argv.slice(2);
+    if (argv.length === 1 && ['--version', '-V', 'version'].includes(argv[0])) {
+      process.stdout.write(`${require('../package.json').version}\n`);
+      return;
+    }
+    if (!argv.length) { process.stdout.write(`${helpText}\n`); return; }
+    const parsed = parseArgs(argv);
     command = parsed.command;
     if (parsed.options.help || command === 'help') {
       const name = command === 'help' ? '' : command;

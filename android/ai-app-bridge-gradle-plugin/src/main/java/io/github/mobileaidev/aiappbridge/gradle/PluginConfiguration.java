@@ -15,16 +15,14 @@ final class PluginConfiguration {
     }
 
     static void logConfigured(Logger logger, AiAppBridgeExtension extension, String variantName, String backend) {
+        if (!extension.getUnusedOptions().isEmpty()) {
+            logger.warn("[AiAppBridge] These deprecated options have no effect: {}. Remove them from aiAppBridge configuration.",
+                    extension.getUnusedOptions());
+        }
         logger.lifecycle(
                 "[AiAppBridge] Android Gradle plugin configured for {} using {} backend. "
                         + "okHttpCaptureEnabled="
                         + extension.isOkHttpCaptureEnabled()
-                        + ", webSocketCaptureEnabled="
-                        + extension.isWebSocketCaptureEnabled()
-                        + ", logInstrumentationEnabled="
-                        + extension.isLogInstrumentationEnabled()
-                        + ", webViewDebuggingEnabled="
-                        + extension.isWebViewDebuggingEnabled()
                         + ".",
                 variantName,
                 backend

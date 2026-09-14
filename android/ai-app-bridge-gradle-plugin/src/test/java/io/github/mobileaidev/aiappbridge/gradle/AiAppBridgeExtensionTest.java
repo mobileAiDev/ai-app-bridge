@@ -15,6 +15,7 @@ public class AiAppBridgeExtensionTest {
         assertFalse(extension.getWebSocketCaptureEnabled());
         assertFalse(extension.getLogInstrumentationEnabled());
         assertTrue(extension.getWebViewDebuggingEnabled());
+        assertTrue(extension.getUnusedOptions().isEmpty());
     }
 
     @Test
@@ -37,5 +38,8 @@ public class AiAppBridgeExtensionTest {
         assertTrue(extension.getLogInstrumentationEnabled());
         assertFalse(extension.isWebViewDebuggingEnabled());
         assertFalse(extension.getWebViewDebuggingEnabled());
+        assertTrue(extension.getUnusedOptions().contains("webSocketCaptureEnabled"));
+        assertTrue(extension.getUnusedOptions().contains("logInstrumentationEnabled"));
+        assertTrue(extension.getUnusedOptions().contains("webViewDebuggingEnabled"));
     }
 }

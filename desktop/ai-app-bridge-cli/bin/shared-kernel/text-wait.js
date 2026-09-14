@@ -7,15 +7,17 @@ const { looksLikeAndroidUiHierarchyXml, visitAndroidUiHierarchyTags } = require(
 const { runExecution, checkExecution, executionSleep } = require('./execution-scope');
 
 function validateTextConditions({ targetText, requireText = [], absentText = [], requireActivity, provider = 'auto' }) {
-  const invalid = message => { throw new CommandError('invalid_argument', message, { field: 'conditions' }); };
-  if (!['auto', 'native', 'flutter', 'uia'].includes(provider)) invalid('provider must be auto, native, flutter, or uia.');
-  if (targetText !== undefined && (typeof targetText !== 'string' || !targetText)) invalid('targetText must be a non-empty exact label.');
-  if (requireActivity !== undefined && (typeof requireActivity !== 'string' || !requireActivity)) invalid('requireActivity must be a full Activity class name.');
-  for (const values of [requireText, absentText]) if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || !value)) invalid('requireText and absentText must be arrays of non-empty exact labels.');
+  const invalid = (field, message) => { throw new CommandError('invalid_argument', message, { field }); };
+  if (!['auto', 'native', 'flutter', 'uia'].includes(provider)) invalid('provider', 'provider must be auto, native, flutter, or uia.');
+  if (targetText !== undefined && (typeof targetText !== 'string' || !targetText)) invalid('targetText', 'targetText must be a non-empty exact label.');
+  if (requireActivity !== undefined && (typeof requireActivity !== 'string' || !requireActivity)) invalid('requireActivity', 'requireActivity must be a full Activity class name.');
+  for (const [field, values] of Object.entries({ requireText, absentText })) {
+    if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || !value)) invalid(field, `${field} must be an array of non-empty exact labels.`);
+  }
   const present = [...new Set([...(targetText === undefined ? [] : [targetText]), ...requireText])];
-  if (!present.length && !absentText.length && !requireActivity) invalid('Supply targetText, requireText, absentText, or requireActivity.');
-  if (!present.length && provider === 'auto') invalid('Waiting for absence or Activity alone requires an explicit provider.');
-  if (present.some(value => absentText.includes(value))) invalid('The same label cannot be both required and absent.');
+  if (!present.length && !absentText.length && !requireActivity) invalid('targetText', 'Supply targetText, requireText, absentText, or requireActivity.');
+  if (!present.length && provider === 'auto') invalid('provider', 'Waiting for absence or Activity alone requires an explicit provider.');
+  if (present.some(value => absentText.includes(value))) invalid('absentText', 'The same label cannot be both required and absent.');
   return { present, absent: [...new Set(absentText)], requireActivity, provider };
 }
 

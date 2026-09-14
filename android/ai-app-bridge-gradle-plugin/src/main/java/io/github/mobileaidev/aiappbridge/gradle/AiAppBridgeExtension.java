@@ -1,6 +1,7 @@
 package io.github.mobileaidev.aiappbridge.gradle;
 
 public class AiAppBridgeExtension {
+    private final java.util.Set<String> unusedOptions = new java.util.LinkedHashSet<>();
     private boolean enabled = true;
     private boolean okHttpCaptureEnabled = true;
     private boolean webSocketCaptureEnabled = false;
@@ -32,40 +33,65 @@ public class AiAppBridgeExtension {
         this.okHttpCaptureEnabled = okHttpCaptureEnabled;
     }
 
+    /** @deprecated This option has no instrumentation implementation. */
+    @Deprecated
     public boolean isWebSocketCaptureEnabled() {
         return webSocketCaptureEnabled;
     }
 
+    /** @deprecated This option has no instrumentation implementation. */
+    @Deprecated
     public boolean getWebSocketCaptureEnabled() {
         return webSocketCaptureEnabled;
     }
 
+    /** @deprecated Retained for existing build scripts; setting it emits an explicit warning. */
+    @Deprecated
     public void setWebSocketCaptureEnabled(boolean webSocketCaptureEnabled) {
+        unusedOptions.add("webSocketCaptureEnabled");
         this.webSocketCaptureEnabled = webSocketCaptureEnabled;
     }
 
+    /** @deprecated This option has no instrumentation implementation. */
+    @Deprecated
     public boolean isLogInstrumentationEnabled() {
         return logInstrumentationEnabled;
     }
 
+    /** @deprecated This option has no instrumentation implementation. */
+    @Deprecated
     public boolean getLogInstrumentationEnabled() {
         return logInstrumentationEnabled;
     }
 
+    /** @deprecated Retained for existing build scripts; setting it emits an explicit warning. */
+    @Deprecated
     public void setLogInstrumentationEnabled(boolean logInstrumentationEnabled) {
+        unusedOptions.add("logInstrumentationEnabled");
         this.logInstrumentationEnabled = logInstrumentationEnabled;
     }
 
+    /** @deprecated This option has no instrumentation implementation. */
+    @Deprecated
     public boolean isWebViewDebuggingEnabled() {
         return webViewDebuggingEnabled;
     }
 
+    /** @deprecated This option has no instrumentation implementation. */
+    @Deprecated
     public boolean getWebViewDebuggingEnabled() {
         return webViewDebuggingEnabled;
     }
 
+    /** @deprecated Retained for existing build scripts; setting it emits an explicit warning. */
+    @Deprecated
     public void setWebViewDebuggingEnabled(boolean webViewDebuggingEnabled) {
+        unusedOptions.add("webViewDebuggingEnabled");
         this.webViewDebuggingEnabled = webViewDebuggingEnabled;
+    }
+
+    java.util.Set<String> getUnusedOptions() {
+        return java.util.Collections.unmodifiableSet(unusedOptions);
     }
 
     public String getRuntimeDependencyNotation() {

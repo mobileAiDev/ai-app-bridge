@@ -14,6 +14,12 @@ function rejected(args, code = 3) {
       } } },
     } } } } };
 }
+function notInstalled(args) {
+  return { info: { arguments: ['devicectl', ...args], commandType: 'devicectl.device.process.launch', jsonVersion: 4, outcome: 'failed' },
+    error: { code: 10002, domain: 'com.apple.dt.CoreDeviceError', userInfo: { NSUnderlyingError: { error: {
+      code: -10814, domain: 'NSOSStatusErrorDomain', userInfo: { BundleIdentifier: { string: 'sample.app' } },
+    } } } } };
+}
 const args = ['device', 'process', 'launch', '--device', 'phone', '--terminate-existing', 'sample.app', '--timeout', '30', '--json-output', '/original.json'];
 function installLimit(args) {
   return { info: { arguments: ['devicectl', ...args], commandType: 'devicectl.device.install.app', jsonVersion: 4, outcome: 'failed' },
@@ -67,9 +73,18 @@ test('original structured Security and Locked launch rejections are settled fail
     assert.equal(result.error, code === 7 ? 'ios_device_locked' : 'ios_app_launch_rejected');
   }
 });
+test('original app-not-installed launch rejection settles without depending on the JSON format version number', () => {
+  for (const version of [3, 4, 5]) {
+    const reply = notInstalled(args); reply.info.jsonVersion = version;
+    const result = deviceCommandRejection(reply, args, { code: 1, signal: null, killed: false });
+    assert.equal(result?.error, 'ios_app_not_installed');
+    assert.equal(result.settled, true); assert.equal(result.ambiguous, false);
+  }
+  assert.equal(deviceCommandRejection(notInstalled(args), [...args, 'another.app'], { code: 1 }), null);
+});
 test('missing, unrelated, timed out or interrupted responses never settle a launch', () => {
   const reply = rejected(args);
-  const variants = [null, {...reply,info:{...reply.info,jsonVersion:3}},
+  const variants = [null, {...reply,info:{...reply.info,commandType:'unrelated.command'}},
     {...reply,info:{...reply.info,outcome:'success'}}, rejected([...args.slice(0,-1),'/different.json']),
     rejected(args, 99), {...reply,error:{code:3,domain:'FBSOpenApplicationErrorDomain'}}];
   for (const candidate of variants) assert.equal(deviceCommandRejection(candidate,args,{code:1}),null);
@@ -92,13 +107,13 @@ test('public provider releases known rejected launches and retains genuinely unk
         callback(null,'',''); return;
       }
       launches++;
-      if (mode !== 'unknown') fs.writeFileSync(report,JSON.stringify(rejected(argv.slice(1),mode==='locked'?7:3)));
+      if (mode !== 'unknown') fs.writeFileSync(report,JSON.stringify(mode === 'missing' ? notInstalled(argv.slice(1)) : rejected(argv.slice(1),mode==='locked'?7:3)));
       const error=Object.assign(new Error('original command failed'),{code:mode==='unknown'?'provider_timeout':1,signal:null,killed:false});
       callback(error,'','');
     });
     return child;
   }});
-  for (mode of ['security','locked']) {
+  for (mode of ['security','locked','missing']) {
     const result = await provider.run('ios-launch-app',{deviceId:'phone',bundleId:'sample.app'});
     assert.equal(result.settled,true,JSON.stringify(result)); assert.equal(result.ambiguous,false);
     assert.equal(lease.status('ios:udid').phase,'idle');
@@ -107,7 +122,39 @@ test('public provider releases known rejected launches and retains genuinely unk
   const missing=await provider.run('ios-launch-app',{deviceId:'phone',bundleId:'sample.app'});
   assert.equal(missing.ambiguous,true); assert.equal(lease.status('ios:udid').phase,'unresolved');
   const blocked=await provider.run('ios-launch-app',{deviceId:'phone',bundleId:'another.app'});
-  assert.equal(blocked.error,'device_ownership_unresolved'); assert.equal(launches,3);
+  assert.equal(blocked.error,'device_ownership_unresolved'); assert.equal(launches,4);
+});
+
+test('a fresh provider reconciles a retained original devicectl completion without SDK access or replay', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-ios-command-recovery-'));
+  let originalPath, originalArgs, launches = 0;
+  t.after(() => { if (originalPath) fs.rmSync(originalPath, { force: true }); fs.rmSync(directory, { recursive: true, force: true }); });
+  const execute = (file, argv, options, callback) => {
+    const report = argv[argv.indexOf('--json-output') + 1];
+    setImmediate(() => {
+      if (argv.includes('list')) {
+        fs.writeFileSync(report, JSON.stringify({ result: { devices: [{ identifier: 'phone', hardwareProperties: { udid: 'udid' }, deviceProperties: {}, connectionProperties: {} }] } }));
+        callback(null, '', ''); return;
+      }
+      launches++; originalPath = report; originalArgs = argv.slice(1);
+      callback(Object.assign(new Error('Lost devicectl response'), { code: 'provider_timeout' }), '', '');
+    });
+    return { pid: 987654, kill() {} };
+  };
+  const provider = new IOSBridgeProvider({ lease: createDeviceMutationLease({ directory }), execFile: execute });
+  const failed = await provider.run('ios-launch-app', { deviceId: 'phone', bundleId: 'sample.app' });
+  assert.equal(failed.ambiguous, true);
+  const fresh = new IOSBridgeProvider({ lease: createDeviceMutationLease({ directory }), execFile: execute });
+  const recover = () => fresh.run('ios-execution', { operation: 'reconcile', deviceId: 'phone' });
+  assert.equal((await recover()).error, 'device_ownership_unresolved');
+  fs.writeFileSync(originalPath, JSON.stringify(notInstalled([...originalArgs, 'another-invocation'])));
+  assert.equal((await recover()).error, 'device_ownership_unresolved');
+  fs.writeFileSync(originalPath, JSON.stringify(notInstalled(originalArgs)));
+  const recovered = await recover();
+  assert.equal(recovered.recovered, true, JSON.stringify(recovered));
+  assert.equal(recovered.executionReceipt.outcome.error, 'ios_app_not_installed');
+  assert.equal(launches, 1, 'Reconciliation must only read the original response');
+  assert.equal(fresh.lease.status('ios:udid').phase, 'idle');
 });
 
 test('setup verifies the target SDK after the Runner has taken the foreground', async () => {

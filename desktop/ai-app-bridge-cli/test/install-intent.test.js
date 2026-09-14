@@ -166,7 +166,9 @@ test('package identity reads actual device APK bytes and distinguishes absence f
   const calls = [];
   const query = async (_file, args) => { calls.push(args); return { stdout: args.includes('path') ? 'package:/data/app/hash/example/base.apk\n' : `${artifact.sha256}  /data/app/hash/example/base.apk\n` }; };
   assert.equal((await installedIdentity({ serial: 'device' }, artifact, query)).identityMatches, true);
-  assert.deepEqual(calls[1], ['-s', 'device', 'shell', 'sha256sum', '/data/app/hash/example/base.apk']);
+  assert.deepEqual(calls[1].slice(0, 5), ['-s', 'device', 'shell', 'sh', '-c']);
+  assert(calls[1][5].includes('aab_sha256sum'));
+  assert(calls[1][5].includes('/data/app/hash/example/base.apk'));
   const absent = await installedIdentity({ serial: 'device' }, artifact, async () => { throw { code: 1, stdout: '', stderr: '' }; });
   assert.deepEqual(absent, { known: true, installed: false, identityMatches: false });
   const offline = await installedIdentity({ serial: 'device' }, artifact, async () => { throw { code: 1, stderr: 'device offline' }; });

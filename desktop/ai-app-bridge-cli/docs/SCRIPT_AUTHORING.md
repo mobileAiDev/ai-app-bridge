@@ -22,7 +22,7 @@ Call MCP `run` with this shape, replacing the target and source path:
       "entrypoint": "main",
       "target": {"platform":"android", "serial": "explicit-device", "packageName": "explicit.package"},
       "inputs": {},
-      "permissions": ["app.read", "app.interact"],
+      "permissions": ["app.read", "app.interact", "capture.read"],
       "policy": {"timeoutMs": 180000, "restartPolicy": "none"}
     }
   }
@@ -32,7 +32,7 @@ Call MCP `run` with this shape, replacing the target and source path:
 The same request is available through CLI:
 
 ```sh
-ai-app-bridge script --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./flow.js","permissions":["app.read","app.interact"]}'
+ai-app-bridge script --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./flow.js","permissions":["app.read","app.interact","capture.read"]}'
 ai-app-bridge script --operation status --operation-id RETURNED_ID
 ai-app-bridge script --operation result --operation-id RETURNED_ID
 ```
@@ -51,6 +51,16 @@ Use exactly one of `sourcePath` and `source`. JavaScript is loaded as CommonJS
 in a real Node child. Export `main`; use `ctx.inputs` for run-specific values.
 The source is trusted local code, not an OS sandbox. Use `ctx.call` for device
 operations so the Host can apply permissions and record receipts.
+
+An explicit `permissions` list replaces the defaults: `events`, `logs`, `network`
+and `state` need `capture.read`, included in both starting examples above.
+A transient `uia-tree` read rejected with `uia_tree_changed` and
+`dispatched:false` may be retried within a bounded wait for a stable snapshot.
+Do not use that read retry to replay a mutation with an unknown result.
+The repository fixture `scripts/validation/reader-regression.js` demonstrates
+this handling with Reader navigation, chapter restoration and captured events.
+It expects its documented book, chapters and font-size fixture; it records the
+installed SDK version without requiring an exact release number.
 
 `start` returns an operation ID without waiting for completion. Query `status`
 or `wait` with that `operationId`; `waitMs` bounds one wait and `afterSequence`
@@ -93,7 +103,7 @@ source, throw to fail, and use explicit pause/resume/cancel control as needed.
 Use `status` or `wait` for progress; there is no separate `progress` operation.
 
 For a portable evidence run, add `recordingDir` to the start arguments with
-a new output directory. The Host records returned calls, assertions and
+a new or empty output directory. The Host records returned calls, assertions and
 referenced screenshots before bounded events are evicted. With
 `restartPolicy: "none"`, use public `evidence export` with
 `includeRecordedPayloads: true`, then offline `evidence verify` with the

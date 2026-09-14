@@ -38,7 +38,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.2")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.3")
 }
 ```
 
@@ -77,7 +77,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.2"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.3.3"
 }
 
 aiAppBridge {
@@ -92,7 +92,7 @@ The plugin keeps one public id and chooses the implementation internally: AGP 7+
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.2")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.3")
 ```
 
 Start the runtime once from app startup code:
@@ -149,7 +149,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.3.2
+  ai_app_bridge_flutter: ^0.3.3
 ```
 
 Initialize once:

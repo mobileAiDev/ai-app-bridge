@@ -36,7 +36,9 @@ async function fixture(t, options = {}) {
       fs.writeFileSync(file, `${peer.serial} tcp:${peer.port} ${args[4]}\n`); return stdout(peer.port);
     }
     assert.deepEqual(args.slice(2, 5), ['shell', 'sh', '-c']);
-    const script = args[5].slice(1, -1).replaceAll("'\\''", "'");
+    const script = args[5].slice(1, -1).replaceAll("'\\''", "'")
+      .replace(require('../bin/shared-kernel/android-sha256').sha256Shell + 'aab_select_sha256 || exit 127\n', '')
+      .replaceAll('aab_sha256sum ', 'sha256sum ');
     let match;
     if (script === 'getprop ro.build.version.sdk') return stdout('36');
     if (script.startsWith('umask 077\nmkdir -p ')) return stdout('');

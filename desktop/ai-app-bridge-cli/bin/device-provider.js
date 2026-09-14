@@ -2716,6 +2716,8 @@ async function launchApp(ctx, options = {}) {
     return {
       ok: false,
       error: 'launcher_not_found',
+      dispatched: false,
+      ambiguous: false,
       packageName: ctx.packageName,
       launcherCandidates: candidates,
     };
@@ -2724,6 +2726,8 @@ async function launchApp(ctx, options = {}) {
     return {
       ok: false,
       error: 'launcher_ambiguous',
+      dispatched: false,
+      ambiguous: false,
       packageName: ctx.packageName,
       launcherCandidates: candidates,
       suggestion: 'Pass --component or --activity to choose the intended launcher Activity.',

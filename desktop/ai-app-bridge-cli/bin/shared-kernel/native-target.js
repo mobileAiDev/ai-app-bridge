@@ -2,8 +2,9 @@
 
 const { checkExecution } = require('./execution-scope');
 
-// The top non-hidden Android window owns all semantic selection. Unknown or
-// disabled foreground roots block controls in earlier windows.
+// WindowInspector retains other Activities during transitions, and focus can
+// lag the current Activity. Select its window group, including dialogs/popups
+// sharing its focus owner. Older trees keep their window-order semantics.
 
 function visible(node) {
   return node && (node.effectiveVisible === true || node.visible === true)
@@ -20,7 +21,10 @@ function foregroundNativeWindow(rawTree) {
   if (!rawTree || typeof rawTree !== 'object') return null;
   const windows = Array.isArray(rawTree.windows) ? rawTree.windows : [];
   if (windows.length) {
-    const index = windows.findLastIndex(item => !explicitlyHidden(item?.root));
+    const activity = windows.findLast(item => item?.activityDecor === true && Object.hasOwn(item, 'focusOwnerWindowId'));
+    const index = windows.findLastIndex(item => !explicitlyHidden(item?.root)
+      && (!activity || item === activity || !Object.hasOwn(item || {}, 'focusOwnerWindowId')
+        || item.focusOwnerWindowId !== null && item.focusOwnerWindowId === activity.focusOwnerWindowId));
     if (index < 0) return null;
     const window = windows[index];
     return { index, root: window?.root, type: window?.type, windowId: window?.windowId,

@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { validateCommandArguments } = require('../bin/command-registry');
 const { evaluateOracle, EXPECTATION, NEGATIVE_EXPECTATION, PACKAGE, schedule, parseArgs, buildSteps } = require('../scripts/validation/localsend-route-comparison');
 
 function phase(labels) {
@@ -60,10 +61,9 @@ test('deliberately wrong expectation is rejected against evidence that passes th
   assert.equal(negative.checks.filter((check) => check.phase === 'opened').every((check) => check.verdict === 'failed'), true);
 });
 
-test('interleaving balances all three methods across the three positions', () => {
-  const plan = schedule(3);
-  assert.deepEqual(plan.map((item) => item.mode), ['batch','plain-js','script','plain-js','script','batch','script','batch','plain-js']);
-  for (let position = 0; position < 3; position += 1) assert.equal(new Set([plan[position].mode, plan[position + 3].mode, plan[position + 6].mode]).size, 3);
+test('interleaving balances both supported methods across the two positions', () => {
+  const plan = schedule(2);
+  assert.deepEqual(plan.map((item) => item.mode), ['plain-js','script','script','plain-js']);
 });
 
 test('device serial and exact package must both be explicitly selected', () => {
@@ -72,7 +72,7 @@ test('device serial and exact package must both be explicitly selected', () => {
   const options = parseArgs(['--serial','device','--packageName',PACKAGE,'--plan-only']);
   assert.equal(options.serial, 'device');
   assert.equal(options['plan-only'], true);
-  assert.throws(() => parseArgs(['--serial','device','--packageName',PACKAGE,'--rounds','1']), /at least 3/);
+  assert.equal(parseArgs(['--serial','device','--packageName',PACKAGE,'--rounds','1']).rounds, 1);
 });
 
 test('all modes share explicit target, waits, screenshot paths and Flutter-node evidence commands', () => {
@@ -83,7 +83,8 @@ test('all modes share explicit target, waits, screenshot paths and Flutter-node 
   assert.equal(steps.filter((step) => step.command === 'screenshot').length, 3);
   assert.equal(steps.every((step) => step.arguments.serial === target.serial && step.arguments.packageName === PACKAGE), true);
   assert.equal(steps.find((step) => step.id === 'open').arguments.targetText, '通过链接接收');
-  assert.equal(steps.find((step) => step.id === 'returned-wait').arguments.absentText, EXPECTATION.openLabel);
+  assert.deepEqual(steps.find((step) => step.id === 'returned-wait').arguments.absentText, [EXPECTATION.openLabel]);
+  for (const step of steps) assert.doesNotThrow(() => validateCommandArguments(step.command, step.arguments));
 });
 
 test('the receive link cannot impersonate the separate receive navigation tab', () => {

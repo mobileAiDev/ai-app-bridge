@@ -75,7 +75,7 @@ async function main(argv = process.argv.slice(2)) {
   try {
     await newHost();
     const initial = record('initial-status', await ready());
-    assert.equal(initial.debugBridge.version, '0.3.0-rc.1');
+    report.sdkVersion = initial.debugBridge.version;
     assert.equal(initial.debugBridge.runtimeEpoch, source.refs.state.runtimeEpoch, 'Use the current completed loop, not a stale report');
     assert.equal(initial.debugBridge.runtimeEpoch, source.refs.network.runtimeEpoch);
     await refsAt('fresh-host');
@@ -114,7 +114,7 @@ async function main(argv = process.argv.slice(2)) {
     report.checks.push({ name: 'runtime-stopped-no-host-fallback', verdict: 'passed', error: unavailable.error, scope: 'App process stopped; USB remained connected' }); save();
 
     await newHost();
-    record('restart-launch', await run('launch-native-test'));
+    record('restart-launch', await run('launch-activity', { activity: `${PACKAGE}.debugbridge.DebugBridgeNativeTestActivity` }));
     appStopped = false;
     const restarted = record('restart-status', await ready());
     assert.notEqual(restarted.debugBridge.runtimeEpoch, initial.debugBridge.runtimeEpoch);
@@ -124,7 +124,7 @@ async function main(argv = process.argv.slice(2)) {
     assert.equal(stale.error || stale.reason, 'runtime_epoch_changed');
     report.checks.push({ name: 'stale-decision-epoch-rejected', verdict: 'passed' }); save();
 
-    const clear = record('clear-sample-data', await run('clear-app-data'));
+    const clear = record('clear-sample-data', await run('clear-app-data', { method: 'runtime' }));
     assert.equal(clear.ok, true, JSON.stringify(clear));
     assert.equal(clear.method, 'bridge-runtime', 'This check specifically validates SDK clear and persistent writer reattachment');
     const cleared = record('after-clear-status', await ready());
@@ -141,7 +141,7 @@ async function main(argv = process.argv.slice(2)) {
     process.exitCode = 1;
   } finally {
     if (appStopped && client) {
-      try { record('cleanup-launch', await run('launch-native-test')); } catch (error) { report.cleanupError = error.message; }
+      try { record('cleanup-launch', await run('launch-activity', { activity: `${PACKAGE}.debugbridge.DebugBridgeNativeTestActivity` })); } catch (error) { report.cleanupError = error.message; }
     }
     if (client) await client.close();
     report.finishedAt = new Date().toISOString(); save();

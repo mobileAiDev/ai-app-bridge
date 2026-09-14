@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const { defaultArtifactPath, pruneGeneratedArtifacts } = require('./artifact-paths');
 const { execFileBounded, httpRequestBounded } = require('./shared-kernel/execution-io');
@@ -16,7 +16,7 @@ const { descriptorBinding, bindingHeaders, assertRuntimeResponse, bindingFailure
 const { openWdaPort, target: wdaTarget } = require('./ios-wda-port');
 const { prepareWdaProject, wdaBuildEnvironment } = require('./ios-wda-project');
 const { executeWDAAction, reconcileWDA, completionPort } = require('./ios-wda-execution');
-const { deviceCommandRejection } = require('./ios-device-outcome');
+const { deviceCommandRejection, deviceCommandProof } = require('./ios-device-outcome');
 const { bindFlutterAction } = require('./shared-kernel/flutter-target');
 const nativeTarget = require('./shared-kernel/ios-native-target');
 const h5Target = require('./shared-kernel/ios-h5-target');
@@ -60,7 +60,7 @@ class IOSBridgeProvider {
               result = { ...error.deviceOutcome, command };
             }
             return currentExecution()?.dispatched ? result : { ...result, dispatched: false, ambiguous: false };
-          });
+          }, undefined, { allowNested: true });
         });
       });
     } catch (error) {
@@ -89,9 +89,9 @@ class IOSBridgeProvider {
         case 'ios-setup':
           return await this.setup(args);
         case 'ios-install-app':
-          return await this.installApp(args);
+          return await this.installApp(args, context);
         case 'ios-launch-app':
-          return await this.launchApp(args);
+          return await this.launchApp(args, context);
         case 'ios-status':
           return await this.runtimeGet(args, '/v1/status');
         case 'ios-tree':
@@ -320,9 +320,9 @@ class IOSBridgeProvider {
     };
   }
 
-  async installApp(args = {}) {
+  async installApp(args = {}, { device: boundDevice } = {}) {
     const ctx = this.context(args);
-    const device = await this.requireDevice(args);
+    const device = boundDevice || await this.requireDevice(args);
     const appPath = requiredString(args.appPath, 'appPath');
     const resolvedPath = path.resolve(appPath);
     const raw = await this.devicectlJson(ctx, [
@@ -332,7 +332,7 @@ class IOSBridgeProvider {
       '--device',
       device.identifier || device.udid,
       resolvedPath,
-    ], { mutation: true });
+    ], { mutation: true, target: { deviceId: device.udid, bundleId: null } });
     return {
       ok: true,
       device,
@@ -341,9 +341,9 @@ class IOSBridgeProvider {
     };
   }
 
-  async launchApp(args = {}) {
+  async launchApp(args = {}, { device: boundDevice } = {}) {
     const ctx = this.context(args);
-    const device = await this.requireDevice(args);
+    const device = boundDevice || await this.requireDevice(args);
     const bundleId = requiredString(args.bundleId, 'bundleId');
     const launchArgs = [
       'device',
@@ -354,7 +354,7 @@ class IOSBridgeProvider {
     ];
     if (args.terminateExisting !== false) launchArgs.push('--terminate-existing');
     launchArgs.push(bundleId);
-    const raw = await this.devicectlJson(ctx, launchArgs, { mutation: true });
+    const raw = await this.devicectlJson(ctx, launchArgs, { mutation: true, target: { deviceId: device.udid, bundleId } });
     return {
       ok: true,
       device,
@@ -480,7 +480,7 @@ class IOSBridgeProvider {
       createPort: target => this.runtimePort(target, { device }) });
     if (args.operation === 'status') return {
       ok: true, device, ownership: lease.status(key),
-      runtime: await this.runtimeGet(args, '/v1/execution/status', { device, allowUnavailable: true }),
+      runtime: args.bundleId ? await this.runtimeGet(args, '/v1/execution/status', { device, allowUnavailable: true }) : null,
     };
     const port = await this.runtimePort(args, { device });
     const identity = { actionId: args.actionId, runtimeEpoch: args.runtimeEpoch };
@@ -809,8 +809,10 @@ class IOSBridgeProvider {
     }
   }
 
-  async devicectlJson(ctx, args, { mutation = false } = {}) {
-    const jsonPath = path.join(os.tmpdir(), `ai-app-bridge-devicectl-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  async devicectlJson(ctx, args, { mutation = false, target } = {}) {
+    const directory = mutation ? path.join((this.lease || getProcessDeviceMutationLease()).directory, 'ios-command-results') : os.tmpdir();
+    if (mutation) await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
+    const jsonPath = path.join(directory, `ai-app-bridge-devicectl-${randomUUID()}.json`);
     const allArgs = [
       ...devicectlPrefix(ctx.devicectl),
       ...args,
@@ -819,7 +821,9 @@ class IOSBridgeProvider {
       '--json-output',
       jsonPath,
     ];
-    try {
+    let completed = false;
+    const invocation = { arguments: allArgs.slice(devicectlPrefix(ctx.devicectl).length), resultPath: jsonPath };
+    const invoke = async () => {
       const command = devicectlBinary(ctx.devicectl);
       try { await execFileText(this.execFile, command, allArgs, { timeoutMs: (ctx.deviceTimeoutSec * 1000) + 5000, mutation }); }
       catch (error) {
@@ -833,8 +837,27 @@ class IOSBridgeProvider {
         throw error;
       }
       return JSON.parse(await fs.promises.readFile(jsonPath, 'utf8'));
+    };
+    try {
+      if (!mutation) return await invoke();
+      let raw, rejected;
+      await runDeviceEffect({ kind: 'ios-command', target, invocation }, async () => {
+        try {
+          raw = await invoke();
+          return { ok: true, settled: true, dispatched: true, ambiguous: false, deviceOutcome: raw };
+        } catch (error) {
+          if (!error.deviceOutcome) throw error;
+          rejected = error;
+          return error.deviceOutcome;
+        }
+      }, outcome => deviceCommandProof(outcome, invocation));
+      completed = true;
+      if (rejected) throw rejected;
+      return raw;
     } finally {
-      await fs.promises.rm(jsonPath, { force: true });
+      // An unknown call may finish after the Host stops waiting. Its unique
+      // original output path is retained in ownership for public reconciliation.
+      if (!mutation || completed) await fs.promises.rm(jsonPath, { force: true });
     }
   }
 }

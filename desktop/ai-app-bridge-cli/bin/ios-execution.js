@@ -2,6 +2,8 @@
 
 const { randomUUID } = require('node:crypto');
 const { CommandError } = require('./command-errors');
+const fs = require('node:fs');
+const { originalDeviceOutcome, deviceCommandProof } = require('./ios-device-outcome');
 const managed = require('./shared-kernel/managed-sdk-execution');
 const { runDeviceEffect } = require('./shared-kernel/device-mutation-lease');
 const { checkExecution, runExecution } = require('./shared-kernel/execution-scope');
@@ -74,9 +76,26 @@ async function executeIOSAction({ port, kind, payload, status, target, timeoutMs
 }
 
 async function reconcileIOS({ lease, device, args, createPort }) {
-  return lease.reconcile(iosDeviceKey(device), async pending => {
+  const result = await lease.reconcile(iosDeviceKey(device), async pending => {
+    if (pending.target?.deviceId !== device.udid
+        || args.bundleId && pending.target?.bundleId && pending.target.bundleId !== args.bundleId) {
+      return { settled: false, error: 'ios_original_completion_identity_required' };
+    }
+    if (pending.kind === 'ios-command') {
+      const invocation = pending.invocation;
+      const index = Array.isArray(invocation?.arguments) ? invocation.arguments.indexOf('--json-output') : -1;
+      if (!invocation?.resultPath || index < 0 || invocation?.arguments?.[index + 1] !== invocation.resultPath) {
+        return { settled: false, error: 'ios_original_command_identity_unavailable' };
+      }
+      try {
+        const reply = JSON.parse(await fs.promises.readFile(invocation.resultPath, 'utf8'));
+        const outcome = originalDeviceOutcome(reply, invocation.arguments);
+        return outcome ? deviceCommandProof(outcome, invocation)
+          : { settled: false, error: 'ios_original_command_outcome_unresolved' };
+      } catch (error) { return { settled: false, error: 'ios_command_completion_unavailable', cause: error.code || 'invalid_json' }; }
+    }
     const kind = pending.kind === 'ios-h5' ? 'h5' : pending.kind === 'ios-flutter' ? 'flutter' : null;
-    if (!kind || pending.target?.deviceId !== device.udid || pending.target?.bundleId !== args.bundleId
+    if (!kind
       || typeof pending.actionId !== 'string' || typeof pending.runtimeEpoch !== 'string') {
       return { settled: false, error: 'ios_original_completion_identity_required' };
     }
@@ -103,6 +122,11 @@ async function reconcileIOS({ lease, device, args, createPort }) {
         || { settled: false, error: 'invalid_ios_completion_receipt' };
     } catch (error) { return { settled: false, error: error.code || 'ios_completion_query_failed', message: error.message }; }
   });
+  if (result.recovered && result.executionReceipt?.kind === 'ios-command') {
+    try { await fs.promises.rm(result.executionReceipt.invocation.resultPath, { force: true }); }
+    catch (error) { result.cleanupError = error.code || 'ios_command_receipt_cleanup_failed'; }
+  }
+  return result;
 }
 
 module.exports = { iosDeviceKey, executeIOSAction, lookupCompletion, reconcileIOS };

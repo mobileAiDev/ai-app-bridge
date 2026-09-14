@@ -76,7 +76,9 @@ function handleUiaRuntimeFixture(args, { directory, descriptorReady } = {}) {
     return true;
   }
   if (args[2] === 'shell' && args[3] === 'sh' && args[4] === '-c') {
-    const script = args[5].slice(1, -1).replaceAll("'\\''", "'");
+    const script = args[5].slice(1, -1).replaceAll("'\\''", "'")
+      .replace(require('../bin/shared-kernel/android-sha256').sha256Shell + 'aab_select_sha256 || exit 127\n', '')
+      .replaceAll('aab_sha256sum ', 'sha256sum ');
     let match;
     if (script === 'getprop ro.build.version.sdk') { process.stdout.write('36'); return true; }
     if (script.startsWith(`umask 077\nmkdir -p '${root}'`)) return true;

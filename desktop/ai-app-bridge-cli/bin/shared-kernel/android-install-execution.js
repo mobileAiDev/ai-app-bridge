@@ -6,6 +6,7 @@ const { execFileBounded } = require('./execution-io');
 const { runExecution, withoutExecution, checkExecution, executionSleep } = require('./execution-scope');
 const { CommandError } = require('../command-errors');
 const { checksumOf } = require('./evidence-schema');
+const { sha256Shell } = require('./android-sha256');
 
 const schema = 'aab.android-install-execution/v1';
 const root = '/data/local/tmp/ai-app-bridge-install/v1';
@@ -26,7 +27,10 @@ function installScript(identity) {
     `  base64 "$job/result.out" | tr -d '\\n'\n` +
     `  printf '","stderr":"'; base64 "$job/result.err" | tr -d '\\n'; printf '"}'\n}\n` +
     `: >"$job/result.out"; : >"$job/result.err"\n` +
-    `actual=$(sha256sum "$job/base.apk"); actual=\${actual%% *}\n` +
+    // Preserve the exact v1 script hash so retained jobs remain reconcilable.
+    (identity.scriptVersion === 2 ? sha256Shell + `aab_select_sha256 || { emit hash-unavailable 1; exit 0; }\n` +
+      `actual=$(aab_sha256sum "$job/base.apk") || { emit hash-unavailable 1; exit 0; }; actual=\${actual%% *}\n`
+      : `actual=$(sha256sum "$job/base.apk"); actual=\${actual%% *}\n`) +
     `if [ "$actual" != ${quote(identity.apkSha256)} ]; then emit artifact-mismatch 1; exit 0; fi\n` +
     `pm install-create -r ${identity.allowDowngrade ? '-d ' : ''}-S ${identity.apkBytes} >"$job/result.out" 2>"$job/result.err"\ncode=$?\n` +
     `if [ "$code" -ne 0 ]; then emit create-failed "$code"; exit 0; fi\n` +
@@ -41,6 +45,7 @@ function installScript(identity) {
 
 function validIdentity(identity) {
   return identity?.kind === 'android-install' && uuid.test(identity.installId)
+    && (identity.scriptVersion === undefined || identity.scriptVersion === 2)
     && identity.schemaVersion === shell.schema && uuid.test(identity.jobId) && uuid.test(identity.runtimeEpoch)
     && typeof identity.actionId === 'string' && identity.actionId.length > 0 && identity.actionId.length <= 1024
     && Number.isSafeInteger(identity.deadlineUptimeMs) && identity.deadlineUptimeMs > 0
@@ -69,7 +74,7 @@ function settlementProof(result, identity) {
       // output stay unresolved. These names are final legacy PM failure codes.
       const failed = commit.code === 1 && /^Failure \[(?:INSTALL_FAILED_|INSTALL_PARSE_FAILED_)[A-Z_]+(?:: [\s\S]*)?\]$/.test(output);
       if (!requestSucceeded && !failed) return null;
-    } else if (!['artifact-mismatch', 'create-failed', 'create-invalid', 'write-failed'].includes(phase)
+    } else if (!['artifact-mismatch', 'hash-unavailable', 'create-failed', 'create-invalid', 'write-failed'].includes(phase)
       || commit.code === 0 || (phase === 'write-failed' ? !Number.isSafeInteger(sessionId) || sessionId < 1 : sessionId !== null)) return null;
   }
   return { kind: 'android-install', actionId: identity.actionId, runtimeEpoch: identity.runtimeEpoch,
@@ -86,10 +91,14 @@ function createAndroidInstallPort({ adb = process.env.ADB || 'adb', serial, time
   const command = args => run(adb, ['-s', serial, ...args], { timeoutMs: Math.min(timeoutMs, 30000), mutation: false,
     encoding: 'utf8', maxBuffer: 1024 * 1024, windowsHide: true });
   const staging = script => command(['shell', 'sh', '-c', quote(script)]);
+  const cancellation = require('./android-install-cancellation').createInstallCancellationPort({ adb, serial, timeoutMs, run, shellPort });
   return {
+    cancelInstall: identity => cancellation.cancel(identity),
+    readCancellation: identity => cancellation.read(identity),
+    acknowledgeCancellation: (identity, result) => cancellation.acknowledge(identity, result),
     async prepare(artifact, actionId, allowDowngrade = false) {
       const installId = randomUUID(), directory = `${root}/${installId}`;
-      const identity = { kind: 'android-install', installId, packageName: artifact.packageName,
+      const identity = { kind: 'android-install', scriptVersion: 2, installId, packageName: artifact.packageName,
         apkSha256: artifact.sha256, apkBytes: artifact.bytes, allowDowngrade };
       const staged = await staging(`umask 077\nmkdir -p ${quote(root)} || exit 1\nexec 0>${quote(root + '/prepare.lock')} || exit 1\nflock -x 0 || exit 1\n` +
         `count=0; for p in ${quote(root)}/*; do [ ! -d "$p" ] || count=$((count + 1)); done\n` +

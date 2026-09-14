@@ -79,12 +79,14 @@ function createScriptSupervisor({
     let recording = null;
     if (args.recordingDir !== undefined) {
       if (compiled.spec.policy.restartPolicy !== 'none') {
-        return scriptError('recording_restart_unsupported', { operationId });
+        return scriptError('recording_restart_unsupported', { field: 'recordingDir', dispatched: false, ambiguous: false });
       }
       try {
         recording = createEvidenceRecording({ directory: args.recordingDir, namespace: 'script',
           operationId, store: args.store, now });
-      } catch (error) { return scriptError(error.code || 'recording_failed', { operationId }); }
+      } catch (error) { return scriptError(error.code || 'recording_failed', {
+        field: 'recordingDir', message: error.detail || error.message, dispatched: false, ambiguous: false,
+      }); }
     }
     const events = createBoundedEventLog({
       maxEvents: registry.maxEvents,

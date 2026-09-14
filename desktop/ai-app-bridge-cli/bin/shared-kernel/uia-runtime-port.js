@@ -1,4 +1,5 @@
 'use strict';
+const { sha256FileScript } = require('./android-sha256');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -135,7 +136,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
     if (!/^[0-9]+$/.test(level) || Number(level) < 33) throw failure('uia_android_api_33_required', 'UIA node execution requires Android API 33 or newer.', { apiLevel: level });
     const destination = `${root}/runtime-${asset.manifest.sha256}.jar`;
     await shell(`umask 077\nmkdir -p ${quote(root)} && chmod 700 ${quote(root)}`);
-    const existingHash = await shell(`if [ -f ${quote(destination)} ]; then sha256sum ${quote(destination)}; else printf '%s' null; fi`);
+    const existingHash = await shell(`if [ -f ${quote(destination)} ]; then ${sha256FileScript(destination)}; else printf '%s' null; fi`);
     if (existingHash !== 'null') {
       if (existingHash.split(/\s+/)[0] !== asset.manifest.sha256)
         throw failure('uia_runtime_artifact_mismatch', 'An existing content-addressed UIA runtime artifact has different bytes.');
@@ -143,11 +144,11 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
     }
     const temporary = `${root}/runtime-${asset.manifest.sha256}.${randomUUID()}.tmp`;
     await invoke(['push', asset.file, temporary]);
-    const installedHash = (await shell(`sha256sum ${quote(temporary)}`)).split(/\s+/)[0];
+    const installedHash = (await shell(sha256FileScript(temporary))).split(/\s+/)[0];
     if (installedHash !== asset.manifest.sha256) throw failure('uia_runtime_artifact_mismatch', 'The phone runtime artifact hash differs from the installed CLI bundle.');
     // Never overwrite an executable that an existing runtime may still map.
     await shell(`mv -n ${quote(temporary)} ${quote(destination)}`);
-    const publishedHash = (await shell(`sha256sum ${quote(destination)}`)).split(/\s+/)[0];
+    const publishedHash = (await shell(sha256FileScript(destination))).split(/\s+/)[0];
     if (publishedHash !== asset.manifest.sha256) throw failure('uia_runtime_artifact_mismatch', 'The published UIA runtime artifact has different bytes.');
     await shell(`rm -f ${quote(temporary)}`);
     return destination;

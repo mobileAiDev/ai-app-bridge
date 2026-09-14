@@ -5,6 +5,7 @@ const { execFileBounded } = require('./execution-io');
 const { runExecution, checkExecution, currentExecution, withoutExecution, executionSleep, markExecutionDispatched } = require('./execution-scope');
 const { runDeviceEffect, isDeviceSettlementDurable } = require('./device-mutation-lease');
 const { CommandError } = require('../command-errors');
+const { sha256Shell } = require('./android-sha256');
 
 const schema = 'aab.android-shell-execution/v1';
 const rootDirectory = '/data/local/tmp/ai-app-bridge-shell/v1';
@@ -53,8 +54,10 @@ function createAndroidShellPort({ adb, serial, timeoutMs = 15000, run = execFile
         throw new CommandError('invalid_shell_arguments', 'Shell arguments must be nonempty string argv without NUL.');
       }
       const deadlineMs=Math.min(currentExecution()?.deadlineMs??Infinity,Date.now()+timeoutMs);
-      const probe=await request(`command -v setsid >/dev/null && command -v nohup >/dev/null || exit 1\n${uptimeScript}`+
+      const probe=await request(sha256Shell + `aab_select_sha256 || { printf '%s' '{"ok":false,"error":"android_sha256_unavailable"}'; exit 0; }\n` +
+        `command -v setsid >/dev/null && command -v nohup >/dev/null || exit 1\n${uptimeScript}`+
         `printf '{"runtimeEpoch":"%s","uptimeMs":%s}' "$(cat /proc/sys/kernel/random/boot_id)" "$uptime_ms"`);
+      if (probe.ok === false) throw new CommandError(probe.error, 'The device needs a working SHA-256 implementation: sha256sum, toybox sha256sum or busybox sha256sum.');
       if (!uuid.test(probe.runtimeEpoch)||!Number.isSafeInteger(probe.uptimeMs)||probe.uptimeMs<0) throw new CommandError('shell_runtime_unavailable', 'Android boot identity and monotonic uptime are unavailable.');
       const remaining=Math.floor(deadlineMs-Date.now());
       if(remaining<1)throw new CommandError('deadline_exceeded','The execution budget expired before shell preparation.');
@@ -65,11 +68,14 @@ function createAndroidShellPort({ adb, serial, timeoutMs = 15000, run = execFile
       const prefix = JSON.stringify(fields).slice(0,-1);
       const completedPrefix = `${prefix},"ok":true,"settled":true,"dispatched":true,"ambiguous":false,"exitCode":`;
       const expired = JSON.stringify({ ...fields, ok:false, error:'shell_action_timeout', settled:true, dispatched:false, ambiguous:false, exitCode:null });
+      const rejected = error => `printf '%s' ${quote(JSON.stringify({ ...fields, ok: false, error, settled: true,
+        dispatched: false, ambiguous: false, exitCode: null }))} >"$job/receipt.tmp" && mv "$job/receipt.tmp" "$job/receipt.json"; exit 0;`;
       const worker = `job=${quote(directory)}\n` +
         `if ! mkdir "$job/admission" 2>/dev/null; then exit 0; fi\n` +
         `if [ "$(cat /proc/sys/kernel/random/boot_id)" != ${quote(fields.runtimeEpoch)} ]; then exit 1; fi\n` +
-        `actual=$(sha256sum "$job/command.sh"); actual=\${actual%% *}\n` +
-        `if [ "$actual" != ${quote(fields.commandSha256)} ]; then exit 1; fi\n` +
+        sha256Shell + `aab_select_sha256 || { ${rejected('shell_sha256_unavailable')} }\n` +
+        `actual=$(aab_sha256sum "$job/command.sh") || { ${rejected('shell_command_hash_unavailable')} }; actual=\${actual%% *}\n` +
+        `if [ "$actual" != ${quote(fields.commandSha256)} ]; then ${rejected('shell_command_mismatch')} fi\n` +
         uptimeScript +
         `if [ "$uptime_ms" -ge ${fields.deadlineUptimeMs} ]; then printf '%s' ${quote(expired)} >"$job/receipt.tmp" && mv "$job/receipt.tmp" "$job/receipt.json"; exit 0; fi\n` +
         `ulimit -f 128 || exit 1\n` +
@@ -134,7 +140,8 @@ function terminalReceipt(result, identity) {
     && result.deadlineUptimeMs===identity.deadlineUptimeMs
     && result.settled===true && typeof result.dispatched==='boolean' && result.ambiguous===false
     && (result.dispatched ? result.ok===true && Number.isInteger(result.exitCode) && result.exitCode>=0 && result.exitCode<=255
-      : result.ok===false && ['shell_action_cancelled','shell_action_timeout'].includes(result.error) && result.exitCode===null);
+      : result.ok===false && ['shell_action_cancelled','shell_action_timeout','shell_sha256_unavailable',
+        'shell_command_hash_unavailable','shell_command_mismatch'].includes(result.error) && result.exitCode===null);
 }
 function settlementProof(result, identity) {
   if (!terminalReceipt(result, identity)) return null;

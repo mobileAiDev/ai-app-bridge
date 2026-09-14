@@ -299,13 +299,17 @@ This coordination covers one OS user sharing the same ownership directory.
 
 Use `ios-execution` through CLI or MCP:
 
-- `status`: requires `deviceId` and `bundleId`; returns Host ownership and SDK status.
-- `result`: additionally requires `kind:"h5"|"flutter"`, `actionId` and
+- `status`: requires `deviceId`; returns physical-device Host ownership. Supplying
+  `bundleId` also requests SDK status. An absent/offline App need not be queried.
+- `result`: additionally requires `bundleId`, `kind:"h5"|"flutter"`, `actionId` and
   `runtimeEpoch`; queries that original completion through bounded disk pages.
 - `cancel`: has the same identity fields as `result`; requests cancellation and
   reports the original completion or an unresolved result.
-- `reconcile`: requires `deviceId` and the original `bundleId`; reads the saved
-  pending identity and releases Host ownership only with its durable SDK receipt.
+- `reconcile`: requires `deviceId`; reads the saved pending identity and original
+  completion. For SDK actions it reconnects to the saved App and reads its durable
+  receipt. Generic install/launch uses the retained original devicectl JSON response
+  bound to its exact invocation, without requiring the App SDK. An optional
+  `bundleId` constrains recovery to that App.
 
 An explicit `runtimeUrl` or `iosHost`/`iosPort` can select the new connection used
 for recovery. Container verification still binds the same physical device and
@@ -315,7 +319,12 @@ run `reconcile` to resolve a retained Host reservation.
 
 These receipts prove the execution callback ended, not business success or all
 asynchronous work triggered by arbitrary App code. WDA has its separate Runner
-execution namespace below. Generic lost install/launch replies, simultaneous multi-WebView
+execution namespace below. An OS-confirmed missing App, locked device or known
+launch rejection is a settled failure and releases ownership. JSON format version
+numbers alone do not invalidate an otherwise matching structured reply. A lost
+reply remains unresolved until the original matching response is available; no
+command is rerun by reconciliation. Older pending jobs without saved invocation
+identity cannot be released using a guessed response. Simultaneous multi-WebView
 acceptance and complete complex iOS business coverage remain open. Native, H5 and
 Flutter Intent/Script are available within their implemented command contracts;
 availability does not establish production acceptance.
@@ -1430,6 +1439,16 @@ PackageInstaller session, writes the base APK, and commits that session. The
 session ID and original PackageManager CLI response are retained on the phone.
 `allowDowngrade` is opt-in. `streaming` has been removed and is rejected.
 
+Device-side SHA-256 is selected by computing a known digest using `sha256sum`,
+`toybox sha256sum`, or `busybox sha256sum`. Neither a standalone command nor a
+particular Android version is required for hashing. Shell execution, APK checks,
+installed-package verification and UIA asset checks share this capability probe.
+No weaker checksum is substituted. If no implementation works, staging fails
+with `android_sha256_unavailable` before a worker is admitted. If the tool or
+command file changes afterwards, the worker records a settled pre-dispatch failure
+instead of exiting without a receipt. New install scripts record `scriptVersion:2`;
+previous journal entries retain their original script identity for reconciliation.
+
 `timeoutMs` bounds device staging, admission and Host waiting (default 180000).
 APK inspection, initial/final installed-identity reads and UI observation still
 have separate bounded calls; this is not yet one end-to-end deadline. Inspectors
@@ -1450,7 +1469,7 @@ For example, after receiving a fresh observation:
 ```
 
 Completion requires the matching original shell-job receipt, a successful
-PackageInstaller commit response, and an independent `pm path`/`sha256sum` check
+PackageInstaller commit response, and an independent `pm path`/SHA-256 check
 of the installed bytes. The proof binds actionId, jobId, Android boot, command
 hash, admission deadline, installId, package and APK hash, and identifies the
 PackageInstaller session. The install receipt response hashes use canonical JSON
@@ -1573,3 +1592,12 @@ result. OEM restrictions may reject the shell identity with `permission_change_d
 `app.read` for queries. `permission-dialog` is a supervised operation and is not
 a synchronous Script primitive; fixed regression can replay known selectors with
 explicit state assertions, or request Agent help through `ctx.askAgent`.
+
+### Android 安装超时后的显式取消
+
+`device-ownership status` 返回原安装的 `actionId`。若原 commit 回执因 OEM 确认页丢失，
+可用 `device-ownership --operation cancel-install --serial SERIAL --action-id ORIGINAL_ACTION_ID`。
+该命令只对保留的原 PM session 执行 abandon，先持久保存取消任务身份，再派发；
+重连后 `reconcile` 可读取同一任务的原回执。明确成功才解除该安装的设备占用。
+`phase: session-abandoned` 的 `requestSucceeded: null` 表示原安装结果未被推断，
+已经安装的 APK 不会回滚。取消按钮、等待超时或 Host 进程退出本身仍不是完成证据。

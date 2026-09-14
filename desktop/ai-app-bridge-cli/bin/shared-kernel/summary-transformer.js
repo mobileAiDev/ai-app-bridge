@@ -103,7 +103,7 @@ function walkNative(tree, visit) {
   }
   const index = { i: 0 };
   if (Array.isArray(tree?.windows) && tree.windows.length) {
-    // Match native action selection: the last non-hidden root owns the foreground.
+    // Match native action selection within the current Activity's window group.
     // An unknown/disabled root still blocks background controls. Do not spend the
     // summary budget on a long background page before exposing its modal dialog.
     const selected = foregroundNativeWindow(tree);

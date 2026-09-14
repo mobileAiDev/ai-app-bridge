@@ -48,6 +48,22 @@ function callData(operationId, result = { page: '首页' }, command = 'tree', re
   } };
 }
 
+test('an empty output directory is usable but is claimed before any payload is written', t => {
+  const f = setup(t);
+  const directory = path.join(f.root, 'prepared');
+  fs.mkdirSync(directory);
+  const recording = createEvidenceRecording({ directory, namespace: 'script', operationId: 'first', store: f.store });
+  assert.equal(recording.info().attachments, 0);
+  assert.throws(() => createEvidenceRecording({ directory, namespace: 'intent', operationId: 'second', store: f.store }),
+    { code: 'output_exists' });
+  const unrelated = path.join(f.root, 'unrelated');
+  fs.mkdirSync(unrelated);
+  fs.writeFileSync(path.join(unrelated, 'keep.txt'), 'original');
+  assert.throws(() => createEvidenceRecording({ directory: unrelated, namespace: 'script', operationId: 'third', store: f.store }),
+    { code: 'output_exists' });
+  assert.equal(fs.readFileSync(path.join(unrelated, 'keep.txt'), 'utf8'), 'original');
+});
+
 test('archives full calls, screenshots and failed assertions independently of original files', async t => {
   const f = setup(t);
   const screenshot = path.join(f.root, 'screen.png');

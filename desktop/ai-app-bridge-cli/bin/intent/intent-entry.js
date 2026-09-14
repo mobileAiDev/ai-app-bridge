@@ -80,7 +80,9 @@ async function start(args) {
     try {
       recording = createEvidenceRecording({ directory: args.recordingDir, namespace: 'intent', operationId, store,
         now: args.now || Date.now });
-    } catch (error) { return intentError(error.code || 'recording_failed', { operationId }); }
+    } catch (error) { return intentError(error.code || 'recording_failed', {
+      field: 'recordingDir', message: error.detail || error.message, dispatched: false, ambiguous: false,
+    }); }
   }
   reservedIds.add(operationId);
   let worker;

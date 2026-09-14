@@ -46,8 +46,10 @@ function createEvidenceRecording({ directory, namespace, operationId, store, now
   requireValue(typeof directory === 'string' && directory.trim().length > 0, 'invalid_recording_directory');
   requireValue(store && typeof store.persist === 'function', 'recording_store_required');
   const root = path.resolve(directory);
-  try { fs.mkdirSync(root); }
-  catch (error) { if (error.code === 'EEXIST') error.code = 'output_exists'; throw error; }
+  fs.mkdirSync(root, { recursive: true });
+  const stat = fs.lstatSync(root);
+  requireValue(stat.isDirectory() && !stat.isSymbolicLink(), 'invalid_recording_directory');
+  requireValue(fs.readdirSync(root).length === 0, 'output_exists', 'recordingDir must be empty; existing evidence is never overwritten.');
   const recordingId = crypto.randomUUID();
   let sequence = 0;
   let bytesWritten = 0;
@@ -63,6 +65,11 @@ function createEvidenceRecording({ directory, namespace, operationId, store, now
     bytesWritten += bytes.length;
     return { name, bytes: bytes.length, sha256: sha256(bytes) };
   }
+
+  // Claim even an existing empty directory atomically before admitting work.
+  try {
+    write('recording.json', Buffer.from(JSON.stringify({ namespace, operationId, recordingId }) + '\n'));
+  } catch (error) { if (error.code === 'EEXIST') error.code = 'output_exists'; throw error; }
 
   function record({ kind, revision, target, data, parentFactId }) {
     if (failure) return Promise.resolve({ ok: false, error: failure });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3
+
+- Aligns Android and iOS runtime versions with the coordinated Bridge `0.3.3` release.
+- Ships with CLI/MCP fixes for foreground observations, Android SHA-256 compatibility and installation recovery, and iOS launch ownership.
+- Flutter execution behavior is unchanged.
+
 ## 0.3.2
 
 - Aligns Android and iOS runtime versions with the coordinated Bridge `0.3.2` release.
