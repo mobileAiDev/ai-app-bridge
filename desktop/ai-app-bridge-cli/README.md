@@ -7,7 +7,7 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.3.6`; registry publication is a separate release step.
+This source version is `0.3.7`; registry publication is a separate release step.
 The default installation includes the Script/Intent and capture contracts below.
 Local package verification does not change npm dist-tags.
 The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
@@ -60,7 +60,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.3.6
+npm install -g @mobileaidev/ai-app-bridge@0.3.7
 
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample

@@ -1,4 +1,4 @@
-# Optional UI executors (0.3.6)
+# Optional UI executors (0.3.7)
 
 Bridge keeps its existing SDK paths and exposes optional executors through `capabilities`, `run`, and JavaScript/Python Script. Select an executor explicitly. No command silently changes a touch into a setter, switches framework after failure, or repeats an uncertain action.
 
@@ -26,9 +26,9 @@ android {
     }
 }
 dependencies {
-    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.3.6")
+    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.3.7")
     // Optional H5 adapter:
-    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.3.6")
+    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.3.7")
 }
 ```
 
@@ -81,7 +81,7 @@ The rule must start **before** Activity/composition creation. The adapter uses a
 
 ## Flutter
 
-Add `ai_app_bridge_test: 0.3.6` to the application's `dev_dependencies`. The helper takes `flutter_test` and `integration_test` from the **same Flutter SDK** as the application. It is a Dart test helper, not an additional Android plugin with its own AGP/Kotlin versions.
+Add `ai_app_bridge_test: 0.3.7` to the application's `dev_dependencies`. The helper takes `flutter_test` and `integration_test` from the **same Flutter SDK** as the application. It is a Dart test helper, not an additional Android plugin with its own AGP/Kotlin versions.
 
 The helper declares Flutter **>=3.41.0** and Dart **>=3.11.0 <4.0.0**. This release was built and exercised with Flutter **3.41.9 on Android API 25** and **3.44.8 on Android API 36**. These are the verified combinations; newer SDK versions still need validation with the application's plugin graph.
 

@@ -1752,18 +1752,52 @@ function parseForegroundWindow(raw) {
     'mResumedActivity',
     'mFocusedApp',
   ];
-  for (const marker of markers) {
-    const line = lines.find((item) => item.includes(marker));
-    if (!line) continue;
-    const component = parseComponentFromWindowLine(line);
+  const records = [];
+  const focusedDisplayIds = new Set();
+  let displayId = null;
+  for (const line of lines) {
+    if (/^WINDOW MANAGER\b/.test(line)) displayId = null;
+    const display = line.match(/^\s*Display: mDisplayId=(\d+)\b/);
+    if (display) displayId = Number(display[1]);
+    const focusedDisplay = line.match(/^\s*mTopFocusedDisplayId=(-?\d+)\b/);
+    if (focusedDisplay) focusedDisplayIds.add(Number(focusedDisplay[1]));
+    const focus = line.match(/^\s*(mCurrentFocus|mTopResumedActivity|mResumedActivity|mFocusedApp)(?:\[(\d+)\])?\s*[:=]\s*(.*)$/);
+    if (!focus) continue;
+    const component = parseComponentFromWindowLine(focus[3]);
     if (!component) continue;
+    records.push({
+      source: focus[1],
+      displayId: focus[2] === undefined ? displayId : Number(focus[2]),
+      value: focus[3].trim(),
+      component,
+      raw: line.trim(),
+    });
+  }
+  for (const marker of markers) {
+    const unique = new Map();
+    for (const record of records.filter((item) => item.source === marker)) {
+      unique.set(`${record.displayId}:${record.value}`, record);
+    }
+    const candidates = [...unique.values()];
+    if (!candidates.length) continue;
+    const focusedDisplayId = focusedDisplayIds.size === 1 ? [...focusedDisplayIds][0] : null;
+    const selected = candidates.length === 1 ? candidates
+      : candidates.filter((item) => focusedDisplayId !== null && item.displayId === focusedDisplayId);
+    if (selected.length !== 1) {
+      return {
+        ok: false,
+        error: 'foreground_ambiguous',
+        source: marker,
+        focusedDisplayId,
+        candidates: candidates.map((item) => ({ displayId: item.displayId, ...item.component, raw: item.raw })),
+      };
+    }
+    const record = selected[0];
     return {
       ok: true,
       source: marker,
-      packageName: component.packageName,
-      activity: component.activity,
-      component: component.component,
-      raw: line.trim(),
+      ...record.component,
+      raw: record.raw,
     };
   }
   return {

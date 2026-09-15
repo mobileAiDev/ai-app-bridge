@@ -1,3 +1,7 @@
+## 0.3.7
+
+- Align with the 0.3.7 unified release. The Android Host now skips null foreground records and resolves multiple windows using the system focused display; unresolved focus is reported as ambiguous. App runtime behavior is unchanged.
+
 ## 0.3.6
 
 * Align native runtime source and dependency versions with Bridge 0.3.6.

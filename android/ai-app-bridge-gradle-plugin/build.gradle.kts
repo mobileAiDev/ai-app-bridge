@@ -18,7 +18,7 @@ group = if (
 } else {
     "io.github.mobileaidev.aiappbridge"
 }
-version = jitpackVersion ?: "0.3.6"
+version = jitpackVersion ?: "0.3.7"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8

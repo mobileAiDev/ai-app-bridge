@@ -17,7 +17,7 @@ public final class ExecutorAdapters implements ExecutorAdapter {
     @Override public JSONObject capabilities() throws Exception {
         JSONObject available = new JSONObject();
         for (Map.Entry<String, ExecutorAdapter> entry : adapters.entrySet()) available.put(entry.getKey(), entry.getValue().capabilities());
-        return new JSONObject().put("engine", "android-instrumentation").put("bridgeVersion", "0.3.6").put("adapters", available);
+        return new JSONObject().put("engine", "android-instrumentation").put("bridgeVersion", "0.3.7").put("adapters", available);
     }
     @Override public JSONObject observe(JSONObject request) throws Exception {
         String engine = request.getString("engine");

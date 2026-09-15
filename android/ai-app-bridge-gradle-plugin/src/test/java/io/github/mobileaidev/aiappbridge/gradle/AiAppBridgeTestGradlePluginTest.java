@@ -12,7 +12,7 @@ public final class AiAppBridgeTestGradlePluginTest {
         Map<String, String> application = new LinkedHashMap<>();
         application.put("androidx.compose.ui:ui-android", "1.7.4");
         Map<String, String> test = new LinkedHashMap<>();
-        test.put("io.github.mobileaidev.aiappbridge:ai-app-bridge-test-compose", "0.3.6");
+        test.put("io.github.mobileaidev.aiappbridge:ai-app-bridge-test-compose", "0.3.7");
         test.put("androidx.compose.ui:ui-test-android", "1.8.3");
         GradleException error = assertThrows(GradleException.class, () -> AiAppBridgeTestGradlePlugin.verify(application, test));
         assertTrue(error.getMessage().contains("ui-android=1.7.4"));
