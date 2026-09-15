@@ -40,7 +40,7 @@ def replace(name, before, after, count=1):
     updated[name] = updated[name].replace(before, after)
 
 replace('pubspec.yaml', '\ndependencies:\n',
-        '\ndependencies:\n  ai_app_bridge_flutter: 0.3.5\n')
+        '\ndependencies:\n  ai_app_bridge_flutter: 0.3.6\n')
 replace('lib/main.dart', "import 'dart:async';", "import 'dart:async';\n\n"
         "import 'package:ai_app_bridge_flutter/ai_app_bridge_flutter.dart';\n"
         "import 'package:flutter/foundation.dart';")
