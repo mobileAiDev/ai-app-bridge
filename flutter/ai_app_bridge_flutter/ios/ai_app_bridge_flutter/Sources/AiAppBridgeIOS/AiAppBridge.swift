@@ -7,7 +7,7 @@ import WebKit
 public final class AiAppBridge {
     public static let shared = AiAppBridge()
 
-    private let bridgeVersion = "0.3.5"
+    private let bridgeVersion = "0.3.6"
     private let runtimeEpoch = UUID().uuidString
     private lazy var h5Bridge = IOSH5Bridge(runtimeEpoch: runtimeEpoch)
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")
@@ -77,7 +77,9 @@ public final class AiAppBridge {
     private func startUiObservationIfNeeded() {
         precondition(Thread.isMainThread, "iOS UI observation must start on the main thread")
         if uiObserver == nil {
-            uiObserver = AiAppBridgeUiObserver { [weak self] category, name, data in
+            uiObserver = AiAppBridgeUiObserver(onStop: {
+                AutomaticLogCapture.shared.stopObservingWebViews()
+            }) { [weak self] category, name, data in
                 guard let self else { return }
                 self.recordEventPayload([
                     "category": category,
@@ -86,7 +88,7 @@ public final class AiAppBridge {
                 ], source: "ios-ui-observer")
             }
         }
-        uiObserver?.start()
+        // Constructing the observer does not install a display link or scan views.
     }
     #endif
 
@@ -322,7 +324,41 @@ public final class AiAppBridge {
         }
         switch (request.method, request.path) {
         case ("GET", "/v1/status"):
-            completion(200, buildStatus())
+            runOnMain { completion(200, self.buildStatus()) }
+        case ("GET", "/v1/flutter/snapshot"):
+            runOnMain {
+                if self.captureQueue.sync(execute: { self.flutterActionHandler != nil }) {
+                    self.flutterObservationCall(method: "readSnapshot", body: "{}") { response in
+                        guard response["ok"] as? Bool == true, let snapshot = response["snapshot"] as? [String: Any] else {
+                            completion(200, response); return
+                        }
+                        self.captureQueue.sync { self.flutterSnapshot = snapshot }
+                        completion(200, self.buildStatus(includeFlutterTree: true))
+                    }
+                } else { completion(200, ["ok": false, "error": "flutter_action_handler_absent"]) }
+            }
+        case ("POST", "/v1/ui/observation"):
+            #if DEBUG
+            runOnMain {
+                guard let body = Self.parseJson(request.body) as? [String: Any] else {
+                    completion(200, ["ok": false, "error": "invalid_ui_observation_request"]); return
+                }
+                self.startUiObservationIfNeeded()
+                let result = self.uiObserver!.control(body)
+                if result["ok"] as? Bool == true {
+                    if body["operation"] as? String == "start", result["active"] as? Bool == true {
+                        AutomaticLogCapture.shared.observeWebViews(durationMs: max(1, (result["remainingMs"] as! NSNumber).intValue))
+                    } else if body["operation"] as? String == "stop" {
+                        AutomaticLogCapture.shared.stopObservingWebViews()
+                    }
+                }
+                completion(200, result)
+            }
+            #else
+            completion(404, ["ok": false, "error": "debug_only"])
+            #endif
+        case ("POST", "/v1/flutter/observation"):
+            runOnMain { self.flutterObservationCall(method: "uiObservation", body: request.body) { completion(200, $0) } }
         case ("GET", "/v1/view/tree"):
             runOnMain { completion(200, self.buildViewTree()) }
         case ("GET", "/v1/screenshot"):
@@ -378,9 +414,13 @@ public final class AiAppBridge {
         }
     }
 
-    private func buildStatus() -> [String: Any] {
+    private func buildStatus(includeFlutterTree: Bool = false) -> [String: Any] {
         let bundle = Bundle.main
-        let flutter = captureQueue.sync { flutterSnapshot }
+        var flutter = captureQueue.sync { flutterSnapshot }
+        if !includeFlutterTree {
+            flutter.removeValue(forKey: "layout")
+            flutter.removeValue(forKey: "uiObservation")
+        }
         return [
             "ok": true,
             "debugBridge": [
@@ -412,9 +452,18 @@ public final class AiAppBridge {
                 "current": String(describing: type(of: Self.keyWindow()?.rootViewController ?? UIViewController()))
             ],
             "capture": captureCounts(),
+            "uiObservation": uiObservationStatus(),
             "flutter": flutter,
             "updatedAtMs": Self.nowMs()
         ]
+    }
+
+    private func uiObservationStatus() -> [String: Any] {
+        #if DEBUG
+        return uiObserver?.status ?? ["mode": "on-demand", "active": false]
+        #else
+        return ["mode": "disabled", "active": false]
+        #endif
     }
 
     private func buildViewTree() -> [String: Any] {
@@ -555,6 +604,30 @@ public final class AiAppBridge {
                 completion(IOSManagedExecution.failure("flutter_action_handler_absent")); return
             }
             managedExecution.submit(kind: kind, body: value, task: { IOSFlutterTask(handler: handler, body: value) }, reply: completion)
+        }
+    }
+
+    private func flutterObservationCall(method: String, body: String, completion: @escaping ([String: Any]) -> Void) {
+        precondition(Thread.isMainThread)
+        let (handler, token) = captureQueue.sync { (flutterActionHandler, flutterHandlerToken) }
+        guard let handler else { completion(["ok": false, "error": "flutter_action_handler_absent"]); return }
+        var settled = false
+        let timeout = DispatchWorkItem {
+            guard !settled else { return }; settled = true
+            completion(["ok": false, "error": "flutter_observation_timeout"])
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: timeout)
+        handler(method, body) { value in
+            self.runOnMain {
+                guard !settled else { return }; settled = true; timeout.cancel()
+                guard self.captureQueue.sync(execute: { self.flutterHandlerToken == token }) else {
+                    completion(["ok": false, "error": "flutter_runtime_changed"]); return
+                }
+                guard let response = Self.parseJson(value) as? [String: Any] else {
+                    completion(["ok": false, "error": "invalid_flutter_observation_response"]); return
+                }
+                completion(response)
+            }
         }
     }
 

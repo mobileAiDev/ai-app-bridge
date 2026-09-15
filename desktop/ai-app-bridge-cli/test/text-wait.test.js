@@ -30,7 +30,8 @@ test('wait-text validates units, exact arrays, conflicting conditions and explic
 
 test('visible text excludes status metadata, background windows and hidden descendants', () => {
   const data = tree('Background');
-  data.windows = [{ type: 'activity', root: data.root }, { type: 'dialog', root: { ...node('Confirm'), children: [{ ...node('Hidden'), visible: false }] } }];
+  data.foregroundWindowId = 'dialog';
+  data.windows = [{ windowId: 'activity', type: 'activity', root: data.root }, { windowId: 'dialog', type: 'dialog', root: { ...node('Confirm'), children: [{ ...node('Hidden'), visible: false }] } }];
   assert.deepEqual([...visibleLabels('native', data)], ['Confirm']);
   assert.deepEqual([...visibleLabels('flutter', { widgetDump: { text: 'Old page' }, nodes: [{ text: 'Current' }, { text: 'Offstage', offstage: true }] })], ['Current']);
   assert.deepEqual([...visibleLabels('uia', '<hierarchy><node text="Hidden" visible-to-user="false"><node text="Child"/></node><node text="Current"/></hierarchy>')], ['Current']);

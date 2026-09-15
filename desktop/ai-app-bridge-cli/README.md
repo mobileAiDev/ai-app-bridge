@@ -7,11 +7,15 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This release is `0.3.5`, distributed through the npm `latest` dist-tag.
+This source version is `0.3.6`; registry publication is a separate release step.
 The default installation includes the Script/Intent and capture contracts below.
-The `next` dist-tag also points to this release until a newer candidate is published.
+Local package verification does not change npm dist-tags.
 The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
 See [the release guide](docs/RELEASE.md) for local packaging and coordinated publication.
+
+Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
+and Playwright executors use the existing `capabilities + run` and Python/JS Script contracts.
+See [integration, dependency profiles and lifecycle](docs/OPTIONAL_EXECUTORS.md).
 
 AI App Bridge CLI/MCP supports Android native apps, Android WebView/H5/CDP,
 Flutter apps on Android and iOS, iOS native apps via `AiAppBridgeIOS` plus
@@ -56,7 +60,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.3.5
+npm install -g @mobileaidev/ai-app-bridge@0.3.6
 
 ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample

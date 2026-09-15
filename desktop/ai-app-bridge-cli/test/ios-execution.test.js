@@ -45,7 +45,7 @@ async function fixture(t, mode = 'complete') {
     const url = new URL(req.url, 'http://localhost');
     requests.push({ path: url.pathname, query: Object.fromEntries(url.searchParams), body });
     const send = value => res.end(JSON.stringify({ ...value, runtimeBinding: device.binding }));
-    if (url.pathname === '/v1/status') return send({ ok: true,
+    if (['/v1/status', '/v1/flutter/snapshot'].includes(url.pathname)) return send({ ok: true,
       debugBridge: { runtimeEpoch: device.binding.runtimeEpoch, h5ExecutionSchema: 'aab.h5-execution/v1', h5TargetSchema: 'aab.ios-h5-target/v1', flutterExecutionSchema: 'aab.flutter-execution/v1' },
       flutter: { layout: { operable: { runtimeEpoch: 'engine-1' } } } });
     if (['/v1/h5/action', '/v1/flutter/action'].includes(url.pathname)) {

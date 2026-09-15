@@ -7,6 +7,8 @@
         android:label="AI App Bridge Sample"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
+        <activity android:name=".debugbridge.WindowContractFixtureActivity" android:exported="true" />
+        <activity android:name=".debugbridge.WindowContractChildActivity" android:exported="true" />
         <activity
             android:name=".intentfixture.IntentLoginFixtureActivity"
             android:exported="true"

@@ -1,0 +1,35 @@
+apply plugin: 'maven-publish'
+
+group = 'io.github.mobileaidev.aiappbridge'
+version = '0.3.6'
+
+def jitpackGroup = System.getenv('GROUP')
+def jitpackArtifact = System.getenv('ARTIFACT')
+def publishGroup = System.getenv('JITPACK') == 'true' && jitpackGroup && jitpackArtifact
+    ? "${jitpackGroup}.${jitpackArtifact}" : project.group.toString()
+def publishVersion = System.getenv('VERSION') ?: project.version.toString()
+
+android {
+    publishing {
+        singleVariant('release') { withSourcesJar() }
+    }
+}
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                from components.release
+                groupId = publishGroup
+                artifactId = project.name
+                version = publishVersion
+                pom {
+                    name = project.name
+                    description = 'Optional AI App Bridge adapter for an application androidTest source set.'
+                    url = 'https://github.com/mobileAiDev/ai-app-bridge'
+                    licenses { license { name = 'Apache License 2.0'; url = 'https://www.apache.org/licenses/LICENSE-2.0' } }
+                }
+            }
+        }
+        repositories { maven { name = 'executorVerification'; url = rootProject.layout.buildDirectory.dir('executor-maven') } }
+    }
+}

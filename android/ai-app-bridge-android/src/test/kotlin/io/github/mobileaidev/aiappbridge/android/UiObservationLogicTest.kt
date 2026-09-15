@@ -10,6 +10,19 @@ import org.junit.Test
 
 class UiObservationLogicTest {
     @Test
+    fun batchedHashPreservesTheOriginalLengthPrefixedEncoding() {
+        // Golden SHA-256 from the original byte-at-a-time encoding, including
+        // field order, null markers and normalized float strings.
+        assertEquals("7659ee3a70d0a18a399faa0c8797a110773fb96bd3981ace27fbb8b7c6b39323",
+            fingerprint(alpha = 1f, translationX = 0f).hash)
+        val salt = ByteArray(32) { it.toByte() }
+        val first = semanticTextFingerprint(salt, "商品🙂".repeat(3000), "描述")
+        semanticTextFingerprint(salt, "other", null)
+        assertEquals(first, semanticTextFingerprint(salt, "商品🙂".repeat(3000), "描述"))
+        assertNotEquals(first, semanticTextFingerprint(salt, "商品🙂".repeat(3000), "述描"))
+    }
+
+    @Test
     fun visualPropertyChangeProducesANewFingerprint() {
         val baseline = fingerprint(alpha = 1f, translationX = 0f)
         val animated = fingerprint(alpha = 0.75f, translationX = 12f)

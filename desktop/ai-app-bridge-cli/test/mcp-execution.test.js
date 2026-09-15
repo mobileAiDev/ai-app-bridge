@@ -157,6 +157,7 @@ test('full feedback promotes a correlated semantic UI change to verified', async
   }, {
     targetExecution: new TargetExecution(),
     rawRunner: async (command) => {
+      if (command === 'ui-observation') return { ok: true, active: true, leaseId: 'test-window' };
       if (command === 'tap') return { ok: true, handledDown: true, handledUp: true };
       if (command === 'events') {
         eventReads += 1;
@@ -190,6 +191,7 @@ test('full feedback never promotes a failed action even if the UI also changed',
   }, {
     targetExecution: new TargetExecution(),
     rawRunner: async (command) => {
+      if (command === 'ui-observation') return { ok: true, active: true, leaseId: 'test-window' };
       if (command === 'tap') return { ok: false, error: 'tap_rejected' };
       if (command === 'events') {
         eventReads += 1;

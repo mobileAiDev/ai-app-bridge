@@ -121,6 +121,15 @@ class NativeGestureExecutionTest {
         assertEquals(listOf(0, 3), actions(events()))
     }
 
+    @Test fun finishingTheActivityCancelsBeforeInspectingItsDetachedWindows() {
+        val body = gesture("longPress", 1500)
+        onUi { activity.longClickHook = { activity.finish() } }
+        val result = request("/v1/action/gesture-target", body)
+        rejected(result, "native_gesture_window_changed", true)
+        assertFalse(actions(events()).contains(MotionEvent.ACTION_UP))
+        assertEquals(MotionEvent.ACTION_CANCEL, actions(events()).last())
+    }
+
     @Test fun explicitCancellationSendsCancelBeforeASecondInputCanStart() {
         val body = gesture("longPress", 2000)
         val pressed = CountDownLatch(1)

@@ -80,12 +80,18 @@ function commandInputSchema(command, filters = {}) {
   }
   const schema = commandSchema(command);
   if (!Object.keys(filters).length) return schema;
+  if (require('./ui-observation').commands.has(command) && Object.keys(filters).every(key => key === 'operation')) {
+    const branch = schema.oneOf.find(entry => entry.properties.operation.const === filters.operation);
+    if (!branch) throw new CommandError('invalid_argument', 'Unknown UI observation operation.', { field: 'operation' });
+    const { oneOf, ...base } = schema;
+    return { ...base, properties: { ...base.properties, ...branch.properties }, required: [...base.required, ...(branch.required || [])] };
+  }
   const scope = ['platform', 'provider', 'action'].find(key => Object.hasOwn(filters, key));
   if (scope && (command !== 'intent' || filters.operation !== 'decide')) {
     throw new CommandError('invalid_argument', `${scope} is available only with command=intent and operation=decide.`, { field: scope });
   }
-  if (!['intent', 'script', 'evidence'].includes(command)) {
-    throw new CommandError('invalid_argument', 'Operation schema selection supports intent, script and evidence.', { field: 'operation' });
+  if (!['intent', 'script', 'evidence', 'web-executor', 'android-executor', 'flutter-executor'].includes(command)) {
+    throw new CommandError('invalid_argument', 'Operation schema selection supports intent, script, evidence and executor commands.', { field: 'operation' });
   }
   const selected = schema.anyOf.filter(branch => branch.properties.operation.const === filters.operation);
   if (!selected.length) throw new CommandError('invalid_argument', `Unknown ${command} operation: ${filters.operation}.`, { field: 'operation' });

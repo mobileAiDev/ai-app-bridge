@@ -1,7 +1,15 @@
 const assert = require('assert/strict');
 const test = require('node:test');
 
-const { runWithFeedbackProbe } = require('../bin/feedback-probe');
+const { runWithFeedbackProbe: runWithObservationWindow } = require('../bin/feedback-probe');
+// Existing feedback classification cases use a supported, bounded SDK observer.
+function runWithFeedbackProbe(options) {
+  return runWithObservationWindow({ ...options, runner: (command, args) => {
+    if (command.endsWith('ui-observation')) return { ok: true, active: args.operation === 'start', leaseId: 'test-window' };
+    return options.runner(command, args);
+  } });
+}
+
 
 for (const command of ['launch-app', 'launch-activity']) {
   test(`full ${command} feedback observes the system only after launch without assuming an active App SDK`, async () => {

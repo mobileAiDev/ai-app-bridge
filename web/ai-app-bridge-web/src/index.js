@@ -27,13 +27,13 @@
       sessionId: options.sessionId ?? storedSessionId(options.storageKey ?? 'ai_app_bridge_web_session_id'),
       actions: new Map(), stateProviders: new Map(), restores: [], active: null, completion: null,
       dropped: 0, rejected: 0, lastReceipt: null, lastError: null, reconnectDelay: 1000,
-      captureActionId: null, flushUi: null,
+      captureActionId: null, flushUi: null, uiWindow: null,
       captures: Object.fromEntries(captureStreams.map(stream => [stream, { sequence: 0, losses: 0, pending: 0 }])),
     };
     if (typeof state.sessionId !== 'string' || !state.sessionId || state.sessionId.length > 1024)
       throw new Error('invalid_web_session_id');
     const api = { start, stop: disconnect, disconnect, recordLog, recordNetwork, recordState, recordEvent,
-      registerAction, unregisterAction, registerStateProvider, snapshotDom: observeDom,
+      registerAction, unregisterAction, registerStateProvider, snapshotDom: observeDom, uiObservation,
       sessionId: () => state.sessionId, runtimeEpoch: () => state.runtimeEpoch,
       isConnected: () => state.connected,
       transportStatus: () => ({ connected: state.connected, queuedRecords: state.queue.length, queuedBytes: state.queueBytes,
@@ -47,6 +47,7 @@
       state.started = true; state.restores.push(trackDocument()); installCaptures(); connect(); return api;
     }
     function disconnect() {
+      stopUiObservation();
       state.active?.cancel('web_sdk_stopped');
       for (const restore of state.restores.splice(0).reverse()) {
         try { restore(); } catch (error) { state.lastError = error.message; }
@@ -73,6 +74,7 @@
       };
       socket.onclose = event => {
         if (state.socket !== socket) return;
+        stopUiObservation();
         state.connected = false; state.binding = null; state.socket = null;
         if (event?.code === 1008) { state.lastError = 'web_protocol_rejected'; disconnect(); return; }
         if (state.started && options.reconnect !== false && state.reconnectTimer === null) {
@@ -174,6 +176,7 @@
         return;
       }
       if (message.type === 'read') {
+        if (message.payload?.name === 'uiObservation') { reply(message, uiObservation(message.payload.args)); return; }
         if (message.payload?.name === 'captureBarrier') {
           const stream = message.payload.args?.stream;
           if (!captureStreams.includes(stream)) { reply(message, { ok: false, error: 'invalid_web_capture_stream' }); return; }
@@ -275,13 +278,43 @@
       const dom = snapshotDom(options);
       return dom.ok ? { ...dom, pageRef: documentPageRef(target()) } : dom;
     }
+    function uiObservation(request = {}) {
+      if (!state.started) return { ok: false, error: 'web_sdk_stopped' };
+      if (state.uiWindow && performance.now() - state.uiWindow.startedAt >= state.uiWindow.durationMs) stopUiObservation();
+      const fields = { start: ['operation', 'durationMs'], stop: ['operation', 'leaseId'], status: ['operation'] }[request.operation];
+      if (!fields || Object.keys(request).length !== fields.length || !Object.keys(request).every(key => fields.includes(key)))
+        return { ok: false, error: 'invalid_ui_observation_request' };
+      if (request.operation === 'start') {
+        if (!Number.isInteger(request.durationMs) || request.durationMs < 100 || request.durationMs > 5000)
+          return { ok: false, error: 'invalid_ui_observation_duration' };
+        if (state.uiWindow) return { ok: false, error: 'ui_observation_busy' };
+        const startedAt = performance.now();
+        const cleanup = installUiCapture(state, recordEvent, options.capture?.ui ?? {});
+        if (!cleanup) return { ok: false, error: 'web_ui_observation_unavailable' };
+        state.uiWindow = { leaseId: newIdentity(), startedAt, durationMs: request.durationMs,
+          cleanup, timer: setTimeout(stopUiObservation, Math.max(0, request.durationMs - (performance.now() - startedAt))) };
+      } else if (request.operation === 'stop') {
+        if (typeof request.leaseId !== 'string' || request.leaseId !== state.uiWindow?.leaseId)
+          return { ok: false, error: 'ui_observation_lease_mismatch' };
+        stopUiObservation();
+      }
+      return { ok: true, schemaVersion: 'aab.ui-observation/v1', mode: 'on-demand', active: Boolean(state.uiWindow),
+        leaseId: state.uiWindow?.leaseId ?? null,
+        remainingMs: state.uiWindow ? Math.max(0, Math.ceil(state.uiWindow.durationMs - (performance.now() - state.uiWindow.startedAt))) : 0,
+        maxDurationMs: 5000 };
+    }
+    function stopUiObservation() {
+      const window = state.uiWindow;
+      if (!window) return;
+      state.uiWindow = null; clearTimeout(window.timer); window.cleanup();
+    }
     function installCaptures() {
       const captureOptions = options.capture ?? {};
       if (captureOptions.console) installConsoleCapture(state, recordLog);
       if (captureOptions.errors) installErrorCapture(state, recordLog);
       if (captureOptions.fetch) installFetchCapture(state, recordNetwork, options);
       if (captureOptions.xhr) installXhrCapture(state, recordNetwork, options);
-      if (captureOptions.ui) installUiCapture(state, recordEvent, captureOptions.ui);
+      // capture.ui configures explicit observation windows; start() never scans DOM.
     }
     return api;
   }
@@ -759,6 +792,8 @@
   }
 
   function installUiCapture(state, recordEvent, captureOption) {
+    const restores = [];
+    let capturing = true;
     const options = captureOption === true ? {} : captureOption;
     if (!options || options.enabled === false) return;
     const doc = options.document || globalValue('document');
@@ -808,6 +843,7 @@
       if (pending.length) scheduleFlush();
     };
     const enqueue = (event) => {
+      if (!capturing) return;
       if (!state.started) return;
       if (pending.length >= maxPendingEvents) {
         pending.shift();
@@ -824,7 +860,7 @@
       scheduleFlush();
     };
     state.flushUi = () => flush(true);
-    state.restores.push(() => { state.flushUi = null; });
+    restores.push(() => { state.flushUi = null; });
     const onClick = (event) => {
       enqueue({
         type: 'interaction.click',
@@ -869,6 +905,8 @@
     const onHashChange = () => onRoute('hashchange');
     const onMutations = (records) => {
       if (!state.started) return;
+      const window = state.uiWindow;
+      if (!window || performance.now() - window.startedAt >= window.durationMs) return;
       const previousFingerprint = domFingerprint;
       const nextFingerprint = fingerprintDom(doc, win, options, fingerprintSalt);
       const fingerprintChanged = previousFingerprint.hash !== nextFingerprint.hash;
@@ -947,7 +985,7 @@
       win.addEventListener('popstate', onPopState);
       win.addEventListener('hashchange', onHashChange);
     }
-    state.restores.push(() => {
+    restores.push(() => {
       doc.removeEventListener('click', onClick, true);
       doc.removeEventListener('input', onInput, true);
       doc.removeEventListener('change', onChange, true);
@@ -965,6 +1003,7 @@
       if (mutationObserver) mutationObserver.disconnect();
       flush(true);
     });
+    return () => { capturing = false; for (const restore of restores.reverse()) restore(); };
   }
 
   function fingerprintDom(doc, win, options, salt) {

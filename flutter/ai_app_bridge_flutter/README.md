@@ -20,10 +20,10 @@ To pin this release, use:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.5
+  ai_app_bridge_flutter: 0.3.6
 ```
 
-The plugin's Android debug variant includes the `0.3.5` Android runtime from
+The plugin's Android debug variant includes the `0.3.6` Android runtime from
 JitPack and starts the bridge server on the device. The iOS plugin starts the
 Swift runtime from the app process. Release builds should not expose the debug
 runtime automatically.
@@ -55,11 +55,14 @@ MaterialApp(
 )
 ```
 
-In debug mode the bridge also samples Flutter frame timings as bounded
-`ui.changed` / `ui.stable` events and observes pointer taps without intercepting
-them. Animation-time layout snapshots are capped at four per second; full trees
-and screenshots are not produced per frame. Call `AiAppBridge.instance.shutdown()`
-when a debug harness tears down the engine and may initialize it again later.
+UI observation is off by default. `ui-observation` (Android) or
+`ios-ui-observation`, with `provider: "flutter"`, can open a 100–5000 ms window
+for frame and pointer events. The returned lease expires locally; `stop` closes
+it early using its `leaseId`. There are no periodic or animation-time layout
+snapshots, even during a window. Frame events describe rendering, not semantic
+changes. Tree commands pull a fresh snapshot through MethodChannel and release
+their temporary Semantics handle afterwards. Status heartbeats do not scan UI.
+Call `AiAppBridge.instance.shutdown()` when a debug harness tears down the engine.
 
 ## Executing observed targets
 

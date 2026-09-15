@@ -95,6 +95,15 @@ test('Android 7 absent runtime state requires a declared dangerous permission an
   }
 });
 
+test('Android 7 explicitly granted permission with no flags suffix means zero permission flags', () => {
+  const dump = packageDump.replace('granted=false, flags=[ USER_SET| USER_SENSITIVE_WHEN_DENIED]', 'granted=true');
+  assert.deepEqual(parsePermissionState(dump, params), { packageName, permission, userId: 10, uid: 1010488, granted: true, flags: [] });
+  assert.deepEqual(parsePermissionState(packageDump.replace('USER_SET| USER_SENSITIVE_WHEN_DENIED', 'USER_SET USER_SENSITIVE_WHEN_DENIED'), params).flags,
+    ['USER_SENSITIVE_WHEN_DENIED', 'USER_SET']);
+  assert.throws(() => parsePermissionState(packageDump.replace('granted=false, flags=[ USER_SET| USER_SENSITIVE_WHEN_DENIED]', 'granted=true, flags='), params),
+    { code: 'permission_state_unsupported' });
+});
+
 test('Android 7 permission requester uses the matching focused and resumed Activity identities', () => {
   const legacy = activities().replace('topResumedActivity=', 'mFocusedActivity:')
     + '  mResumedActivity: ActivityRecord{abc u10 vendor.dialog/.Request t12}\n';

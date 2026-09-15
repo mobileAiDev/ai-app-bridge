@@ -1,3 +1,4 @@
+import 'support/read_snapshot.dart';
 import 'dart:convert';
 
 import 'package:ai_app_bridge_flutter/ai_app_bridge_flutter.dart';
@@ -41,8 +42,7 @@ void main() {
       home: const LicensePage(applicationName: 'Fixture App'),
     ));
     await tester.pumpAndSettle();
-    await tester.pump(const Duration(milliseconds: 1200));
-    await tester.pump(const Duration(milliseconds: 150));
+    snapshots.add(await readBridgeSnapshot(tester));
     final List<dynamic> nodes = snapshots.last['layout']['operable']['nodes'];
     final List<dynamic> matches = nodes
         .where((dynamic node) =>
@@ -56,8 +56,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Bridge fixture license terms'), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1200));
-    await tester.pump(const Duration(milliseconds: 150));
+    snapshots.add(await readBridgeSnapshot(tester));
     final List<dynamic> detail = snapshots.last['layout']['operable']['nodes'];
     expect(
         detail.any(

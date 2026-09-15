@@ -142,6 +142,9 @@ class DebugBridgeNativeTestActivity : Activity() {
         root.addView(button("Open Dialog", View.generateViewId()) {
             showNativeDialog()
         })
+        root.addView(button("Window Contract Fixture", View.generateViewId()) {
+            startActivity(android.content.Intent(this, WindowContractFixtureActivity::class.java))
+        })
         root.addView(button("Request Camera Permission", R.id.ai_app_native_test_request_camera) {
             requestCameraPermission()
         })
@@ -417,6 +420,7 @@ class DebugBridgeNativeTestActivity : Activity() {
                 <input id="native-h5-input" aria-label="Native H5 Input" value="h5 initial value" />
                 <button id="native-h5-button" aria-label="Native H5 Button" onclick="document.getElementById('native-h5-body').innerText='Native H5 clicked';">Native H5 Button</button>
                 <button id="native-h5-fetch-button" aria-label="Native H5 Fetch Button" onclick="runAiBridgeWebViewProbe()">Native H5 Fetch</button>
+                <iframe name="native-h5-frame" title="Native H5 frame" srcdoc="<button id='frame-button' onclick='this.textContent=&quot;Frame clicked&quot;'>Frame button</button>"></iframe>
                 <script>
                   window.runAiBridgeWebViewProbe = function(port) {
                     const targetPort = port || 18080;

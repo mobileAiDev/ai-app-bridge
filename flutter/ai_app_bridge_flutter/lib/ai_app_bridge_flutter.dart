@@ -49,7 +49,6 @@ class AiAppBridge {
 
   static const MethodChannel _channel = MethodChannel('ai_app_bridge');
   static const String _baseEndpoint = 'http://127.0.0.1:18080';
-  static const String _snapshotPath = '/v1/flutter/snapshot';
   static const int _maxDumpLength = 200000;
   static const int _maxSemanticsDepth = 24;
   static const int _maxSemanticsNodes = 600;
@@ -67,12 +66,8 @@ class AiAppBridge {
   bool _flutterErrorCaptureInstalled = false;
   bool _httpClientCaptureInstalled = false;
   bool _uiObservationInstalled = false;
-  Timer? _postTimer;
-  Timer? _layoutTimer;
   Timer? _uiStableTimer;
-  Timer? _animationSnapshotTimer;
   OverlayEntry? _harnessOverlayEntry;
-  SemanticsHandle? _semanticsHandle;
   DebugPrintCallback? _previousDebugPrint;
   FlutterExceptionHandler? _previousFlutterErrorHandler;
   bool Function(Object error, StackTrace stackTrace)?
@@ -82,11 +77,14 @@ class AiAppBridge {
   Map<String, Object?> _route = const <String, Object?>{};
   Map<String, Object?> _h5 = const <String, Object?>{'active': false};
   late final _FlutterH5Targets _h5Targets = _FlutterH5Targets(this);
-  final AiAppBridgeUiBurstTracker _uiBurstTracker = AiAppBridgeUiBurstTracker();
+  AiAppBridgeUiBurstTracker _uiBurstTracker = AiAppBridgeUiBurstTracker();
+  Timer? _observationExpiry;
+  String? _observationLease;
+  final Stopwatch _observationClock = Stopwatch();
+  int _observationDurationMs = 0;
+  int _observationSequence = 0;
   final Map<int, int> _pointerDownAtMs = <int, int>{};
-  int _lastAnimationSnapshotAtMs = 0;
   bool _snapshotInFlight = false;
-  bool _snapshotPending = false;
   bool _shortPointerInFlight = false;
   late final _FlutterExecutionTargets _targets = _FlutterExecutionTargets(this);
   bool _actionInFlight = false;
@@ -117,38 +115,85 @@ class AiAppBridge {
       captureFlutterErrors: captureFlutterErrors,
       captureHttpClient: captureHttpClient,
     );
-    _installUiObservation();
-    _semanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
     _channel.setMethodCallHandler(_handleNativeCall);
-    _layoutTimer ??= Timer.periodic(const Duration(milliseconds: 1200), (_) {
-      _schedulePost();
-    });
-    _schedulePost();
   }
 
   void shutdown() {
     _activeLifetime?.stop('flutter_runtime_shutdown');
     _targets.beginObservation();
-    if (!_uiObservationInstalled) {
-      _enabled = false;
-      return;
-    }
-    SchedulerBinding.instance.removeTimingsCallback(_handleFrameTimings);
-    GestureBinding.instance.pointerRouter
-        .removeGlobalRoute(_handlePointerEvent);
-    _uiStableTimer?.cancel();
-    _animationSnapshotTimer?.cancel();
-    _postTimer?.cancel();
-    _layoutTimer?.cancel();
-    _uiStableTimer = null;
-    _animationSnapshotTimer = null;
-    _postTimer = null;
-    _layoutTimer = null;
-    _pointerDownAtMs.clear();
-    _semanticsHandle?.dispose();
-    _semanticsHandle = null;
-    _uiObservationInstalled = false;
+    _stopUiObservation();
+    _channel.setMethodCallHandler(null);
     _enabled = false;
+  }
+
+  /// Frame/interaction evidence is opt-in and cannot outlive five seconds.
+  Map<String, Object?> uiObservation(Map<String, Object?> request) {
+    if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
+    if (_uiObservationInstalled && _observationClock.elapsedMilliseconds >= _observationDurationMs) _stopUiObservation();
+    final operation = request['operation'];
+    final keys = switch (operation) {
+      'start' => {'operation', 'durationMs'},
+      'stop' => {'operation', 'leaseId'},
+      'status' => {'operation'},
+      _ => <String>{},
+    };
+    if (keys.isEmpty ||
+        request.length != keys.length ||
+        !request.keys.every(keys.contains)) {
+      return {'ok': false, 'error': 'invalid_ui_observation_request'};
+    }
+    if (operation == 'start') {
+      final duration = request['durationMs'];
+      if (duration is! int || duration < 100 || duration > 5000) {
+        return {'ok': false, 'error': 'invalid_ui_observation_duration'};
+      }
+      if (_uiObservationInstalled)
+        return {'ok': false, 'error': 'ui_observation_busy'};
+      _observationLease = '${_targets.runtimeEpoch}:${++_observationSequence}';
+      _observationDurationMs = duration;
+      _observationClock
+        ..reset()
+        ..start();
+      _uiBurstTracker = AiAppBridgeUiBurstTracker();
+      _installUiObservation();
+      _observationExpiry =
+          Timer(Duration(milliseconds: duration), _stopUiObservation);
+    } else if (operation == 'stop') {
+      if (request['leaseId'] is! String ||
+          request['leaseId'] != _observationLease) {
+        return {'ok': false, 'error': 'ui_observation_lease_mismatch'};
+      }
+      _stopUiObservation();
+    }
+    return {
+      'ok': true,
+      'schemaVersion': 'aab.ui-observation/v1',
+      'mode': 'on-demand',
+      'active': _uiObservationInstalled,
+      'leaseId': _observationLease,
+      'remainingMs': _uiObservationInstalled
+          ? math.max(
+              0, _observationDurationMs - _observationClock.elapsedMilliseconds)
+          : 0,
+      'maxDurationMs': 5000,
+      'automaticSnapshots': false,
+    };
+  }
+
+  void _stopUiObservation() {
+    if (_uiObservationInstalled) {
+      SchedulerBinding.instance.removeTimingsCallback(_handleFrameTimings);
+      GestureBinding.instance.pointerRouter
+          .removeGlobalRoute(_handlePointerEvent);
+    }
+    _observationExpiry?.cancel();
+    _observationExpiry = null;
+    _uiStableTimer?.cancel();
+    _uiStableTimer = null;
+    _pointerDownAtMs.clear();
+    _uiObservationInstalled = false;
+    _observationLease = null;
+    _observationClock.stop();
   }
 
   void _installUiObservation() {
@@ -159,7 +204,8 @@ class AiAppBridge {
   }
 
   void _handleFrameTimings(List<FrameTiming> timings) {
-    if (!_enabled || timings.isEmpty) return;
+    if (_uiObservationInstalled && _observationClock.elapsedMilliseconds >= _observationDurationMs) _stopUiObservation();
+    if (!_enabled || !_uiObservationInstalled || timings.isEmpty) return;
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final List<AiAppBridgeUiTransition> transitions =
         _uiBurstTracker.addFrames(nowMs: nowMs, count: timings.length);
@@ -169,13 +215,12 @@ class AiAppBridge {
     }
     _uiStableTimer?.cancel();
     _uiStableTimer = Timer(const Duration(milliseconds: 275), () {
-      if (!_enabled) return;
+      if (!_enabled || !_uiObservationInstalled) return;
       final AiAppBridgeUiTransition? stable = _uiBurstTracker.settle(
         DateTime.now().millisecondsSinceEpoch,
       );
       if (stable != null) {
         _recordUiTransition(stable);
-        _schedulePost();
       }
     });
   }
@@ -220,28 +265,6 @@ class AiAppBridge {
         ...timingSummary,
       },
     );
-    if (transition.phase == AiAppBridgeUiPhase.changed) {
-      _scheduleAnimationSnapshot();
-    }
-  }
-
-  void _scheduleAnimationSnapshot() {
-    final int nowMs = DateTime.now().millisecondsSinceEpoch;
-    final int remainingMs = 250 - (nowMs - _lastAnimationSnapshotAtMs);
-    if (remainingMs <= 0) {
-      _lastAnimationSnapshotAtMs = nowMs;
-      unawaited(_postSnapshot());
-      return;
-    }
-    _animationSnapshotTimer ??= Timer(
-      Duration(milliseconds: remainingMs),
-      () {
-        _animationSnapshotTimer = null;
-        if (!_enabled) return;
-        _lastAnimationSnapshotAtMs = DateTime.now().millisecondsSinceEpoch;
-        unawaited(_postSnapshot());
-      },
-    );
   }
 
   void _handlePointerEvent(PointerEvent event) {
@@ -275,6 +298,13 @@ class AiAppBridge {
   Future<Object?> _handleNativeCall(MethodCall call) async {
     final body = call.arguments?.toString() ?? '{}';
     switch (call.method) {
+      case 'readSnapshot':
+        return _readSnapshot();
+      case 'uiObservation':
+        final request = jsonDecode(body);
+        if (request is! Map<String, dynamic>)
+          return {'ok': false, 'error': 'invalid_ui_observation_request'};
+        return uiObservation(request);
       case 'executeAction':
         return _runManagedAction(body);
       case 'cancelAction':
@@ -424,7 +454,6 @@ class AiAppBridge {
         'interactionObserved': false,
       },
     );
-    _schedulePost();
   }
 
   void recordH5({
@@ -447,7 +476,6 @@ class AiAppBridge {
       if (dom != null) 'dom': dom,
       'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
     };
-    _schedulePost();
   }
 
   void clearH5() {
@@ -456,12 +484,10 @@ class AiAppBridge {
 
   void registerH5Adapter(AiAppBridgeH5Adapter adapter) {
     _h5Targets.register(adapter);
-    if (_enabled) _schedulePost();
   }
 
   void unregisterH5Adapter(String id) {
     _h5Targets.unregister(id);
-    if (_enabled) _schedulePost();
   }
 
   void recordLog({
@@ -542,16 +568,6 @@ class AiAppBridge {
       if (data != null) 'data': data,
     };
     unawaited(_sendCapture('recordEvent', '/v1/events', payload));
-  }
-
-  void _schedulePost() {
-    if (!_enabled) {
-      return;
-    }
-    _postTimer?.cancel();
-    _postTimer = Timer(const Duration(milliseconds: 120), () {
-      unawaited(_postSnapshot());
-    });
   }
 
   Map<String, Object?> _snapshot() {
@@ -1038,8 +1054,7 @@ class AiAppBridge {
             _FlutterActionLifetime.zoneKey: lifetime,
           });
       lifetime?.throwIfStopped();
-      _schedulePost();
-      return result;
+        return result;
     } on _FlutterActionStopped catch (error) {
       return {'ok': false, 'error': error.code, 'ambiguous': false};
     } on _FlutterTargetFailure catch (error) {
@@ -1067,6 +1082,7 @@ class AiAppBridge {
               zoneValues: {_actionCaptureKey: lifetime.actionId});
         _activeLifetime = null;
         _actionInFlight = false;
+        _targets.beginObservation();
       }
     }
   }
@@ -1376,7 +1392,6 @@ class AiAppBridge {
         if (down) _cancelPointer(1, position);
       } finally {
         _shortPointerInFlight = false;
-        _resumePendingSnapshot();
       }
     }
     await _waitForFrame();
@@ -1739,39 +1754,37 @@ class AiAppBridge {
     return normalized.substring(0, 300);
   }
 
-  Future<void> _postSnapshot() async {
-    if (!_enabled) return;
-    if (_snapshotInFlight || _shortPointerInFlight) {
-      _snapshotPending = true;
-      return;
+  Future<Map<String, Object?>> _readSnapshot() async {
+    if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
+    if (_snapshotInFlight || _actionInFlight || _shortPointerInFlight) {
+      return {'ok': false, 'error': 'flutter_observation_busy'};
     }
     _snapshotInFlight = true;
+    final runtimeEpoch = _targets.runtimeEpoch;
+    final semantics = SemanticsBinding.instance.ensureSemantics();
     try {
+      await SchedulerBinding.instance.endOfFrame
+          .timeout(const Duration(milliseconds: 800));
       await _refreshH5Snapshot();
-      if (!_enabled) return;
-      // An H5 read can yield before the pointer begins. Recheck after it returns.
-      if (_shortPointerInFlight) {
-        _snapshotPending = true;
-        return;
-      }
-      final String snapshotJson = jsonEncode(_snapshot());
-      if (await _postSnapshotByMethodChannel(snapshotJson)) {
-        return;
-      }
-      await _postJson(_snapshotPath, snapshotJson);
+      if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
+      if (_targets.runtimeEpoch != runtimeEpoch) return {'ok': false, 'error': 'flutter_runtime_changed'};
+      if (_actionInFlight || _shortPointerInFlight)
+        return {'ok': false, 'error': 'flutter_observation_busy'};
+      return {
+        'ok': true,
+        'snapshot': {
+          ..._snapshot(),
+          'uiObservation': uiObservation({'operation': 'status'}),
+        }
+      };
+    } on TimeoutException {
+      return {'ok': false, 'error': 'flutter_observation_timeout'};
     } finally {
+      semantics.dispose();
       _snapshotInFlight = false;
-      _resumePendingSnapshot();
+      // JSON snapshots need no live Element bindings between requests.
+      if (!_actionInFlight) _targets.beginObservation();
     }
-  }
-
-  void _resumePendingSnapshot() {
-    if (!_snapshotPending ||
-        !_enabled ||
-        _snapshotInFlight ||
-        _shortPointerInFlight) return;
-    _snapshotPending = false;
-    scheduleMicrotask(() => unawaited(_postSnapshot()));
   }
 
   Future<void> _sendCapture(
@@ -1814,9 +1827,7 @@ class AiAppBridge {
     }, zoneValues: <Object, Object?>{_autoCaptureSuppressionKey: true});
   }
 
-  Future<bool> _postSnapshotByMethodChannel(String snapshotJson) async {
-    return _invokeBridgeMethod('updateSnapshot', snapshotJson);
-  }
+
 
   Future<bool> _invokeBridgeMethod(String method, String body) async {
     try {

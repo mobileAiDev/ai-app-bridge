@@ -17,7 +17,7 @@ class NativeTargetContractTest {
     private fun tree(vararg children: JSONObject, windowId: String = "window", epoch: String = "epoch"): JSONObject {
         val root = node("id/root").put("children", JSONArray(children))
         annotate(root, epoch, windowId, windowId)
-        return JSONObject().put("windows", JSONArray().put(JSONObject().put("focused", true)
+        return JSONObject().put("foregroundWindowId", windowId).put("windows", JSONArray().put(JSONObject().put("focused", true)
             .put("focusable", true).put("touchable", true).put("focusOwnerWindowId", windowId)
             .put("windowId", windowId).put("bounds", bounds()).put("root", root)))
     }
@@ -77,10 +77,29 @@ class NativeTargetContractTest {
         val old = editor(); val snapshot = tree(old)
         snapshot.getJSONArray("windows").getJSONObject(0).put("focused", false)
         fails("native_window_not_focused") { resolve(snapshot, ref(old)) }
-        snapshot.getJSONArray("windows").put(tree(node("id/dialog")).getJSONArray("windows").getJSONObject(0))
+        snapshot.getJSONArray("windows").put(tree(node("id/dialog"), windowId = "dialog").getJSONArray("windows").getJSONObject(0))
+        snapshot.put("foregroundWindowId", "dialog")
         fails("native_selector_not_found") { resolve(snapshot, ref(old)) }
-        snapshot.getJSONArray("windows").put(JSONObject().put("root", JSONObject()))
+        snapshot.getJSONArray("windows").put(JSONObject().put("windowId", "unknown").put("root", JSONObject()))
+        snapshot.put("foregroundWindowId", "unknown")
         fails("native_window_unavailable") { resolve(snapshot, ref(old)) }
+    }
+
+    @Test fun executionUsesTheSdkForegroundDecisionEvenWhileAnExitingWindowRemainsAttached() {
+        val current = editor(); val snapshot = tree(current)
+        snapshot.getJSONArray("windows").put(tree(editor(), windowId = "exiting").getJSONArray("windows").getJSONObject(0))
+        assertSame(current, resolve(snapshot, ref(current)).node)
+    }
+
+    @Test fun missingOrInvalidForegroundDecisionNeverFallsBackToWindowOrder() {
+        val current = editor(); val snapshot = tree(current)
+        snapshot.remove("foregroundWindowId")
+        fails("native_window_metadata_unavailable") { resolve(snapshot, ref(current)) }
+        snapshot.put("foregroundWindowId", "absent")
+        fails("native_window_metadata_unavailable") { resolve(snapshot, ref(current)) }
+        snapshot.put("foregroundWindowId", "window")
+        snapshot.getJSONArray("windows").put(snapshot.getJSONArray("windows").getJSONObject(0))
+        fails("native_window_metadata_unavailable") { resolve(snapshot, ref(current)) }
     }
 
     @Test fun clippedOrDisabledAncestorsExcludeTheControl() {

@@ -1,3 +1,4 @@
+import 'support/read_snapshot.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -83,8 +84,7 @@ void main() {
       Future<Map<dynamic, dynamic>> action(Map<String, Object?> request) async {
         final response = Completer<Object?>();
         if (runtimeEpoch == null) {
-          await tester.pump(const Duration(milliseconds: 1200));
-          await tester.pump(const Duration(milliseconds: 150));
+          runtimeEpoch = (await readBridgeSnapshot(tester))['layout']['operable']['runtimeEpoch'] as String;
         }
         final actionId = request['actionId'];
         final managed = {
@@ -109,8 +109,7 @@ void main() {
         return (await response.future) as Map;
       }
 
-      await tester.pump(const Duration(milliseconds: 1200));
-      await tester.pump(const Duration(milliseconds: 150));
+      runtimeEpoch = (await readBridgeSnapshot(tester))['layout']['operable']['runtimeEpoch'] as String;
       expect(runtimeEpoch, isNotNull);
       final unrelated =
           Timer(const Duration(milliseconds: 40), () => record('background'));

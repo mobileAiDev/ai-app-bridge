@@ -133,7 +133,7 @@ Intent 和 Script 是两个通用能力。如何先用 Intent、再生成 Script
 8. 每次 Script 记录本轮新证据；旧 Intent 证据不能冒充本轮通过证据。
 9. Agent 能通过现有 capabilities 和 execution/evidence 查询合同完成代码生成与报告，不需要理解 store/segment/cursor 内部。
 10. Legacy 旧命令的 live 外观、实际执行逻辑、错误和并发范围不受影响；已批准的 history、feedback metadata 和 iOS state 修正按第 2.1 节单列。
-11. 新链路不引入 UiA2 server/test package、instrumentation、ADB reconnect 或每步 ADB 健康探针；当前已有 UIA provider 可以继续使用。
+11. 原有基础链路不引入 UiA2 server/test package、instrumentation、ADB reconnect 或每步 ADB 健康探针；当前已有 UIA provider 可以继续使用。2026-09-15 用户明确授权另外提供可选 Instrumentation／测试框架执行器，见 [0.3.6 执行器交付清单](EXECUTOR_DELIVERY_0.3.6.md)。这些新能力不成为原有基础链路的强制依赖。
 
 ### 2.1 兼容边界与 intentional delta
 

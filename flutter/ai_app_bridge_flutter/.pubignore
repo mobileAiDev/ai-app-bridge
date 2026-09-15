@@ -1,0 +1,17 @@
+/validation/
+.gradle/
+.DS_Store
+.kotlin/
+build/
+.build/
+.swiftpm/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+node_modules/
+.tools/
+*.iml
+*.log
+*.tmp
+local.properties
+GeneratedPluginRegistrant.*

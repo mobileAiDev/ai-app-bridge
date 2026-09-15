@@ -65,10 +65,12 @@ function parsePermissionState(text, { packageName, permission, userId }, definit
       return { packageName, permission, userId, uid: userId * 100000 + Number(appId[0][1]), granted: false, flags: [] };
     }
   }
-  const match = matches.length === 1 && /^\s*[^:]+:\s+granted=(true|false),\s*flags=\[([^\]]*)\]\s*$/.exec(matches[0]);
+  // Android 7's Settings.permissionFlagsToString omits the entire suffix when flags == 0.
+  const match = matches.length === 1 && /^\s*[^:]+:\s+granted=(true|false)(?:,\s*flags=\[([^\]]*)\])?\s*$/.exec(matches[0]);
   if (!matches.length) throw new CommandError('runtime_permission_not_found', 'The requested permission has no runtime permission record for this package and user.');
   if (!match) throw new CommandError('permission_state_unsupported', 'Android returned an unrecognized runtime permission record.');
-  const flags = match[2].trim() ? match[2].split('|').map(value => value.trim()) : [];
+  // Nougat separates flags with spaces; newer dumps use pipes.
+  const flags = match[2] !== undefined && match[2].trim() ? match[2].trim().split(/\s*\|\s*|\s+/) : [];
   if (flags.some(value => !/^[A-Z][A-Z0-9_]*$/.test(value)) || new Set(flags).size !== flags.length) {
     throw new CommandError('permission_state_unsupported', 'Android returned unrecognized permission flags.');
   }

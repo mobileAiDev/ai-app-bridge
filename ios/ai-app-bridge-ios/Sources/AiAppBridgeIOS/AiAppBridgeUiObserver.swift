@@ -9,15 +9,23 @@ final class AiAppBridgeUiObserver: NSObject {
     private let maxSampledNodes = 240
     private let maxChangedComponents = 12
     private let eventSink: EventSink
+    private let onStop: () -> Void
     private var stateMachine = UiObservationStateMachine()
     private var displayLink: CADisplayLink?
     private var notificationTokens: [NSObjectProtocol] = []
     private var lastEmittedSnapshot: UiObservationSnapshot?
     private var lastInputEventUptimeMs: Int64 = 0
     private var lastSampleUptimeMs: Int64 = 0
+    private var nextSampleUptimeMs: Int64 = 0
+    private var expiry: DispatchWorkItem?
+    private var leaseId: String?
+    private var deadlineMs: Int64 = 0
+    private(set) var sampleCount = 0
+    private var maxSampleDurationMs: Int64 = 0
     private(set) var isStarted = false
 
-    init(eventSink: @escaping EventSink) {
+    init(onStop: @escaping () -> Void = {}, eventSink: @escaping EventSink) {
+        self.onStop = onStop
         self.eventSink = eventSink
         super.init()
     }
@@ -26,7 +34,49 @@ final class AiAppBridgeUiObserver: NSObject {
         UiObservedNode.inputEventSummary(view: view, timestampMs: timestampMs)
     }
 
-    func start() {
+    func control(_ request: [String: Any]) -> [String: Any] {
+        precondition(Thread.isMainThread)
+        if isStarted && Self.uptimeMs() >= deadlineMs { stop() }
+        let operation = request["operation"] as? String
+        let keys: Set<String>
+        switch operation {
+        case "start": keys = ["operation", "durationMs"]
+        case "stop": keys = ["operation", "leaseId"]
+        case "status": keys = ["operation"]
+        default: return ["ok": false, "error": "invalid_ui_observation_operation"]
+        }
+        guard Set(request.keys) == keys else { return ["ok": false, "error": "invalid_ui_observation_request"] }
+        if operation == "start" {
+            guard let number = request["durationMs"] as? NSNumber,
+                  CFGetTypeID(number) != CFBooleanGetTypeID(),
+                  number.doubleValue == Double(number.int64Value), (100...5000).contains(number.int64Value) else {
+                return ["ok": false, "error": "invalid_ui_observation_duration"]
+            }
+            guard !isStarted else { return ["ok": false, "error": "ui_observation_busy"] }
+            leaseId = UUID().uuidString
+            deadlineMs = Self.uptimeMs() + number.int64Value
+            sampleCount = 0
+            maxSampleDurationMs = 0
+            start()
+            let work = DispatchWorkItem { [weak self] in self?.stop() }
+            expiry = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(max(0, deadlineMs - Self.uptimeMs()))), execute: work)
+        } else if operation == "stop" {
+            guard let id = request["leaseId"] as? String, id == leaseId else { return ["ok": false, "error": "ui_observation_lease_mismatch"] }
+            stop()
+        }
+        return status
+    }
+
+    var status: [String: Any] {
+        if isStarted && Self.uptimeMs() >= deadlineMs { stop() }
+        return ["ok": true, "schemaVersion": "aab.ui-observation/v1", "mode": "on-demand",
+         "active": isStarted, "leaseId": leaseId as Any? ?? NSNull(),
+         "remainingMs": isStarted ? max(0, deadlineMs - Self.uptimeMs()) : 0,
+         "maxDurationMs": 5000, "sampleCount": sampleCount, "maxSampleDurationMs": maxSampleDurationMs]
+    }
+
+    private func start() {
         precondition(Thread.isMainThread, "AiAppBridgeUiObserver must start on the main thread")
         guard !isStarted else { return }
         isStarted = true
@@ -34,6 +84,7 @@ final class AiAppBridgeUiObserver: NSObject {
         lastEmittedSnapshot = nil
         lastInputEventUptimeMs = 0
         lastSampleUptimeMs = 0
+        nextSampleUptimeMs = 0
         installNotifications()
 
         let link = CADisplayLink(target: self, selector: #selector(displayLinkDidFire))
@@ -56,6 +107,10 @@ final class AiAppBridgeUiObserver: NSObject {
         precondition(Thread.isMainThread, "AiAppBridgeUiObserver must stop on the main thread")
         guard isStarted else { return }
         isStarted = false
+        expiry?.cancel()
+        expiry = nil
+        leaseId = nil
+        deadlineMs = 0
         displayLink?.invalidate()
         displayLink = nil
         let center = NotificationCenter.default
@@ -64,6 +119,7 @@ final class AiAppBridgeUiObserver: NSObject {
         lastEmittedSnapshot = nil
         lastInputEventUptimeMs = 0
         lastSampleUptimeMs = 0
+        onStop()
     }
 
     deinit {
@@ -79,9 +135,18 @@ final class AiAppBridgeUiObserver: NSObject {
         guard isStarted else { return }
         let observedAtMs = Self.nowMs()
         let uptimeMs = Self.uptimeMs()
-        guard force || uptimeMs - lastSampleUptimeMs >= 100 else { return }
+        guard uptimeMs < deadlineMs else { stop(); return }
+        guard UIApplication.shared.applicationState == .active else { return }
+        guard force || uptimeMs >= nextSampleUptimeMs else { return }
         lastSampleUptimeMs = uptimeMs
+        // UIKit reads remain on main; expensive host views reduce our sample rate.
+        defer {
+            let elapsed = Self.uptimeMs() - uptimeMs
+            maxSampleDurationMs = max(maxSampleDurationMs, elapsed)
+            nextSampleUptimeMs = Self.uptimeMs() + max(100, elapsed * 9)
+        }
         let snapshot = UiObservationSnapshot.capture(maxNodes: maxSampledNodes)
+        sampleCount += 1
         guard let emission = stateMachine.observe(
             fingerprint: snapshot.fingerprint,
             atMs: observedAtMs,
@@ -166,6 +231,7 @@ final class AiAppBridgeUiObserver: NSObject {
     }
 
     private func recordLifecycle(phase: String) {
+        if phase == "didEnterBackground" { stop() }
         eventSink("lifecycle", "lifecycle.\(phase)", [
             "phase": phase,
             "applicationState": Self.applicationStateName,

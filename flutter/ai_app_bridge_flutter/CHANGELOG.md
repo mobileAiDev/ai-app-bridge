@@ -1,3 +1,10 @@
+## 0.3.6
+
+* Align native runtime source and dependency versions with Bridge 0.3.6.
+* Disable continuous native, Flutter and WebView UI observation by default. Explicit observation windows expire within five seconds and clean up their listeners and hooks.
+* Read the current Flutter tree on demand through `/v1/flutter/snapshot`; status and heartbeat requests no longer walk or publish the widget tree. Update the CLI/MCP together with the SDK.
+* Optional WidgetTester/integration_test execution is provided by the separate `ai_app_bridge_test` dev dependency. Existing SDK initialization does not enable the test executor.
+
 ## 0.3.5
 
 * Align the published Android and iOS SDK dependencies with Bridge 0.3.5.

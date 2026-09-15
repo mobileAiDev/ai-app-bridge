@@ -75,7 +75,8 @@ test('native longPress rejects ambiguous/hidden/out-of-window nodes and invalid 
 
 test('native longPress uses only the foreground dialog and rejects a covered activity', async () => {
   const rawTree = tree();
-  rawTree.windows = [{ root: rawTree.root }, { root: node({ text: '', bounds: { left: 100, top: 150, right: 450, bottom: 350 }, children: [node({ text: 'Dialog note' })] }) }];
+  rawTree.foregroundWindowId = 'dialog';
+  rawTree.windows = [{ windowId: 'activity', root: rawTree.root }, { windowId: 'dialog', root: node({ text: '', bounds: { left: 100, top: 150, right: 450, bottom: 350 }, children: [node({ text: 'Dialog note' })] }) }];
   const { device, calls } = harness();
   assert.equal((await dispatch(device, action(), rawTree)).error, 'native_selector_not_found');
   assert.equal(calls.length, 0);
@@ -90,12 +91,14 @@ test('unknown or ineligible foreground windows block longPress instead of fallin
     { root: node({ text: 'Dialog', visible: undefined, effectiveVisible: undefined }) },
     { root: null },
   ]) {
-    const rawTree = tree(); rawTree.windows = [{ root: rawTree.root }, foreground];
+    const rawTree = tree(); rawTree.foregroundWindowId = 'foreground';
+    rawTree.windows = [{ windowId: 'activity', root: rawTree.root }, { ...foreground, windowId: 'foreground' }];
     const { device, calls } = harness(); const result = await dispatch(device, action(), rawTree);
     assert.equal(result.error, 'visible_observed_window_required'); assert.equal(result.dispatched, false); assert.equal(calls.length, 0);
   }
-  const rawTree = tree(); rawTree.windows = [{ root: rawTree.root }, { root: node({ visible: false, effectiveVisible: false }) }];
-  assert.equal((await dispatch(harness().device, action(), rawTree)).ok, true, 'Only a clearly hidden window can be skipped');
+  const rawTree = tree(); rawTree.foregroundWindowId = 'activity';
+  rawTree.windows = [{ windowId: 'activity', root: rawTree.root }, { windowId: 'hidden', root: node({ visible: false, effectiveVisible: false }) }];
+  assert.equal((await dispatch(harness().device, action(), rawTree)).ok, true, 'SDK may select the Activity when the overlay is hidden');
 });
 
 test('native longPress never silently changes provider or falls back when its port is absent', async () => {

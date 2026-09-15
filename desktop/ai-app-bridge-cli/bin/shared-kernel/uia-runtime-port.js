@@ -205,6 +205,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
   }
 
   async function ensureLocked(rotate) {
+    await require('../executors/automation-owner').assertAvailable(serial);
     const asset = bundle();
     const previous = await readJson(`${root}/runtime.json`);
     let peer = previous === null ? null : descriptor(previous);
@@ -293,6 +294,40 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
   }
 
   return {
+    async withInstrumentation(descriptorFile, start) {
+      return withConnectionLock(async () => {
+        const automation = require('../executors/automation-owner');
+        await automation.assertAvailable(serial);
+        const value = await readJson(`${root}/runtime.json`);
+        if (value !== null) {
+          const peer = descriptor(value);
+          if (peer.running) {
+            const connection = await connect(peer);
+            const status = await statusOf(connection);
+            if (status.pending !== 0 || status.acknowledged !== status.count || status.activeActionId !== null)
+              throw failure('uia_runtime_pending_actions', 'Settle and acknowledge the original UIA actions before opening instrumentation.');
+            await stopRuntime(connection);
+          }
+        }
+        const claim = automation.claim(serial, descriptorFile);
+        try {
+          const result = await start();
+          if (result?.ok === false && result.dispatched === false && result.ambiguous === false) automation.release(serial, claim.sessionId);
+          return result;
+        } catch (error) {
+          if (error.dispatched === false && error.ambiguous === false) automation.release(serial, claim.sessionId);
+          throw error;
+        }
+      });
+    },
+    async releaseInstrumentation(sessionId) {
+      return withConnectionLock(async () => {
+        const automation = require('../executors/automation-owner');
+        const owner = automation.owner(serial);
+        if (owner && owner.sessionId !== sessionId) throw failure('executor_automation_owner_changed', 'Another test session owns UiAutomation.');
+        await automation.assertAvailable(serial);
+      });
+    },
     ensure, post,
     async observe() {
       const connection = await withConnectionLock(() => ensureLocked(true));
@@ -342,6 +377,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
       return withConnectionLock(async () => {
         const value = await readJson(`${root}/runtime.json`);
         if (operation === 'start') {
+          await require('../executors/automation-owner').assertAvailable(serial);
           const asset = bundle(), destination = await installAsset(asset);
           const ownerRaw = await shell(`CLASSPATH=${quote(destination)} app_process /system/bin ${mainClass} ${quote(root)} ${asset.manifest.sha256} owner-status`);
           let owner;

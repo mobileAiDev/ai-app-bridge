@@ -32,7 +32,7 @@ async function fixture(t) {
   const server = http.createServer(async (req, res) => {
     let bytes = ''; for await (const chunk of req) bytes += chunk;
     const send = value => res.end(JSON.stringify({ ...value, runtimeBinding: device.binding }));
-    if (req.url === '/v1/status') return send({ ok: true,
+    if (['/v1/status', '/v1/flutter/snapshot'].includes(req.url)) return send({ ok: true,
       debugBridge: { flutterExecutionSchema: 'aab.flutter-execution/v1' }, flutter: { layout: { operable: tree() } } });
     if (req.url === '/v1/flutter/action') {
       const body = JSON.parse(bytes);

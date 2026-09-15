@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.security.SecureRandom
 
 /**
- * Observes lightweight Android UI state without retaining text, screenshots, or full trees.
+ * Observes UI changes only inside an explicitly acquired, bounded window.
  */
 internal class AndroidUiObserver(
     private val mainHandler: Handler,
@@ -33,46 +33,95 @@ internal class AndroidUiObserver(
     private val maxDepth: Int = 32,
     private val maxChangedNodes: Int = 24,
 ) {
-    private val tracker = UiStabilityTracker(stableAfterMs)
+    private var tracker = UiStabilityTracker(stableAfterMs)
+    private val window = UiObservationWindow(SystemClock::uptimeMillis)
     private val renderVersion = AtomicLong(0L)
     private val semanticTextSalt = ByteArray(32).also { SecureRandom().nextBytes(it) }
     private val pendingTriggers = LinkedHashSet<String>()
     private val observedRoots = mutableListOf<ObservedRoot>()
     private var activityRef = WeakReference<Activity>(null)
+    private var resumedActivityRef = WeakReference<Activity>(null)
+    private val resourceNames = android.util.LruCache<Int, String>(512)
+    private val location = IntArray(2)
+    private var sampleCount = 0L
+    private var lastSampleDurationMs = 0L
+    private var maxSampleDurationMs = 0L
     private var active = false
     private var samplePending = false
-    private var lastSampleAtMs = 0L
+    private var nextSampleAtMs = 0L
+    private val expiryRunnable = Runnable { stop() }
 
     private val sampleRunnable = Runnable {
         samplePending = false
         performSample()
     }
     private val stableRunnable = Runnable {
-        if (!active) {
-            return@Runnable
-        }
-        if (samplePending) {
-            mainHandler.removeCallbacks(sampleRunnable)
-            samplePending = false
-        }
-        pendingTriggers.add("stability-check")
-        performSample()
+        requestSample("stability-check")
     }
     private val discoveryRunnable = object : Runnable {
         override fun run() {
             if (!active) {
                 return
             }
-            requestSample("discovery")
+            val activity = activityRef.get() ?: return
+            val roots = discoverWindowRoots(activity)
+            // Discover new dialogs/popups, without fingerprinting a static tree.
+            if (roots.size != observedRoots.size || roots.any { candidate -> observedRoots.none { it.rootRef.get() === candidate.root } }) {
+                refreshRootListeners(roots)
+                requestSample("windows")
+            }
             mainHandler.postDelayed(this, discoveryIntervalMs)
         }
     }
 
     fun attach(activity: Activity, reason: String) {
         onMain {
-            attachOnMain(activity, reason)
+            resumedActivityRef = WeakReference(activity)
+            if (window.active) attachOnMain(activity, reason)
         }
     }
+
+    /** Called on main so the baseline is complete before an action can begin. */
+    fun control(request: JSONObject): JSONObject {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val operation = request.optString("operation")
+        val allowed = when (operation) {
+            "start" -> setOf("operation", "durationMs")
+            "stop" -> setOf("operation", "leaseId")
+            "status" -> setOf("operation")
+            else -> return failure("invalid_ui_observation_operation")
+        }
+        if (request.keys().asSequence().toSet() != allowed) return failure("invalid_ui_observation_request")
+        when (operation) {
+            "start" -> {
+                val duration = request.opt("durationMs")
+                if (duration !is Number || duration.toDouble() != duration.toLong().toDouble() || duration.toLong() !in 100..5000) return failure("invalid_ui_observation_duration")
+                if (window.active) return failure("ui_observation_busy")
+                val activity = resumedActivityRef.get()
+                if (activity == null || activity.isFinishing) return failure("no_resumed_activity")
+                stop()
+                window.start(duration.toLong())
+                sampleCount = 0
+                maxSampleDurationMs = 0
+                attachOnMain(activity, "requested")
+                mainHandler.removeCallbacks(sampleRunnable)
+                samplePending = false
+                performSample()
+                mainHandler.postDelayed(expiryRunnable, window.status().getLong("remainingMs"))
+            }
+            "stop" -> {
+                if (request.opt("leaseId") !is String || !window.stop(request.getString("leaseId"))) return failure("ui_observation_lease_mismatch")
+                stop()
+            }
+        }
+        return status()
+    }
+
+    fun status(): JSONObject = window.status()
+        .put("sampling", active && window.active).put("sampleCount", sampleCount)
+        .put("lastSampleDurationMs", lastSampleDurationMs).put("maxSampleDurationMs", maxSampleDurationMs)
+
+    private fun failure(code: String) = JSONObject().put("ok", false).put("error", code)
 
     fun onLifecycle(activity: Activity, phase: String) {
         onMain {
@@ -84,8 +133,11 @@ internal class AndroidUiObserver(
                     .put("phase", phase),
             )
             when (phase) {
-                "resumed" -> attachOnMain(activity, "lifecycle")
-                "stopped", "destroyed" -> detachIfCurrent(activity)
+                "resumed" -> attach(activity, "lifecycle")
+                "paused", "stopped", "destroyed" -> {
+                    if (resumedActivityRef.get() === activity) resumedActivityRef.clear()
+                    detachIfCurrent(activity)
+                }
             }
         }
     }
@@ -145,6 +197,8 @@ internal class AndroidUiObserver(
 
     fun stop() {
         onMain {
+            window.clear()
+            mainHandler.removeCallbacks(expiryRunnable)
             stopOnMain()
         }
     }
@@ -158,7 +212,7 @@ internal class AndroidUiObserver(
         stopOnMain()
         activityRef = WeakReference(activity)
         active = true
-        lastSampleAtMs = SystemClock.uptimeMillis() - minSampleIntervalMs
+        nextSampleAtMs = 0L
         refreshRootListeners(discoverWindowRoots(activity))
         requestSample("attach.$reason")
         mainHandler.postDelayed(discoveryRunnable, discoveryIntervalMs)
@@ -180,10 +234,13 @@ internal class AndroidUiObserver(
         observedRoots.forEach { it.detach() }
         observedRoots.clear()
         activityRef.clear()
+        resourceNames.evictAll()
+        tracker = UiStabilityTracker(stableAfterMs)
+        renderVersion.set(0L)
     }
 
     private fun requestSample(trigger: String) {
-        if (!active) {
+        if (!active || !window.active) {
             return
         }
         pendingTriggers.add(trigger)
@@ -191,13 +248,13 @@ internal class AndroidUiObserver(
             return
         }
         val nowMs = SystemClock.uptimeMillis()
-        val delayMs = (minSampleIntervalMs - (nowMs - lastSampleAtMs)).coerceAtLeast(0L)
+        val delayMs = (nextSampleAtMs - nowMs).coerceAtLeast(0L)
         samplePending = true
         mainHandler.postDelayed(sampleRunnable, delayMs)
     }
 
     private fun performSample() {
-        if (!active) {
+        if (!active || !window.active) {
             return
         }
         val activity = activityRef.get()
@@ -208,11 +265,15 @@ internal class AndroidUiObserver(
         val triggers = pendingTriggers.joinToString(",")
         pendingTriggers.clear()
         val nowMs = SystemClock.uptimeMillis()
-        lastSampleAtMs = nowMs
         val roots = discoverWindowRoots(activity)
         refreshRootListeners(roots)
         val fingerprint = captureFingerprint(activity, roots)
-        val signal = tracker.observe(fingerprint, nowMs) ?: return
+        sampleCount++
+        lastSampleDurationMs = SystemClock.uptimeMillis() - nowMs
+        maxSampleDurationMs = maxOf(maxSampleDurationMs, lastSampleDurationMs)
+        // Space from completion, with backpressure for expensive host trees.
+        nextSampleAtMs = SystemClock.uptimeMillis() + maxOf(minSampleIntervalMs, lastSampleDurationMs * 9)
+        val signal = tracker.observe(fingerprint, SystemClock.uptimeMillis()) ?: return
         emitSignal(signal, triggers)
         if (signal.kind == UiObservationSignalKind.CHANGED) {
             mainHandler.removeCallbacks(stableRunnable)
@@ -489,7 +550,6 @@ internal class AndroidUiObserver(
     }
 
     private fun boundsForView(view: View): UiBounds {
-        val location = IntArray(2)
         return try {
             view.getLocationOnScreen(location)
             UiBounds(location[0], location[1], location[0] + view.width, location[1] + view.height)
@@ -510,11 +570,12 @@ internal class AndroidUiObserver(
         if (id == View.NO_ID) {
             return ""
         }
-        return try {
+        resourceNames.get(id)?.let { return it }
+        return (try {
             activity.resources.getResourceName(id)
         } catch (_: Throwable) {
             ""
-        }
+        }).also { resourceNames.put(id, it) }
     }
 
     private fun emit(category: String, name: String, data: JSONObject) {

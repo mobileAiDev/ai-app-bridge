@@ -1,3 +1,4 @@
+import 'support/read_snapshot.dart';
 import 'dart:convert';
 
 import 'package:ai_app_bridge_flutter/ai_app_bridge_flutter.dart';
@@ -7,6 +8,44 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('idle performs no automatic snapshots; reads are fresh and leases expire', (tester) async {
+    const channel = MethodChannel('ai_app_bridge');
+    final calls = <MethodCall>[];
+    final bridge = AiAppBridge.instance;
+    final label = ValueNotifier('20');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async { calls.add(call); return {'ok': true}; });
+    addTearDown(() { bridge.shutdown(); label.dispose(); messenger.setMockMethodCallHandler(channel, null); });
+    bridge.initialize(appName: 'idle-test', captureDebugPrint: false, captureFlutterErrors: false, captureHttpClient: false);
+    await tester.pumpWidget(MaterialApp(home: ValueListenableBuilder<String>(
+      valueListenable: label, builder: (context, value, child) => TextButton(onPressed: () {}, child: Text(value)),
+    )));
+    final semanticsBefore = tester.binding.semanticsEnabled;
+    await tester.pump(const Duration(seconds: 10));
+    expect(calls, isEmpty);
+    expect(bridge.uiObservation({'operation': 'status'})['active'], false);
+    var snapshot = await readBridgeSnapshot(tester);
+    expect(jsonEncode(snapshot['layout']['operable']), contains('20'));
+    label.value = '21';
+    await tester.pump();
+    snapshot = await readBridgeSnapshot(tester);
+    expect(jsonEncode(snapshot['layout']['operable']), contains('21'));
+    expect(tester.binding.semanticsEnabled, semanticsBefore);
+    expect(calls.where((call) => call.method == 'updateSnapshot'), isEmpty);
+
+    expect(bridge.uiObservation({'operation': 'start', 'durationMs': 5001})['ok'], false);
+    final lease = bridge.uiObservation({'operation': 'start', 'durationMs': 100});
+    expect(lease['active'], true);
+    expect(bridge.uiObservation({'operation': 'stop', 'leaseId': 'wrong'})['ok'], false);
+    expect(bridge.uiObservation({'operation': 'start', 'durationMs': 100})['error'], 'ui_observation_busy');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(bridge.uiObservation({'operation': 'status'})['active'], false);
+    bridge.initialize(appName: 'still-off', captureDebugPrint: false, captureFlutterErrors: false, captureHttpClient: false);
+    expect(bridge.uiObservation({'operation': 'status'})['active'], false);
+    await tester.pump(const Duration(seconds: 10));
+    expect(calls.where((call) => call.method == 'updateSnapshot'), isEmpty);
+  });
 
   testWidgets('records route and pointer UI events',
       (WidgetTester tester) async {
@@ -50,6 +89,7 @@ void main() {
       ),
     );
 
+    expect(AiAppBridge.instance.uiObservation({'operation': 'start', 'durationMs': 1000})['active'], true);
     await tester.tap(find.text('Open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
@@ -109,13 +149,10 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 150));
 
-    final List<String> snapshots = calls
-        .where((MethodCall call) => call.method == 'updateSnapshot')
-        .map((MethodCall call) => call.arguments! as String)
-        .toList();
-    expect(snapshots, isNotEmpty);
-    expect(snapshots.join(), isNot(contains('s3cr3t-value')));
-    expect(snapshots.join(), contains('[secure:length=12]'));
+    expect(calls.where((call) => call.method == 'updateSnapshot'), isEmpty);
+    final snapshot = jsonEncode(await readBridgeSnapshot(tester));
+    expect(snapshot, isNot(contains('s3cr3t-value')));
+    expect(snapshot, contains('[secure:length=12]'));
     AiAppBridge.instance.shutdown();
   });
 }

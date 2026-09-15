@@ -21,7 +21,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test('one discoverable registry supplies all live command schemas and only two MCP tools', () => {
   const definitions = [...commandDefinitions, ...isolatedCommandDefinitions];
-  assert.equal(definitions.length, 115);
+  assert.equal(definitions.length, 121);
   assert.equal(new Set(definitions.map(d => d.command)).size, definitions.length);
   for (const definition of definitions) {
     const schema = commandSchema(definition.command);

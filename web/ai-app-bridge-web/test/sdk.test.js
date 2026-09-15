@@ -3,6 +3,34 @@ const test = require('node:test');
 
 const { createAiAppBridge, snapshotDom } = require('../src/index.js');
 
+test('UI observation does no idle DOM work and releases listeners on expiry', async () => {
+  let scans = 0;
+  const document = fakeEventTarget({ body: { innerText: '20' },
+    querySelectorAll() { scans++; return []; } });
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'bounded-ui',
+    WebSocket: createFakeWebSocket(), capture: { ui: { document } } });
+  bridge.start();
+  await wait(20);
+  assert.equal(scans, 0);
+  assert.equal(document.listenerCount('click'), 0);
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5001 }).ok, false);
+  const lease = bridge.uiObservation({ operation: 'start', durationMs: 100 });
+  assert.equal(lease.active, true);
+  assert.ok(scans > 0);
+  assert.equal(document.listenerCount('click'), 1);
+  assert.equal(bridge.uiObservation({ operation: 'stop', leaseId: 'other-owner' }).ok, false);
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 100 }).error, 'ui_observation_busy');
+  await wait(160);
+  assert.equal(bridge.uiObservation({ operation: 'status' }).active, false);
+  assert.equal(document.listenerCount('click'), 0);
+  const count = scans;
+  await wait(30);
+  assert.equal(scans, count);
+  bridge.stop(); bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'status' }).active, false);
+  bridge.stop();
+});
+
 function fakeElement(overrides = {}) {
   const attrs = overrides.attrs || {};
   return {
@@ -523,6 +551,7 @@ test('capture.ui emits batched clicks and redacts password input', async () => {
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   document.dispatch('click', { target: button });
@@ -588,6 +617,7 @@ test('capture.ui observes focus and change without exposing sensitive values', a
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   document.dispatch('focus', { target: password });
@@ -654,6 +684,7 @@ test('capture.ui records SPA history and browser route transitions', async () =>
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   assert.equal(history.pushState({}, '', '/orders'), 'push-result');
@@ -740,6 +771,7 @@ test('capture.ui summarizes DOM mutations and dialog-like transitions', async ()
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   const observer = MutationObserver.instances[0];
@@ -828,6 +860,7 @@ test('capture.ui fingerprints visual-state attributes used by animations', async
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   panelAttrs.style = 'opacity: 1; transform: translateX(20px)';
@@ -893,6 +926,7 @@ test('capture.ui observes dialogs toggled in place without node replacement', as
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   const observer = MutationObserver.instances[0];
@@ -956,6 +990,7 @@ test('capture.ui bounds pending events and emits size-limited batches', async ()
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   const socket = WebSocket.instances[0];
   socket.open();
   for (const button of buttons) document.dispatch('click', { target: button });
@@ -1004,7 +1039,9 @@ test('capture.ui installs once, flushes on stop, and cleanly restarts', () => {
   });
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).error, 'ui_observation_busy');
   assert.equal(WebSocket.instances.length, 1);
   assert.equal(document.listenerCount('click'), 1);
   const firstSocket = WebSocket.instances[0];
@@ -1018,6 +1055,7 @@ test('capture.ui installs once, flushes on stop, and cleanly restarts', () => {
   assert.equal(eventCaptures(firstSocket).length, 1);
 
   bridge.start();
+  assert.equal(bridge.uiObservation({ operation: 'start', durationMs: 5000 }).active, true);
   assert.equal(WebSocket.instances.length, 2);
   assert.equal(document.listenerCount('click'), 1);
   const secondSocket = WebSocket.instances[1];

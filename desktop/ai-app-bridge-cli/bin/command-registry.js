@@ -8,6 +8,12 @@ const { executionCommandSchema, nativeGestureSchema, nativeSelector, flutterSele
 const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provider-command-contracts');
 
 const commandDefinitions = [
+  { command: 'ui-observation', domain: 'core', summary: 'Start a bounded UI observation window (100–5000 ms), inspect it, or stop its lease. Off by default; provider selects native or Flutter. New windows establish a fresh baseline.', targetApp: true, options: ['operation', 'provider', 'durationMs', 'leaseId', 'packageName', 'serial'] },
+  { command: 'ios-ui-observation', domain: 'ios', summary: 'Control bounded iOS native or Flutter UI observation. Off by default; expires locally even if the Host exits.', targetKind: 'ios-app', options: ['operation', 'provider', 'durationMs', 'leaseId', 'deviceId', 'bundleId'] },
+  { command: 'web-ui-observation', domain: 'web', summary: 'Control bounded Web DOM change observation. Off by default; expires locally even if the Host exits.', targetKind: 'web-target', options: ['operation', 'durationMs', 'leaseId', 'sessionId', 'runtimeEpoch', 'targetId'] },
+  { command: 'android-executor', domain: 'advanced', summary: 'Optional AndroidX UI Automator, Espresso and registered WebView/Compose test adapters. Open an installed androidTest build, observe, act on observed nodes, query original receipts and close. Opening instrumentation restarts the target application. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
+  { command: 'flutter-executor', domain: 'advanced', summary: 'Optional Flutter integration_test executor on Android. Open the installed application test entrypoint, observe widgets, run WidgetTester actions, query receipts and close the test process. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
+  { command: 'web-executor', domain: 'web', summary: 'Optional Playwright executor: inspect readiness, prepare pinned browser dependencies, open a browser, observe bound frames, act, wait, query original receipts, or close. Browser input and test operations retain their actual mechanisms. Script requires app.test.', targetKind: 'web-target', options: ['operation'] },
   { command: 'runtime', domain: 'execution', summary: 'Inspect, start or orderly stop the shared local execution runtime. CLI exit and MCP disconnect leave operations running; stop cancels and drains them.', targetKind: 'host-runtime', options: ['operation'] },
   { command: 'device-ownership', domain: 'execution', summary: 'Read ownership, reconcile original completion, explicitly cancel a retained install by actionId, or read a retained UIA receipt by serial/runtimeEpoch/actionId. Installation cancellation abandons its original PM session; it does not roll back an installed APK.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
   { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start or orderly stop the Android API 25+ UIA node runtime. Start checks the phone process lock; unacknowledged original receipts are retained.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
@@ -236,6 +242,9 @@ const commandByName = new Map(commandDefinitions.map(d => [d.command, d]));
 const isolatedByName = new Map(isolatedCommandDefinitions.map(d => [d.command, d]));
 
 function isMutationCommand(command, args = {}) {
+  if (require('./ui-observation').commands.has(command)) return args.operation !== 'status';
+  if (['android-executor', 'flutter-executor'].includes(command)) return ['open', 'act', 'close'].includes(args.operation);
+  if (command === 'web-executor') return ['prepare', 'open', 'act', 'navigate', 'close'].includes(args.operation);
   if (command === 'web-command' && args.name === 'domSnapshot') return false;
   return mutationCommands.has(command) || (command === 'logcat' && args.clear === true)
     || (command === 'device-ownership' && args.operation === 'cancel-install')
@@ -251,6 +260,8 @@ function isAndroidMutation(command, args = {}) {
 
 function executionTimeoutMs(command, args = {}) {
   if (args.timeoutMs !== undefined) return args.timeoutMs;
+  if (['android-executor', 'flutter-executor'].includes(command)) return args.operation === 'open' ? 60000 : 30000;
+  if (command === 'web-executor') return args.operation === 'prepare' ? 300000 : 30000;
   if (iosSdkCommands.has(command) || command === 'ios-execution' || require('./ios-wda-port').commands.has(command)) return 30000;
   if (command === 'ios-setup') return 300000;
   if (command === 'ios-install-app') return 120000;
@@ -262,9 +273,10 @@ function executionTimeoutMs(command, args = {}) {
 // These are execution capabilities, independent of MCP/CLI transport. Script
 // permissions gate Bridge calls; trusted local code is not a process sandbox.
 const scriptPermissions = Object.freeze({
+  'app.test': ['web-executor', 'android-executor', 'flutter-executor'],
   'app.read': ['status', 'tree', 'uia-tree', 'screenshot', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'flutter-h5-dom', 'keyboard-state', 'permission-state',
     'ios-status', 'ios-tree', 'ios-uia-tree', 'ios-screenshot', 'ios-flutter-tree', 'ios-flutter-nodes', 'ios-h5-dom', 'ios-wda-status', 'web-status', 'web-dom'],
-  'capture.read': ['logs', 'network', 'state', 'events', 'logcat', 'webview-console', 'webview-network', 'ios-logs', 'ios-network', 'ios-state', 'ios-events', 'web-logs', 'web-network', 'web-state', 'web-events'],
+  'capture.read': ['ui-observation', 'ios-ui-observation', 'web-ui-observation', 'logs', 'network', 'state', 'events', 'logcat', 'webview-console', 'webview-network', 'ios-logs', 'ios-network', 'ios-state', 'ios-events', 'web-logs', 'web-network', 'web-state', 'web-events'],
   'app.interact': ['launch-app', 'launch-activity', 'tap', 'tap-text', 'tap-uia-text', 'tap-uia', 'tap-native', 'input-text', 'swipe', 'native-gesture', 'keyevent', 'wait-text', 'hide-keyboard', 'tap-flutter', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter', 'h5-click', 'h5-input', 'h5-wait', 'h5-scroll', 'flutter-h5-click', 'flutter-h5-input', 'flutter-h5-wait', 'flutter-h5-scroll',
     'ios-h5-click', 'ios-h5-input', 'ios-h5-scroll', 'ios-launch-app', 'ios-wda-session', 'ios-tap', 'ios-input', 'ios-swipe', 'ios-set-orientation', 'ios-tap-native', 'ios-input-native-text', 'ios-tap-flutter', 'ios-input-flutter-text', 'ios-scroll-flutter', 'ios-flutter-back', 'ios-flutter-hide-keyboard', 'web-click', 'web-input', 'web-key', 'web-scroll', 'web-wait'],
   'app.lifecycle': ['clear-app-data'],
@@ -294,7 +306,7 @@ function commandContract(command) {
       providersByPlatform: { android: ['native', 'uia', 'flutter', 'h5'], ios: ['native', 'h5', 'flutter'], web: ['h5'] } } : {}),
     execution: { kind: role === 'execution' ? 'operation' : isMutationCommand(command) ? 'mutation' : 'query',
       mutation: isMutationCommand(command),
-      conditionalMutation: command === 'uia-runtime' ? 'operation != status' : command === 'logcat' ? 'clear=true' : ['webview-network', 'webview-console'].includes(command) ? 'script is supplied' : null,
+      conditionalMutation: command === 'web-executor' ? 'operation in prepare,open,act,navigate,close' : ['android-executor', 'flutter-executor'].includes(command) ? 'operation in open,act,close' : command === 'uia-runtime' ? 'operation != status' : command === 'logcat' ? 'clear=true' : ['webview-network', 'webview-console'].includes(command) ? 'script is supplied' : null,
       arbitration: command === 'script' || command === 'intent' ? 'target-platform-physical-device'
         : isAndroidMutation(command) ? 'cross-process-physical-android-device'
         : platform === 'ios' && isMutationCommand(command) ? 'cross-process-physical-ios-device'
@@ -305,6 +317,10 @@ function commandContract(command) {
 function commandSchema(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw new CommandError('unknown_command', `Unknown command: ${command}`, { field: 'command' });
+  if (require('./ui-observation').commands.has(command)) return require('./ui-observation').schema(command, optionTypes);
+  if (command === 'web-executor') return require('./executors/command-schema').webExecutorSchema();
+  if (command === 'android-executor') return require('./executors/command-schema').androidExecutorSchema();
+  if (command === 'flutter-executor') return require('./executors/command-schema').flutterExecutorSchema();
   if (command === 'runtime') return { type: 'object', additionalProperties: false, required: ['operation'],
     properties: { operation: { enum: ['start', 'status', 'stop'] } } };
   if (definition.domain === 'web') return require('./web/command-schema').webSchema(command);

@@ -115,10 +115,11 @@ For SSR frameworks, initialize it only in client/browser code.
 </script>
 ```
 
-## Continuous UI Observation
+## Bounded UI Observation
 
-`capture.ui` is opt-in. Set it to `true` for defaults, or pass an object to
-bound its work:
+UI observation is off by default, including after `bridge.start()`.
+`capture.ui` configures an explicitly requested window; `false` disables this
+capability. Set it to `true` for defaults, or pass an object to bound its work:
 
 ```js
 capture: {
@@ -142,10 +143,13 @@ only `changed`, `length`, and `sensitive: true`. Non-sensitive input values are
 limited to 300 characters. DOM body text contributes only to the fingerprint
 hash and is not included in the UI event payload.
 
-This observer does not continuously capture screenshots or video. Call
-`bridge.stop()` (or the existing `bridge.disconnect()`) to flush pending UI
-events, remove listeners and observers, restore patched History methods, and
-close the connection. A later `bridge.start()` installs a fresh observer.
+Open a window with `bridge.uiObservation({ operation: 'start', durationMs: 1500 })`
+or the Host `web-ui-observation` command. Durations must be 100–5000 ms.
+`{ operation: 'stop', leaseId }` releases that owner's window early;
+`{ operation: 'status' }` reads its state. Expiry, disconnect and SDK stop flush
+pending events, remove UI listeners and restore History methods. A later SDK
+start leaves observation off. Missing events outside a window cannot establish
+UI stability or action success. No screenshots or video are captured by this API.
 
 This package is intended for debug and test builds. Keep command handlers
 whitelisted and do not enable it in production without a deliberate security

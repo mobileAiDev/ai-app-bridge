@@ -6,8 +6,10 @@ const { handle, resetIntentOperations } = require('../bin/intent/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { nativeTargetRef, withNativeTargetRefs } = require('../test-support/native-target-fixture');
-// Retain the frozen topology; add synthetic refs only to this Host test copy.
+// Retain the frozen topology; add synthetic protocol metadata to this Host test copy.
 const actualLabels = withNativeTargetRefs(require('./fixtures/notallyx-labels-native-tree.json'));
+actualLabels.foregroundWindowId = 'labels';
+actualLabels.windows[0].windowId = 'labels';
 const target = { platform: 'android', serial: 'native-scope-test', packageName: 'io.github.mobileaidev.notallyx.sample' };
 const EDIT = `${target.packageName}:id/EditButton`;
 const scope = () => ({ text: 'AAB扩展标签-01', ancestor: { className: 'android.widget.LinearLayout', parent: { resourceName: `${target.packageName}:id/MainListView` } } });
@@ -70,7 +72,8 @@ test('target must be unique and centered inside the selected row and current win
  for(const [r,error]of [[missing,'native_selector_not_found'],[duplicated,'native_selector_ambiguous'],[outside,'native_selector_not_found']]){
   const h=harness();const result=await dispatch(h,selector(),tree([r,row('Other label')]));assert.equal(result.error,error);assert.equal(result.dispatched,false);assert.equal(h.calls.length,0);
  }
- const covered=tree();covered.windows=[{root:covered.root},{root:node({bounds:{left:0,top:0,right:600,bottom:900},children:[]})}];
+ const covered=tree();covered.foregroundWindowId='dialog';
+ covered.windows=[{windowId:'activity',root:covered.root},{windowId:'dialog',root:node({bounds:{left:0,top:0,right:600,bottom:900},children:[]})}];
  const h=harness();assert.equal((await dispatch(h,selector(),covered)).error,'native_scope_anchor_not_found');assert.equal(h.calls.length,0);
 });
 

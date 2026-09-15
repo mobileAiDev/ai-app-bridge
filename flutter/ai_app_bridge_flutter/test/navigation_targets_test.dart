@@ -1,3 +1,4 @@
+import 'support/read_snapshot.dart';
 import 'dart:convert';
 
 import 'package:ai_app_bridge_flutter/ai_app_bridge_flutter.dart';
@@ -57,6 +58,7 @@ void main() {
       ('Receive', 0),
       ('Send', 1),
     ]) {
+      snapshots.add(await readBridgeSnapshot(tester));
       final List<dynamic> nodes = snapshots.last['layout']['operable']['nodes'];
       final List<dynamic> matches = nodes
           .where((dynamic node) =>

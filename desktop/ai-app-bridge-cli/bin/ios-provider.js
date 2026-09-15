@@ -95,6 +95,11 @@ class IOSBridgeProvider {
           return await this.launchApp(args, context);
         case 'ios-status':
           return await this.runtimeGet(args, '/v1/status');
+        case 'ios-ui-observation': {
+          const port = await this.runtimePort(args, context);
+          const result = await port.post(require('./ui-observation').path(args), require('./ui-observation').request(args));
+          return { ...result, endpoint: port.endpoint.baseUrl, device: port.endpoint.device, runtimeBinding: port.endpoint.runtimeBinding };
+        }
         case 'ios-tree':
           return await this.runtimeGet(args, '/v1/view/tree');
         case 'ios-logs':
@@ -468,7 +473,7 @@ class IOSBridgeProvider {
       const endpoint = port.endpoint;
       let response;
       if (method === 'POST') {
-        const status = await port.get('/v1/status');
+        const status = await port.get(endpointPath === '/v1/flutter/action' ? '/v1/flutter/snapshot' : '/v1/status');
         if (status.ok === false) return { ...status, dispatched: false, ambiguous: false };
         const kind = endpointPath === '/v1/h5/action' ? 'h5' : 'flutter';
         const target = { platform: 'ios', deviceId: endpoint.device.udid, bundleId: args.bundleId,
@@ -521,7 +526,7 @@ class IOSBridgeProvider {
   }
 
   async flutterTree(args = {}) {
-    const status = await this.runtimeGet(args, '/v1/status');
+    const status = await this.runtimeGet(args, '/v1/flutter/snapshot');
     if (status.ok === false) return status;
     return {
       ok: true,
@@ -552,7 +557,7 @@ class IOSBridgeProvider {
 
   async flutterControl(command, args, context = {}) {
     const port = await this.runtimePort(args, context);
-    const status = await port.get('/v1/status');
+    const status = await port.get('/v1/flutter/snapshot');
     if (status.ok !== true) return { ...status, dispatched: false, ambiguous: false };
     const action = flutterControls.get(command);
     let payload = { action };

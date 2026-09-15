@@ -20,6 +20,9 @@ const {
 const iosProvider = new IOSBridgeProvider();
 const webProvider = new WebBridgeProvider();
 const targetExecution = new TargetExecution();
+let browserExecutor = null;
+let androidExecutor = null;
+let flutterExecutor = null;
 
 let sharedFactStore = null;
 let sharedFactRecorder = null;
@@ -47,6 +50,9 @@ function close() {
     await require('./script/script-entry').cancelActiveScripts();
     await require('./intent/intent-entry').cancelActiveIntents();
     await webProvider.close();
+    await browserExecutor?.close();
+    await androidExecutor?.close();
+    await flutterExecutor?.close();
     await Promise.allSettled([...activeRuns]);
     try { await sharedObservationCollector?.stop(); }
     finally {
@@ -579,6 +585,18 @@ function getSharedObservationCollector(factRecorder) {
 }
 
 async function runRawCommand(command, args = {}) {
+  if (command === 'android-executor') {
+    androidExecutor ||= new (require('./executors/android-host').AndroidExecutorHost)();
+    return androidExecutor.run(args);
+  }
+  if (command === 'flutter-executor') {
+    flutterExecutor ||= new (require('./executors/flutter-host').FlutterExecutorHost)();
+    return flutterExecutor.run(args);
+  }
+  if (command === 'web-executor') {
+    browserExecutor ||= new (require('./executors/playwright-host').PlaywrightHost)();
+    return browserExecutor.run(args);
+  }
   const definition = commandByName.get(command);
   if (definition?.domain === 'ios') return iosProvider.run(command, args);
   if (definition?.domain === 'web') return webProvider.run(command, args);

@@ -2,6 +2,10 @@
     android:versionCode="1" android:versionName="native-execution-tests">
     <application android:usesCleartextTraffic="true">
         <activity
+            android:name="io.github.mobileaidev.aiappbridge.android.UiObserverPerformanceActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
             android:name="io.github.mobileaidev.aiappbridge.android.NativeGestureActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />

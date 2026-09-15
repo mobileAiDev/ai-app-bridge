@@ -104,7 +104,8 @@ test('native swipe cannot target an underlying activity', async () => {
   const rawTree = tree();
   const dialog = node({ text: '', resourceName: 'dialog', contentDescription: '',
     bounds: { left: 100, top: 150, right: 450, bottom: 350 }, children: [node({ text: 'Dialog row' })] });
-  rawTree.windows = [{ root: rawTree.root }, { root: dialog }];
+  rawTree.foregroundWindowId = 'dialog';
+  rawTree.windows = [{ windowId: 'activity', root: rawTree.root }, { windowId: 'dialog', root: dialog }];
   const calls = []; const device = adapter(calls);
   assert.equal((await dispatch(device, spec(), rawTree)).error, 'native_selector_not_found');
   assert.equal(calls.length, 0);

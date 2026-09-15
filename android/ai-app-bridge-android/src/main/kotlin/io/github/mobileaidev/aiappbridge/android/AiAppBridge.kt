@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.3.5"
+    private const val bridgeVersion = "0.3.6"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     @Volatile
@@ -91,6 +91,8 @@ object AiAppBridge {
 
     @Volatile
     private var flutterSnapshot: String = "{}"
+    @Volatile
+    private var flutterStatusSnapshot: String = "{}"
 
     @Volatile
     private var lifecycleRegistered = false
@@ -134,6 +136,7 @@ object AiAppBridge {
         mainHandler = mainHandler,
         intervalMs = 500L,
         discover = {
+            if (uiObserver?.status()?.optBoolean("sampling") != true) return@H5ConsoleLogCollector emptyList()
             val activity = activity() ?: return@H5ConsoleLogCollector emptyList()
             AndroidWebViewPages.discover(
                 AndroidWebViewPages.activityRoots(activity),
@@ -178,7 +181,11 @@ object AiAppBridge {
 
     @JvmStatic
     fun updateFlutterSnapshot(snapshotJson: String) {
-        flutterSnapshot = JSONObject(snapshotJson).toString()
+        val snapshot = JSONObject(snapshotJson)
+        flutterSnapshot = snapshot.toString()
+        snapshot.remove("layout")
+        snapshot.remove("uiObservation")
+        flutterStatusSnapshot = snapshot.toString()
     }
 
     @JvmStatic
@@ -579,7 +586,6 @@ object AiAppBridge {
             if (isMainProcess(context.applicationContext)) {
                 processLogcatCollector.start()
             }
-            h5ConsoleLogCollector.start()
         } catch (_: Throwable) {
         }
     }
@@ -1135,9 +1141,33 @@ object AiAppBridge {
                 }, reply)
                 return
             }
+            if (request.method == "GET" && request.path == "/v1/flutter/snapshot") {
+                flutterObservationCall("readSnapshot", "{}") { response ->
+                    if (response.optBoolean("ok") && response.optJSONObject("snapshot") != null) {
+                        updateFlutterSnapshot(response.getJSONObject("snapshot").toString())
+                        enqueueActionReply(socket, buildStatus(includeFlutterTree = true))
+                    } else enqueueActionReply(socket, response)
+                }
+                return
+            }
+            if (request.method == "POST" && request.path == "/v1/flutter/observation") {
+                flutterObservationCall("uiObservation", request.body) { enqueueActionReply(socket, it) }
+                return
+            }
             socket.use {
                 try {
                     when {
+                        request.method == "POST" && request.path == "/v1/ui/observation" -> {
+                            writeJson(socket, 200, runOnMainThread {
+                                val body = requestJson(request.body)
+                                val response = ensureUiObserver().control(body)
+                                if (response.optBoolean("ok")) {
+                                    if (body.optString("operation") == "start" && response.optBoolean("active")) h5ConsoleLogCollector.start(response.getLong("remainingMs").coerceAtLeast(1))
+                                    if (body.optString("operation") == "stop") h5ConsoleLogCollector.stop()
+                                }
+                                response
+                            })
+                        }
                         request.method == "GET" && request.path == "/v1/status" -> {
                             writeJson(socket, 200, buildStatus())
                         }
@@ -1203,6 +1233,34 @@ object AiAppBridge {
             socket.use {
                 try { writeJson(socket, status, response) }
                 catch (error: java.io.IOException) { Log.w(tag, "SDK action response connection closed", error) }
+            }
+        }
+
+        private fun flutterObservationCall(method: String, body: String, reply: (JSONObject) -> Unit) {
+            val handler = flutterActionHandler
+            if (handler == null) { reply(JSONObject().put("ok", false).put("error", "flutter_action_handler_absent")); return }
+            val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+            val timeout = Runnable {
+                if (settled.compareAndSet(false, true)) reply(JSONObject().put("ok", false).put("error", "flutter_observation_timeout"))
+            }
+            mainHandler.postDelayed(timeout, 2000)
+            mainHandler.post {
+                if (settled.get()) return@post
+                try {
+                    handler.handle(method, body) { value ->
+                        if (settled.compareAndSet(false, true)) {
+                            mainHandler.removeCallbacks(timeout)
+                            val response = if (handler !== flutterActionHandler) JSONObject().put("ok", false).put("error", "flutter_runtime_changed")
+                                else try { JSONObject(value) } catch (_: org.json.JSONException) { JSONObject().put("ok", false).put("error", "invalid_flutter_observation_response") }
+                            reply(response)
+                        }
+                    }
+                } catch (error: Exception) {
+                    if (settled.compareAndSet(false, true)) {
+                        mainHandler.removeCallbacks(timeout)
+                        reply(JSONObject().put("ok", false).put("error", "flutter_observation_failed"))
+                    }
+                }
             }
         }
 
@@ -1341,7 +1399,7 @@ object AiAppBridge {
             cleared.put(JSONObject().put("path", label).put("entries", deleted))
         }
 
-        private fun buildStatus(): JSONObject {
+        private fun buildStatus(includeFlutterTree: Boolean = false): JSONObject {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             val debuggable =
                 context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
@@ -1386,7 +1444,8 @@ object AiAppBridge {
                 )
                 .put("capture", captureCounts())
                 .put("capturePersistence", capturePersistenceStatus())
-                .put("flutter", JSONObject(AiAppBridge.flutterSnapshot))
+                .put("uiObservation", runOnMainThread { ensureUiObserver().status() })
+                .put("flutter", JSONObject(if (includeFlutterTree) AiAppBridge.flutterSnapshot else AiAppBridge.flutterStatusSnapshot))
                 .put("updatedAtMs", System.currentTimeMillis())
         }
 
@@ -1404,6 +1463,7 @@ object AiAppBridge {
             val root = activity.window?.decorView ?: throw NativeTargetFailure("no_decor_view")
             val counter = NodeCounter()
             val roots = windowRoots(activity)
+            val foreground = foregroundWindow(roots)
             val windows = JSONArray()
             roots.forEachIndexed { index, windowRoot ->
                 windows.put(
@@ -1424,6 +1484,7 @@ object AiAppBridge {
             val json = JSONObject()
                 .put("ok", true)
                 .put("activity", activity.javaClass.name)
+                .put("foregroundWindowId", viewIdentity(foreground.root))
                 .put("root", viewToJson(activity, root, counter, depth = 0, parentEffectiveVisible = true))
                 .put("windows", windows)
                 .put("windowCount", roots.size)
@@ -1860,20 +1921,24 @@ object AiAppBridge {
             if (!ownsPoint) throw NativeTargetFailure("native_target_obscured")
             return NativeGestureTarget(root.root, Rect(root.bounds), root.type, selected.selection.node.getJSONObject("targetRef"),
                 startX.toFloat(), startY.toFloat(), endX.toFloat(), endY.toFloat()) {
-                val current = windowRoots(owner).lastOrNull { it.root.isShown && it.root.alpha > 0f }
-                activity() === owner && current != null && current.root === root.root && current.bounds == root.bounds &&
-                    NativeWindowContract.pointerError(current.root.hasWindowFocus(), current.focusable,
-                        current.touchable, current.focusOwnerWindowId) == null
+                activity() === owner && foregroundWindow(windowRoots(owner)).let { current ->
+                    current.root === root.root && current.bounds == root.bounds &&
+                        NativeWindowContract.pointerError(current.root.hasWindowFocus(), current.focusable,
+                            current.touchable, current.focusOwnerWindowId) == null
+                }
             }
         }
 
         private fun foregroundActionWindow(activity: Activity): WindowRoot {
-            val window = windowRoots(activity).lastOrNull { it.root.isShown && it.root.alpha > 0f }
-                ?: throw NativeTargetFailure("native_window_unavailable")
+            val window = foregroundWindow(windowRoots(activity))
             NativeWindowContract.pointerError(window.root.hasWindowFocus(), window.focusable, window.touchable, window.focusOwnerWindowId)
                 ?.let { throw NativeTargetFailure(it) }
             return window
         }
+
+        private fun foregroundWindow(roots: List<WindowRoot>): WindowRoot = roots[
+            NativeWindowContract.foregroundIndex(roots.map { it.ownership }, roots.indexOfFirst { it.activityDecor })
+        ]
 
         private fun targetContainsView(hit: View?, selected: View): Boolean {
             if (hit == null) return false
@@ -2098,6 +2163,13 @@ object AiAppBridge {
                         bounds = boundsForView(root),
                         type = windowRootType(root, root === activityRoot),
                         activityDecor = root === activityRoot,
+                        ownership = NativeWindowContract.Window(
+                            windowToken = root.windowToken,
+                            layoutToken = params.token,
+                            type = params.type,
+                            displayId = root.display?.displayId ?: throw NativeTargetFailure("native_window_metadata_unavailable"),
+                            visible = root.isShown && root.alpha > 0f,
+                        ),
                         focusable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0,
                         touchable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0,
                         focusOwnerWindowId = focusedOwner?.let(::viewIdentity),
@@ -2239,6 +2311,7 @@ object AiAppBridge {
         val bounds: Rect,
         val type: String,
         val activityDecor: Boolean,
+        val ownership: NativeWindowContract.Window,
         val focusable: Boolean,
         val touchable: Boolean,
         val focusOwnerWindowId: String?,

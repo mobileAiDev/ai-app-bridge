@@ -79,10 +79,18 @@ async function runCommand(command, options, ctx) {
       return removeBridgeForward(ctx, adb);
     case 'status':
       return bridgeStatus(ctx, options);
+    case 'ui-observation':
+      return bridgeRequest(ctx, async () => {
+        const path = require('./ui-observation').path(options);
+        const result = JSON.parse(await httpPost(bridgeUrl(ctx, path), require('./ui-observation').request(options), ctx.httpTimeoutMs));
+        verifyBridgeTargetPackage(ctx, result, path);
+        return result;
+      });
     case 'tree':
       return bridgeTree(ctx, options);
     case 'flutter-tree': {
-      const status = await bridgeGet(ctx, '/v1/status');
+      const status = await bridgeGet(ctx, '/v1/flutter/snapshot');
+      if (status.ok === false) return status;
       return status.flutter?.layout || null;
     }
     case 'flutter-nodes':
@@ -2173,7 +2181,8 @@ async function waitText(ctx, targetText, options = {}, dependencies = {}) {
 }
 
 async function flutterNodes(ctx) {
-  const status = await bridgeGet(ctx, '/v1/status');
+  const status = await bridgeGet(ctx, '/v1/flutter/snapshot');
+  if (status.ok === false) return status;
   return status.flutter?.layout?.operable || { ok: false, error: 'no_flutter_operable_tree' };
 }
 

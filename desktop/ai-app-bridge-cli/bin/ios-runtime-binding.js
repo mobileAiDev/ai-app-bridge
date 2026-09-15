@@ -4,7 +4,7 @@ const { CommandError } = require('./command-errors');
 const { currentExecution } = require('./shared-kernel/execution-scope');
 
 const schemaVersion = 'aab.ios-runtime/v1';
-const sdkCommands = new Set(['ios-status', 'ios-tree', 'ios-logs', 'ios-network', 'ios-state', 'ios-events',
+const sdkCommands = new Set(['ios-ui-observation', 'ios-status', 'ios-tree', 'ios-logs', 'ios-network', 'ios-state', 'ios-events',
   'ios-h5-dom', 'ios-h5-eval', 'ios-h5-click', 'ios-h5-input', 'ios-h5-scroll', 'ios-flutter-tree', 'ios-flutter-nodes', 'ios-flutter-action',
   'ios-tap-flutter', 'ios-input-flutter-text', 'ios-scroll-flutter', 'ios-flutter-back', 'ios-flutter-hide-keyboard']);
 const fields = ['schemaVersion', 'bundleId', 'runtimeEpoch', 'processId', 'port'];

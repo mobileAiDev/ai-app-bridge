@@ -1114,7 +1114,18 @@ metadata, not the raw transport bytes. Settlement proves the recorded execution 
 it does not turn an ambiguous action or unverified business assertion into a pass.
 
 Native Intent `longPress`, `swipe` and `scroll` use `/v1/action/gesture-target`.
-The top visible SDK window owns pointer selection. A touchable, non-focusable
+The SDK selects the top visible window belonging to the current Activity on its
+display. Application windows use `WindowManager.LayoutParams.token` for Activity
+ownership; subwindows resolve that token through their parent window. Focus is
+not evidence of Activity ownership. A missing token, unresolved parent or unknown
+window type blocks selection with `native_window_metadata_unavailable`.
+Native tree snapshots publish this decision as `foregroundWindowId`, referring to
+exactly one entry in `windows`. Host summaries and semantic selection consume
+that identity, and SDK semantic, coordinate, gesture and H5 execution use the same
+window policy. Native window snapshots without this field require an updated SDK;
+Host does not reconstruct the decision from focus or array order.
+
+A touchable, non-focusable
 popup can use its focused owner with the same application window token; the SDK
 does not select a background window when the popup blocks an action. Native/H5
 window selection shares this rule. Native window observation carries
@@ -1640,3 +1651,29 @@ explicit state assertions, or request Agent help through `ctx.askAgent`.
 `ios-setup --start-wda true` records the exact XCTest invocation and result bundle before starting the device test. A completed XCTest failure that explicitly says UI test initialization timed out while enabling automation is a settled failed startup (`ios_wda_automation_confirmation_required`). The Runner launch was dispatched; this does not undo its installation. Confirm Enable UI Automation on the device, then explicitly run setup again.
 
 `ios-execution --operation reconcile --device-id DEVICE` reads the original result bundle after an interrupted Host. For a legacy generic `ios-setup` marker, supply `--setup-result-path ORIGINAL_RESPONSE.json`: recovery requires the original CLI JSON response (or its unwrapped value), its matching retained Host action in the current FactStore, the same device and startup interval, and the original XCTest bundle identified by that response. Missing, mismatched, or generic test failures remain unresolved. This option is accepted only for SDK/command reconciliation, never action cancellation or WDA session recovery. Lock files and original evidence are retained.
+
+### Bounded SDK UI observation
+
+`ui-observation`, `ios-ui-observation` and `web-ui-observation` expose
+`start`, `status` and `stop`. Start requires `durationMs` in 100–5000; stop
+requires the returned `leaseId`. Android/iOS accept `provider: native|flutter`.
+The capability is available to JS and Python Script under `capture.read`.
+There is no unbounded lease, automatic renewal or activation at SDK startup.
+Closing/reopening a window establishes a new baseline; an idle interval is not
+evidence of an unchanged UI. Lifecycle and explicit business captures remain
+independent of heavy UI observation.
+
+Native and Flutter controls use `/v1/ui/observation` and
+`/v1/flutter/observation`. The response schema is `aab.ui-observation/v1`.
+`GET /v1/flutter/snapshot` explicitly pulls fresh Dart UI state. Flutter tree,
+node and selection commands use it. `GET /v1/status` does not pull a Flutter
+tree or publish cached layout as current UI. Query a provider's observation
+command for its live lease state. These endpoints require rebuilt SDKs;
+installing a new CLI cannot patch an installed application's old SDK.
+
+Ordinary CLI/MCP `feedback=full` opens a window before the action and releases
+it in finally. If observation is unavailable, the action is rejected before
+dispatch; acquiring evidence does not mark the enclosing UI action dispatched.
+Launch retains its independent system feedback path. Script/Intent bypass this
+feedback wrapper and explicitly request windows only when their evidence needs
+them. SDK/page expiry handles a Host that disappears without sending stop.

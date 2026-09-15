@@ -1,6 +1,31 @@
 'use strict';
 
-async function runWithFeedbackProbe({
+async function runWithFeedbackProbe(options = {}) {
+  const { command, args = {}, runner } = options;
+  if (!isFullFeedback(args.feedback) || !isMutationCommand(command)
+      || command === 'launch-app' || command === 'launch-activity') return runFeedback(options);
+  const observationCommand = String(command).startsWith('ios-') ? 'ios-ui-observation'
+    : String(command).startsWith('web-') ? 'web-ui-observation' : 'ui-observation';
+  const targetArgs = pick(args, ['serial', 'adb', 'packageName', 'port', 'deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort', 'sessionId', 'runtimeEpoch', 'targetId']);
+  if (observationCommand !== 'web-ui-observation') targetArgs.provider = String(command).includes('flutter') ? 'flutter' : 'native';
+  const started = await runner(observationCommand, { ...targetArgs, operation: 'start', durationMs: 5000 });
+  if (started?.ok !== true || started.active !== true || typeof started.leaseId !== 'string') {
+    return { result: { ok: false, error: 'ui_observation_unavailable', dispatched: false, ambiguous: false, details: started ?? null },
+      observation: { mode: 'full', inconclusive: true }, evidence: [] };
+  }
+  let output;
+  try {
+    output = await runFeedback(options);
+    return output;
+  } finally {
+    let cleanup;
+    try { cleanup = await runner(observationCommand, { ...targetArgs, operation: 'stop', leaseId: started.leaseId }); }
+    catch (error) { cleanup = { ok: false, error: error.code || 'ui_observation_cleanup_failed' }; }
+    if (output?.observation) output.observation.window = { leaseId: started.leaseId, maxDurationMs: 5000, cleanup };
+  }
+}
+
+async function runFeedback({
   command,
   args = {},
   runner,
@@ -130,6 +155,7 @@ function isFullFeedback(value) {
 function isMutationCommand(command) {
   const normalized = String(command || '').toLowerCase();
   const readOnly = new Set([
+    'ui-observation', 'ios-ui-observation', 'web-ui-observation',
     'status', 'tree', 'uia-tree', 'screenshot', 'logs', 'network', 'state', 'events',
     'logcat', 'keyboard-state', 'wait-text', 'flutter-tree', 'flutter-nodes', 'h5-dom',
     'flutter-h5-dom', 'webview-pages', 'webview-network', 'webview-console',

@@ -2,9 +2,8 @@
 
 const { checkExecution } = require('./execution-scope');
 
-// WindowInspector retains other Activities during transitions, and focus can
-// lag the current Activity. Select its window group, including dialogs/popups
-// sharing its focus owner. Older trees keep their window-order semantics.
+// The SDK owns Android window topology and publishes its foreground decision.
+// Focus ownership is an input permission, not an Activity/window relationship.
 
 function visible(node) {
   return node && (node.effectiveVisible === true || node.visible === true)
@@ -21,12 +20,13 @@ function foregroundNativeWindow(rawTree) {
   if (!rawTree || typeof rawTree !== 'object') return null;
   const windows = Array.isArray(rawTree.windows) ? rawTree.windows : [];
   if (windows.length) {
-    const activity = windows.findLast(item => item?.activityDecor === true && Object.hasOwn(item, 'focusOwnerWindowId'));
-    const index = windows.findLastIndex(item => !explicitlyHidden(item?.root)
-      && (!activity || item === activity || !Object.hasOwn(item || {}, 'focusOwnerWindowId')
-        || item.focusOwnerWindowId !== null && item.focusOwnerWindowId === activity.focusOwnerWindowId));
-    if (index < 0) return null;
+    const id = rawTree.foregroundWindowId;
+    if (typeof id !== 'string' || !id.trim()) return null;
+    const matches = windows.map((window, index) => window?.windowId === id ? index : -1).filter(index => index >= 0);
+    if (matches.length !== 1) return null;
+    const [index] = matches;
     const window = windows[index];
+    if (explicitlyHidden(window?.root)) return null;
     return { index, root: window?.root, type: window?.type, windowId: window?.windowId,
       bounds: window && Object.hasOwn(window, 'bounds') ? window.bounds : window?.root?.bounds };
   }
@@ -45,6 +45,9 @@ function explicitlyHidden(node) {
 
 function selectNativeNode(rawTree, spec, editable) {
   const reject = (error) => ({ ok: false, error, dispatched: false });
+  if (rawTree?.windows?.length && (typeof rawTree.foregroundWindowId !== 'string' || !rawTree.foregroundWindowId.trim())) {
+    return reject('native_window_metadata_unavailable');
+  }
   const window = nativeWindow(rawTree);
   if (!window) return reject('visible_observed_window_required');
   const selector = spec.selector || (typeof spec.text === 'string' ? { text: spec.text } : null);

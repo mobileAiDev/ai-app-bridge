@@ -1,6 +1,7 @@
 package io.github.mobileaidev.aiappbridge.android
 
 import java.nio.charset.StandardCharsets
+import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
@@ -76,6 +77,10 @@ internal data class UiSemanticTextFingerprint(
  * Creates a process-local, salted fingerprint for non-editable UI labels.
  * The digest is only used for in-memory comparison; callers expose length only.
  */
+private val semanticDigests = object : ThreadLocal<MessageDigest>() {
+    override fun initialValue(): MessageDigest = MessageDigest.getInstance("SHA-256")
+}
+
 internal fun semanticTextFingerprint(
     salt: ByteArray,
     text: CharSequence?,
@@ -87,15 +92,15 @@ internal fun semanticTextFingerprint(
         contentDescription?.takeIf { it.isNotEmpty() }?.let { "contentDescription" to it },
     )
     if (values.isEmpty()) return null
-    val digest = MessageDigest.getInstance("SHA-256")
-    digest.update(salt)
+    val encoded = ByteArrayOutputStream(256)
+    encoded.write(salt)
     var length = 0L
     for ((kind, value) in values) {
-        digest.updateLengthPrefixed(kind)
-        digest.updateLengthPrefixed(value.toString())
+        encoded.writeLengthPrefixed(kind)
+        encoded.writeLengthPrefixed(value.toString())
         length = (length + value.length).coerceAtMost(Int.MAX_VALUE.toLong())
     }
-    return UiSemanticTextFingerprint(digest.digest().toHex(), length.toInt())
+    return UiSemanticTextFingerprint(semanticDigests.get()!!.digest(encoded.toByteArray()).toHex(), length.toInt())
 }
 
 internal data class UiNodeState(
@@ -299,7 +304,9 @@ internal class UiStabilityTracker(
 internal class UiFingerprintAccumulator(
     private val renderVersion: Long,
 ) {
-    private val digest = MessageDigest.getInstance("SHA-256")
+    // Encode on the managed side and hash once. Updating a native digest once
+    // per length byte/field caused over 100,000 JNI calls for a 600-node tree.
+    private val encoded = UiDigestEncoder()
     private var finished = false
     private var activityClassName = ""
     private var nodeCount = 0
@@ -420,7 +427,7 @@ internal class UiFingerprintAccumulator(
         check(!finished) { "UI fingerprint accumulator already finished" }
         finished = true
         return UiFingerprint(
-            hash = digest.digest().toHex(),
+            hash = encoded.finish(),
             activityClassName = activityClassName,
             renderVersion = renderVersion,
             nodeCount = nodeCount,
@@ -440,17 +447,7 @@ internal class UiFingerprintAccumulator(
 
     private fun addField(name: String, value: String) {
         check(!finished) { "UI fingerprint accumulator already finished" }
-        updateLengthPrefixed(name)
-        updateLengthPrefixed(value)
-    }
-
-    private fun updateLengthPrefixed(value: String) {
-        val bytes = value.toByteArray(StandardCharsets.UTF_8)
-        digest.update((bytes.size ushr 24).toByte())
-        digest.update((bytes.size ushr 16).toByte())
-        digest.update((bytes.size ushr 8).toByte())
-        digest.update(bytes.size.toByte())
-        digest.update(bytes)
+        encoded.field(name, value)
     }
 
     private fun quantize(value: Float, scale: Int): Int {
@@ -473,11 +470,51 @@ private fun ByteArray.toHex(): String {
     return String(output)
 }
 
-private fun MessageDigest.updateLengthPrefixed(value: String) {
+private fun ByteArrayOutputStream.writeLengthPrefixed(value: String) {
     val bytes = value.toByteArray(StandardCharsets.UTF_8)
-    update((bytes.size ushr 24).toByte())
-    update((bytes.size ushr 16).toByte())
-    update((bytes.size ushr 8).toByte())
-    update(bytes.size.toByte())
-    update(bytes)
+    write(bytes.size ushr 24)
+    write(bytes.size ushr 16)
+    write(bytes.size ushr 8)
+    write(bytes.size)
+    write(bytes)
+}
+
+/** Small bounded staging buffer; field names are fixed and encoded once. */
+private class UiDigestEncoder {
+    private val digest = MessageDigest.getInstance("SHA-256")
+    private val buffer = ByteArray(8192)
+    private var used = 0
+
+    fun field(name: String, value: String) {
+        write(requireNotNull(names[name]))
+        write(value.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    private fun write(bytes: ByteArray) {
+        if (used + 4 > buffer.size) flush()
+        buffer[used++] = (bytes.size ushr 24).toByte()
+        buffer[used++] = (bytes.size ushr 16).toByte()
+        buffer[used++] = (bytes.size ushr 8).toByte()
+        buffer[used++] = bytes.size.toByte()
+        var offset = 0
+        while (offset < bytes.size) {
+            val count = minOf(bytes.size - offset, buffer.size - used)
+            System.arraycopy(bytes, offset, buffer, used, count)
+            used += count
+            offset += count
+            if (used == buffer.size) flush()
+        }
+    }
+
+    private fun flush() { digest.update(buffer, 0, used); used = 0 }
+    fun finish(): String { flush(); return digest.digest().toHex() }
+
+    companion object {
+        private val names = listOf(
+            "renderVersion", "activity", "window.index", "window.type", "window.class", "window.bounds", "window.visible",
+            "node.path", "node.window", "node.class", "node.resource", "node.bounds", "node.visible", "node.enabled",
+            "node.focused", "node.selected", "node.checked", "node.alpha", "node.translationX", "node.translationY",
+            "node.rotation", "node.inputLength", "node.semanticTextDigest", "node.semanticTextLength", "truncated",
+        ).associateWith { it.toByteArray(StandardCharsets.UTF_8) }
+    }
 }

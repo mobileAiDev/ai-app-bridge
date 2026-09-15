@@ -1,3 +1,4 @@
+import 'support/read_snapshot.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -302,7 +303,7 @@ void main() {
             'Whole-App observation must not lengthen an admitted short tap.');
   });
 
-  testBridge('automatic snapshot waits for the short pointer to terminate',
+  testBridge('explicit snapshot rejects a held pointer and works after UP',
       (h) async {
     var held = false, heldInspections = 0, taps = 0;
     await h.tester.pumpWidget(MaterialApp(
@@ -328,6 +329,8 @@ void main() {
     expect(held, true);
     await h.tester.pump(const Duration(milliseconds: 25));
     expect(held, true);
+    final busy = await readBridgeResponse(h.tester);
+    expect(busy['error'], 'flutter_observation_busy');
     final during = h.snapshots.length;
     await h.tester.pump(const Duration(milliseconds: 40));
     await h.tester.pump(const Duration(milliseconds: 200));
@@ -335,8 +338,9 @@ void main() {
     expect(during, before, reason: 'Pending observation is deferred.');
     expect(taps, 1);
     expect(heldInspections, 0);
-    expect(h.snapshots.length, greaterThan(before),
-        reason: 'Observation resumes after UP.');
+    expect(h.snapshots.length, before, reason: 'No automatic snapshots after UP.');
+    await h.observe();
+    expect(h.snapshots.length, greaterThan(before));
   });
 
   for (final changeKind in ['label', 'cover', 'move']) {
@@ -1037,8 +1041,7 @@ class _BridgeHarness {
   }
 
   Future<List<Map<dynamic, dynamic>>> observe() async {
-    await tester.pump(const Duration(milliseconds: 1200));
-    await tester.pump(const Duration(milliseconds: 150));
+    snapshots.add(await readBridgeSnapshot(tester));
     expect(snapshots, isNotEmpty);
     final tree = snapshots.last['layout']['operable'];
     expect(tree['ok'], true, reason: '$tree');

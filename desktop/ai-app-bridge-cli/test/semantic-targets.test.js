@@ -9,14 +9,17 @@ const { nativeTargetRef } = require('../test-support/native-target-fixture');
 
 const bounds = { left: 0, top: 0, right: 200, bottom: 400 };
 const node = extra => ({ targetRef: nativeTargetRef(), visible: true, effectiveVisible: true, enabled: true, bounds, children: [], ...extra });
+// Explicit SDK decisions for these synthetic window layouts.
+const windowTree = (windows, foreground = windows.length - 1) => ({ foregroundWindowId: `window-${foreground}`,
+  windows: windows.map((window, index) => ({ ...window, windowId: `window-${index}` })) });
 
 test('text selection cannot cross a foreground dialog or an unknown/disabled foreground root', () => {
   const background = node({ text: 'Delete account' });
   for (const foreground of [node({ text: 'Confirm' }), { bounds, children: [] }, node({ enabled: false })]) {
-    const tree = { root: background, windows: [{ type: 'activity', root: background }, { type: 'dialog', root: foreground }] };
+    const tree = windowTree([{ type: 'activity', root: background }, { type: 'dialog', root: foreground }]);
     assert.equal(findTappableNodeByText(tree, 'Delete account').node, null);
   }
-  const tree = { windows: [{ type: 'activity', root: background }, { type: 'dialog', root: node({ visible: false }) }] };
+  const tree = windowTree([{ type: 'activity', root: background }, { type: 'dialog', root: node({ visible: false }) }], 0);
   assert.equal(findTappableNodeByText(tree, 'Delete account').node, background);
 });
 
@@ -35,7 +38,7 @@ test('automatic discovery never targets the underlying Flutter page through a na
   const background = node({ className: 'io.flutter.embedding.android.FlutterView' });
   const result = await tapText({ explicitPackageName: true, packageName: 'example.app' }, 'Delete account', {}, {
     foregroundWindow: async () => ({ ok: true, packageName: 'example.app', component: 'example.app/.Main' }),
-    bridgeTree: async () => ({ windows: [{ type: 'activity', root: background }, { type: 'dialog', root: node({ text: 'Confirm' }) }] }),
+    bridgeTree: async () => windowTree([{ type: 'activity', root: background }, { type: 'dialog', root: node({ text: 'Confirm' }) }]),
     flutterNodes: async () => { flutterReads++; return { nodes: [{ text: 'Delete account', actions: ['tap'], bounds }] }; },
     uiaTree: async () => '<hierarchy><node text="Confirm" enabled="true" bounds="[0,0][200,400]" /></hierarchy>',
     flutterAction: async () => { effects++; return { ok: true }; },
@@ -51,7 +54,7 @@ test('automatic discovery never targets the underlying Flutter page through a na
 const target = { serial: 'semantic-device', packageName: 'example.app' };
 const control = extra => node({ className: 'android.widget.EditText', resourceName: 'example.app:id/Name', text: 'Name', editable: true,
   bounds: { left: 20, top: 40, right: 100, bottom: 80 }, ...extra });
-const nativeTree = children => ({ windows: [{ type: 'activity', root: node({ className: 'DecorView', children }) }] });
+const nativeTree = children => windowTree([{ type: 'activity', root: node({ className: 'DecorView', children }) }]);
 
 test('all native Intent selectors preserve target identity after layout movement', async () => {
   for (const spec of [
@@ -81,7 +84,9 @@ test('all native Intent selectors preserve target identity after layout movement
 });
 
 test('changed native identity, editability, ambiguity or foreground window rejects before dispatch', async () => {
-  const dialog = nativeTree([control()]); dialog.windows.push({ type: 'dialog', root: node({ children: [control()] }) });
+  const dialog = nativeTree([control()]);
+  dialog.windows.push({ windowId: 'dialog', type: 'dialog', root: node({ children: [control()] }) });
+  dialog.foregroundWindowId = 'dialog';
   for (const [current, action, error] of [
     [nativeTree([control({ text: 'Other account' })]), 'tap', 'reobserve_required'],
     [nativeTree([control({ editable: undefined })]), 'inputText', 'native_target_not_editable'],
@@ -145,7 +150,7 @@ test('a pinned Flutter text command also respects the native foreground window',
   let effects = 0;
   const result = await tapText({ ...target, explicitPackageName: true }, 'Name', { provider: 'flutter' }, {
     foregroundWindow: async () => ({ ok: true, packageName: target.packageName, component: 'example.app/.Main' }),
-    bridgeTree: async () => ({ windows: [{ type: 'dialog', root: node({ text: 'Confirm' }) }] }),
+    bridgeTree: async () => windowTree([{ type: 'dialog', root: node({ text: 'Confirm' }) }]),
     flutterNodes: async () => { throw new Error('background Flutter cannot be read'); },
     flutterAction: async () => { effects++; return { ok: true }; },
   });

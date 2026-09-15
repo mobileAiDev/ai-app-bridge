@@ -17,7 +17,7 @@ test('public Flutter actions carry the Host action ID through the real HTTP boun
     for await (const chunk of req) body += chunk;
     res.setHeader('content-type', 'application/json');
     if (req.url === '/v1/view/tree') return res.end(JSON.stringify({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }));
-    if (req.url === '/v1/status') return res.end(JSON.stringify({ flutter: { layout: { operable: {
+    if (['/v1/status', '/v1/flutter/snapshot'].includes(req.url)) return res.end(JSON.stringify({ flutter: { layout: { operable: {
       runtimeEpoch: 'flutter-fixture-runtime', executionSchema: 'aab.flutter-execution/v1', nodes: [
       flutterNode(), flutterNode({ id: 'e2', text: '', action: 'input' }), flutterNode({ id: 'e3', text: '', action: 'scroll' }),
     ] } } } }));
@@ -113,7 +113,7 @@ test('public recovery uses the actual exported provider and HTTP receipt after a
     let body = ''; for await (const chunk of req) body += chunk;
     res.setHeader('content-type', 'application/json');
     if (req.url === '/v1/view/tree') return res.end(JSON.stringify({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }));
-    if (req.url === '/v1/status') return res.end(JSON.stringify({ flutter: { layout: { operable: {
+    if (['/v1/status', '/v1/flutter/snapshot'].includes(req.url)) return res.end(JSON.stringify({ flutter: { layout: { operable: {
       runtimeEpoch: 'wire-runtime', executionSchema: 'aab.flutter-execution/v1', nodes: [flutterNode()],
     } } } }));
     const request = JSON.parse(body);

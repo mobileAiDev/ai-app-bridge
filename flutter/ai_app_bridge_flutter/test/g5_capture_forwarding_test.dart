@@ -121,10 +121,10 @@ void main() {
     expect(android.contains('"recordNetwork"'), isTrue);
     expect(android.contains('"recordState"'), isTrue);
     expect(android.contains('"recordEvent"'), isTrue);
-    expect(ios.contains('AiAppBridge.shared.recordLog'), isTrue);
-    expect(ios.contains('AiAppBridge.shared.recordNetwork'), isTrue);
-    expect(ios.contains('AiAppBridge.shared.recordState'), isTrue);
-    expect(ios.contains('AiAppBridge.shared.recordEvent'), isTrue);
+    expect(ios.contains('AiAppBridge.shared.recordFlutterCapture'), isTrue);
+    for (final method in ['recordLog', 'recordNetwork', 'recordState', 'recordEvent']) {
+      expect(ios.contains('"$method"'), isTrue);
+    }
   });
 }
 

@@ -1,3 +1,4 @@
+import 'support/read_snapshot.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -388,8 +389,7 @@ class _Harness {
 
   Future<void> mount(Widget widget) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: widget)));
-    await tester.pump(const Duration(milliseconds: 1200));
-    await tester.pump(const Duration(milliseconds: 150));
+    snapshots.add(await readBridgeSnapshot(tester));
     runtimeEpoch =
         snapshots.last['layout']['operable']['runtimeEpoch'] as String;
   }

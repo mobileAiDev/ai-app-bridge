@@ -74,9 +74,7 @@ internal object NativeTargetContract {
         val parent = ancestor?.let { if (it.has("parent")) objectAt(it, "parent", "selector.within.ancestor.parent") else null }
         val parentKey = parent?.let { identityKey(it, ancestorFields, emptySet(), "selector.within.ancestor.parent") }
 
-        val windows = tree.optJSONArray("windows") ?: fail("native_windows_unavailable")
-        val window = (windows.length() - 1 downTo 0).map { windows.getJSONObject(it) }
-            .firstOrNull { !hidden(it.optJSONObject("root")) } ?: fail("native_window_unavailable")
+        val window = NativeWindowContract.foregroundWindow(tree)
         val root = window.optJSONObject("root") ?: fail("native_window_unavailable")
         if (!visible(root) || !boundsValid(window.optJSONObject("bounds"))) fail("native_window_unavailable")
         NativeWindowContract.requirePointerWindow(window, editable)

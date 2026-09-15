@@ -9,6 +9,11 @@ final class AutomaticLogCapture {
 
     private var persist: ((AutomaticLogRecord) -> Void)?
     private var timer: Timer?
+    private var expiry: DispatchWorkItem?
+    private var observationDeadline: TimeInterval = 0
+    private var draining = false
+    private var observationGeneration = 0
+    private let observedWebViews = NSHashTable<WKWebView>.weakObjects()
     private var started = false
 
     private init() {}
@@ -34,26 +39,56 @@ final class AutomaticLogCapture {
             )
         }
         aab_nslog_hook_start(nslogCSink)
-        DispatchQueue.main.async { [weak self] in
-            self?.startH5Timer()
-        }
     }
 
-    private func startH5Timer() {
-        timer?.invalidate()
+    func observeWebViews(durationMs: Int) {
+        precondition(Thread.isMainThread)
+        precondition((1...5000).contains(durationMs))
+        stopObservingWebViews()
+        observationDeadline = ProcessInfo.processInfo.systemUptime + Double(durationMs) / 1000
+        let stop = DispatchWorkItem { [weak self] in self?.stopObservingWebViews() }
+        expiry = stop
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(durationMs), execute: stop)
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.drainWebViews()
         }
         if let timer {
             RunLoop.main.add(timer, forMode: .common)
         }
+        drainWebViews()
+    }
+
+    func stopObservingWebViews() {
+        timer?.invalidate(); timer = nil
+        expiry?.cancel(); expiry = nil
+        observationDeadline = 0
+        observationGeneration += 1
+        draining = false
+        for webView in observedWebViews.allObjects { webView.evaluateJavaScript(H5ConsoleScripts.uninstall) }
+        observedWebViews.removeAllObjects()
     }
 
     private func drainWebViews() {
-        for webView in allWebViews() {
+        guard timer != nil else { return }
+        guard ProcessInfo.processInfo.systemUptime < observationDeadline else {
+            stopObservingWebViews(); return
+        }
+        guard UIApplication.shared.applicationState == .active, !draining else { return }
+        let webViews = allWebViews()
+        guard !webViews.isEmpty else { return }
+        draining = true
+        let generation = observationGeneration
+        var remaining = webViews.count
+        for webView in webViews {
+            observedWebViews.add(webView)
             webView.evaluateJavaScript(H5ConsoleScripts.install) { [weak self] _, _ in
+                guard let self else { return }
+                guard self.timer != nil, generation == self.observationGeneration else { return }
                 webView.evaluateJavaScript(H5ConsoleScripts.drain) { value, _ in
-                    self?.persistConsole(value)
+                    guard self.timer != nil, generation == self.observationGeneration else { return }
+                    self.persistConsole(value)
+                    remaining -= 1
+                    if remaining == 0 { self.draining = false }
                 }
             }
         }

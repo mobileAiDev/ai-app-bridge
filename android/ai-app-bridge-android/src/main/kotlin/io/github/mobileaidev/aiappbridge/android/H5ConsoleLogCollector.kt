@@ -15,17 +15,24 @@ internal data class H5ConsoleLine(
 )
 
 internal class H5ConsolePage(
+    val identity: Any? = null,
     val evaluate: (script: String, callback: (String?) -> Unit) -> Unit,
 )
 
 internal object H5ConsoleScripts {
     const val INSTALL =
-        "(function(){if(window.__aabConsoleHook)return 0;window.__aabConsoleHook=true;" +
+        "(function(){if(window.__aabConsoleHook)return 0;window.__aabConsoleHook={};" +
             "window.__aabConsoleBuf=[];var names=['log','info','warn','error','debug'];" +
-            "names.forEach(function(name){var original=console[name];console[name]=function(){" +
+            "names.forEach(function(name){var original=console[name];var wrapped=console[name]=function(){" +
             "var args=Array.prototype.slice.call(arguments);var buf=window.__aabConsoleBuf;" +
             "buf.push({method:name,message:args.map(function(value){return value==null?'':String(value);}).join(' '),atMs:Date.now()});" +
-            "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};});return 1;})()"
+            "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};" +
+            "window.__aabConsoleHook[name]={original:original,wrapped:wrapped};});return 1;})()"
+
+    const val UNINSTALL =
+        "(function(){var hooks=window.__aabConsoleHook;if(!hooks)return;Object.keys(hooks).forEach(function(name){" +
+            "if(console[name]===hooks[name].wrapped)console[name]=hooks[name].original;});" +
+            "delete window.__aabConsoleHook;delete window.__aabConsoleBuf;})()"
 
     const val DRAIN =
         "(function(){var buf=window.__aabConsoleBuf||[];window.__aabConsoleBuf=[];return JSON.stringify(buf);})()"
@@ -109,7 +116,7 @@ internal object AndroidWebViewPages {
         }
         if (adapter != null) {
             pages.add(
-                H5ConsolePage { script, callback ->
+                H5ConsolePage(identity = view) { script, callback ->
                     adapter.evaluateJavascript(view, script, callback)
                 },
             )
@@ -147,6 +154,10 @@ internal class H5ConsoleLogCollector(
 ) {
     @Volatile
     private var started = false
+    private var generation = 0
+    private var inFlight = false
+    private val installed = IdentityHashMap<Any, H5ConsolePage>()
+    private val expiry = Runnable { stop() }
 
     private val tick = object : Runnable {
         override fun run() {
@@ -154,23 +165,48 @@ internal class H5ConsoleLogCollector(
                 return
             }
             try {
-                drainH5Pages(discover(), persist)
+                if (!inFlight) {
+                    val pages = discover()
+                    val owner = generation
+                    var remaining = pages.size
+                    inFlight = pages.isNotEmpty()
+                    pages.forEach { page ->
+                        installed[page.identity ?: page] = page
+                        page.evaluate(H5ConsoleScripts.INSTALL) {
+                            if (started && generation == owner) page.evaluate(H5ConsoleScripts.DRAIN) { raw ->
+                                if (started && generation == owner) {
+                                    H5ConsoleDrainParser.parse(raw).forEach(persist)
+                                    remaining--
+                                    if (remaining == 0) inFlight = false
+                                }
+                            }
+                        }
+                    }
+                }
             } catch (_: Throwable) {
+                inFlight = false
             }
             mainHandler.postDelayed(this, intervalMs)
         }
     }
 
-    fun start() {
-        if (started) {
-            return
-        }
+    fun start(durationMs: Long) {
+        require(durationMs in 1..5000)
+        stop()
         started = true
+        mainHandler.postDelayed(expiry, durationMs)
         mainHandler.post(tick)
     }
 
     fun stop() {
         started = false
+        generation++
+        inFlight = false
         mainHandler.removeCallbacks(tick)
+        mainHandler.removeCallbacks(expiry)
+        installed.values.forEach { page ->
+            try { page.evaluate(H5ConsoleScripts.UNINSTALL) {} } catch (_: RuntimeException) { }
+        }
+        installed.clear()
     }
 }

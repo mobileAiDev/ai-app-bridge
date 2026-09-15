@@ -12,12 +12,18 @@ struct AutomaticLogRecord {
 
 enum H5ConsoleScripts {
     static let install =
-        "(function(){if(window.__aabConsoleHook)return 0;window.__aabConsoleHook=true;" +
+        "(function(){if(window.__aabConsoleHook)return 0;window.__aabConsoleHook={};" +
         "window.__aabConsoleBuf=[];var names=['log','info','warn','error','debug'];" +
-        "names.forEach(function(name){var original=console[name];console[name]=function(){" +
+        "names.forEach(function(name){var original=console[name];var wrapped=console[name]=function(){" +
         "var args=Array.prototype.slice.call(arguments);var buf=window.__aabConsoleBuf;" +
         "buf.push({method:name,message:args.map(function(value){return value==null?'':String(value);}).join(' '),atMs:Date.now()});" +
-        "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};});return 1;})()"
+        "if(buf.length>1000)buf.shift();if(original)return original.apply(console,arguments);};" +
+        "window.__aabConsoleHook[name]={original:original,wrapped:wrapped};});return 1;})()"
+
+    static let uninstall =
+        "(function(){var hooks=window.__aabConsoleHook;if(!hooks)return;Object.keys(hooks).forEach(function(name){" +
+        "if(console[name]===hooks[name].wrapped)console[name]=hooks[name].original;});" +
+        "delete window.__aabConsoleHook;delete window.__aabConsoleBuf;})()"
 
     static let drain =
         "(function(){var buf=window.__aabConsoleBuf||[];window.__aabConsoleBuf=[];return JSON.stringify(buf);})()"

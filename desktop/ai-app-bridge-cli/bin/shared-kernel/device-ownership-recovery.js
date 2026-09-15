@@ -19,6 +19,14 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
   const recovered = await lease.reconcile(args.serial, async pending => {
     if (args.operation === 'cancel-install' && (pending.kind !== 'android-install' || pending.actionId !== args.actionId))
       return { settled: false, error: 'install_action_mismatch', actionId: pending.actionId };
+    if (pending.kind === 'android-test-executor') {
+      try { return await require('../executors/android-host').recoverAndroidExecutor(pending); }
+      catch (error) { return { settled: false, error: error.code || 'executor_completion_query_failed', message: error.message }; }
+    }
+    if (pending.kind === 'flutter-test-executor') {
+      try { return await require('../executors/flutter-host').recoverFlutterExecutor(pending); }
+      catch (error) { return { settled: false, error: error.code || 'executor_completion_query_failed', message: error.message }; }
+    }
     if (pending.kind === 'uia-node') {
       if (!uiaProtocol.validIdentity(pending) || pending.target.serial !== args.serial) return { settled: false, error: 'invalid_uia_execution_identity' };
       try {

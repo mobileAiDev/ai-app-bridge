@@ -1,8 +1,22 @@
-# 0.3.5 发行与接入交接
+# 0.3.6 发行与接入交接
 
 本文件记录正式版的依赖关系和出仓库交付入口。封版要求是同一提交的源码、发行包与公开接入合同一致；单个样本的测试进度不改变包版本或发布状态。推送 Git、创建远端标签及发布 npm/pub 包由维护者执行。
 
-## 0.3.5 变更
+## 0.3.6 新增
+
+- Android、iOS、Flutter、Web 与内嵌 H5 的持续 UI 观察默认关闭；仅按需开启 100–5000 ms 的观察窗口，期限到达、主动停止或相应生命周期退出时清理观察任务。新增三个平台观察控制命令，公开命令共 121 个。
+- Flutter 当前树改为显式读取 `/v1/flutter/snapshot`，状态请求不再触发树遍历；CLI/MCP 与 App 内 SDK 需要配套升级。Android 指纹编码减少 JNI 调用与临时分配。实测证据及边界见仓库中的 UI 观察性能评估记录。
+
+- 可选 Android Instrumentation 会话，复用业务 androidTest；UI Automator、Espresso、Espresso-Web 和 Compose 可在同一会话内选择。
+- 可选 Flutter integration_test/WidgetTester 测试入口，以及 Host 管理的 Playwright 1.63.0 浏览器执行器。
+- 公开 capabilities + run、Python/JS Script 的 app.test 权限、观测身份、原始回执、取消和设备占用接线。
+- Compose 主包/测试包版本检查；按测试配置隔离依赖，不自动升级业务 AGP/Kotlin/Compose。
+- Android 7 权限输出的零 flags 省略及空格分隔格式支持，来源为实际 API-25 环境和 AOSP Settings 输出实现。
+- 本地交付和外部发布分开记录；这份源码不表示 npm/JitPack/pub.dev 已发布 0.3.6。
+
+接入合同、具体依赖和实测性能见 [OPTIONAL_EXECUTORS.md](OPTIONAL_EXECUTORS.md)。
+
+## 随本版包含的 0.3.5 修复
 
 - 修正 UIA nodeRef 原回执对账，正常重启和死进程后的显式启动可完成原 session 审计；未知回执和失效引用仍受保护。
 - UIA node runtime 支持 Android API 25+，保留 POSIX 原子重命名、fsync、进程锁与原始 Binder 回调；不使用 dump 或坐标回退。Android 7 权限观察支持未初始化的权限状态以及旧 ActivityManager 的身份字段。
@@ -20,16 +34,20 @@
 - CLI `--version`、录制目录、错误字段、Script 起步权限及 Reader UIA 只读重试修正；明确 freeze 与 MCP 重连语义。
 - Android Gradle 无实现的历史开关发出弃用提示，旧 DSL 仍可构建；各端统一版本。
 
+## 新增可选分发物
+
+Android `ai-app-bridge-test-core`、`ai-app-bridge-test-uia`、`ai-app-bridge-test-espresso`、`ai-app-bridge-test-instrumentation`、`ai-app-bridge-test-espresso-web`、`ai-app-bridge-test-compose` 均使用 0.3.6，通过 androidTestImplementation 消费。Gradle 插件增加 `io.github.mobileaidev.aiappbridge.test` 依赖校验入口。新 Flutter 包 `ai_app_bridge_test` 使用 0.3.6，只作为 dev_dependency；它的发布不依赖 Android SDK 的 JitPack 坐标。
+
 ## 版本与消费方式
 
 | 交付物 | 发行版本 | 独立消费入口 | 发布依赖 |
 | --- | --- | --- | --- |
-| Android SDK | `0.3.5` | JitPack `com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.5` | 同名 Git tag，JitPack 对该提交成功构建 |
-| Android Gradle 插件 | `0.3.5` | JitPack `ai-app-bridge-gradle-plugin` 模块及插件 ID `io.github.mobileaidev.aiappbridge.android` | 与 SDK 相同的 Git tag；不再使用旧默认 `0.2.8` |
-| 原生 iOS SDK | Git tag `0.3.5` | Git URL 的仓库根 `Package.swift`，产品 `AiAppBridgeIOS` | 根清单包含 Swift runtime、C adapter 和 segmented C store，无外部 C 包路径 |
-| Flutter 插件 | `0.3.5` | pub `ai_app_bridge_flutter` | Android 固定依赖上述 SDK；iOS Swift/C 源码随插件分发 |
-| Desktop CLI/MCP | `0.3.5` | npm `@mobileaidev/ai-app-bridge` | 包含 UIA bundle、WDA 模板和 native store 源码；WDA 上游固定 `14.1.1` |
-| Web SDK | `0.3.5` | npm `@mobileaidev/ai-app-bridge-web` | 独立浏览器源码包，无 npm 对 CLI 的安装依赖 |
+| Android SDK | `0.3.6` | JitPack `com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.6` | 同名 Git tag，JitPack 对该提交成功构建 |
+| Android Gradle 插件 | `0.3.6` | JitPack `ai-app-bridge-gradle-plugin` 模块及插件 ID `io.github.mobileaidev.aiappbridge.android` | 与 SDK 相同的 Git tag；不再使用旧默认 `0.2.8` |
+| 原生 iOS SDK | Git tag `0.3.6` | Git URL 的仓库根 `Package.swift`，产品 `AiAppBridgeIOS` | 根清单包含 Swift runtime、C adapter 和 segmented C store，无外部 C 包路径 |
+| Flutter 插件 | `0.3.6` | pub `ai_app_bridge_flutter` | Android 固定依赖上述 SDK；iOS Swift/C 源码随插件分发 |
+| Desktop CLI/MCP | `0.3.6` | npm `@mobileaidev/ai-app-bridge` | 包含 UIA bundle、WDA 模板和 native store 源码；WDA 上游固定 `14.1.1` |
+| Web SDK | `0.3.6` | npm `@mobileaidev/ai-app-bridge-web` | 独立浏览器源码包，无 npm 对 CLI 的安装依赖 |
 | Native store | `0.1.0` | 随 CLI 的 bundled dependency 安装 | 不要求另行发布到 npm；`file:../../native/segmented-fact-store` 是工作区构建入口，最终 tarball 必须包含该依赖源码 |
 
 Flutter 的 podspec 是随 pub 插件消费的本地 podspec，不是独立 CocoaPods trunk 发布包；原生 iOS 使用根 Swift package。Flutter SwiftPM 的 `../FlutterFramework` 由 Flutter 的集成生成，不能当作本仓库的外部私有依赖，也不应将本机 Flutter framework 打包进插件。
@@ -38,11 +56,11 @@ Host 支持范围声明为 Node `>=26.3.0 <27`，本轮实际验证基线是 **2
 
 ## 发布顺序
 
-1. 完成源码审阅并冻结一个提交，核对以下命令的产物确实来自它；包含当前 untracked 的实际源码、测试和文档，排除本机生成目录。所有对外发行版本使用同一个 `0.3.5`，若需要改版本，先同时更新上表涉及的 manifest 与固定依赖。
-2. 维护者推送提交与 `0.3.5` 标签，让 JitPack 构建 Android SDK/插件。确认两条公开坐标可解析后，再发布依赖它们的 Flutter 包。本地 Gradle project/path/AAR 替换不能证明 JitPack 坐标可消费。
+1. 完成源码审阅并冻结一个提交，核对以下命令的产物确实来自它；包含当前 untracked 的实际源码、测试和文档，排除本机生成目录。所有对外发行版本使用同一个 `0.3.6`，若需要改版本，先同时更新上表涉及的 manifest 与固定依赖。
+2. 维护者推送提交与 `0.3.6` 标签，让 JitPack 构建 Android SDK/插件。确认两条公开坐标可解析后，再发布依赖它们的 Flutter 包。本地 Gradle project/path/AAR 替换不能证明 JitPack 坐标可消费。
 3. 原生 iOS 消费相同 Git tag 的根 package；完成根 package 的 iOS 构建，不仅构建 `ios/ai-app-bridge-ios/Package.swift`。Flutter iOS 则检查实际 pub 包内 Swift/C 源码与声明相符。
 4. CLI 与 Web SDK 可分别发布到 npm 的 `latest` dist-tag。CLI 的 native store 已打包随行，不等待一个不存在的单独 registry 依赖。Flutter 包发布以第 2 步完成为前提。
-5. 同步 npm `next` 指向 `0.3.5`，让已有候选入口也使用本次正式版。将 GitHub `main` 与发行提交同步，并创建非预发布的 GitHub Release。
+5. 同步 npm `next` 指向 `0.3.6`，让已有候选入口也使用本次正式版。将 GitHub `main` 与发行提交同步，并创建非预发布的 GitHub Release。
 6. 从 registry/tag 安装刚发布的确切版本，读取 `capabilities` 和版本，核对来源及支持范围，确认默认安装入口指向本次发行版本。正式发布不自动等于全平台生产验收完成。
 
 正式发布命令需在对应目录由维护者执行，例如 npm 使用 `npm publish --tag latest`；pub 使用 `flutter pub publish`。这些命令属于发布动作，不能混入本地验证脚本。
@@ -83,7 +101,7 @@ npm 升级不会替换已连接的 MCP 进程。用 `ai-app-bridge --version` �
 已有工作结束后显式停止旧 Runtime，并在 Cursor 等客户端重连 MCP，核对 initialize
 中的 `serverInfo.version`。工具描述仍有旧 `batch`/`smoke` 时刷新客户端缓存。
 
-实际发布状态与验证边界见仓库 `docs/RELEASE_HANDOFF_0.3.5_2026-09-14.md`。
+实际发布状态与验证边界见仓库 `docs/EXECUTOR_DELIVERY_0.3.6.md`。
 Android Gradle 插件的 `webSocketCaptureEnabled`、`logInstrumentationEnabled`、
 `webViewDebuggingEnabled` 没有对应插桩实现，现明确弃用并在显式设置时输出提示；
 旧配置仍可构建。当前有效开关是 `enabled`、`okHttpCaptureEnabled`，以及可选

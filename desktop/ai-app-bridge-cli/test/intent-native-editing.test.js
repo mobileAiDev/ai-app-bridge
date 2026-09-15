@@ -52,7 +52,8 @@ test('NotallyX custom editor requires the SDK editable type fact', async () => {
 });
 test('foreground dialog blocks underlying activity selectors and tap uses observed visible bounds', async () => {
   const rawTree = tree();
-  rawTree.windows = [{ root: rawTree.root, bounds: rawTree.root.bounds }, { root: node({ resourceName: 'dialog', text: 'Confirm', className: 'android.widget.Button' }) }];
+  rawTree.foregroundWindowId = 'dialog';
+  rawTree.windows = [{ windowId: 'activity', root: rawTree.root, bounds: rawTree.root.bounds }, { windowId: 'dialog', root: node({ resourceName: 'dialog', text: 'Confirm', className: 'android.widget.Button' }) }];
   const calls = []; const device = adapter(calls);
   const hidden = await dispatch(device, { action: 'tap', selector: { resourceName: 'example.edit:id/title' } }, rawTree);
   assert.equal(hidden.error, 'native_selector_not_found'); assert.equal(calls.length, 0);
@@ -78,7 +79,8 @@ test('contentDescription selectors match the exact accessible name uniquely in t
   assert.equal(partial.error, 'native_selector_not_found');
   const duplicate = await dispatch(device, { action: 'tap', selector: { contentDescription: '置于顶部' } }, tree([button, button]));
   assert.equal(duplicate.error, 'native_selector_ambiguous');
-  const foreground = tree([button]); foreground.windows = [{ root: foreground.root }, { root: node({ text: 'Dialog', contentDescription: 'Cancel' }) }];
+  const foreground = tree([button]); foreground.foregroundWindowId = 'dialog';
+  foreground.windows = [{ windowId: 'activity', root: foreground.root }, { windowId: 'dialog', root: node({ text: 'Dialog', contentDescription: 'Cancel' }) }];
   const obscured = await dispatch(device, { action: 'tap', selector: { contentDescription: '置于顶部' } }, foreground);
   assert.equal(obscured.error, 'native_selector_not_found');
   assert.equal(calls.length, 1, 'ambiguous, partial and background matches never dispatch');

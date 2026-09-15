@@ -18,7 +18,7 @@ group = if (
 } else {
     "io.github.mobileaidev.aiappbridge"
 }
-version = jitpackVersion ?: "0.3.5"
+version = jitpackVersion ?: "0.3.6"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -44,6 +44,12 @@ dependencies {
 
 gradlePlugin {
     plugins {
+        create("aiAppBridgeTest") {
+            id = "io.github.mobileaidev.aiappbridge.test"
+            implementationClass = "io.github.mobileaidev.aiappbridge.gradle.AiAppBridgeTestGradlePlugin"
+            displayName = "AI App Bridge Test Dependency Checks"
+            description = "Checks optional executor dependencies without changing application versions."
+        }
         create("aiAppBridgeAndroid") {
             id = "io.github.mobileaidev.aiappbridge.android"
             implementationClass = "io.github.mobileaidev.aiappbridge.gradle.AiAppBridgeGradlePlugin"

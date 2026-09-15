@@ -43,6 +43,9 @@ class WebBridgeProvider {
           return { ok: true, session: this.sessionSummary(session), ownership: this.owner().status(sessionKey(args.sessionId)) };
         }
         case 'web-execution': return await this.executionControl(args);
+        case 'web-ui-observation': return await this.request(this.connected(args), 'read', {
+          name: 'uiObservation', args: require('./ui-observation').request(args),
+        }, args.timeoutMs ?? 5000);
         case 'web-dom': return args.history === true ? await this.captureResponse(args, 'dom') : await this.dom(args);
         case 'web-logs': return await this.captureResponse(args, 'logs');
         case 'web-network': return await this.captureResponse(args, 'network');
@@ -256,7 +259,9 @@ class WebBridgeProvider {
       this.pendingCommands.set(requestId, { socket, binding, type, payload, fail, resolve: result => end(null, result) });
       scope?.signal.addEventListener('abort', abort, { once: true });
       if (scope?.signal.aborted) { abort(); return; }
-      sent = true; markExecutionDispatched();
+      sent = true;
+      // Acquiring evidence must not mark the enclosing UI action as dispatched.
+      if (!(type === 'read' && payload.name === 'uiObservation')) markExecutionDispatched();
       try { socket.send(wire, error => { if (error && this.pendingCommands.has(requestId)) fail('web_command_transport_lost'); }); }
       catch { fail('web_command_transport_lost'); }
     });

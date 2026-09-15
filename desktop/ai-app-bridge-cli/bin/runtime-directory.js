@@ -51,7 +51,7 @@ function runtimeLocation() {
 
 function runtimeIdentity(location = runtimeLocation()) {
   const names = ['AI_APP_BRIDGE_ADB_TIMEOUT_MS', 'AI_APP_BRIDGE_DEVICECTL', 'AI_APP_BRIDGE_FACT_CACHE',
-    'AI_APP_BRIDGE_IOS_TEAM_ID', 'AI_APP_BRIDGE_PYTHON', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPMENT_TEAM', 'DEVELOPER_DIR', 'XCODEBUILD'];
+    'AI_APP_BRIDGE_IOS_TEAM_ID', 'AI_APP_BRIDGE_PYTHON', 'AI_APP_BRIDGE_EXECUTOR_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPMENT_TEAM', 'DEVELOPER_DIR', 'XCODEBUILD'];
   const config = { facts: location.facts, profile: location.profile, ownership: canonicalPath(ownershipDirectory()),
     adb: executablePath(process.env.ADB || 'adb') ?? { unavailable: process.env.ADB || 'adb' },
     environment: Object.fromEntries(names.map(name => [name, process.env[name] ?? null])) };
