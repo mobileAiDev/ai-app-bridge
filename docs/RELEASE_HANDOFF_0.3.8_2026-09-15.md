@@ -32,7 +32,7 @@ Flutter 模态框动画中，旧元素指纹被拒绝为 `reobserve_required`，
 
 自动 Android 准备使用 macOS/Linux、AGP 7.4–8.x 的现有工具链接口；实际样例使用 AGP 8.7.3。AGP 9、Windows 自动准备不在本次范围。依赖校验不会自动升级业务 AGP、Kotlin 或 Compose。
 
-Flutter WidgetTester Host 当前支持 Android；Flutter iOS 继续使用已有 SDK/WDA。现有 Kiwix/LocalSend 的业务 SDK 为 0.3.7，本轮设备证明的是新 Host/执行器准备与编排；0.3.8 SDK 的版本同步另经编译验证。
+Flutter WidgetTester Host 当前支持 Android；Flutter iOS 继续使用已有 SDK/WDA。前述真机流程使用的 Kiwix/LocalSend 已安装业务 SDK 为 0.3.7，本轮设备证明的是新 Host/执行器准备与编排；0.3.8 SDK 的版本同步另经编译验证。
 
 npm 安装不会安装 Android SDK/JDK、Flutter、Xcode、Python 或业务所需 Rust。新电脑仍需这些平台工具链；Bridge 自动准备其支持的测试依赖和入口。首次 iOS 真机运行仍需要签名、信任和手机上的 UI 自动化确认。
 
@@ -65,3 +65,28 @@ npm 安装不会安装 Android SDK/JDK、Flutter、Xcode、Python 或业务所�
 LocalSend 的测试辅助包已从开发路径切换为公共 `ai_app_bridge_test: 0.3.8`，实际安装的 CLI 完成准备和 APK 构建，86.0 秒，业务依赖版本变化为零。该公共依赖构建未重新安装到手机；此前真机流程使用相同源码的本地测试辅助包。Pub 首次解析受业务 Git 依赖网络访问影响，使用本机已有代理后成功；没有为此更改业务依赖版本。Courier、PDA、Novel 保持本轮约定范围。
 
 原始日志与回执保存在 Git 忽略目录 `build/executor-prepare-038/`。关键文件：`cli-check-final.log`、`final-executor-contracts.log`、`android-modules.log`、`notally-javascript-result.json`、`notally-python-result.json`、`notally-database-proof.json`、`localsend-scripts-proof.json`、`ios-scripts-proof.json`、`ios-root-package-build.log`、`web/playwright-verification.json`、`web/executor-public-script-verification.json`、`release-package/report.json`、`release-package/installed-android-prepare.json`、`localsend-hosted-prepare-proxy.json`、`npm-tags-final.json`、`npm-public-integrity.json`、`pub-public-integrity.json`、`jitpack/report.json`、`github-release-final.json`、`global-install-proof.json`、`current-connector-final.json`。首次失败证据保留，不能用后续通过结果覆盖原始失败原因。
+
+## 消费项目补齐（发布后）
+
+发布完成后的首轮交付遗漏了上一版消费项目清单中的业务 SDK 同步。2026-09-15 已补齐下列项目的 `0.3.7 → 0.3.8` 依赖更新，并完成构建与解析版本核验。
+
+| 项目 | 更新与验证 |
+| --- | --- |
+| POS | SDK/Gradle 插件共用版本已更新；SIT、UAT Debug 构建通过，两项 RuntimeClasspath 均实际解析到 SDK 0.3.8。 |
+| Reader | SDK、Gradle 插件已更新；Debug 构建通过，RuntimeClasspath 实际解析到 SDK 0.3.8。 |
+| MeasureDevice / measure-assist-android | SDK 已更新；Debug 构建及实际解析版本核验通过。 |
+| MeasureDevice / protocol-lab-android | SDK 已更新；Debug 构建及实际解析版本核验通过。 |
+| game-mirror-mapper | SDK 已更新；Debug 构建及实际解析版本核验通过。 |
+| Legado | SDK 已更新；AppDebug 构建及实际解析版本核验通过。 |
+| vivo-site | Web SDK manifest、lock 和实际 node_modules 均为 0.3.8；npm check、Vite 构建及 dist 检查通过，生产产物 Bridge 引用数为零。 |
+| Web remote-smoke | Web SDK manifest、lock 和实际 node_modules 均为 0.3.8；公开安装与 check 通过。 |
+| LocalSend 示例 | Flutter SDK 已更新，测试辅助包保持 0.3.8；workspace lock 仅 SDK 一项变化，其余 266 项锁定依赖不变；Android Debug APK 构建通过。 |
+| Flexify 示例 | Flutter SDK 已更新；lock 仅 SDK 一项变化，其余 160 项锁定依赖不变；iOS Debug 无签名构建通过，构建日志确认使用公开 0.3.8 包。 |
+
+Kiwix 使用当前仓库的 iOS SDK 源码，已补做 iOS Debug 无签名构建，通过。NotallyX 的当前版本原工程构建已包含在前述公开 CLI 准备验证中。
+
+Flexify 首次构建发现本地 `Pods/Manifest.lock` 缺失，执行 `pod install --deployment` 恢复安装状态后通过；`Podfile.lock` 保持逐字节不变。沿用原验证方式，单次构建传入 `IPHONEOS_DEPLOYMENT_TARGET=15.0`，未修改业务最低系统版本声明。Kiwix 首次 xcodebuild 在依赖解析前收到 signal 9；独立检查 Xcode 可用后，同一构建命令重试通过。原始失败日志保留。
+
+本次修改经 15 个依赖文件的前后差异核验，其他 npm/Flutter 依赖保持不变。外部项目原有改动均保留，其依赖修改留在各自工作目录，没有代为创建业务项目提交。Courier、PDA 未修改，Novel 继续暂缓。本次未安装这些新业务 APK/IPA，也未部署 vivo-site。
+
+此补齐步骤的清单、快照、解析结果、构建日志与最终报告位于 `build/consumer-upgrades-0.3.8/`，主要文件为 `consumer-before.json`、`consumer-after.json`、`final-manifest-diffs.json`、`android-consumer-builds.json`、`android-resolved-dependencies.json`、`localsend-build-result.json`、`flexify-build-final-result.json`、`kiwix-build-final-result.json`、`report.json`。
