@@ -7,6 +7,6 @@
     "check": "node -e \"require('@mobileaidev/ai-app-bridge-web')\""
   },
   "dependencies": {
-    "@mobileaidev/ai-app-bridge-web": "0.3.6"
+    "@mobileaidev/ai-app-bridge-web": "0.3.7"
   }
 }
