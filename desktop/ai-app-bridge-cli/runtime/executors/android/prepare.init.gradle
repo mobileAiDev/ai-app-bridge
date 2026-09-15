@@ -1,0 +1,70 @@
+// Applied only to this preparation build. No business Gradle/source file is edited.
+initscript {
+    def config = new groovy.json.JsonSlurper().parse(new File(System.getProperty('aab.prepare.config')))
+    repositories {
+        maven { url = uri(config.repositoryUrl) }
+        google()
+        mavenCentral()
+    }
+    dependencies { classpath config.pluginCoordinate }
+}
+
+def config = new groovy.json.JsonSlurper().parse(new File(System.getProperty('aab.prepare.config')))
+def repositoryMode
+gradle.settingsEvaluated { settings ->
+    repositoryMode = settings.dependencyResolutionManagement.repositoriesMode.get().name()
+    settings.dependencyResolutionManagement.repositories {
+        maven { url = uri(config.repositoryUrl) }
+        google()
+        mavenCentral()
+    }
+}
+gradle.beforeProject { consumer ->
+    if (consumer.path != config.module) return
+    consumer.plugins.withId('com.android.application') {
+        if (repositoryMode == 'PREFER_PROJECT') {
+            consumer.repositories {
+                maven { url = uri(config.repositoryUrl) }
+                google()
+                mavenCentral()
+            }
+        }
+        consumer.pluginManager.apply(io.github.mobileaidev.aiappbridge.gradle.AiAppBridgeTestGradlePlugin)
+        consumer.extensions.getByName('androidComponents').finalizeDsl { android ->
+            if (!android.defaultConfig.testInstrumentationRunner) {
+                android.defaultConfig.testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
+            }
+            // Consumer dependencies are complete only after its build script.
+            config.dependencies.each { coordinate ->
+                def parts = coordinate.split(':')
+                def existing = consumer.configurations.getByName('androidTestImplementation').allDependencies.findAll { it.name == parts[1] }
+                if (existing.empty) consumer.dependencies.add('androidTestImplementation', coordinate)
+                else if (parts[1].startsWith('ai-app-bridge-test-') && (existing.size() != 1 || existing[0].version != parts[2])) {
+                    throw new GradleException('[AiAppBridge] Existing test dependency must match ' + coordinate + '; no dependency was replaced.')
+                }
+            }
+        }
+        consumer.android.sourceSets.androidTest.java.srcDir(new File(config.directory, 'java'))
+        consumer.android.applicationVariants.all { variant ->
+            if (variant.name != config.variant) return
+            if (!variant.buildType.debuggable) throw new GradleException('[AiAppBridge] Executor preparation requires a debuggable variant.')
+            def testVariant = variant.testVariant
+            if (testVariant == null) throw new GradleException('[AiAppBridge] Enable androidTest for the selected variant.')
+            consumer.tasks.register('aiAppBridgePrepareExecutor') { task ->
+                task.dependsOn(variant.assembleProvider, testVariant.assembleProvider)
+                task.doLast {
+                    def report = [
+                        schemaVersion: 'aab.android-prepared-build/v1',
+                        projectDir: consumer.rootDir.absolutePath, module: consumer.path, variant: variant.name,
+                        gradleVersion: consumer.gradle.gradleVersion,
+                        packageName: variant.applicationId, testPackageName: testVariant.applicationId,
+                        runner: testVariant.mergedFlavor.testInstrumentationRunner,
+                        applicationApks: variant.outputs.collect { it.outputFile.absolutePath },
+                        testApks: testVariant.outputs.collect { it.outputFile.absolutePath }
+                    ]
+                    new File(config.directory, 'android-build.json').text = groovy.json.JsonOutput.toJson(report)
+                }
+            }
+        }
+    }
+}

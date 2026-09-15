@@ -9,7 +9,7 @@ const { PlaywrightHost } = require('../../bin/executors/playwright-host');
 const { runExecution } = require('../../bin/shared-kernel/execution-scope');
 
 async function main() {
-  const directory = path.resolve(process.argv[2] || '../../build/executor-0.3.7');
+  const directory = path.resolve(process.argv[2] || '../../build/executor-0.3.8');
   const browser = process.argv[3] || 'chromium';
   const evidenceName = browser === 'chromium' ? 'playwright-verification.json' : `playwright-${browser}-verification.json`;
   fs.mkdirSync(directory, { recursive: true });

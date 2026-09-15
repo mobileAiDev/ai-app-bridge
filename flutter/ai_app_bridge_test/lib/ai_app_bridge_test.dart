@@ -94,7 +94,7 @@ class _Session {
   final Stopwatch _lastRequest = Stopwatch()..start();
   String? _active;
   final capabilities = <String, dynamic>{
-    'engine': 'flutter-integration-test', 'bridgeVersion': '0.3.7', 'scope': 'flutter-widgets',
+    'engine': 'flutter-integration-test', 'bridgeVersion': '0.3.8', 'scope': 'flutter-widgets',
     'framePolicy': 'fullyLive',
     'actions': ['tap', 'longPress', 'enterText', 'drag', 'fling', 'ensureVisible', 'pageBack', 'pump'],
     'limitations': ['Requires the application integration_test entrypoint build', 'WidgetTester pointer events run inside Flutter',

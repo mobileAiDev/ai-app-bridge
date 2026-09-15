@@ -9,7 +9,7 @@ const execFile = promisify(require('node:child_process').execFile);
 async function main() {
   const serial = process.argv[2];
   if (!serial) throw new Error('Pass the explicit Android device serial.');
-  const directory = path.resolve(process.argv[3] || '../../build/executor-0.3.7');
+  const directory = path.resolve(process.argv[3] || '../../build/executor-0.3.8');
   const env = { ...process.env, AI_APP_BRIDGE_RUNTIME_HOME: path.join(directory, 'flutter-script-runtime'),
     AI_APP_BRIDGE_FACT_STORE_DIR: path.join(directory, 'flutter-script-facts'), AI_APP_BRIDGE_EXECUTOR_HOME: path.join(directory, 'cache') };
   const cliPath = process.env.AI_APP_BRIDGE_VALIDATION_CLI || path.resolve(__dirname, '../../bin/ai-app-bridge.js');

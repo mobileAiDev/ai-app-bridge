@@ -7,8 +7,8 @@ const context = new AsyncLocalStorage();
 const requestDirectory = () => context.getStore()?.cwd ?? process.cwd();
 const resolveRequestPath = value => path.resolve(requestDirectory(), value);
 const inRequestDirectory = (cwd, action) => context.run({ cwd }, action);
-const localPaths = ['outFile', 'artifactDir', 'apkPath', 'appPath', 'recordingDir', 'outputDir', 'archiveDir', 'wdaProjectPath', 'agentModule'];
-const executables = ['adb', 'aaptPath', 'apksignerPath', 'devicectl', 'xcodebuild', 'pythonPath'];
+const localPaths = ['outFile', 'artifactDir', 'apkPath', 'appPath', 'recordingDir', 'outputDir', 'archiveDir', 'wdaProjectPath', 'agentModule', 'projectDir', 'testPackagePath'];
+const executables = ['adb', 'aaptPath', 'apksignerPath', 'devicectl', 'xcodebuild', 'pythonPath', 'flutterPath', 'gradlePath'];
 
 // Only contract-defined filesystem fields are resolved. Web URL paths, source
 // text and arbitrary Script inputs keep their original values.

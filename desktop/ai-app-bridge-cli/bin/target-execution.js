@@ -165,6 +165,8 @@ function requestDigest(command, args) {
 }
 
 function targetFor(command, args) {
+  if (command === 'executor-prepare') return { kind: 'host', platform: 'host',
+    key: `executor-prepare:${JSON.stringify([args.platform, args.projectDir ?? null])}` };
   if (command === 'logcat' && String(args.deviceLogScope || '').toLowerCase() === 'device') {
     const serial = targetPart(args.serial);
     return {

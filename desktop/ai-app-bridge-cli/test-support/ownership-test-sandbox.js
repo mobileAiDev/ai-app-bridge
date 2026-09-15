@@ -10,6 +10,7 @@ if (process.env.NODE_TEST_CONTEXT && (process.argv[1] || '').endsWith('.test.js'
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-test-device-ownership-'));
   process.env.AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR = directory;
   process.env.AI_APP_BRIDGE_RUNTIME_HOME = path.join(directory, 'runtimes');
+  process.env.AI_APP_BRIDGE_EXECUTOR_HOME = path.join(directory, 'executors');
   // Isolate the default path without overriding a test's explicit DIR or
   // legacy CACHE_PATH contract when it launches a public Host subprocess.
   process.env.AI_APP_BRIDGE_FACT_STORE_PATH ??= path.join(directory, 'facts');

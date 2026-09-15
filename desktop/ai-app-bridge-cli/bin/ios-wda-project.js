@@ -76,4 +76,51 @@ function prepareWdaProject({ destination, packageDirectory = path.dirname(requir
   return result;
 }
 
-module.exports = { supportedVersion, prepareWdaProject, wdaBuildEnvironment };
+async function prepareManagedWda({ home = require('./executors/managed-runtime').executorHome() } = {}) {
+  const { atomicJson, readJson } = require('./executors/managed-runtime');
+  const bridgeVersion = require('../package.json').version;
+  const hash = createHash('sha256').update(fs.readFileSync(__filename)).update(bridgeVersion).update(supportedVersion);
+  const sourceRoot = path.join(__dirname, '..', 'runtime', 'ios-wda');
+  for (const name of fs.readdirSync(sourceRoot).sort()) hash.update(name).update(fs.readFileSync(path.join(sourceRoot, name)));
+  const nativeRoot = path.dirname(require.resolve('@mobileaidev/segmented-fact-store-native/package.json'));
+  for (const name of ['package.json', 'include/sfs.h', 'src/sfs.c']) hash.update(fs.readFileSync(path.join(nativeRoot, name)));
+  const dependencyDigest = hash.digest('hex');
+  const directory = path.join(home, 'packages', 'ios-wda', dependencyDigest);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const { DatabaseSync } = require('node:sqlite');
+  const lock = new DatabaseSync(path.join(directory, 'prepare.sqlite'));
+  let locked = false;
+  try {
+    try { lock.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE'); locked = true; }
+    catch (error) { if (error.errcode === 5) throw new CommandError('executor_preparing', 'This WDA project is already being prepared.'); throw error; }
+    const readyFile = path.join(directory, 'prepared.json');
+    const existing = readJson(readyFile);
+    const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+    if (existing) {
+      for (const item of existing.files) {
+        const file = path.join(directory, 'source', item.path);
+        if (!fs.existsSync(file) || sha256(file) !== item.sha256)
+          throw new CommandError('ios_wda_prepared_source_changed', 'The managed WDA source changed after preparation. Select a new executor home to prepare clean source.');
+      }
+      return { ...existing.result, reused: true };
+    }
+    const destination = path.join(directory, 'source');
+    const prepared = prepareWdaProject({ destination });
+    const files = [];
+    function visit(relative) {
+      for (const entry of fs.readdirSync(path.join(destination, relative), { withFileTypes: true })) {
+        const name = path.join(relative, entry.name);
+        if (entry.isDirectory()) visit(name);
+        else if (entry.isFile()) files.push({ path: name, sha256: sha256(path.join(destination, name)) });
+      }
+    }
+    visit('');
+    const result = { ok: true, platform: 'ios', engine: 'wda-xcuitest', bridgeVersion, dependencyDigest, directory,
+      ...prepared, reused: false, lifecycle: 'source-prepared',
+      next: 'Run ios-setup with startWda, deviceId, bundleId and teamId to sign, build and start this managed Runner. Device trust and Enable UI Automation still require the device owner.' };
+    atomicJson(readyFile, { result, files });
+    return result;
+  } finally { if (locked) lock.exec('ROLLBACK'); lock.close(); }
+}
+
+module.exports = { supportedVersion, prepareWdaProject, prepareManagedWda, wdaBuildEnvironment };

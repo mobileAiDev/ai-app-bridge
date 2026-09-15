@@ -229,7 +229,7 @@ async function mutationResult(command, args, options, ctx) {
   const actionId = options.dispatchActionId || mutationActionId(ctx.executionId, ctx.callId);
   const bound = dispatchArgs(args, actionId);
   try {
-    return await admitExecutionMutation(ctx.target, ctx.mutationLease, async () => {
+    const execute = async () => {
       try { return await actionOnce(command, bound, options, {
       actions: ctx.actions,
       target: ctx.target,
@@ -238,7 +238,8 @@ async function mutationResult(command, args, options, ctx) {
       actionId,
       onAction: ctx.onAction,
       }); } finally { ctx.onSettled(); }
-    });
+    };
+    return command === 'executor-prepare' ? await execute() : await admitExecutionMutation(ctx.target, ctx.mutationLease, execute);
   } catch (error) {
     return unavailableEnvelope({ command, error: error.code || error.message, executionId: ctx.executionId, callId: ctx.callId });
   }

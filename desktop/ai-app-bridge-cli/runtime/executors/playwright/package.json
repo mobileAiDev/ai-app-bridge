@@ -1,6 +1,6 @@
 {
   "name": "ai-app-bridge-playwright-runtime",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "description": "Optional, isolated browser runtime managed by AI App Bridge.",
   "engines": { "node": ">=26.3.0 <27" },

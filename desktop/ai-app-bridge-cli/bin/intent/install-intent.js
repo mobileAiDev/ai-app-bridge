@@ -48,7 +48,9 @@ async function inspectApk(args, run = execute) {
     if (error instanceof CommandError) throw error;
     throw new CommandError('invalid_apk', 'APK manifest or signature verification failed.', { field: 'apkPath', details: { cause: error.code || null } });
   }
-  const pkg = /^package: name='([^']+)' versionCode='([^']+)' versionName='([^']*)'/m.exec(badging.stdout);
+  // AGP-generated instrumentation APKs can omit both version attributes.
+  // Identity still comes from the manifest package, verified signer and bytes.
+  const pkg = /^package: name='([^']+)' versionCode='([0-9]*)' versionName='([^']*)'/m.exec(badging.stdout);
   const certificates = [...new Set([...signatures.stdout.matchAll(/^(?:Signer #\d+|V(?:[124]|3(?:\.[01])?) Signer:) certificate SHA-256 digest: ([a-fA-F0-9]{64})\r?$/gm)].map(match => match[1].toLowerCase()))];
   if (!pkg || !certificates.length) throw new CommandError('invalid_apk', 'The APK has no verified package identity.', { field: 'apkPath' });
   if (args.packageName !== undefined && args.packageName !== pkg[1]) throw new CommandError('apk_package_mismatch', 'packageName differs from the APK manifest.', { field: 'packageName', details: { requested: args.packageName, apk: pkg[1] } });

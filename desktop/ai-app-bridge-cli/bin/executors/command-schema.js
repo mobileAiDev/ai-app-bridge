@@ -56,7 +56,7 @@ function androidExecutorSchema() {
   const bound = (properties = {}, required = []) => ({ properties: { ...target, ...session, ...properties }, required: ['serial', 'packageName', 'sessionId', 'runtimeEpoch', ...required] });
   const action = { anyOf: [
     object({ type: { enum: ['click', 'longClick', 'scrollTo', 'swipeUp', 'swipeDown', 'swipeLeft', 'swipeRight', 'webClick', 'webClear', 'webScrollIntoView', 'semanticLongClick', 'composeClearText'] }, nodeId: identifier }, ['type', 'nodeId']),
-    object({ type: { enum: ['setText', 'typeText', 'replaceText', 'webKeys', 'composeInput', 'composeReplaceText'] }, nodeId: identifier, text: { type: 'string', maxLength: 65536 } }, ['type', 'nodeId', 'text']),
+    object({ type: { enum: ['setText', 'typeText', 'replaceText', 'replaceTextViaInputConnection', 'webKeys', 'composeInput', 'composeReplaceText'] }, nodeId: identifier, text: { type: 'string', maxLength: 65536 } }, ['type', 'nodeId', 'text']),
     object({ type: { const: 'composeScrollToIndex' }, nodeId: identifier, index: integer(0, 1000000) }, ['type', 'nodeId', 'index']),
     object({ type: { const: 'scroll' }, nodeId: identifier, direction: { enum: ['up', 'down', 'left', 'right'] }, percent: { type: 'number', exclusiveMinimum: 0, maximum: 10 } }, ['type', 'nodeId', 'direction', 'percent']),
     object({ type: { enum: ['back', 'home', 'closeKeyboard'] } }, ['type']),

@@ -8,6 +8,7 @@ const { executionCommandSchema, nativeGestureSchema, nativeSelector, flutterSele
 const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provider-command-contracts');
 
 const commandDefinitions = [
+  { command: 'executor-prepare', domain: 'advanced', summary: 'Prepare optional test executors from the existing project: generate Android androidTest entry/dependencies and matching APKs, add Flutter dev dependency and build the generated entrypoint, prepare managed iOS WDA, or install pinned Playwright/browser. Host preparation does not install or launch a mobile application. No application ID is changed. Requires app.test in Script.', targetKind: 'host', options: ['platform'] },
   { command: 'ui-observation', domain: 'core', summary: 'Start a bounded UI observation window (100–5000 ms), inspect it, or stop its lease. Off by default; provider selects native or Flutter. New windows establish a fresh baseline.', targetApp: true, options: ['operation', 'provider', 'durationMs', 'leaseId', 'packageName', 'serial'] },
   { command: 'ios-ui-observation', domain: 'ios', summary: 'Control bounded iOS native or Flutter UI observation. Off by default; expires locally even if the Host exits.', targetKind: 'ios-app', options: ['operation', 'provider', 'durationMs', 'leaseId', 'deviceId', 'bundleId'] },
   { command: 'web-ui-observation', domain: 'web', summary: 'Control bounded Web DOM change observation. Off by default; expires locally even if the Host exits.', targetKind: 'web-target', options: ['operation', 'durationMs', 'leaseId', 'sessionId', 'runtimeEpoch', 'targetId'] },
@@ -151,6 +152,7 @@ const isolatedCommandDefinitions = [
 ];
 
 const mutationCommands = new Set([
+  'executor-prepare',
   'install-apk', 'clear-app-data', 'freeze-app', 'thaw-app', 'launch-app',
   'launch-activity', 'permission-grant',
   'permission-revoke', 'permission-dialog', 'appops-set',
@@ -254,12 +256,13 @@ function isMutationCommand(command, args = {}) {
 }
 
 function isAndroidMutation(command, args = {}) {
-  return isMutationCommand(command, args) && !['runtime', 'device-ownership'].includes(command)
+  return isMutationCommand(command, args) && !['runtime', 'device-ownership', 'executor-prepare'].includes(command)
     && !command.startsWith('ios-') && !command.startsWith('web-');
 }
 
 function executionTimeoutMs(command, args = {}) {
   if (args.timeoutMs !== undefined) return args.timeoutMs;
+  if (command === 'executor-prepare') return 600000;
   if (['android-executor', 'flutter-executor'].includes(command)) return args.operation === 'open' ? 60000 : 30000;
   if (command === 'web-executor') return args.operation === 'prepare' ? 300000 : 30000;
   if (iosSdkCommands.has(command) || command === 'ios-execution' || require('./ios-wda-port').commands.has(command)) return 30000;
@@ -273,7 +276,7 @@ function executionTimeoutMs(command, args = {}) {
 // These are execution capabilities, independent of MCP/CLI transport. Script
 // permissions gate Bridge calls; trusted local code is not a process sandbox.
 const scriptPermissions = Object.freeze({
-  'app.test': ['web-executor', 'android-executor', 'flutter-executor'],
+  'app.test': ['web-executor', 'android-executor', 'flutter-executor', 'executor-prepare'],
   'app.read': ['status', 'tree', 'uia-tree', 'screenshot', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'flutter-h5-dom', 'keyboard-state', 'permission-state',
     'ios-status', 'ios-tree', 'ios-uia-tree', 'ios-screenshot', 'ios-flutter-tree', 'ios-flutter-nodes', 'ios-h5-dom', 'ios-wda-status', 'web-status', 'web-dom'],
   'capture.read': ['ui-observation', 'ios-ui-observation', 'web-ui-observation', 'logs', 'network', 'state', 'events', 'logcat', 'webview-console', 'webview-network', 'ios-logs', 'ios-network', 'ios-state', 'ios-events', 'web-logs', 'web-network', 'web-state', 'web-events'],
@@ -291,7 +294,7 @@ function commandContract(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw new CommandError('unknown_command', `Unknown command: ${command}`, { field: 'command' });
   const isolated = isolatedByName.has(command);
-  const platform = command === 'runtime' ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
+  const platform = ['runtime', 'executor-prepare'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
     : definition.domain === 'ios' ? 'ios' : definition.domain === 'web' ? 'web' : 'android';
   const role = command === 'runtime' || command === 'intent' || command === 'script' || workflowCommands.has(command) ? 'execution'
     : command === 'evidence' ? 'evidence' : expertCommands.has(command) ? 'expert' : 'capability';
@@ -317,6 +320,7 @@ function commandContract(command) {
 function commandSchema(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw new CommandError('unknown_command', `Unknown command: ${command}`, { field: 'command' });
+  if (command === 'executor-prepare') return require('./executors/preparation').preparationSchema();
   if (require('./ui-observation').commands.has(command)) return require('./ui-observation').schema(command, optionTypes);
   if (command === 'web-executor') return require('./executors/command-schema').webExecutorSchema();
   if (command === 'android-executor') return require('./executors/command-schema').androidExecutorSchema();

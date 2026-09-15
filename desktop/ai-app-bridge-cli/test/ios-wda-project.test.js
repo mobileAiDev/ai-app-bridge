@@ -8,7 +8,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { createHash } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
-const { prepareWdaProject, supportedVersion } = require('../bin/ios-wda-project');
+const { prepareWdaProject, prepareManagedWda, supportedVersion } = require('../bin/ios-wda-project');
 const { IOSBridgeProvider } = require('../bin/ios-provider');
 const { runExecution, currentExecution } = require('../bin/shared-kernel/execution-scope');
 const { createIOSRuntimeFixture } = require('../test-support/ios-runtime-fixture');
@@ -18,6 +18,29 @@ function temporary(t) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   return directory;
 }
+
+function removeOwnedBuild(child) {
+  const index = child.args.indexOf('-derivedDataPath');
+  assert.notEqual(index, -1, 'only a build process has a temporary build directory');
+  const directory = path.dirname(path.resolve(child.args[index + 1]));
+  assert.ok(directory.startsWith(path.join(os.tmpdir(), 'aab-wda-runtime-')), 'cleanup must stay inside an owned WDA build');
+  fs.rmSync(directory, { recursive: true, force: true });
+}
+
+test('WDA cleanup cannot infer a directory from a version probe or an arbitrary project path', () => {
+  assert.throws(() => removeOwnedBuild({ args: ['-version'] }));
+  assert.throws(() => removeOwnedBuild({ args: ['-derivedDataPath', path.join(process.cwd(), 'build')] }));
+  assert.ok(fs.existsSync(__filename));
+});
+
+test('managed WDA reuses intact source and rejects a changed cached integration', async t => {
+  const home = temporary(t);
+  const first = await prepareManagedWda({ home });
+  assert.equal(first.reused, false);
+  assert.equal((await prepareManagedWda({ home })).reused, true);
+  fs.appendFileSync(path.join(path.dirname(first.projectPath), 'WebDriverAgentLib/Routing/AABWDABinding.m'), '\n// changed fixture\n');
+  await assert.rejects(prepareManagedWda({ home }), { code: 'ios_wda_prepared_source_changed' });
+});
 
 test('prepared WDA keeps upstream untouched and includes the scheme post-build script', t => {
   const directory = temporary(t);
@@ -96,8 +119,7 @@ test('WDA setup cancellation and timeout await the owned resistant xcodebuild pr
     const child = JSON.parse(fs.readFileSync(observed));
     t.after(() => {
       try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-      const project = child.args[child.args.indexOf('-project') + 1];
-      fs.rmSync(path.dirname(path.dirname(project)), { recursive: true, force: true });
+      removeOwnedBuild(child);
     });
     assert.equal(child.CPATH, null);
     assert.equal(child.SDKROOT, null);
@@ -139,7 +161,7 @@ test('WDA build failure and build cancellation release ownership before any devi
     const child = JSON.parse(fs.readFileSync(observed));
     t.after(() => {
       try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
-      fs.rmSync(path.dirname(path.dirname(child.args[child.args.indexOf('-project') + 1])), { recursive: true, force: true });
+      removeOwnedBuild(child);
     });
     if (mode === 'cancel') controller.abort({ code: 'cancelled' });
     const result = await pending;

@@ -181,6 +181,11 @@ test('APK manifest and signer are inspected before accepting a supplied package 
   const args = { apkPath: file, aaptPath: 'controlled-aapt', apksignerPath: 'controlled-apksigner' };
   const run = async name => ({ stdout: name.endsWith('aapt') ? "package: name='example.installed' versionCode='12' versionName='2'\n" : `Signer #1 certificate SHA-256 digest: ${'a'.repeat(64)}\n` });
   const result = await inspectApk(args, run); assert.equal(result.versionCode, '12'); assert.equal(result.certificates[0], 'a'.repeat(64));
+  const instrumentation = await inspectApk({ ...args, packageName: 'example.installed.test' }, async name => name.endsWith('aapt')
+    ? { stdout: "package: name='example.installed.test' versionCode='' versionName=''\n" } : run(name));
+  assert.equal(instrumentation.packageName, 'example.installed.test');
+  assert.equal(instrumentation.versionCode, '');
+  assert.equal(instrumentation.sha256.length, 64);
   for (const signer of ['V1 Signer:', 'V2 Signer:', 'V3 Signer:', 'V3.0 Signer:', 'V3.1 Signer:', 'V4 Signer:']) {
     const sdk37 = await inspectApk(args, async name => name.endsWith('aapt') ? run(name)
       : { stdout: `${signer} certificate SHA-256 digest: ${'b'.repeat(64)}\n` });

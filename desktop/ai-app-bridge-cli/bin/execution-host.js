@@ -585,6 +585,7 @@ function getSharedObservationCollector(factRecorder) {
 }
 
 async function runRawCommand(command, args = {}) {
+  if (command === 'executor-prepare') return require('./executors/preparation').prepareExecutor(args);
   if (command === 'android-executor') {
     androidExecutor ||= new (require('./executors/android-host').AndroidExecutorHost)();
     return androidExecutor.run(args);

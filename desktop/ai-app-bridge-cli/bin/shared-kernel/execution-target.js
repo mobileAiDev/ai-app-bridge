@@ -73,6 +73,10 @@ function commandPlatform(command) {
 // select another platform; a partial identity can override defaults only on the
 // same platform. Never mix an Android serial with an iOS/Web connection.
 function bindCommandTarget(command, args, defaultTarget = null, explicitTarget) {
+  if (command === 'executor-prepare') {
+    if (explicitTarget !== undefined) throw new CommandError('target_platform_mismatch', 'Executor preparation runs on the Host and accepts no device target.');
+    return { target: null, args: { ...args } };
+  }
   const platform = commandPlatform(command);
   const definition = definitions[platform];
   const selected = explicitTarget === undefined ? defaultTarget : normalizeExecutionTarget(explicitTarget);

@@ -14,7 +14,7 @@ const { isMutationCommand, executionTimeoutMs } = require('./command-registry');
 const { normalizeExecutionTarget } = require('./shared-kernel/execution-target');
 const { descriptorBinding, bindingHeaders, assertRuntimeResponse, bindingFailure } = require('./ios-runtime-binding');
 const { openWdaPort, target: wdaTarget } = require('./ios-wda-port');
-const { prepareWdaProject, wdaBuildEnvironment } = require('./ios-wda-project');
+const { prepareManagedWda, wdaBuildEnvironment } = require('./ios-wda-project');
 const { executeWDAAction, reconcileWDA, completionPort } = require('./ios-wda-execution');
 const { deviceCommandRejection, deviceCommandProof } = require('./ios-device-outcome');
 const { initializationProof } = require('./ios-wda-startup');
@@ -776,8 +776,8 @@ class IOSBridgeProvider {
     if (!teamId) return { ok: false, error: 'ios_team_id_required', message: 'Signing WDA requires an explicit teamId or configured DEVELOPMENT_TEAM.' };
     checkExecution();
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'aab-wda-runtime-'));
-    const prepared = prepareWdaProject({ destination: path.join(directory, 'source') });
     const ctx = this.context(args);
+    const prepared = await prepareManagedWda();
     const xcodeArgs = ['-project', prepared.projectPath, '-scheme', 'WebDriverAgentRunner', '-sdk', 'iphoneos', '-destination', `id=${device.udid}`,
       '-derivedDataPath', path.join(directory, 'build'), `DEVELOPMENT_TEAM=${teamId}`, `PRODUCT_BUNDLE_IDENTIFIER=${wdaTestBundleId}`,
       'ENABLE_DEFAULT_HEADER_SEARCH_PATHS=NO', '-allowProvisioningUpdates'];

@@ -1,0 +1,788 @@
+{
+  "version": "aab.notallyx.executor-regression/1",
+  "scope": [
+    "text create/edit/reopen",
+    "multiline Chinese text",
+    "pin",
+    "label create/assign",
+    "archive/restore",
+    "trash/restore",
+    "list create/reopen",
+    "checkbox persistence",
+    "search",
+    "UI Automator readback"
+  ],
+  "steps": [
+    {
+      "phase": "create",
+      "name": "Create note",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "TakeNote"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "create",
+      "name": "Chinese title",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "id": "EnterTitle"
+      },
+      "fields": {
+        "text": "AAB-038-@RUN@"
+      }
+    },
+    {
+      "phase": "create",
+      "name": "Exact title readback",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "EnterTitle",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1
+    },
+    {
+      "phase": "create",
+      "name": "Multiline body",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "id": "EnterBody"
+      },
+      "fields": {
+        "text": "第一行中文\nsecond line & <tag>"
+      }
+    },
+    {
+      "phase": "create",
+      "name": "Exact editor readback",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "EnterBody",
+        "text": "第一行中文\nsecond line & <tag>"
+      },
+      "count": 1
+    },
+    {
+      "phase": "create",
+      "name": "Dismiss keyboard",
+      "op": "action",
+      "action": "closeKeyboard",
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Pin note",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "置于顶部"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Pinned state",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "description": "取消固定"
+      },
+      "count": 1
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Open note menu",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "轻按查看更多选项"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "标签",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "标签"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Add label",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "添加标签"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Label name",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "id": "EditText"
+      },
+      "fields": {
+        "text": "Label-@RUN@"
+      }
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Dismiss keyboard",
+      "op": "action",
+      "action": "closeKeyboard",
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Save label",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "保存"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Assign label",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "Label-@RUN@",
+        "classSuffix": "CheckBox"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Return",
+      "op": "action",
+      "action": "back",
+      "fields": {}
+    },
+    {
+      "phase": "pin-and-label",
+      "name": "Assigned label",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "text": "Label-@RUN@"
+      },
+      "count": 1
+    },
+    {
+      "phase": "edit-and-reopen",
+      "name": "Edit existing body",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "id": "EnterBody"
+      },
+      "fields": {
+        "text": "第一行中文\nsecond line & <tag>-edited"
+      }
+    },
+    {
+      "phase": "edit-and-reopen",
+      "name": "Dismiss keyboard",
+      "op": "action",
+      "action": "closeKeyboard",
+      "fields": {}
+    },
+    {
+      "phase": "edit-and-reopen",
+      "name": "Return",
+      "op": "action",
+      "action": "back",
+      "fields": {}
+    },
+    {
+      "phase": "edit-and-reopen",
+      "name": "Saved note in overview",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "edit-and-reopen",
+      "name": "Reopen saved note",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "fields": {},
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "edit-and-reopen",
+      "name": "Saved edit readback",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "EnterBody",
+        "text": "第一行中文\nsecond line & <tag>-edited"
+      },
+      "count": 1
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Open note menu",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "轻按查看更多选项"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "存档",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "存档"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Open navigation drawer",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "打开抽屉式导航栏"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "已存档",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "design_menu_item_text",
+        "text": "已存档"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Archived note exists",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Open archived note",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "fields": {},
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Open note menu",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "轻按查看更多选项"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "取消存档",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "取消存档"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Open navigation drawer",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "打开抽屉式导航栏"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "笔记",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "design_menu_item_text",
+        "text": "笔记"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "archive-and-restore",
+      "name": "Restored note exists",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Open note for trash test",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "fields": {},
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Open note menu",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "轻按查看更多选项"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "删除",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "删除"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Open navigation drawer",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "打开抽屉式导航栏"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "已删除",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "design_menu_item_text",
+        "text": "已删除"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Trashed note exists",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Open trashed note",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "fields": {},
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Open note menu",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "轻按查看更多选项"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "恢复",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "恢复"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Open navigation drawer",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "打开抽屉式导航栏"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "笔记",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "design_menu_item_text",
+        "text": "笔记"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "trash-and-restore",
+      "name": "Restored original note",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Create list",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "MakeList"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "List title",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "id": "EnterTitle"
+      },
+      "fields": {
+        "text": "List-038-@RUN@"
+      }
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "First list item",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "description": "EditText0"
+      },
+      "fields": {
+        "text": "First-@RUN@"
+      }
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Dismiss keyboard",
+      "op": "action",
+      "action": "closeKeyboard",
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Add second item",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "text": "添加项目"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Second list item",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "description": "EditText1"
+      },
+      "fields": {
+        "text": "Second-@RUN@"
+      }
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Dismiss keyboard",
+      "op": "action",
+      "action": "closeKeyboard",
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Check second item",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "CheckBox1"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Checkbox checked",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "checked": true,
+        "id": "CheckBox"
+      },
+      "count": 1
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Pin list",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "置于顶部"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Return",
+      "op": "action",
+      "action": "back",
+      "fields": {}
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Saved list",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "List-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Reopen list",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "List-038-@RUN@"
+      },
+      "fields": {},
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "First item persists",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "text": "First-@RUN@"
+      },
+      "count": 1
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Second item persists",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "text": "Second-@RUN@"
+      },
+      "count": 1
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Checked state persists",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "checked": true,
+        "id": "CheckBox"
+      },
+      "count": 1
+    },
+    {
+      "phase": "list-and-checkbox",
+      "name": "Return",
+      "op": "action",
+      "action": "back",
+      "fields": {}
+    },
+    {
+      "phase": "search",
+      "name": "Open search",
+      "op": "action",
+      "action": "click",
+      "selector": {
+        "visible": true,
+        "description": "搜索"
+      },
+      "fields": {}
+    },
+    {
+      "phase": "search",
+      "name": "Search unique note",
+      "op": "action",
+      "action": "replaceTextViaInputConnection",
+      "selector": {
+        "visible": true,
+        "id": "EnterSearchKeyword"
+      },
+      "fields": {
+        "text": "AAB-038-@RUN@"
+      }
+    },
+    {
+      "phase": "search",
+      "name": "Dismiss keyboard",
+      "op": "action",
+      "action": "closeKeyboard",
+      "fields": {}
+    },
+    {
+      "phase": "search",
+      "name": "Search finds saved note",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "AAB-038-@RUN@"
+      },
+      "count": 1,
+      "seek": true,
+      "timeoutMs": 12000
+    },
+    {
+      "phase": "search",
+      "name": "Search excludes list",
+      "op": "assert",
+      "selector": {
+        "visible": true,
+        "id": "Title",
+        "text": "List-038-@RUN@"
+      },
+      "count": 0
+    },
+    {
+      "phase": "search",
+      "name": "Return",
+      "op": "action",
+      "action": "back",
+      "fields": {}
+    },
+    {
+      "phase": "uia-readback",
+      "name": "UI Automator sees original package",
+      "op": "assert",
+      "engine": "uiautomator",
+      "selector": {
+        "resourceId": "io.github.mobileaidev.notallyx.sample:id/TakeNote"
+      },
+      "count": 1
+    }
+  ]
+}

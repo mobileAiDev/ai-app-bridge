@@ -1,4 +1,4 @@
-# Optional UI executors (0.3.7)
+# Optional UI executors (0.3.8)
 
 Bridge keeps its existing SDK paths and exposes optional executors through `capabilities`, `run`, and JavaScript/Python Script. Select an executor explicitly. No command silently changes a touch into a setter, switches framework after failure, or repeats an uncertain action.
 
@@ -15,9 +15,35 @@ Bridge keeps its existing SDK paths and exposes optional executors through `capa
 
 These dependencies are isolated from ordinary production source sets. They are visible in build metadata and diagnostics. They do not disappear from the installation or compatibility requirements. Android does **not** need a separate business App, repository, or Gradle project. The standard test APK is an Android test artifact.
 
-## Android: one entry in the existing application
+## Automatic preparation in the existing project
 
-Add the selected artifacts to the application's `androidTestImplementation` configuration. All Bridge artifacts use the same version:
+Use `executor-prepare` from CLI, MCP `run`, or JavaScript/Python `ctx.call` with `app.test`. This is a Host operation: it does not require a device target, install an App, start UI observation, or open an executor session. Preparation uses the selected project's existing toolchain and keeps its application ID. The result separates preparation from installation and session readiness.
+
+```sh
+ai-app-bridge executor-prepare --platform android --project-dir /project \
+  --module :app --variant debug --adapters '["espresso-web"]'
+ai-app-bridge executor-prepare --platform flutter --project-dir /flutter-app \
+  --flutter-path /flutter-sdk/bin/flutter
+ai-app-bridge executor-prepare --platform ios
+ai-app-bridge executor-prepare --platform web --browser chromium
+```
+
+- Android: a temporary Gradle init script adds the test dependencies and a generated session class only for this invocation. The dependency-check plugin is applied automatically. The result contains the actual application ID, instrumentation component, test class, APK paths and SHA-256 values. Existing matching test dependencies/runners are reused; conflicting Bridge test dependencies are rejected. Business Gradle, manifest and source files are not edited. Select the actual module and debuggable variant; flavors and APK splits retain their original identities. The current build integration uses the AGP 7.4–8.x variant API on macOS/Linux; AGP 9 and Windows preparation are not part of this profile. A local `file:` Maven `repositoryUrl` can explicitly select development artifacts; ordinary preparation resolves the same release version from JitPack.
+- Flutter: the command runs the project's selected Flutter executable, adds the exact `ai_app_bridge_test` version to `dev_dependencies` with Pub, and generates a test entry under `build/ai-app-bridge`. It supports Pub workspaces, an explicit `entrypoint`, `flavor`, `dartDefines`, and `mainArguments` for applications whose main accepts a string list. Pubspec/lock changes are visible configuration; the result lists them. Main Dart code is not edited. The helper uses the same Flutter SDK as the App. Baseline resolution uses `pub get --enforce-lockfile`: commit a valid application/workspace lockfile first. This prevents dependency changes before comparison, including on a new computer. If adding the helper changes an existing production dependency version or Pub fails midway, preparation restores the pubspec/lock and reports the conflict or original error. A successful dependency solve is followed by a real debug build. Repeated preparation reuses the exact resolved helper. `testPackagePath` explicitly selects a local helper during development and must carry the matching Bridge version. The current WidgetTester host remains Android-only; iOS Flutter controls use the existing iOS Flutter SDK/WDA paths.
+- iOS: checks Xcode and prepares a pinned WDA project in the managed executor directory. Source hashes are verified before reuse. `ios-setup --start-wda` reuses that project to sign, build and launch the Runner for the explicitly selected phone. Xcode, signing credentials, device trust and Enable UI Automation are still required. No XCTest source is added to the business application.
+- Web: uses the existing pinned Playwright/browser preparation, outside the page SDK. It can be reused without modifying the web project or adding browser dependencies to its production bundle.
+
+Generated files and logs are placed under the project's `build/ai-app-bridge/prepare/<id>`; each preparation writes `result.json`, including failures. Mobile preparation reports `built-not-installed` (iOS source preparation reports `source-prepared`). Install the returned matching artifacts with the public install commands, then open the selected executor. JS/Python workflow changes do not require rebuilding an already prepared App; changes to application code or test dependencies do.
+
+Installing the npm package alone does not install Android SDK/JDK, Flutter, Xcode, Python, or project-specific tools such as Rust. Preparation reports the missing prerequisite or original compiler log; it never upgrades a business toolchain to hide a conflict.
+
+Android uses the project's Gradle wrapper. For a monorepo that shares a wrapper outside `projectDir`, pass its exact path as `--gradle-path /path/to/gradlew`. Existing matching test dependencies and a custom test runner are retained. Installing a generated androidTest APK does not require it to declare an application version; manifest package, signature and installed APK bytes are still verified.
+
+Android WebView H5 requires the optional `espresso-web` adapter and the application's existing JavaScript configuration. iOS WKWebView uses the existing bound H5 SDK path. Playwright manages browser pages; it is not silently used as the controller for a native App's embedded WebView.
+
+## Android: optional manual customization
+
+Automatic preparation generates the entry and dependencies below. Add them manually only when the project needs custom test rules or adapters. All Bridge artifacts use the same version:
 
 ```kotlin
 android {
@@ -26,9 +52,9 @@ android {
     }
 }
 dependencies {
-    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.3.7")
+    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.3.8")
     // Optional H5 adapter:
-    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.3.7")
+    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.3.8")
 }
 ```
 
@@ -79,11 +105,13 @@ Compose is optional and its runtime is supplied by the consumer. The initial Com
 
 The rule must start **before** Activity/composition creation. The adapter uses automatic test clock advancement and idle frame ticks; animation timing is not wall-clock fidelity. `click` uses Compose touch input; `composeInput`, `composeReplaceText`, `composeClearText`, scroll semantics and `semanticLongClick` are explicit semantics operations. WebView/platform Views and system dialogs require their corresponding adapters. No private Compose field reflection is used by Bridge.
 
+Espresso text actions have different semantics. `replaceText` is the framework's setter path; a custom editor can deliberately suppress its business listeners, so an immediate text readback is insufficient. `replaceTextViaInputConnection` explicitly selects the editor's full text and commits through its `InputConnection`, reporting `espresso-input-connection`. It supports Unicode when the editor accepts that connection and does not fall back to a setter. `typeText` injects key input and has the framework's keyboard character limits. Reopen the screen and check persisted application state for all three paths; none alone proves a physical keyboard/IME workflow. Espresso observations include checked state for `Checkable` widgets.
+
 ## Flutter
 
-Add `ai_app_bridge_test: 0.3.7` to the application's `dev_dependencies`. The helper takes `flutter_test` and `integration_test` from the **same Flutter SDK** as the application. It is a Dart test helper, not an additional Android plugin with its own AGP/Kotlin versions.
+Add `ai_app_bridge_test: 0.3.8` to the application's `dev_dependencies`. The helper takes `flutter_test` and `integration_test` from the **same Flutter SDK** as the application. It is a Dart test helper, not an additional Android plugin with its own AGP/Kotlin versions.
 
-The helper declares Flutter **>=3.41.0** and Dart **>=3.11.0 <4.0.0**. This release was built and exercised with Flutter **3.41.9 on Android API 25** and **3.44.8 on Android API 36**. These are the verified combinations; newer SDK versions still need validation with the application's plugin graph.
+The helper declares Flutter **>=3.41.0** and Dart **>=3.11.0 <4.0.0**. The 0.3.8 automatic preparation was exercised with LocalSend on Flutter **3.41.9 / Android API 36**, preserving all 214 production dependency versions. Earlier executor validation covered Flutter 3.41.9 / API 25 and 3.44.8 / API 36. These are specific verified combinations; other SDK versions still need validation with the application's plugin graph.
 
 ```dart
 // integration_test/bridge_test.dart

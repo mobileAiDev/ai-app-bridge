@@ -1,6 +1,6 @@
 name: ai_app_bridge_test
 description: Optional integration_test executor for AI App Bridge. Add to dev_dependencies only.
-version: 0.3.7
+version: 0.3.8
 repository: https://github.com/mobileAiDev/ai-app-bridge
 environment:
   sdk: '>=3.11.0 <4.0.0'
