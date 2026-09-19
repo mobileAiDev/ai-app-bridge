@@ -35,7 +35,7 @@ function pythonCandidates({ pythonPath, env = process.env } = {}) {
 }
 
 function probePython(executable, env) {
-  const options = { encoding: 'utf8', shell: false };
+  const options = { encoding: 'utf8', shell: false, timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 16384 };
   if (env) options.env = env;
   const probe = spawnSync(executable, ['-c', 'import sys; print("%d.%d" % sys.version_info[:2])'], options);
   if (probe.status !== 0 || !probe.stdout) {

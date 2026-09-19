@@ -5,10 +5,10 @@ const path = require('node:path');
 const http = require('node:http');
 const { fork } = require('node:child_process');
 const { CommandError } = require('./command-errors');
-const { validateRunRequest } = require('./command-request');
+const { validateRunRequest, publicOutputLimit } = require('./command-request');
 const { publicReply, publicFailure, isPublicReply, finishReply } = require('./public-reply');
 const { protocol, maxMessageBytes, readJson, decodeReply } = require('./runtime-protocol');
-const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, readEndpoint, prepareDirectory } = require('./runtime-directory');
+const { runtimeLocation, runtimeIdentity, requireCompatible, acquireRuntimeLock, readEndpoint, prepareDirectory } = require('./runtime-directory');
 const { executablePath } = require('./shared-kernel/executable-path');
 const starting = new Map();
 
@@ -65,11 +65,6 @@ async function probe(location, signal) {
   // A busy OS lock is authoritative even when health or startup publication
   // times out. Never replace this owner based on elapsed time or its PID file.
   return { state: endpoint ? 'unresponsive' : 'starting', cause };
-}
-
-function requireCompatible(status, expected) {
-  if (status.identity.code !== expected.code) throw new CommandError('runtime_code_mismatch', 'The running runtime uses different code. Inspect runtime status and explicitly stop it before starting this build.', { details: { runtimeId: status.runtimeId, pid: status.pid } });
-  if (status.identity.config !== expected.config) throw new CommandError('runtime_configuration_mismatch', 'The running runtime uses different persistent/provider configuration. Use the same configuration or explicitly stop it first.', { details: { runtimeId: status.runtimeId, pid: status.pid } });
 }
 
 function launch(location) {
@@ -138,6 +133,7 @@ async function ensureRuntime(location, identity, signal) {
 // assembled here with the same module.
 async function run(request, { signal } = {}) {
   const command = typeof request?.command === 'string' ? request.command : undefined;
+  const maxBytes = publicOutputLimit(request);
   let extract;
   try {
     request = validateRunRequest(request);
@@ -145,7 +141,7 @@ async function run(request, { signal } = {}) {
       extract = require('./extraction/prepare').prepareExtraction(request.extract);
     }
   }
-  catch (error) { return { value: publicFailure({ command, stage: 'validation', error }) }; }
+  catch (error) { return { value: publicFailure({ command, stage: 'validation', error, maxBytes }) }; }
   const local = async reply => ({ value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true }),
     extract, output: request.output }) });
   try {

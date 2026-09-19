@@ -157,6 +157,7 @@ async function restoreUnknownOperation(args = {}) {
       operationId,
       status: terminal ? checkpoint.status : 'failed',
       error: terminal ? checkpoint.error || null : 'runtime_lost',
+      ...(checkpoint.diagnostics ? { diagnostics: checkpoint.diagnostics } : {}),
       persisted: true,
       restored: true,
       resumeMode: gate.ok ? 'checkpoint' : 'none',

@@ -13,16 +13,15 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
   const pending = [];
   const replies = new Map();
   const maxPending = 32;
-  const stderr = [];
-  let stderrBytes = 0;
+  let stderr = Buffer.alloc(0);
   let stderrTotalBytes = 0;
 
   if (child.stderr) {
     child.stderr.on('data', chunk => {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       stderrTotalBytes += bytes.length;
-      const retained = bytes.subarray(0, Math.max(0, maxDiagnosticBytes - stderrBytes));
-      if (retained.length) { stderr.push(retained); stderrBytes += retained.length; }
+      stderr = bytes.length >= maxDiagnosticBytes ? Buffer.from(bytes.subarray(-maxDiagnosticBytes))
+        : Buffer.concat([stderr.subarray(Math.max(0, stderr.length + bytes.length - maxDiagnosticBytes)), bytes]);
     });
   }
   child.stdin.on('error', error => fail(error));
@@ -131,7 +130,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
   }
 
   function diagnostics() {
-    return stderrTotalBytes ? { stderr: Buffer.concat(stderr).toString('utf8'), stderrTruncated: stderrTotalBytes > stderrBytes } : {};
+    return stderrTotalBytes ? { stderr: stderr.toString('utf8').replace(/^\uFFFD+/, ''), stderrTruncated: stderrTotalBytes > stderr.length } : {};
   }
   return { send, nextMessage, waitReply, stop, diagnostics };
 }

@@ -11,9 +11,7 @@ const { protocol } = require('./runtime-protocol');
 const { canonicalPath } = require('./shared-kernel/canonical-path');
 const { executablePath } = require('./shared-kernel/executable-path');
 
-let fingerprint;
-function codeFingerprint() {
-  if (fingerprint) return fingerprint;
+function calculateCodeFingerprint() {
   const hash = createHash('sha256');
   function visit(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -35,9 +33,13 @@ function codeFingerprint() {
   hash.update(fs.readFileSync(path.join(nativeDirectory, 'index.js')));
   hash.update(fs.readFileSync(path.join(nativeDirectory, 'build/Release/segmented_fact_store.node')));
   hash.update(JSON.stringify({ node: process.versions.node, modules: process.versions.modules }));
-  fingerprint = hash.digest('hex');
-  return fingerprint;
+  return hash.digest('hex');
 }
+
+// Pin the running client's code when this entrypoint loads, before the first
+// request. Replacing installed files cannot make this process claim new code.
+const fingerprint = calculateCodeFingerprint();
+const packageVersion = require('../package.json').version;
 
 function runtimeLocation() {
   const target = hostFactStoreTarget();
@@ -55,7 +57,31 @@ function runtimeIdentity(location = runtimeLocation()) {
   const config = { facts: location.facts, profile: location.profile, ownership: canonicalPath(ownershipDirectory()),
     adb: executablePath(process.env.ADB || 'adb') ?? { unavailable: process.env.ADB || 'adb' },
     environment: Object.fromEntries(names.map(name => [name, process.env[name] ?? null])) };
-  return { protocol, code: codeFingerprint(), config: createHash('sha256').update(JSON.stringify(config)).digest('hex') };
+  return { protocol, code: fingerprint, config: createHash('sha256').update(JSON.stringify(config)).digest('hex'),
+    version: packageVersion, node: { version: process.versions.node, modules: process.versions.modules, napi: process.versions.napi } };
+}
+
+function requireCompatible(status, client) {
+  const runtime = status.identity;
+  const codeMismatch = runtime?.code !== client?.code;
+  const configMismatch = runtime?.config !== client?.config;
+  if (!codeMismatch && !configMismatch) return;
+  const parse = version => typeof version === 'string' && /^\d+\.\d+\.\d+$/.test(version) ? version.split('.').map(Number) : null;
+  const runtimeVersion = parse(runtime?.version), clientVersion = parse(client?.version);
+  let outdatedSide = 'undetermined';
+  if (runtimeVersion && clientVersion) {
+    const index = runtimeVersion.findIndex((part, i) => part !== clientVersion[i]);
+    if (index >= 0) outdatedSide = runtimeVersion[index] < clientVersion[index] ? 'runtime' : 'client';
+  }
+  const describe = identity => `package ${identity?.version ?? 'unknown'}, Node ${identity?.node?.version ?? 'unknown'}, ABI ${identity?.node?.modules ?? 'unknown'}, code ${identity?.code ?? 'unknown'}, config ${identity?.config ?? 'unknown'}`;
+  let next;
+  if (!codeMismatch) next = 'Use matching persistent/provider configuration; the running Runtime was not restarted.';
+  else if (outdatedSide === 'client') next = 'The client package is older. Update and reconnect the client; do not stop the newer Runtime to fix this client.';
+  else if (outdatedSide === 'runtime') next = 'The Runtime package is older. Finish its active tasks, then explicitly run runtime --operation stop --extract null and reconnect with the updated installation.';
+  else next = 'Builds or Node environments differ. Align the installations and reconnect; fingerprints alone cannot identify an older side.';
+  throw new CommandError(codeMismatch ? 'runtime_code_mismatch' : 'runtime_configuration_mismatch',
+    `Client: ${describe(client)}. Runtime: ${describe(runtime)}. ${next}`,
+    { details: { runtimeId: status.runtimeId, pid: status.pid, client, runtime, outdatedSide } });
 }
 
 function prepareDirectory(location) {
@@ -106,4 +132,4 @@ function publishEndpoint(location, endpoint) {
   fs.renameSync(temporary, location.endpointFile);
 }
 
-module.exports = { runtimeLocation, runtimeIdentity, prepareDirectory, acquireRuntimeLock, readEndpoint, publishEndpoint };
+module.exports = { runtimeLocation, runtimeIdentity, requireCompatible, prepareDirectory, acquireRuntimeLock, readEndpoint, publishEndpoint };

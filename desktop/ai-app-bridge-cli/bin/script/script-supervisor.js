@@ -435,6 +435,7 @@ function createScriptSupervisor({
       pendingQuestion: record.status === 'waiting_for_agent' ? record.pendingQuestion : null,
       error: record.error,
       hash: record.hash,
+      ...(record.diagnostics ? { diagnostics: record.diagnostics } : {}),
       resultRef: record.resultRef ?? null,
       eventSequence: record.events.sequence,
       events: record.events.after(args.afterSequence, args.eventLimit ?? args.limit),
@@ -519,6 +520,7 @@ function persistRecord(record, kind, body) {
 }
 
 async function commitTerminal(record, status, error, now, result) {
+  record.diagnostics = status === 'failed' ? result?.diagnostics : undefined;
   let revision = record.checkpointRevision + 1;
   let resultRef = null;
   if (status === 'completed' && record.store) {
@@ -541,6 +543,7 @@ async function commitTerminal(record, status, error, now, result) {
     status,
     error,
     resultRef,
+    ...(record.diagnostics ? { diagnostics: record.diagnostics } : {}),
     ...(record.recording ? { recording: record.recording.info() } : {}),
   };
   let persisted = await persistRecord(record, 'checkpoint', checkpoint);

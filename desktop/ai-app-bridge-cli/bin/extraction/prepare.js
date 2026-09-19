@@ -47,7 +47,7 @@ function prepareExtraction(extract) {
     executable = executablePath(python.executable);
     if (!executable) reject('The selected Python interpreter is unavailable.', 'extract.language', 'extraction_runtime_unavailable');
     const checked = spawnSync(executable, ['-c', 'import sys; compile(sys.stdin.read(), sys.argv[1], "exec")', filename],
-      { input: source, encoding: 'utf8', timeout: 5000, maxBuffer: 16384, cwd });
+      { input: source, encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 16384, cwd });
     if (checked.error) reject(checked.error.message, 'extract.language', 'extraction_runtime_unavailable');
     if (checked.status !== 0) reject(checked.stderr.trim(), 'extract.source', 'extraction_syntax_error');
   }

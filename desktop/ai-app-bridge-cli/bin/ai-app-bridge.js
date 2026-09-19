@@ -5,6 +5,7 @@ const { CommandError } = require('./command-errors');
 const { commandDefinitions, isolatedCommandDefinitions, parseCliOptions } = require('./command-registry');
 const { commandHelpSchema } = require('./command-discovery');
 const { publicFailure, exitCodeFor } = require('./public-reply');
+const { publicOutputLimit } = require('./command-request');
 const runtime = require('./runtime-client');
 
 const helpText = `Usage: ai-app-bridge <command> [options]
@@ -36,6 +37,7 @@ Example: ai-app-bridge script --extract null --operation start --script '{"schem
 
 async function main() {
   let command;
+  let maxBytes;
   const connection = new AbortController();
   const disconnect = () => connection.abort();
   process.once('SIGINT', disconnect);
@@ -62,13 +64,15 @@ async function main() {
     // The public fields leave the CLI options before the command's own parser
     // sees them; each is one JSON value and never reaches the device action.
     const { extract, output, ...options } = parsed.options;
-    const request = { command, ...publicFields({ extract, output }) };
+    const request = { command, ...publicFields({ output }) };
+    maxBytes = publicOutputLimit(request);
+    Object.assign(request, publicFields({ extract }));
     request.arguments = parseCliOptions(command, options);
     const { value: reply } = await runtime.run(request, { signal: connection.signal });
     process.stdout.write(`${JSON.stringify(reply)}\n`);
     process.exitCode = exitCodeFor(reply);
   } catch (error) {
-    const reply = publicFailure({ command, stage: 'validation', error });
+    const reply = publicFailure({ command, stage: 'validation', error, maxBytes });
     process.stdout.write(`${JSON.stringify(reply)}\n`);
     process.exitCode = exitCodeFor(reply);
   } finally {

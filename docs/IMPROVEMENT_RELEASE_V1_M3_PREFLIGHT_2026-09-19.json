@@ -1,0 +1,47 @@
+{
+  "method": "Real Gradle configuration with production init script, temporary consumer project, help task; no APK build or device installation",
+  "incompatible": {
+    "module": ":app",
+    "variant": "debug",
+    "actual": {
+      "compileSdk": 33,
+      "compileSdkPreview": null,
+      "agp": "8.7.0",
+      "gradle": "8.9",
+      "java": "17.0.20"
+    },
+    "requirements": {
+      "minCompileSdk": 34,
+      "minAgp": "8.1.1",
+      "dependencies": [
+        "androidx.test.uiautomator:uiautomator:2.4.0"
+      ]
+    },
+    "status": "incompatible",
+    "issues": [
+      "compileSdk 33 < required 34"
+    ],
+    "impact": "Selected application module and its androidTest variant; temporary runner, test sources and dependencies are added for this invocation. compileSdk is unchanged."
+  },
+  "compatible": {
+    "module": ":app",
+    "variant": "debug",
+    "actual": {
+      "compileSdk": 34,
+      "compileSdkPreview": null,
+      "agp": "8.7.0",
+      "gradle": "8.9",
+      "java": "17.0.20"
+    },
+    "requirements": {
+      "minCompileSdk": 34,
+      "minAgp": "8.1.1",
+      "dependencies": [
+        "androidx.test.uiautomator:uiautomator:2.4.0"
+      ]
+    },
+    "status": "compatible",
+    "issues": [],
+    "impact": "Selected application module and its androidTest variant; temporary runner, test sources and dependencies are added for this invocation. compileSdk is unchanged."
+  }
+}

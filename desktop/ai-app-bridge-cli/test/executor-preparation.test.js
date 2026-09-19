@@ -58,6 +58,8 @@ test('Android preparation returns the original variant and verified APK bytes wi
     assert.equal(options.cwd, project);
     assert.ok(args.includes(':app:aiAppBridgePrepareExecutor'));
     const config = JSON.parse(fs.readFileSync(args.find(arg => arg.startsWith('-Daab.prepare.config=')).split('=').slice(1).join('=')));
+    assert.equal(config.requirements.minCompileSdk, 34);
+    fs.writeFileSync(path.join(config.directory, 'android-preflight.json'), JSON.stringify({ status: 'compatible', module: ':app', variant: 'sitDebug' }));
     const application = path.join(config.directory, 'original-app.apk'), tests = path.join(config.directory, 'original-app-test.apk');
     fs.writeFileSync(application, 'original app'); fs.writeFileSync(tests, 'instrumentation');
     fs.writeFileSync(path.join(config.directory, 'android-build.json'), JSON.stringify({ schemaVersion: 'aab.android-prepared-build/v1',
@@ -90,6 +92,28 @@ test('a failed or cancelled prepare retains its log and releases the project loc
     return true;
   });
   assert.equal((await withProject(project, async () => ({ prepared: true }), { home })).prepared, true);
+});
+
+test('Android preflight exposes compileSdk conflicts before build and retains actual/required values', async t => {
+  const { project, home } = fixture(t);
+  for (const adapters of [[], ['compose']]) {
+    await assert.rejects(prepareAndroid({ projectDir: project, module: ':app', variant: 'debug', adapters }, { home,
+      run: async (_file, args) => {
+        const config = JSON.parse(fs.readFileSync(args.find(arg => arg.startsWith('-Daab.prepare.config=')).slice('-Daab.prepare.config='.length)));
+        assert.equal(config.requirements.minCompileSdk, adapters.length ? 35 : 34);
+        const preflight = { module: ':app', variant: 'debug', status: 'incompatible', actual: { compileSdk: 33 },
+          requirements: config.requirements, issues: ['compileSdk 33 < required ' + config.requirements.minCompileSdk] };
+        fs.writeFileSync(path.join(config.directory, 'android-preflight.json'), JSON.stringify(preflight));
+        throw Object.assign(new Error('configuration failed'), { stdout: 'preflight only, no compilation', stderr: '', code: 1 });
+      } }), error => {
+      assert.equal(error.code, 'executor_prepare_incompatible');
+      assert.equal(error.details.preflight.actual.compileSdk, 33);
+      assert.equal(error.details.preflight.requirements.minCompileSdk, adapters.length ? 35 : 34);
+      assert.match(error.message, /No project configuration was upgraded/);
+      assert.equal(fs.readFileSync(path.join(project, 'business.txt'), 'utf8'), 'original business source');
+      return true;
+    });
+  }
 });
 
 test('Flutter dependency comparison traverses business dependencies across workspace roots, excluding dev-only packages', () => {

@@ -28,7 +28,10 @@ async function runExtraction(prepared, inputs) {
       shell: false, cwd: prepared.cwd, stdio: ['pipe', 'pipe', 'pipe'],
     });
     channel = createScriptSessionChannel(child, { maxInputFrameBytes: MAX_INPUT_FRAME_BYTES, maxOutputFrameBytes: MAX_OUTPUT_FRAME_BYTES });
-    exited = new Promise(resolve => child.once('close', resolve));
+    exited = new Promise(resolve => {
+      child.once('exit', resolve);
+      child.once('error', () => { if (child.pid == null) resolve(); });
+    });
     const timeout = new Promise(resolve => { timer = setTimeout(() => resolve({ type: 'fail', error: 'extraction_timeout' }), prepared.timeoutMs); });
     const next = () => Promise.race([channel.nextMessage(), timeout]);
     let message = await next();
@@ -58,6 +61,10 @@ async function runExtraction(prepared, inputs) {
     clearTimeout(timer);
     channel?.stop();
     if (exited) await exited;
+    // Descendants may inherit pipes, but are outside the worker lifecycle.
+    // Close our pipe handles after the worker exits instead of waiting for
+    // every descendant to close its copies of stdout/stderr.
+    child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy();
     try { if (directory) fs.rmSync(directory, { recursive: true, force: true }); }
     catch (error) { result = { ok: false, error: 'extraction_cleanup_failed', message: error.message }; }
     finally { active--; }

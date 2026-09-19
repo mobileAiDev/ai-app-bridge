@@ -31,6 +31,28 @@ gradle.beforeProject { consumer ->
         }
         consumer.pluginManager.apply(io.github.mobileaidev.aiappbridge.gradle.AiAppBridgeTestGradlePlugin)
         consumer.extensions.getByName('androidComponents').finalizeDsl { android ->
+            // Only requirements of the dependencies selected by this preparer.
+            // Read evaluated DSL; never rewrite compileSdk or guess from text.
+            def agp = consumer.plugins.getPlugin('com.android.application').class.classLoader
+                .loadClass('com.android.Version').getField('ANDROID_GRADLE_PLUGIN_VERSION').get(null).toString()
+            def actual = [compileSdk: android.compileSdk, compileSdkPreview: android.compileSdkPreview,
+                agp: agp, gradle: consumer.gradle.gradleVersion, java: System.getProperty('java.version')]
+            def issues = []
+            def unresolved = actual.compileSdk == null || actual.compileSdkPreview != null || !(agp ==~ /\d+\.\d+\.\d+/)
+            if (actual.compileSdk == null || actual.compileSdkPreview != null) issues.add('A numeric stable compileSdk is required to check the selected dependencies')
+            else if (actual.compileSdk < config.requirements.minCompileSdk) issues.add('compileSdk ' + actual.compileSdk + ' < required ' + config.requirements.minCompileSdk)
+            if (!(agp ==~ /\d+\.\d+\.\d+/)) issues.add('AGP version could not be compared: ' + agp)
+            else {
+                def got = agp.tokenize('.').collect { it.toInteger() }
+                def need = config.requirements.minAgp.tokenize('.').collect { it.toInteger() }
+                def different = (0..2).find { got[it] != need[it] }
+                if (different != null && got[different] < need[different]) issues.add('AGP ' + agp + ' < required ' + config.requirements.minAgp)
+            }
+            def report = [module: consumer.path, variant: config.variant, actual: actual, requirements: config.requirements,
+                status: issues.empty ? 'compatible' : (unresolved ? 'unresolved' : 'incompatible'), issues: issues,
+                impact: 'Selected application module and its androidTest variant; temporary runner, test sources and dependencies are added for this invocation. compileSdk is unchanged.']
+            new File(config.directory, 'android-preflight.json').text = groovy.json.JsonOutput.toJson(report)
+            if (!issues.empty) throw new GradleException('[AiAppBridge] Executor preflight: ' + issues.join('; ') + '. No project configuration was upgraded.')
             if (!android.defaultConfig.testInstrumentationRunner) {
                 android.defaultConfig.testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
             }

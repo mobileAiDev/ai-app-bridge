@@ -269,3 +269,21 @@ test('real MCP concurrent extraction admits two workers, returns busy for the th
     assert.equal(read.control.source.ref.evidenceId, busy.control.source.ref.evidenceId);
   } finally { fs.writeFileSync(release, 'done'); await client.close(); }
 });
+
+test('a descendant holding inherited pipes cannot extend worker completion or timeout', { timeout: 7000 }, async () => {
+  const { runExtraction } = require('../bin/extraction/runner');
+  for (const finish of ['return true', 'while(true){}']) {
+    const pidPath = path.join(directory, `descendant-${finish.length}.pid`);
+    const source = `module.exports.main=()=>{const child=require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},5000)'],{stdio:'inherit'});
+      require('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(child.pid)); ${finish}}`;
+    const started = Date.now();
+    try {
+      const result = await runExtraction(prepareExtraction({ ...js(source), timeoutMs: 200 }), { kind: 'json', response: {}, execution: {}, control: {} });
+      assert(Date.now() - started < 2000, 'worker lifecycle must not await descendant pipe EOF');
+      assert.equal(result.ok, finish.startsWith('return'));
+      if (!result.ok) assert.equal(result.error, 'extraction_timeout');
+    } finally {
+      if (fs.existsSync(pidPath)) { try { process.kill(Number(fs.readFileSync(pidPath)), 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+    }
+  }
+});

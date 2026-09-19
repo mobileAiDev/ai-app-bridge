@@ -54,8 +54,7 @@ async function start() {
       if (message.method === 'stop') { await stop(); send({ value: status() }); return; }
       if (message.method !== 'execute') throw new CommandError('runtime_protocol_error', 'Unknown runtime method.');
       if (phase !== 'running') throw new CommandError('runtime_stopping', 'The runtime is stopping.');
-      if (message.identity?.code !== identity.code) throw new CommandError('runtime_code_mismatch', 'The runtime and client use different code.');
-      if (message.identity?.config !== identity.config) throw new CommandError('runtime_configuration_mismatch', 'The runtime and client use different configuration.');
+      require('./runtime-directory').requireCompatible({ identity, runtimeId, pid: process.pid }, message.identity);
       let validDirectory = false;
       if (typeof message.cwd === 'string' && path.isAbsolute(message.cwd)) {
         try { validDirectory = fs.statSync(message.cwd).isDirectory(); }

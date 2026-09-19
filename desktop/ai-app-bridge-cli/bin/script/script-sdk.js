@@ -2,9 +2,9 @@
 
 const fs = require('node:fs');
 const readline = require('node:readline');
-const { errorDiagnostic } = require('./script-diagnostics');
+const { boundedText, errorDiagnostic } = require('./script-diagnostics');
 
-const artifactPath = process.argv[2];
+const artifactPath = fs.realpathSync(process.argv[2]);
 const replies = new Map();
 const controlWaiters = [];
 let nextId = 0;
@@ -51,6 +51,14 @@ rl.on('line', (line) => {
     applyControl(message.control);
     run(message, inputParseMs).catch((error) => {
       const diagnostic = errorDiagnostic(error);
+      if (message.sourceName && message.sourceName !== artifactPath) {
+        if (diagnostic.stack) {
+          const mapped = diagnostic.stack.replaceAll(artifactPath, message.sourceName);
+          diagnostic.stack = boundedText(mapped, 8192);
+          diagnostic.stackTruncated ||= Buffer.byteLength(mapped) > 8192;
+        }
+        if (diagnostic.location?.file === artifactPath) diagnostic.location.file = boundedText(message.sourceName, 1024);
+      }
       send({ type: 'fail', error: message.extraction ? (error.code || 'extraction_failed') : diagnostic.message,
         message: diagnostic.message, diagnostic });
       process.exit(1);

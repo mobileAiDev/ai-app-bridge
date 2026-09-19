@@ -1,7 +1,7 @@
 'use strict';
 
 const { executeProviderCommand } = require('./device-provider');
-const { validateRunRequest } = require('./command-request');
+const { validateRunRequest, publicOutputLimit } = require('./command-request');
 const { resolveCommandPaths } = require('./shared-kernel/request-context');
 const { commandFailure, normalizeCommandResult } = require('./command-errors');
 const { publicReply, publicFailure, responseReply, finishReply, boundedReply } = require('./public-reply');
@@ -156,6 +156,7 @@ function requestedCommand(args) {
 
 async function runGeneric(args = {}, dependencies = {}) {
   const command = requestedCommand(args);
+  const maxBytes = publicOutputLimit(args);
   let request;
   let commandArguments;
   let extract;
@@ -163,7 +164,7 @@ async function runGeneric(args = {}, dependencies = {}) {
     request = validateRunRequest(args);
     commandArguments = resolveCommandPaths(request.command, request.arguments);
     extract = prepareExtraction(request.extract);
-  } catch (error) { return { value: publicFailure({ command, stage: 'validation', error, maxBytes: request?.output?.maxBytes }) }; }
+  } catch (error) { return { value: publicFailure({ command, stage: 'validation', error, maxBytes }) }; }
   try {
     const getStore = () => dependencies.responseStore || getResponseStore();
     if (command === 'response') {

@@ -52,6 +52,15 @@ function publicRequestSchema() {
   };
 }
 
+// Preserve a valid caller budget even when another part of the request fails
+// validation. Invalid output is still reported by validateRunRequest.
+function publicOutputLimit(args) {
+  if (!args || !Object.hasOwn(args, 'output')) return undefined;
+  try { validateValue(args.output, outputSchema, 'output'); }
+  catch { return undefined; }
+  return args.output.maxBytes;
+}
+
 function validateRunRequest(args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new CommandError('invalid_argument', 'run requires an object.', { field: 'arguments' });
   const extra = Object.keys(args).find(key => !['command', 'arguments', 'extract', 'output'].includes(key));
@@ -66,4 +75,4 @@ function validateRunRequest(args) {
     ...(args.output ? { output: args.output } : {}) };
 }
 
-module.exports = { validateRunRequest, publicRequestSchema, extractSchema, outputSchema };
+module.exports = { validateRunRequest, publicRequestSchema, publicOutputLimit, extractSchema, outputSchema };

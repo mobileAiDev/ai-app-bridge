@@ -171,10 +171,13 @@ def bounded(value, size):
 
 
 def diagnostic(error):
-    result = {"type": type(error).__name__, "message": bounded(error, 2048),
-              "stack": bounded("".join(traceback.format_exception(type(error), error, error.__traceback__)), 8192)}
     frames = traceback.extract_tb(error.__traceback__)
-    if frames:
+    stack = "Traceback (most recent call last):\n" + "".join(traceback.format_list(frames[-20:])) + "".join(traceback.format_exception_only(type(error), error))
+    result = {"type": type(error).__name__, "message": bounded(error, 2048),
+              "stack": bounded(stack, 8192), "stackTruncated": len(frames) > 20 or len(stack.encode("utf-8")) > 8192}
+    if isinstance(error, SyntaxError) and error.filename:
+        result["location"] = {"file": bounded(error.filename, 1024), "line": error.lineno, "column": error.offset}
+    elif frames:
         frame = frames[-1]
         result["location"] = {"file": bounded(frame.filename, 1024), "line": frame.lineno}
     if hasattr(error, "value_path"):

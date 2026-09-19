@@ -66,9 +66,9 @@ async function withProject(projectDir, action, { home = executorHome() } = {}) {
       return result;
     } catch (error) {
       const result = { ok: false, bridgeVersion, directory, error: error.code || 'executor_prepare_failed',
-        message: error.message, elapsedMs: Date.now() - startedAtMs };
+        message: error.message, ...(error.details ? { details: error.details } : {}), elapsedMs: Date.now() - startedAtMs };
       atomicJson(path.join(directory, 'result.json'), result);
-      throw new CommandError(result.error, result.message, { details: { directory, resultFile: path.join(directory, 'result.json') } });
+      throw new CommandError(result.error, result.message, { details: { ...error.details, directory, resultFile: path.join(directory, 'result.json') } });
     }
   } finally { if (locked) lock.exec('ROLLBACK'); lock.close(); }
 }
@@ -111,21 +111,35 @@ async function prepareAndroid(args, { run = execFileBounded, home } = {}) {
     fs.writeFileSync(javaFile, androidEntry(adapters));
     const coordinate = module => `com.github.mobileAiDev.ai-app-bridge:${module}:${bridgeVersion}`;
     const config = { directory, module: args.module, variant: args.variant, repositoryUrl,
+      requirements: { minCompileSdk: adapters.includes('compose') ? 35 : 34, minAgp: '8.1.1',
+        dependencies: ['androidx.test.uiautomator:uiautomator:2.4.0', ...(adapters.includes('compose') ? ['androidx.compose.ui:ui-test-junit4-android:1.8.3'] : [])] },
       pluginCoordinate: coordinate('ai-app-bridge-gradle-plugin'),
       dependencies: [coordinate('ai-app-bridge-test-instrumentation'), ...adapters.map(adapter => coordinate(`ai-app-bridge-test-${adapter}`)),
         ...(adapters.includes('compose') ? ['androidx.compose.ui:ui-test-junit4:1.8.3'] : [])] };
     const configFile = path.join(directory, 'config.json');
     atomicJson(configFile, config);
     const template = path.resolve(__dirname, '../../runtime/executors/android/prepare.init.gradle');
-    await loggedRun(run, 'sh', [wrapper, '--init-script', template, `-Daab.prepare.config=${configFile}`,
+    const preflightFile = path.join(directory, 'android-preflight.json');
+    try { await loggedRun(run, 'sh', [wrapper, '--init-script', template, `-Daab.prepare.config=${configFile}`,
       `${args.module}:aiAppBridgePrepareExecutor`, '--console=plain', '--no-configuration-cache', '--max-workers=2'],
-    directory, 'gradle-build', { cwd: project, timeoutMs: args.timeoutMs ?? 600000 });
+    directory, 'gradle-build', { cwd: project, timeoutMs: args.timeoutMs ?? 600000 }); }
+    catch (error) {
+      const preflight = readJson(preflightFile);
+      if (preflight && preflight.status !== 'compatible') throw new CommandError(
+        preflight.status === 'incompatible' ? 'executor_prepare_incompatible' : 'executor_prepare_configuration_unresolved',
+        `Android executor requirements were not met before compilation: ${preflight.issues.join('; ')}. No project configuration was upgraded.`,
+        { details: { ...error.details, preflight, preflightFile } });
+      throw error;
+    }
+    const preflight = readJson(preflightFile);
+    if (preflight?.status !== 'compatible' || preflight.module !== args.module || preflight.variant !== args.variant)
+      throw new CommandError('executor_prepare_configuration_unresolved', 'The build did not report the selected module and variant preflight.', { details: { preflightFile } });
     const build = readJson(path.join(directory, 'android-build.json'));
     if (build?.schemaVersion !== 'aab.android-prepared-build/v1' || build.variant !== args.variant || build.module !== args.module
       || !build.packageName || !build.testPackageName || !build.runner || !build.applicationApks?.length || !build.testApks?.length)
       throw new CommandError('executor_prepare_artifact_missing', 'The requested application/test variant did not produce complete build metadata.');
     const artifacts = files => files.map(file => ({ path: requireFile(file), sha256: digest(fs.readFileSync(file)) }));
-    return { platform: 'android', engine: 'android-instrumentation', ...build, testClass,
+    return { platform: 'android', engine: 'android-instrumentation', ...build, testClass, preflight,
       instrumentation: `${build.testPackageName}/${build.runner}`, repositoryUrl,
       adapters: ['uiautomator', 'espresso', ...adapters], applicationApks: artifacts(build.applicationApks), testApks: artifacts(build.testApks),
       lifecycle: 'built-not-installed', projectFilesEdited: [],
