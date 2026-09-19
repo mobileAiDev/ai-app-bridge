@@ -1,0 +1,191 @@
+{
+  "release": "0.4.0",
+  "date": "2026-09-19",
+  "status": "prepublication-acceptance-passed",
+  "sourceCommit": "3133d20",
+  "reviewBase": "0005c1abbbbc066ef11a089e79b136b796b93c4",
+  "package": {
+    "path": "/Users/macbook/Documents/CompanyProject/ai-app-bridge-release-evidence/0.4.0-2026-09-19/aab-040-final-package/mobileaidev-ai-app-bridge-0.4.0.tgz",
+    "sha256": "63239bda91fda7f8f89afc7d8fa8e0ed1f4aca8d9a488ff9cda03afc4adff040",
+    "freshInstall": "passed",
+    "previousFullPackageVerificationSha256": "909f905eb7ee916c46ae125cf1691888db030bd1830ae38007eb1d353aae1470",
+    "differenceFromPrevious": [
+      "docs/COMMAND_CONTRACT.md",
+      "docs/OPTIONAL_EXECUTORS.md"
+    ]
+  },
+  "gates": [
+    {
+      "id": "A01",
+      "status": "passed",
+      "evidence": "public-return、Host/CLI/MCP、文本/bytes、本地路径与故障出口；最终包"
+    },
+    {
+      "id": "A02",
+      "status": "passed",
+      "evidence": "extract/source/解释器/语法预检及 CLI null/无值/JSON/字段剥离；拒绝时设备调用 0"
+    },
+    {
+      "id": "A03",
+      "status": "passed",
+      "evidence": "extraction 类型矩阵、JS/Python 四字段 inputs、安全整数、regex Unicode/JSON Pointer"
+    },
+    {
+      "id": "A04",
+      "status": "passed",
+      "evidence": "控制保护、待回答问题、Intent/Script 游标、采集覆盖、动作失败/未知及伪 ok"
+    },
+    {
+      "id": "A05",
+      "status": "passed",
+      "evidence": "最小/默认/最大正文、中文、控制区/错误/发现超限、大 summary 分页；完整正文测量"
+    },
+    {
+      "id": "A06",
+      "status": "passed",
+      "evidence": "throw/timeout/退出/超限后动作计数为 1；ref 跨进程/重启读取且 provider 调用 0"
+    },
+    {
+      "id": "A07",
+      "status": "passed",
+      "evidence": "原 value/feedback 不改写，保存字节与 checksum 往返，JS/Python 即时与重读一致"
+    },
+    {
+      "id": "A08",
+      "status": "passed",
+      "evidence": "not_requested、写入/容量/过期/校验损坏、归档；无假 ref、补采或嵌套快照"
+    },
+    {
+      "id": "A09",
+      "status": "passed",
+      "evidence": "8 MiB 两语言性能、两活跃 worker + 第三 busy、帧/日志/退出/停止/清理；参考机限制见上"
+    },
+    {
+      "id": "A10",
+      "status": "passed",
+      "evidence": "真实 Codex 客户端四种调用通过；Cursor 3.21.13 的 schema 与五次工具调用经原始客户端数据库和日志独立核对通过"
+    },
+    {
+      "id": "A11",
+      "status": "passed",
+      "evidence": "JS/Python 类型/源码位置/有限 stack 与 stderr，终态持久化，无协议污染"
+    },
+    {
+      "id": "A12",
+      "status": "passed",
+      "evidence": "真实 Gradle compileSdk 33 拒绝/34 通过；新旧双方及相同版本不同构建的身份错误"
+    },
+    {
+      "id": "A13",
+      "status": "passed",
+      "evidence": "四平台 native、全新安装、固定 npx、纯 MCP、重启恢复；最低 OS/物理 x64 未实测"
+    },
+    {
+      "id": "A14",
+      "status": "passed",
+      "evidence": "Host 来源/时序反例 + OPPO 旧/缺证据及错误预期；真实 POS 音频/外设不在本次业务验收内"
+    },
+    {
+      "id": "A15",
+      "status": "passed",
+      "evidence": "compact 已知状态/false/未知、前台与观察窗口回归及 OPPO 实测；低端硬件性能 not_run"
+    },
+    {
+      "id": "A16",
+      "status": "passed",
+      "evidence": "候选 CLI/MCP/Runtime、仓库消费脚本、OPPO/iOS SDK 0.4.0 已核实；全局入口及外部依赖的实际升级作为发布后的独立步骤跟踪"
+    }
+  ],
+  "tests": {
+    "host": {
+      "passed": 1375,
+      "failed": 0,
+      "skipped": 0,
+      "functional": 1325,
+      "serial": 50,
+      "files": 162
+    },
+    "documentationExamples": 5,
+    "notallyx": 138,
+    "androidTasks": 241,
+    "flutterSdk": 66,
+    "flutterHelper": "analyze and publish dry-run passed; no test directory",
+    "web": 23,
+    "native": {
+      "targets": [
+        "darwin-arm64",
+        "darwin-x64",
+        "linux-arm64-glibc",
+        "linux-x64-glibc"
+      ],
+      "passedPerTarget": 8
+    }
+  },
+  "reviews": {
+    "standards": {
+      "status": "passed",
+      "remainingP0P1P2": 0
+    },
+    "spec": {
+      "status": "passed",
+      "remainingP0P1P2": 0,
+      "finalFixCommit": "3133d20"
+    },
+    "cursorIndependentAudit": "passed"
+  },
+  "devices": {
+    "android": {
+      "serial": "b46093e6",
+      "model": "PKR110",
+      "platformVersion": "16",
+      "package": "io.github.mobileaidev.aiappbridge.sample",
+      "sdkVersion": "0.4.0",
+      "workflow": "passed",
+      "report": "aab-m4-sample-flow-r6/report.json"
+    },
+    "ios": {
+      "model": "iPhone18,2",
+      "platformVersion": "27.2",
+      "package": "io.github.mobileaidev.kiwix.sample",
+      "sdkVersion": "0.4.0",
+      "mcpReport": "aab-m4-ios-mcp-r2/report.json",
+      "retainedRefReport": "aab-m4-ios-mcp-r2/retained-report.json",
+      "deviceQueries": 3,
+      "refReads": 9,
+      "deviceMutationCalls": 0
+    }
+  },
+  "clients": {
+    "codex": {
+      "version": "0.155.0-alpha.9.2",
+      "status": "passed",
+      "calls": 4
+    },
+    "cursor": {
+      "version": "3.21.13",
+      "status": "passed",
+      "calls": 5,
+      "expectedErrors": 1,
+      "evidence": "aab-m4-cursor-client/acceptance/report.json"
+    }
+  },
+  "evidence": {
+    "root": "/Users/macbook/Documents/CompanyProject/ai-app-bridge-release-evidence/0.4.0-2026-09-19",
+    "manifest": "manifest.json",
+    "manifestSha256": "62db889017e067ff94c6f108ebfbd3edec457380395be802db7b332e5eb836d3",
+    "files": 125
+  },
+  "pendingPostAcceptance": [
+    "publish Git tag and public registries",
+    "verify public archives and coordinates",
+    "update related consumer dependencies and resolve/build",
+    "upgrade global CLI and verify new MCP entrypoints"
+  ],
+  "limitations": [
+    "No POS business/device regression",
+    "Minimum macOS/glibc versions and physical x64 hosts not tested",
+    "No complete Kiwix business regression",
+    "Low-end hardware performance not measured",
+    "Existing global CLI and MCP processes still 0.3.8 at acceptance time"
+  ]
+}
