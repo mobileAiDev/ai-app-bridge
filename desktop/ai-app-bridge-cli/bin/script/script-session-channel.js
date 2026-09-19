@@ -134,7 +134,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
     // Invalid bytes expand to replacement characters. Bound delivered UTF-8
     // text too, starting at a complete character in the retained tail.
     const text = Buffer.from(stderr.toString('utf8'));
-    let start = Math.max(0, text.length - 8192);
+    let start = Math.max(0, text.length - maxDiagnosticBytes);
     while (start < text.length && (text[start] & 0xc0) === 0x80) start++;
     return { stderr: text.subarray(start).toString('utf8'), stderrTruncated: stderrTotalBytes > stderr.length || start > 0 };
   }

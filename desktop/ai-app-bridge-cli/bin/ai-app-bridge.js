@@ -130,7 +130,7 @@ function parseArgs(argv) {
     append(name, next);
     index += 1;
   }
-  return { command, options, error };
+  return { command, options, ...(error ? { error } : {}) };
 }
 
 function appendOption(options, name, value) {
