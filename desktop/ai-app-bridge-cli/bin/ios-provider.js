@@ -96,7 +96,7 @@ class IOSBridgeProvider {
         case 'ios-status':
           return await this.runtimeGet(args, '/v1/status');
         case 'ios-ui-observation': {
-          const port = await this.runtimePort(args, context);
+          const port = await this.runtimePort(args, { ...context, mutation: false });
           const result = await port.post(require('./ui-observation').path(args), require('./ui-observation').request(args));
           return { ...result, endpoint: port.endpoint.baseUrl, device: port.endpoint.device, runtimeBinding: port.endpoint.runtimeBinding };
         }
@@ -445,7 +445,8 @@ class IOSBridgeProvider {
 
   async runtimePort(args, options = {}) {
     const endpoint = await this.resolveRuntimeEndpoint(args, options);
-    const httpOptions = { timeoutMs: this.context(args).httpTimeoutMs, headers: bindingHeaders(endpoint.runtimeBinding) };
+    const httpOptions = { timeoutMs: this.context(args).httpTimeoutMs, headers: bindingHeaders(endpoint.runtimeBinding),
+      ...(options.mutation === false ? { mutation: false } : {}) };
     const request = async (method, endpointPath, payload) => {
       let response;
       try {

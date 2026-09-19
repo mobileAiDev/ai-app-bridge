@@ -14,6 +14,7 @@ const { executeCommand } = require('../test-support/host-client');
 const { runExecution } = require('../bin/shared-kernel/execution-scope');
 const { commandSchema } = require('../bin/command-registry');
 const { lookupCompletion } = require('../bin/ios-execution');
+const { createDeviceMutationLease, runDeviceEffect } = require('../bin/shared-kernel/device-mutation-lease');
 
 const ownershipRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-ios-execution-ownership-'));
 process.env.AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR = ownershipRoot;
@@ -48,6 +49,10 @@ async function fixture(t, mode = 'complete') {
     if (['/v1/status', '/v1/flutter/snapshot'].includes(url.pathname)) return send({ ok: true,
       debugBridge: { runtimeEpoch: device.binding.runtimeEpoch, h5ExecutionSchema: 'aab.h5-execution/v1', h5TargetSchema: 'aab.ios-h5-target/v1', flutterExecutionSchema: 'aab.flutter-execution/v1' },
       flutter: { layout: { operable: { runtimeEpoch: 'engine-1' } } } });
+    if (['/v1/ui/observation', '/v1/flutter/observation'].includes(url.pathname)) {
+      if (mode === 'observation-response-lost') return res.destroy();
+      return send({ ok: false, error: 'ui_observation_lease_mismatch' });
+    }
     if (['/v1/h5/action', '/v1/flutter/action'].includes(url.pathname)) {
       actions.push(body);
       originalResponse = res;
@@ -115,6 +120,52 @@ test('iOS execution has a strict control schema and both SDK action kinds return
   assert.equal(flutter.executionReceipt.runtimeEpoch, 'engine-1', 'Flutter engine identity is distinct from the SDK HTTP process binding');
   const status = await h.run('ios-execution', { operation: 'status' });
   assert.equal(status.ownership.phase, 'idle');
+});
+
+test('iOS observation rejection or response loss cannot poison physical device ownership', async t => {
+  for (const provider of ['native', 'flutter']) {
+    for (const mode of ['observation-rejected', 'observation-response-lost']) {
+      const h = await fixture(t, mode);
+      const result = await h.run('ios-ui-observation', { operation: 'stop', provider, leaseId: 'wrong-lease' });
+      assert.equal(result.ok, false);
+      if (mode === 'observation-rejected') assert.equal(result.error, 'ui_observation_lease_mismatch');
+      const status = await h.run('ios-execution', { operation: 'status' });
+      assert.equal(status.ownership.phase, 'idle', JSON.stringify(status.ownership));
+      assert.equal(h.actions.length, 0, 'observation does not submit a UI action');
+      h.setMode('complete');
+      const action = await h.run('ios-h5-eval', { script: 'window.value = 1' });
+      assert.equal(action.ok, true, JSON.stringify(action));
+      assert.equal(h.actions.length, 1);
+    }
+  }
+});
+
+test('explicit iOS reconciliation retires only the old observation marker without replay or invented completion', async t => {
+  const h = await fixture(t);
+  const lease = createDeviceMutationLease({ directory: ownershipRoot });
+  const key = `ios:${h.device.config.device.hardwareProperties.udid}`;
+  const mark = command => lease.run(key, () => runDeviceEffect({ kind: 'ios-command', command,
+    target: { deviceId: h.device.config.device.hardwareProperties.udid, bundleId: h.device.binding.bundleId } },
+  async () => ({ ok: false, settled: false, ambiguous: true })));
+  await mark('ios-ui-observation');
+  const mismatched = await h.run('ios-execution', { operation: 'reconcile', bundleId: 'other.app' });
+  assert.equal(mismatched.error, 'device_ownership_unresolved');
+  assert.equal(mismatched.recovery.error, 'ios_original_completion_identity_required');
+  const recovered = await h.run('ios-execution', { operation: 'reconcile' });
+  assert.equal(recovered.recovered, true, JSON.stringify(recovered));
+  assert.equal(recovered.executionReceipt.reason, 'observation_control_not_device_mutation');
+  assert.equal(recovered.executionReceipt.observationOutcome, 'unknown');
+  assert.equal(h.requests.length, 0, 'retiring the erroneous marker must not replay a device request');
+  await mark('ios-launch-app');
+  const unresolved = await h.run('ios-execution', { operation: 'reconcile' });
+  assert.equal(unresolved.error, 'device_ownership_unresolved');
+  assert.equal(unresolved.recovery.error, 'ios_original_command_identity_unavailable');
+  const observation = await h.run('ios-ui-observation', { operation: 'stop', leaseId: 'wrong-lease' });
+  assert.equal(observation.error, 'ui_observation_lease_mismatch');
+  assert.equal(lease.status(key).ownership.pending.command, 'ios-launch-app', 'observation cannot clear an unrelated action');
+  const blocked = await h.run('ios-h5-eval', { script: 'window.value = 1' });
+  assert.equal(blocked.error, 'device_ownership_unresolved');
+  assert.equal(h.actions.length, 0);
 });
 
 test('queued cancellation releases ownership only with a matching settled response and never performs the effect', async t => {

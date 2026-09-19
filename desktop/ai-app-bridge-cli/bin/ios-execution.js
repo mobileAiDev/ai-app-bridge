@@ -93,6 +93,12 @@ async function reconcileIOS({ lease, device, args, createPort, readWdaTestSummar
       } catch (error) { return { settled: false, error: 'ios_wda_startup_completion_unavailable', cause: error.code || 'invalid_result' }; }
     }
     if (args.setupResultPath) return { settled: false, error: 'ios_original_completion_identity_required' };
+    if (pending.kind === 'ios-command' && pending.command === 'ios-ui-observation') {
+      // Older Hosts incorrectly journaled bounded capture control as a device
+      // action. Retire only that marker; its observation outcome remains unknown.
+      return { kind: 'ios-ui-observation', settled: true, dispatched: null,
+        reason: 'observation_control_not_device_mutation', observationOutcome: 'unknown' };
+    }
     if (pending.kind === 'ios-command') {
       const invocation = pending.invocation;
       const index = Array.isArray(invocation?.arguments) ? invocation.arguments.indexOf('--json-output') : -1;

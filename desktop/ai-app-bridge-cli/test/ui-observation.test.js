@@ -6,6 +6,8 @@ const { runWithFeedbackProbe } = require('../bin/feedback-probe');
 const { IOSBridgeProvider } = require('../bin/ios-provider');
 
 test('iOS observation posts to its control endpoint without invoking a Flutter action', async () => {
+  assert.equal(commandContract('ios-ui-observation').execution.mutation, false);
+  assert.equal(commandContract('ios-ui-observation').execution.arbitration, null);
   const provider = new IOSBridgeProvider();
   const calls = [];
   provider.runtimePort = async () => ({ endpoint: { baseUrl: 'http://bound-runtime', device: { udid: 'phone' }, runtimeBinding: {} },

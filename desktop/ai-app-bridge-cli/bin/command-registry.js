@@ -245,6 +245,8 @@ const commandByName = new Map(commandDefinitions.map(d => [d.command, d]));
 const isolatedByName = new Map(isolatedCommandDefinitions.map(d => [d.command, d]));
 
 function isMutationCommand(command, args = {}) {
+  // iOS observation controls only a bounded SDK capture lease, not a UI action.
+  if (command === 'ios-ui-observation') return false;
   if (require('./ui-observation').commands.has(command)) return args.operation !== 'status';
   if (['android-executor', 'flutter-executor'].includes(command)) return ['open', 'act', 'close'].includes(args.operation);
   if (command === 'web-executor') return ['prepare', 'open', 'act', 'navigate', 'close'].includes(args.operation);

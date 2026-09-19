@@ -1743,6 +1743,17 @@ tree or publish cached layout as current UI. Query a provider's observation
 command for its live lease state. These endpoints require rebuilt SDKs;
 installing a new CLI cannot patch an installed application's old SDK.
 
+iOS observation control uses the SDK's bounded capture lease, not physical-device
+action ownership. A rejected control or lost response cannot block later UI
+actions, and its HTTP request does not mark an enclosing UI action dispatched.
+An older Host may have left an `ios-command` / `ios-ui-observation` ownership
+marker. Explicit `ios-execution --operation reconcile` retires only that marker
+after checking the recorded device and any supplied bundle identity. Its receipt
+reports `reason: observation_control_not_device_mutation` and
+`observationOutcome: unknown`; it does not claim that observation started or
+stopped successfully. Other unresolved actions still require their original
+completion proof. Runtime restart alone does not erase the durable journal.
+
 Ordinary CLI/MCP `feedback=full` opens a window before the action and releases
 it in finally. If observation is unavailable, the action is rejected before
 dispatch; acquiring evidence does not mark the enclosing UI action dispatched.
