@@ -64,8 +64,8 @@ provider access and device ownership through their execution-specific contracts.
 ### Shared runtime lifecycle
 
 The first executing command starts a local runtime. `runtime --operation start`
-starts it explicitly; `runtime --operation status` inspects it without starting
-one; `runtime --operation stop` cancels and drains active work before releasing
+starts it explicitly; `runtime --operation status --extract null` inspects it without starting
+one; `runtime --operation stop --extract null` cancels and drains active work before releasing
 its ownership. CLI exit, MCP EOF and client SIGINT/SIGTERM close only that client.
 Use `intent`/`script --operation cancel --operation-id ID` to cancel one task.
 The same operation ID can be queried and controlled from either entrypoint.

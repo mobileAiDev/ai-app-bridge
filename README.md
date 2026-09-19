@@ -31,7 +31,7 @@ Command domains: `core` (status, UI observations and capture), `app` (installati
 
 Default `capabilities` returns a light command directory. Request `command` and `operation` for the needed contract; Intent decide can also narrow by `platform`, `provider` and `action`. CLI `--help` supports the same filters. Execute with `run`.
 
-CLI and MCP use the same independent local execution runtime and command contracts. Intent, Script, installation and permission operations can be started from either client and continued by operation ID from the other. Client exit leaves tasks running; use task `cancel` or `runtime --operation stop` for explicit shutdown.
+CLI and MCP use the same independent local execution runtime and command contracts. Intent, Script, installation and permission operations can be started from either client and continued by operation ID from the other. Client exit leaves tasks running; use task `cancel` or `runtime --operation stop --extract null` for explicit shutdown.
 
 - `script` runs trusted-local-code JavaScript or Python. `permissions` only gate Bridge SDK calls; this is not an OS sandbox. The default allowlist excludes clear-data, install, permission changes, eval, raw shell, and ADB management. `page-summary` stays internal to Script/Intent.
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.

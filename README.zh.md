@@ -31,7 +31,7 @@ AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS
 
 默认 `capabilities` 返回精简命令目录；按 `command` 和 `operation` 查询所需合同。Intent decide 可再按 `platform`、`provider`、`action` 筛选，CLI `--help` 支持相同筛选。用 `run` 执行选定命令。
 
-CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Script、安装和权限操作可以由任一客户端启动，再由另一客户端通过 operationId 继续。客户端退出后任务继续运行；显式使用任务 cancel 或 `runtime --operation stop` 停止。
+CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Script、安装和权限操作可以由任一客户端启动，再由另一客户端通过 operationId 继续。客户端退出后任务继续运行；显式使用任务 cancel 或 `runtime --operation stop --extract null` 停止。
 
 - `script` 运行 trusted-local-code 的 JavaScript 或 Python。`permissions` 只门闩 Bridge SDK 调用，不是 OS 沙箱。默认 allowlist 不含清数据、安装、权限变更、eval、raw shell 或 ADB 管理。`page-summary` 只留在 Script/Intent 内部。
 - `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。

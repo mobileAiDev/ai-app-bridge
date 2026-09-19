@@ -1,3 +1,8 @@
+## 0.4.0
+
+- Align the bundled native runtime and Android dependency with the 0.4.0 release; mobile execution behavior is unchanged.
+- The companion CLI/MCP requires an explicit `extract` choice and returns a bounded public reply; Script `ctx.call` is unchanged.
+
 ## 0.3.8
 
 - Add CLI-managed executor preparation for existing application projects, with generated test entrypoints and dependency compatibility checks.
