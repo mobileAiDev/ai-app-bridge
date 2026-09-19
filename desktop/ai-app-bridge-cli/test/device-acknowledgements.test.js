@@ -28,7 +28,7 @@ const ownership = serial => getProcessDeviceMutationLease().status(serial).owner
 const reconcileInChild = async serial => {
   require('../bin/shared-kernel/host-fact-store').closeHostFactStore();
   let output;
-  try { output = await promisify(execFile)(process.execPath, [cli, 'device-ownership', '--operation', 'reconcile', '--serial', serial]); }
+  try { output = await promisify(execFile)(process.execPath, [cli, '--extract', 'null', 'device-ownership', '--operation', 'reconcile', '--serial', serial]); }
   catch (error) { if (error.code !== 1 || !error.stdout) throw error; output = error; }
   const value = JSON.parse(output.stdout).value;
   await stopRuntime();
@@ -44,7 +44,7 @@ for (const acknowledgedOnPhone of [false, true]) test(`Host SIGKILL with a durab
     reached();
     return new Promise(resolve => res.once('close', () => resolve({ close: true })));
   } });
-  const child = spawn(process.execPath, [cli, 'tap-uia-text', '--serial', target.serial, '--adb', target.adb,
+  const child = spawn(process.execPath, [cli, '--extract', 'null', 'tap-uia-text', '--serial', target.serial, '--adb', target.adb,
     '--package-name', target.packageName, '--target-text', 'Button', '--request-id', 'crash-at-ack', '--feedback', 'off'],
   { stdio: ['ignore', 'pipe', 'pipe'] });
   const closed = once(child, 'close');
@@ -65,7 +65,7 @@ for (const acknowledgedOnPhone of [false, true]) test(`Host SIGKILL with a durab
   assert.equal(result.pendingAcknowledgements, 0, JSON.stringify(result)); assert.equal(result.cleanupErrors, undefined);
   assert.deepEqual(ownership(peer.serial).pendingAcknowledgements, []);
   assert.deepEqual(ownership(peer.serial).lastSettlement, before.lastSettlement);
-  const retained = JSON.parse((await promisify(execFile)(process.execPath, [cli, 'device-ownership', '--operation', 'receipt',
+  const retained = JSON.parse((await promisify(execFile)(process.execPath, [cli, '--extract', 'null', 'device-ownership', '--operation', 'receipt',
     '--serial', peer.serial, '--runtime-epoch', entry.pending.runtimeEpoch, '--action-id', entry.pending.actionId])).stdout).value;
   assert.equal(retained.ok, true); assert.equal(retained.originalCompletionAvailable, true);
   assert.equal(retained.record.completion.json, entry.proof.receiptJson);
@@ -218,12 +218,12 @@ test('unavailable completion storage keeps phone acknowledgement pending and rec
   const entry = ownership(peer.serial).pendingAcknowledgements[0];
   const different = path.join(peer.directory, 'different-facts');
   const busy = JSON.parse((await promisify(execFile)(process.execPath,
-    [cli, 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial])).stdout).value;
+    [cli, '--extract', 'null', 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial])).stdout).value;
   assert.equal(busy.pendingAcknowledgements, 1); assert.equal(busy.cleanupErrors[0].error, 'fact_store_writer_busy');
   assert.equal(peer.requests.some(r => r.op === 'acknowledge'), false);
   storeModule.closeHostFactStore();
   const recovered = JSON.parse((await promisify(execFile)(process.execPath,
-    [cli, 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial],
+    [cli, '--extract', 'null', 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial],
     { env: { ...process.env, AI_APP_BRIDGE_FACT_STORE_DIR: different } })).stdout).value;
   assert.equal(recovered.pendingAcknowledgements, 0, JSON.stringify(recovered));
   assert.equal(recovered.acknowledgements[0].history.storeDirectory, entry.historyTarget.directory);

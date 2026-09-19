@@ -74,7 +74,7 @@ test('CLI starts Intent and changes selected views while MCP acts on the same op
   };
   t.after(async () => { for (const client of clients) await client.close({ stdinEof: true }); });
   let client = await connect('first');
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const target = { platform: 'ios', ...device.args };
   let state = (await runCli('intent', { operation: 'start', target, provider: 'h5', goal: 'Edit each visible form without switching Apps',
     recordingDir: path.join(directory, 'recording') }, { env })).value;

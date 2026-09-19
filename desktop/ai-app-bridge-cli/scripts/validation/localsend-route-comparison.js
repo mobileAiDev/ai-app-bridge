@@ -99,7 +99,7 @@ function schedule(rounds) {
   return Array.from({ length: rounds }, (_, round) => MODES.map((_, offset) => ({ round: round + 1, mode: MODES[(round + offset) % MODES.length] }))).flat();
 }
 async function mcpRun(client, command, args, timeoutMs) {
-  return payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }, timeoutMs));
+  return payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }, timeoutMs));
 }
 
 async function prepareHome(client, target) {

@@ -89,7 +89,7 @@ async function main({ out, serverPath, serial, packageName, query }) {
   let sequence = 0;
   const write = (name, value) => fs.writeFileSync(path.join(out, name), JSON.stringify(value, null, 2));
   const run = async (command, args) => {
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     write(`${String(++sequence).padStart(3, '0')}-${command}.json`, result); return result;
   };
   const check = result => { assert.equal(result.ok, true, `${result.command}:${result.error}`); return result; };

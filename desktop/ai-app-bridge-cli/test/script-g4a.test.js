@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { handle, resetScriptOperations } = require('../bin/script/script-entry');
-const { runBridgeChecked, runGeneric } = require('../test-support/host-client');
+const { runBridgeChecked, runGeneric, payloadOf } = require('../test-support/host-client');
 
 function scriptDoc() {
   return {
@@ -60,8 +60,8 @@ test('G4-A rejected steps leave Legacy and Intent usable', async () => {
     },
   });
   assert.match(status.content[0].text, /packageName/);
-  const intent = JSON.parse((await runGeneric({ command: 'intent', arguments: { operation: 'status' } })).content[0].text);
+  const intent = payloadOf(await runGeneric({ command: 'intent', arguments: { operation: 'status' } }));
   assert.equal(intent.command, 'intent');
-  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  const batch = payloadOf(await runBridgeChecked('batch', {}));
   assert.equal(batch.error, 'unknown_command');
 });

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 'use strict';
 
-const { CommandError, commandFailure } = require('./command-errors');
+const { CommandError } = require('./command-errors');
 const { commandDefinitions, isolatedCommandDefinitions, parseCliOptions } = require('./command-registry');
 const { commandInputSchema } = require('./command-discovery');
-const { encodeReply } = require('./runtime-protocol');
+const { publicFailure, exitCodeFor } = require('./public-reply');
 const runtime = require('./runtime-client');
 
 const helpText = `Usage: ai-app-bridge <command> [options]
@@ -25,10 +25,13 @@ Intent decide also accepts --platform, --provider and --action schema filters.
 CLI flags use kebab-case, for example --package-name, --tap-x, --timeout-ms.
 Objects, arrays, nullable objects and Script decisions use JSON flag values.
 Only --category and --extra repeat as individual strings.
-Results are one line of compact JSON: {kind: "json"|"text"|"bytes", value, history?}.
-Bytes are base64; value.ok:false exits with code 1. Help is plain text.
+Every command requires --extract: null delivers the command's own result.
+Results are one line of compact JSON: {command, execution, control, extraction,
+delivery, kind: "json"|"text"|"bytes", value, failureStage?}. Bytes are base64.
+Exit 0: delivered as requested. 1: rejected, failed or unknown execution.
+2: the command succeeded but extraction or delivery failed. Help is plain text.
 Relative file paths use the calling directory. Script cwd defaults to it.
-Example: ai-app-bridge script --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./regression.js"}'
+Example: ai-app-bridge script --extract null --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./regression.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"}}'
 `;
 
 async function main() {
@@ -54,16 +57,35 @@ async function main() {
       return;
     }
     command ||= 'status';
-    const reply = await runtime.run({ command, arguments: parseCliOptions(command, parsed.options) }, { signal: connection.signal });
-    process.stdout.write(`${JSON.stringify(encodeReply(reply))}\n`);
-    if (reply.value?.ok === false) process.exitCode = 1;
+    // The public fields leave the CLI options before the command's own parser
+    // sees them; each is one JSON value and never reaches the device action.
+    const { extract, output, ...options } = parsed.options;
+    const request = { command, ...publicFields({ extract, output }) };
+    request.arguments = parseCliOptions(command, options);
+    const { value: reply } = await runtime.run(request, { signal: connection.signal });
+    process.stdout.write(`${JSON.stringify(reply)}\n`);
+    process.exitCode = exitCodeFor(reply);
   } catch (error) {
-    process.stdout.write(`${JSON.stringify(encodeReply({ value: commandFailure(error, command) }))}\n`);
-    process.exitCode = 1;
+    const reply = publicFailure({ command, stage: 'validation', error });
+    process.stdout.write(`${JSON.stringify(reply)}\n`);
+    process.exitCode = exitCodeFor(reply);
   } finally {
     process.removeListener('SIGINT', disconnect);
     process.removeListener('SIGTERM', disconnect);
   }
+}
+
+// --extract and --output carry JSON. A flag without a value is a missing value,
+// not `true`; the JSON string "null" is not null.
+function publicFields(fields) {
+  const parsed = {};
+  for (const [name, raw] of Object.entries(fields)) {
+    if (raw === undefined) continue;
+    if (raw === true) throw new CommandError('missing_argument', `--${name} requires one JSON value${name === 'extract' ? '; use --extract null for this command\'s own result' : ''}.`, { field: name });
+    try { parsed[name] = JSON.parse(raw); }
+    catch { throw new CommandError('invalid_argument', `--${name} must be one JSON value${name === 'extract' ? ', for example null' : ''}: ${raw}`, { field: name }); }
+  }
+  return parsed;
 }
 
 function parseArgs(argv) {

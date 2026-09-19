@@ -14,7 +14,7 @@ async function main({ server, serial, packageName, out }) {
   const open = (name, env) => createMcpClient({ serverPath: path.resolve(server),
     transcriptPath: path.join(root, name + '.jsonl'), stderrPath: path.join(root, name + '-stderr.log'), env });
   const client = open('live', { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(root, 'host-facts'), AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb' });
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const target = { serial, packageName };
   const report = { ok: false, target, startedAtMs: Date.now(), archives: [] };
   let scriptId, intentId;
@@ -113,7 +113,7 @@ async function main({ server, serial, packageName, out }) {
       for (const archive of report.archives) {
         const moved = path.join(root, archive.namespace + '-moved');
         if (pass === 1) fs.cpSync(archive.archiveDir, moved, { recursive: true, errorOnExist: true, force: false });
-        const verified = payloadOf(await offline.request('tools/call', { name: 'run', arguments: { command: 'evidence',
+        const verified = payloadOf(await offline.request('tools/call', { name: 'run', arguments: { extract: null, command: 'evidence',
           arguments: { operation: 'verify', archiveDir: moved, manifestSha256: archive.manifestSha256 } } }));
         write(archive.namespace + '-offline-' + pass + '.json', verified);
         assert.equal(verified.ok, true, JSON.stringify(verified)); assert.equal(verified.integrity, 'verified');

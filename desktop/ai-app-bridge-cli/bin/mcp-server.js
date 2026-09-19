@@ -3,6 +3,7 @@
 const packageInfo = require('../package.json');
 const runtimeClient = require('./runtime-client');
 const discovery = require('./command-discovery');
+const { publicRequestSchema } = require('./command-request');
 const clientConnection = new AbortController();
 const { supportedTargets, commandDomains, supportedTargetsText, commandDomainsText, discoveryText } = discovery;
 const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
@@ -10,6 +11,7 @@ const defaultProtocolVersion = supportedProtocolVersions[0];
 const serverInstructions = [
   'Intent, Script and individual commands share one runtime across CLI and MCP. Disconnecting a client leaves operations running; explicit task cancel or runtime stop owns cancellation. Platform capabilities do not imply full complex-App acceptance.',
   'Use script status/wait for progress and resultRef; read the final output with script operation=result and the same operationId, including after runtime restart. A completed execution is separate from the business verdict.',
+  'run requires extract: null delivers the command\'s own result. Every run reply is {command, execution, control, extraction, delivery, kind, value, failureStage?}: execution holds the command\'s ok/error and dispatch facts, control the fields needed to continue (operationId, status, eventSequence, history cursor), and value the original result including _feedback. Read failureStage first when isError is set.',
   supportedTargetsText,
   discoveryText,
   'Prefer AI App Bridge over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, permissions, or app-level Web evidence.',
@@ -30,7 +32,7 @@ MCP surface:
 Discovery:
   1. Call capabilities with optional domain or command filters.
   2. Call run with a command name from capabilities.
-  3. Put command-specific options in arguments.
+  3. Put command-specific options in arguments; pass extract (null for the command's own result).
 
 Target ids:
   Android app commands require packageName; port selects only the host forwarding port.
@@ -41,8 +43,8 @@ Target ids:
 Examples:
   capabilities { "domain": "webview" }
   capabilities { "command": "intent", "operation": "start" }
-  run { "command": "screenshot", "arguments": { "packageName": "com.example.app" } }
-  run { "command": "web-session-start", "arguments": { "webPort": 18180 } }
+  run { "command": "screenshot", "extract": null, "arguments": { "packageName": "com.example.app" } }
+  run { "command": "web-session-start", "extract": null, "arguments": { "webPort": 18180 } }
 `;
 let buffer = Buffer.alloc(0);
 let responseFormat = null;
@@ -247,10 +249,8 @@ function toolDefinitions() {
         provider: { enum: ['native', 'uia', 'flutter', 'h5'], description: 'Intent decide schema scope only; must be supported by the selected platform.' },
         action: { type: 'string', description: 'Intent decide schema scope only, for example tap or inputText.' },
       } } },
-    { name: 'run', description: 'Execute a command from capabilities. All command parameters, including target identity, belong in arguments.',
-      inputSchema: { type: 'object', additionalProperties: false, required: ['command'], properties: {
-        command: { type: 'string' }, arguments: { type: 'object', additionalProperties: true },
-      } } },
+    { name: 'run', description: 'Execute a command from capabilities. All command parameters, including target identity, belong in arguments. extract is required: null delivers the command\'s own result. The reply is {command, execution, control, extraction, delivery, kind, value, failureStage?}; the original result, including _feedback, is value.',
+      inputSchema: publicRequestSchema() },
   ];
 }
 
@@ -263,23 +263,16 @@ async function callTool(name, args) {
   return toolJson({ ok: false, error: 'unknown_tool', message: `Unknown tool: ${name}. Use capabilities or run.`, dispatched: false, ambiguous: false }, true);
 }
 
-// MCP only adapts the shared execution reply to its tool-result format.
+// MCP only adapts the public reply to its tool-result format: the text is the
+// compact public reply, isError follows failureStage. Nothing is duplicated
+// into structuredContent or _meta.
 const capabilityPayload = discovery.capabilities;
 async function runGeneric(args = {}) {
   return toolResultForReply(await runtimeClient.run(args, { signal: clientConnection.signal }));
 }
 
-function toolResultForReply({ value: result, history }) {
-  let tool;
-  if (typeof result === 'string') tool = toolText(result);
-  else if (Buffer.isBuffer(result)) tool = toolText(result.toString('utf8'));
-  else if (result === undefined) tool = toolJson({ ok: false, error: 'runtime_result_missing', dispatched: null, ambiguous: true }, true);
-  else {
-    if (history && result && typeof result === 'object' && !Array.isArray(result)) result = { ...result, _history: history };
-    tool = toolJson(result, Boolean(result && typeof result === 'object' && result.ok === false));
-  }
-  if (history) tool._meta = { 'ai-app-bridge/history': history };
-  return tool;
+function toolResultForReply({ value: reply }) {
+  return toolJson(reply, Boolean(reply.failureStage));
 }
 
 function toolText(text, isError = false) {

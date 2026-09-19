@@ -14,7 +14,7 @@ const { createFakeIntentDeviceAdapter } = require('../bin/intent/intent-device-a
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createScriptEvidenceStore } = require('../bin/script/script-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
-const { validateCommandArguments } = require('../bin/command-registry');
+const { validateRunRequest } = require('../bin/command-request');
 const { inspectPython } = require('../bin/script/python-runtime-adapter');
 
 const authoring = fs.readFileSync(path.resolve(__dirname, '../docs/SCRIPT_AUTHORING.md'), 'utf8');
@@ -46,7 +46,7 @@ async function runDocumentedScript(language, source, adapter = createMemoryEvide
   const [resultCall] = documentedRun(authoring, 'script', 'result');
   const startArguments = { ...startCall.arguments, script: { ...startCall.arguments.script, language, source, target } };
   delete startArguments.script.sourcePath;
-  validateCommandArguments('script', startArguments);
+  validateRunRequest({ ...startCall, arguments: startArguments });
   const started = await scriptHandle({ ...startArguments, store,
     actions: async (command, args) => {
       commands.push(command);
@@ -56,7 +56,7 @@ async function runDocumentedScript(language, source, adapter = createMemoryEvide
     } });
   assert.equal(started.ok, true, JSON.stringify(started));
   const resultArguments = { ...resultCall.arguments, operationId: started.operationId };
-  validateCommandArguments('script', resultArguments);
+  validateRunRequest({ ...resultCall, arguments: resultArguments });
   let page = { status: 'running', eventSequence: waitCall.arguments.afterSequence };
   const events = [];
   const statuses = [];
@@ -64,7 +64,7 @@ async function runDocumentedScript(language, source, adapter = createMemoryEvide
   for (let polls = 0; ['running', 'finishing'].includes(page.status); polls += 1) {
     assert(polls < 200, 'documented wait loop did not finish');
     const waitArguments = { ...waitCall.arguments, operationId: started.operationId, waitMs: 200, afterSequence: page.eventSequence };
-    validateCommandArguments('script', waitArguments);
+    validateRunRequest({ ...waitCall, arguments: waitArguments });
     page = await scriptHandle(waitArguments);
     events.push(...page.events);
     statuses.push(page.status);
@@ -117,34 +117,34 @@ test('the documented Intent lifecycle pages history with history.lastSequence an
     { id: 'labels', className: 'Button', text: 'Labels', clickable: true, children: [] }] } } } });
   const store = createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   const startArguments = { ...start.arguments, target };
-  validateCommandArguments('intent', startArguments);
+  validateRunRequest({ ...start, arguments: startArguments });
   const started = await intentHandle({ ...startArguments, adapter, store });
   assert.equal(started.status, 'waiting_for_decision', JSON.stringify(started));
   assert.equal(started.revision, 1);
   assert.equal(adapter.calls.filter(call => call.name === 'action').length, 0, 'supervised start observes only');
 
   const actArguments = { ...act.arguments, operationId: started.operationId, decision: { ...act.arguments.decision, basedOnRevision: started.revision } };
-  validateCommandArguments('intent', actArguments);
+  validateRunRequest({ ...act, arguments: actArguments });
   const acted = await intentHandle(actArguments);
   assert.equal(acted.status, 'waiting_for_decision', JSON.stringify(acted));
   assert.equal(acted.revision, 2);
   assert.equal(adapter.calls.filter(call => call.name === 'action').length, 1);
 
   const pageArguments = { ...firstPage.arguments, operationId: started.operationId };
-  validateCommandArguments('intent', pageArguments);
+  validateRunRequest({ ...firstPage, arguments: pageArguments });
   const page = await intentHandle({ ...pageArguments, limit: 2 });
   assert.equal(page.history.items.length, 2);
   assert.equal(page.history.hasMore, true);
   assert.equal(page.history.lastSequence, page.history.items.at(-1).sequence);
   assert.notEqual(page.history.lastSequence, page.eventSequence, 'history and event cursors are different sequences');
   const continuation = { ...nextPage.arguments, operationId: started.operationId, limit: 2, afterSequence: page.history.lastSequence };
-  validateCommandArguments('intent', continuation);
+  validateRunRequest({ ...nextPage, arguments: continuation });
   const next = await intentHandle(continuation);
   assert.equal(next.history.items[0].sequence > page.history.lastSequence, true);
   assert.equal(new Set([...page.history.items, ...next.history.items].map(item => item.sequence)).size, 4, 'the two pages share no entry');
 
   const completeArguments = { ...complete.arguments, operationId: started.operationId, decision: { ...complete.arguments.decision, basedOnRevision: acted.revision } };
-  validateCommandArguments('intent', completeArguments);
+  validateRunRequest({ ...complete, arguments: completeArguments });
   const finished = await intentHandle(completeArguments);
   assert.equal(finished.status, 'completed', JSON.stringify(finished));
   assert.equal(adapter.calls.filter(call => call.name === 'action').length, 1, 'complete is a judgment, not an action');

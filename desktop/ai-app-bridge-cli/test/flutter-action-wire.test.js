@@ -86,7 +86,7 @@ test('public Flutter actions carry the Host action ID through the real HTTP boun
 
 test('typed Flutter tap is discoverable, permission gated, and rejects bad coordinates before dispatch', async () => {
   const { authorizeCommand } = require('../bin/script/script-catalog');
-  const { runBridgeChecked } = require('../test-support/host-client');
+  const { runBridgeChecked, payloadOf } = require('../test-support/host-client');
 const { capabilityPayload } = require('../bin/mcp-server');
   const capability = capabilityPayload({ command: 'tap-flutter', includeOptions: true });
   assert.equal(capability.ok, true);
@@ -101,7 +101,7 @@ const { capabilityPayload } = require('../bin/mcp-server');
     const r = await runBridgeChecked('tap-flutter', { serial: 'flutter-wire', packageName: 'pkg', ...coordinates }, {
       targetExecution: { execute() { dispatched++; } }, rawRunner: async () => { dispatched++; },
     });
-    assert.match(JSON.parse(r.content[0].text).error, /^(invalid_argument|missing_argument)$/);
+    assert.match(payloadOf(r).error, /^(invalid_argument|missing_argument)$/);
   }
   assert.equal(dispatched, 0);
 });

@@ -33,7 +33,7 @@ async function main({ out, serverPath, serial }) {
   };
   const close = async () => { if (client) { await client.close({ stdinEof: true }); client = undefined; } };
   const run = async (command, args) => {
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     save(`${String(++sequence).padStart(3, '0')}-${command}.json`, result); return result;
   };
   const counter = async expected => {

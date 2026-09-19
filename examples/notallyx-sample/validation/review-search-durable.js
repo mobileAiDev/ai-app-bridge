@@ -149,7 +149,7 @@ async function reviewDurable(out, report) {
       await client.initialize();
       for (const trial of report.trials) {
         const archive = trial.archive;
-        const verified = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command: 'evidence',
+        const verified = payloadOf(await client.request('tools/call', { name: 'run', arguments: { extract: null, command: 'evidence',
           arguments: { operation: 'verify', archiveDir: archive.archiveDir, manifestSha256: archive.manifestSha256 } } }));
         fs.writeFileSync(path.join(passDirectory, trial.name + '.json'), JSON.stringify(verified, null, 2) + '\n');
         assert.equal(verified.ok, true, 'public_evidence_verify_failed:' + JSON.stringify(verified));

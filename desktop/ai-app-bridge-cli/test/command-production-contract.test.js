@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { commandDefinitions, isolatedCommandDefinitions, commandSchema, validateCommandArguments } = require('../bin/command-registry');
-const { runBridgeChecked, runGeneric } = require('../test-support/host-client');
+const { runBridgeChecked, runGeneric, payloadOf: payload } = require('../test-support/host-client');
 const { callTool, toolDefinitions, capabilityPayload } = require('../bin/mcp-server');
 const { tap } = require('../bin/device-provider');
 const { TargetExecution } = require('../bin/target-execution');
@@ -15,7 +15,6 @@ const { getProcessDeviceMutationLease } = require('../bin/shared-kernel/device-m
 const { createProductionHost } = require('../bin/script/script-entry');
 const { flutterNode, flutterRef } = require('../test-support/flutter-target-fixture');
 
-const payload = result => JSON.parse(result.content[0].text);
 const target = { platform: 'android', serial: 'contract-device', packageName: 'contract.app' };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -88,13 +87,14 @@ test('CLI alone converts textual numbers and preserves keyCode zero', t => {
   fs.writeFileSync(executable, `#!${process.execPath}\nconst call=require(${JSON.stringify(require.resolve('../test-support/android-shell-fixture'))}).handleAndroidShellFixture(process.argv.slice(2));\nif(call.handled)process.exit(0);\nrequire('node:fs').writeFileSync(${JSON.stringify(log)}, JSON.stringify(call.args));\n`);
   fs.chmodSync(executable, 0o755);
   const cli = path.resolve(__dirname, '../bin/ai-app-bridge.js');
-  const valid = spawnSync(process.execPath, [cli, 'keyevent', '--serial', 'contract-cli', '--adb', executable, '--key-code', '0'], { encoding: 'utf8', env });
+  const valid = spawnSync(process.execPath, [cli, 'keyevent', '--extract', 'null', '--serial', 'contract-cli', '--adb', executable, '--key-code', '0'], { encoding: 'utf8', env });
   assert.equal(valid.status, 0, valid.stderr || valid.stdout);
   assert.deepEqual(JSON.parse(fs.readFileSync(log)), ['-s', 'contract-cli', 'shell', 'input', 'keyevent', '0']);
   fs.unlinkSync(log);
-  const invalid = spawnSync(process.execPath, [cli, 'tap', '--serial', 'contract-cli', '--adb', executable, '--tap-x', '--tap-y', '2'], { encoding: 'utf8', env });
+  const invalid = spawnSync(process.execPath, [cli, 'tap', '--extract', 'null', '--serial', 'contract-cli', '--adb', executable, '--tap-x', '--tap-y', '2'], { encoding: 'utf8', env });
   assert.equal(invalid.status, 1);
-  assert.equal(JSON.parse(invalid.stdout).value.dispatched, false);
+  assert.equal(JSON.parse(invalid.stdout).failureStage, 'validation');
+  assert.equal(JSON.parse(invalid.stdout).execution.dispatched, false);
   assert.equal(fs.existsSync(log), false);
 });
 

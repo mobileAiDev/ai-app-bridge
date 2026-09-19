@@ -512,11 +512,11 @@ as sent to `run` (the repository test suite runs this sequence against the
 current contract with an injected device):
 
 ```json lifecycle-example
-{"command":"intent","arguments":{"operation":"start","goal":"Open the Labels screen","target":{"platform":"android","serial":"<serial>","packageName":"<package>"}}}
-{"command":"intent","arguments":{"operation":"decide","operationId":"<operationId>","decision":{"decisionId":"d-1","agentDecision":"act","basedOnRevision":1,"action":{"action":"tap","selector":{"text":"Labels"}}}}}
-{"command":"intent","arguments":{"operation":"status","operationId":"<operationId>","limit":20}}
-{"command":"intent","arguments":{"operation":"status","operationId":"<operationId>","limit":20,"afterSequence":"<history.lastSequence of the previous page>"}}
-{"command":"intent","arguments":{"operation":"decide","operationId":"<operationId>","decision":{"decisionId":"d-2","agentDecision":"complete","basedOnRevision":2}}}
+{"command":"intent","extract":null,"arguments":{"operation":"start","goal":"Open the Labels screen","target":{"platform":"android","serial":"<serial>","packageName":"<package>"}}}
+{"command":"intent","extract":null,"arguments":{"operation":"decide","operationId":"<operationId>","decision":{"decisionId":"d-1","agentDecision":"act","basedOnRevision":1,"action":{"action":"tap","selector":{"text":"Labels"}}}}}
+{"command":"intent","extract":null,"arguments":{"operation":"status","operationId":"<operationId>","limit":20}}
+{"command":"intent","extract":null,"arguments":{"operation":"status","operationId":"<operationId>","limit":20,"afterSequence":"<history.lastSequence of the previous page>"}}
+{"command":"intent","extract":null,"arguments":{"operation":"decide","operationId":"<operationId>","decision":{"decisionId":"d-2","agentDecision":"complete","basedOnRevision":2}}}
 ```
 
 `start` and each `decide` return the committed observation with its `revision`
@@ -1518,7 +1518,7 @@ The operation holds the phone's mutation lease through package verification.
 For example, after receiving a fresh observation:
 
 ```json
-{"command":"intent","arguments":{"operation":"decide","operationId":"FROM_START","decision":{"decisionId":"choice-1","basedOnRevision":2,"agentDecision":"act","action":{"action":"tap","selector":{"resourceName":"ID_FROM_ACTUAL_OBSERVATION"}}}}}
+{"command":"intent","extract":null,"arguments":{"operation":"decide","operationId":"FROM_START","decision":{"decisionId":"choice-1","basedOnRevision":2,"agentDecision":"act","action":{"action":"tap","selector":{"resourceName":"ID_FROM_ACTUAL_OBSERVATION"}}}}}
 ```
 
 Completion requires the matching original shell-job receipt, a successful

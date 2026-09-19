@@ -13,7 +13,7 @@ test('public MCP executes permission Intent outcomes and Script fixture commands
   const client = createMcpClient({ serverPath: path.join(__dirname, '../bin/mcp-server.js'), transcriptPath: path.join(out, 'mcp.jsonl'), stderrPath: path.join(out, 'stderr.log'),
     env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'facts'), AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb' } });
   t.after(() => client.close()); await client.initialize();
-  const call = client => async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const call = client => async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const report = await verifyPermissionContract({ out, run: call(client) });
   await client.close({ stdinEof: true });
   const restarted = createMcpClient({ serverPath: path.join(__dirname, '../bin/mcp-server.js'), transcriptPath: path.join(out, 'restarted-mcp.jsonl'), stderrPath: path.join(out, 'restarted-stderr.log'),

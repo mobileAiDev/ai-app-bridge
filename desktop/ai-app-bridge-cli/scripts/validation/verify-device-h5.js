@@ -64,7 +64,7 @@ async function main({ out, serial, serverPath = path.resolve(__dirname, '../../b
     await decide({ action: 'inputText', selector: { ariaLabel: 'Editor label' }, value: '' }, 'clear-observed-editor');
     client = createMcpClient({ serverPath, env, transcriptPath: path.join(out, 'mcp.jsonl'), stderrPath: path.join(out, 'mcp-stderr.log') });
     await client.initialize();
-    state = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command: 'intent',
+    state = payloadOf(await client.request('tools/call', { name: 'run', arguments: { extract: null, command: 'intent',
       arguments: { operation: 'observe', operationId: state.operationId, provider: 'h5' } } }));
     write('mcp-observe.json', state); assert(state.ok);
     await client.close({ stdinEof: true, stopRuntime: false }); client = null;

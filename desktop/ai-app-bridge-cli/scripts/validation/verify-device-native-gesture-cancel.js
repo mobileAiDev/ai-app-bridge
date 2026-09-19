@@ -14,7 +14,7 @@ async function main({ out, serverPath, serial, packageName, query }) {
     env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'facts') } });
   let sequence = 0;
   async function run(command, args) {
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     fs.writeFileSync(path.join(out, `${String(++sequence).padStart(3, '0')}-${command}.json`), JSON.stringify(result, null, 2)); return result;
   }
   const check = value => { assert.equal(value.ok, true, JSON.stringify(value)); return value; };

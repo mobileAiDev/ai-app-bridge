@@ -21,7 +21,7 @@ async function fixture(t, options = {}) {
   const target = { serial: peer.serial, adb: peer.adb, packageName: 'example.uia', targetText: 'Button', feedback: 'off' };
   return { peer, target };
 }
-const clickArgs = (target, id) => [cli, 'tap-uia-text', '--serial', target.serial, '--adb', target.adb,
+const clickArgs = (target, id) => [cli, '--extract', 'null', 'tap-uia-text', '--serial', target.serial, '--adb', target.adb,
   '--package-name', target.packageName, '--target-text', target.targetText, '--request-id', id, '--feedback', 'off'];
 
 test('the public CLI sends a bound node action with its exact composite ID and commits before acknowledgement', async t => {
@@ -80,7 +80,7 @@ test('a killed Host retains occupancy until another process reads the original d
   peer.peer.running = false; peer.publish();
   require('../bin/shared-kernel/host-fact-store').closeHostFactStore();
   const reopened = JSON.parse((await promisify(execFile)(process.execPath,
-    [cli, 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial])).stdout).value;
+    [cli, '--extract', 'null', 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial])).stdout).value;
   assert.equal(reopened.ok, true, JSON.stringify(reopened)); assert.equal(reopened.recovered, true);
   assert.equal(reopened.executionReceipt.actionId, 'killed-host'); assert.equal(reopened.executionReceipt.dispatched, true);
   assert.equal(reopened.cleanupErrors, undefined); assert.equal(reopened.pendingAcknowledgements, 0);
@@ -128,7 +128,7 @@ test('a killed Host and dead phone owner recover a prepared action through publi
   peer.killOwner(); // Leave running:true in the original descriptor, as with a real SIGKILL.
   require('../bin/shared-kernel/host-fact-store').closeHostFactStore();
   const result = JSON.parse((await promisify(execFile)(process.execPath,
-    [cli, 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial])).stdout).value;
+    [cli, '--extract', 'null', 'device-ownership', '--operation', 'reconcile', '--serial', peer.serial])).stdout).value;
   assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.recovered, true);
   assert.equal(result.executionReceipt.dispatched, false); assert.equal(result.executionReceipt.ambiguous, false);
   assert.equal(result.pendingAcknowledgements, 0); assert.equal(result.cleanupErrors, undefined);
@@ -136,7 +136,7 @@ test('a killed Host and dead phone owner recover a prepared action through publi
   assert.equal(receipt.completion, 'recovered_before_admission'); assert.equal(saved.acknowledged, true);
   assert.equal(receipt.recovery.priorRecordSha256, require('../bin/shared-kernel/uia-protocol').digest(original));
   assert.equal(saved.requestJson, JSON.parse(original).requestJson);
-  const history = JSON.parse((await promisify(execFile)(process.execPath, [cli, 'device-ownership', '--operation', 'receipt',
+  const history = JSON.parse((await promisify(execFile)(process.execPath, [cli, '--extract', 'null', 'device-ownership', '--operation', 'receipt',
     '--serial', peer.serial, '--runtime-epoch', peer.peer.runtimeEpoch, '--action-id', actionId])).stdout).value;
   assert.equal(history.ok, true); assert.equal(history.originalCompletionAvailable, true);
   assert.equal(history.record.completion.json, saved.receiptJson); assert.deepEqual(peer.dispatches, []);

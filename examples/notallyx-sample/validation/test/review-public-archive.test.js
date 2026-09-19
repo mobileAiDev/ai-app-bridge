@@ -58,7 +58,7 @@ async function exportedTrial(t) {
     env: { AI_APP_BRIDGE_FACT_STORE_DIR: storeDirectory, AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb' } });
   try {
     await client.initialize();
-    trial.archive = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command: 'evidence', arguments: {
+    trial.archive = payloadOf(await client.request('tools/call', { name: 'run', arguments: { extract: null, command: 'evidence', arguments: {
       operation: 'export', namespace: 'script', operationId: trial.operationId,
       outputDir: path.join(trialDirectory, 'durable-archive'),
     } } }));
@@ -96,9 +96,9 @@ test('durable review uses two new public offline verifiers and preserves action 
     const calls = transcript.filter(item => item.direction === 'request' && item.message.method === 'tools/call');
     // Offline verify is the only evidence call; the harness client then stops its isolated runtime on close.
     assert.deepEqual(calls.map(item => item.message.params.arguments), [
-      { command: 'evidence', arguments: { operation: 'verify', archiveDir: fixture.trial.archive.archiveDir,
+      { command: 'evidence', extract: null, arguments: { operation: 'verify', archiveDir: fixture.trial.archive.archiveDir,
         manifestSha256: fixture.trial.archive.manifestSha256 } },
-      { command: 'runtime', arguments: { operation: 'stop' } },
+      { command: 'runtime', extract: null, arguments: { operation: 'stop' } },
     ]);
   }
 });

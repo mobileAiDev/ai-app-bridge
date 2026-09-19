@@ -64,7 +64,7 @@ async function main(options) {
   save();
   const client = createMcpClient({ serverPath: report.server, transcriptPath: path.join(out, 'mcp.jsonl'),
     stderrPath: path.join(out, 'mcp-stderr.log'), env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'host-facts'), AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb' } });
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   let activeId = null;
   try {
     await client.initialize();
@@ -91,7 +91,7 @@ async function main(options) {
         await new Promise(resolve => setTimeout(resolve, 150));
       } while (true);
       // UIA is XML on the public MCP surface. The SDK tree alone can miss system overlays.
-      const foregroundResponse = await client.request('tools/call', { name: 'run', arguments: { command: 'uia-tree', arguments: { serial: target.serial } } });
+      const foregroundResponse = await client.request('tools/call', { name: 'run', arguments: { extract: null, command: 'uia-tree', arguments: { serial: target.serial } } });
       write(path.join(directory, 'initial-uia-response.json'), foregroundResponse);
       assert.notEqual(foregroundResponse.result?.isError, true, 'uia_read_failed');
       const xml = foregroundResponse.result?.content?.find(item => item.type === 'text')?.text;

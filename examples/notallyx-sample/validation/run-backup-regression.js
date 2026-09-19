@@ -47,7 +47,7 @@ async function main(options) {
   }
   // Script operations carry their platform-qualified target inside script.target; device commands take the flat target.
   const scriptTarget={platform:'android',...target};
-  async function run(command,args={}) {const r=payloadOf(await client.request('tools/call',{name:'run',arguments:{command,arguments:command==='script'?args:{...target,feedback:'off',...args}}}));
+  async function run(command,args={}) {const r=payloadOf(await client.request('tools/call',{name:'run',arguments:{extract:null,command,arguments:command==='script'?args:{...target,feedback:'off',...args}}}));
     if((r.ok===false||r.error)&&!(command==='script'&&r.operationId&&['failed','cancelled'].includes(r.status)))throw Error(`${command}:${r.error}`);return r;}
   // One status page holds at most 1000 entries; the complete history is read page by page from history.lastSequence.
   async function fullStatus(operationId) {

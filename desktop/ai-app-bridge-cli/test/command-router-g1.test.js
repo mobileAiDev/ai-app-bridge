@@ -9,17 +9,13 @@ const { spawn } = require('node:child_process');
 const { createCommandRouter, isolatedCommandDefinitions } = require('../bin/command-router');
 const { capabilityPayload } = require('../bin/mcp-server');
 const { commandRouter } = require('../bin/execution-host');
-const { runBridgeChecked, runGeneric } = require('../test-support/host-client');
+const { runBridgeChecked, runGeneric, payloadOf } = require('../test-support/host-client');
 const snapshot = require('./fixtures/legacy-surface-g0.json');
 const capabilitySnapshot = require('./fixtures/legacy-capabilities-g0.json');
 
 const MCP_SERVER = path.join(__dirname, '..', 'bin', 'mcp-server.js');
 const SCRIPT_ENTRY = require.resolve('../bin/script/script-entry');
 const INTENT_ENTRY = require.resolve('../bin/intent/intent-entry');
-
-function payloadOf(result) {
-  return JSON.parse(result.content[0].text);
-}
 
 function withoutIsolatedCommands(domains) {
   const next = {};

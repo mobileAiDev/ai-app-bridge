@@ -217,11 +217,11 @@ async function openMcp(t, factStoreDirectory) {
   }
 
   async function call(name, args) {
-    const result = await request('tools/call', { name, arguments: args });
+    const result = await request('tools/call', { name, arguments: name === 'run' ? { extract: null, ...args } : args });
     assert.equal(result.content[0].type, 'text');
-    const payload = JSON.parse(result.content[0].text);
-    assert.equal(Boolean(result.isError), payload.ok === false);
-    return payload;
+    const reply = JSON.parse(result.content[0].text);
+    assert.equal(Boolean(result.isError), name === 'run' ? Boolean(reply.failureStage) : reply.ok === false);
+    return name === 'run' ? reply.value : reply;
   }
 
   async function close() {

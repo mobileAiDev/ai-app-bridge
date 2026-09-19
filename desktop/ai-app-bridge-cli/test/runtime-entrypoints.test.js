@@ -27,7 +27,7 @@ function fixture(t) {
       transcriptPath: path.join(directory, `mcp-${index}.jsonl`), stderrPath: path.join(directory, `mcp-${index}.log`) });
     clients.push(client);
     await client.initialize();
-    return { client, run: async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } })) };
+    return { client, run: async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } })) };
   } };
 }
 

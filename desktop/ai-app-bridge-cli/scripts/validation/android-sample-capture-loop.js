@@ -163,7 +163,7 @@ async function main(options) {
   const report = { ok: false, status: 'running', scope: 'android-native-sample-ui-state-network', target: { serial: options.serial, packageName: PACKAGE }, startedAt: new Date().toISOString() };
   write('report.json', report);
   let operationId;
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   try {
     await client.initialize();
     const status = await run('status', { ...report.target, feedback: 'off' });

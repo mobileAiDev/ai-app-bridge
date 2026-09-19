@@ -17,7 +17,7 @@ async function main({ out, serverPath, serial, packageName }) {
   const create = (name, overrides = {}) => createMcpClient({ serverPath, env: { ...env, ...overrides },
     transcriptPath: path.join(out, `${name}.jsonl`), stderrPath: path.join(out, `${name}.log`) });
   const client = create('mcp');
-  const runWith = current => async (command, args) => payloadOf(await current.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const runWith = current => async (command, args) => payloadOf(await current.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const run = runWith(client);
   const target = { serial, packageName };
   const report = { ok: false, target, serverPath, controllerSha256: crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'), cases: [] };

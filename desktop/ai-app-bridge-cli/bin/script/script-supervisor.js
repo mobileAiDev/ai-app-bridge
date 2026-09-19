@@ -174,6 +174,7 @@ function createScriptSupervisor({
       mutationUnknown: false,
       decisionRevision: 0,
       currentRequestId: null,
+      pendingQuestion: null,
       questionRevisions: new Map(),
       decisions: new Map(),
       ledger: scriptLedger,
@@ -431,6 +432,7 @@ function createScriptSupervisor({
       operationId: record.operationId,
       status: record.status,
       pauseReason: record.pauseReason,
+      pendingQuestion: record.status === 'waiting_for_agent' ? record.pendingQuestion : null,
       error: record.error,
       hash: record.hash,
       resultRef: record.resultRef ?? null,
@@ -777,6 +779,9 @@ function trackAgent(agent, record, now) {
       const requestId = `ask-${record.decisionRevision}`;
       record.questionRevisions.set(requestId, record.decisionRevision);
       record.currentRequestId = requestId;
+      // The unanswered question stays on the record so a filtered event page
+      // cannot hide it from status/wait.
+      record.pendingQuestion = { requestId, revision: record.decisionRevision, request };
       record.status = 'waiting_for_agent';
       emitRecord(record, 'agent_question_created', {
         request,

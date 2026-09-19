@@ -128,7 +128,7 @@ async function main(options) {
   };
   const run = async (command, args = {}) => {
     const arguments_ = command === 'script' ? args : { ...target, ...args };
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: arguments_ } }));
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: arguments_ } }));
     if (result.ok === false || result.error) throw new Error(`${command}:${result.error || 'not_ok'}`);
     return result;
   };

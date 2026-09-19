@@ -16,7 +16,7 @@ const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-sto
 const { createAutonomousAgentAdapter, createIntentBudget } = require('../bin/intent/intent-autonomous-adapter');
 const { handle: intentHandle, resetIntentOperations } = require('./helpers/intent-entry');
 const { createCommandRouter } = require('../bin/command-router');
-const { runBridgeChecked } = require('../test-support/host-client');
+const { runBridgeChecked, payloadOf } = require('../test-support/host-client');
 const { executionSleep } = require('../bin/shared-kernel/execution-scope');
 
 const ROUNDS = 100;
@@ -399,7 +399,7 @@ test('G8 Script/Intent faults leave Legacy usable; removed batch is rejected', a
     },
   });
   assert.match(status.content[0].text, /packageName/);
-  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  const batch = payloadOf(await runBridgeChecked('batch', {}));
   assert.equal(batch.error, 'unknown_command');
 });
 

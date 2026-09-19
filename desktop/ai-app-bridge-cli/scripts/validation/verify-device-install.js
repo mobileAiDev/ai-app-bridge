@@ -54,7 +54,7 @@ async function main({ out, serverPath, serial, apkPath, packageName }) {
       };
       let seq = 0;
       const run = async (c, command, args) => {
-        const value = payloadOf(await c.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+        const value = payloadOf(await c.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
         fs.writeFileSync(path.join(directory, `${String(++seq).padStart(3, '0')}-${command}.json`), JSON.stringify(value, null, 2) + '\n');
         return value;
       };

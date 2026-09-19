@@ -29,7 +29,7 @@ async function main({ out, serverPath, serial, packageName }) {
   };
   let sequence = 0;
   const run = async (c, command, args) => {
-    const result = payloadOf(await c.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const result = payloadOf(await c.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     write(`${String(++sequence).padStart(3, '0')}-${command}.json`, result); return result;
   };
   const check = r => { assert.equal(r.ok, true, JSON.stringify(r)); return r; };

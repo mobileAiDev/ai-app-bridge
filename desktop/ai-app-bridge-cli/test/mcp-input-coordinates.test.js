@@ -8,7 +8,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { nativeRuntimeStatus, nativeExecutionReceipt } = require('../test-support/native-target-fixture');
 const { createAdbHttpFixture } = require('../test-support/adb-http-fixture');
-const { runBridgeChecked } = require('../test-support/host-client');
+const { runBridgeChecked, payloadOf: toolPayload } = require('../test-support/host-client');
 const { TargetExecution } = require('../bin/target-execution');
 const { createMcpClient, payloadOf } = require('../scripts/validation/mcp-jsonrpc-client');
 
@@ -39,7 +39,7 @@ test('MCP rejects invalid input before target execution, observers or feedback c
       feedback: 'full', ...coordinates,
     }, dependencies);
     assert.equal(result.isError, true);
-    assert.match(JSON.parse(result.content[0].text).error, /^(invalid_argument|unsupported_argument)$/);
+    assert.match(toolPayload(result).error, /^(invalid_argument|unsupported_argument)$/);
   }
   assert.equal(executions, 0);
   assert.equal(registrations, 0);
@@ -98,7 +98,7 @@ test('real MCP JSON-RPC rejects double null, blank and false coordinates without
   };
   for (const coordinates of invalidCoordinates) {
     const response = await client.request('tools/call', { name: 'run', arguments: {
-      command: 'input-text', arguments: { ...args, ...coordinates },
+      extract: null, command: 'input-text', arguments: { ...args, ...coordinates },
     } });
     assert.equal(response.result.isError, true, JSON.stringify(coordinates));
     assert.match(payloadOf(response).error, /^(invalid_argument|unsupported_argument)$/);
@@ -106,7 +106,7 @@ test('real MCP JSON-RPC rejects double null, blank and false coordinates without
   assert.deepEqual(requests, [], 'no bridge request, including feedback reads, before rejection');
   assert.equal(fs.existsSync(adbLog), false, 'no ADB forwarding or fallback before rejection');
   const valid = await client.request('tools/call', { name: 'run', arguments: {
-    command: 'input-text', arguments: { ...args, text: '', feedback: 'off', tapX: 0, tapY: 25.5 },
+    extract: null, command: 'input-text', arguments: { ...args, text: '', feedback: 'off', tapX: 0, tapY: 25.5 },
   } });
   assert.equal(payloadOf(valid).ok, true);
   assert.equal(requests.length, 2, 'positive control verifies the runtime then reaches the real HTTP action');

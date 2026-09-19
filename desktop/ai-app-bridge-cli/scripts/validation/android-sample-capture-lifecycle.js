@@ -41,7 +41,7 @@ async function main(argv = process.argv.slice(2)) {
     await client.initialize();
   }
   async function run(command, args = {}) {
-    return payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: { ...target, ...args } } }));
+    return payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: { ...target, ...args } } }));
   }
   async function ready() {
     const deadline = Date.now() + 20_000;

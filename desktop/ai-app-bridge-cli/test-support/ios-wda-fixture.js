@@ -102,7 +102,7 @@ async function createWDAFixture(t, { session = { bundleId: 'sample.app', process
     readEffects() { return fs.existsSync(effects) ? fs.readFileSync(effects, 'utf8').trim().split('\n').map(JSON.parse) : []; },
     run(command, extra = {}) { return executeCommand(command, { ...args, ...extra }); },
     cli(command, extra = {}) {
-      const flags = { ...args, ...extra }, argv = [path.resolve(__dirname, '../bin/ai-app-bridge.js'), command];
+      const flags = { ...args, ...extra }, argv = [path.resolve(__dirname, '../bin/ai-app-bridge.js'), command, '--extract', 'null'];
       for (const [key, value] of Object.entries(flags)) argv.push('--' + key.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase()), String(value));
       const child = spawn(process.execPath, argv, { env: { ...process.env, ...runtimeEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
       let stdout = '', stderr = '';

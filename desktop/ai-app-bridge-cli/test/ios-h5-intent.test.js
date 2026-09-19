@@ -177,7 +177,7 @@ test('public MCP Intent and continuous Script execute the exact H5 renderer and 
     env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(directory, 'facts'), AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR: path.join(directory, 'ownership') } });
   t.after(() => client.close({ stdinEof: true }));
   await client.initialize();
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const target = { platform: 'ios', ...device.args };
   let result = await run('intent', { operation: 'start', goal: 'Open an offline article', target, provider: 'h5' });
   assert.equal(result.ok, true, JSON.stringify(result));

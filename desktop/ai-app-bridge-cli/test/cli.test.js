@@ -440,7 +440,8 @@ test('MCP compact surface negotiates protocol and exposes a small capability ind
   assert.deepEqual(responses.get(2).result, {});
   const tools = responses.get(3).result.tools;
   assert.deepEqual(tools.map((tool) => tool.name), ['capabilities', 'run']);
-  assert.doesNotMatch(JSON.stringify(tools), /oneOf/);
+  assert.deepEqual(tools[1].inputSchema.required, ['command', 'extract']);
+  assert.equal(tools[1].inputSchema.properties.extract.oneOf[0].type, 'null');
 });
 
 test('MCP accepts single-line JSON and responds with single-line JSON', async () => {
@@ -485,6 +486,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
     const status = await client.request('tools/call', {
       name: 'run',
       arguments: {
+        extract: null,
         command: 'web-status',
         arguments: { sessionId: 'shutdown-test-session' },
       },
@@ -494,6 +496,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
     const script = await client.request('tools/call', {
       name: 'run',
       arguments: {
+        extract: null,
         command: 'script',
         arguments: {
           operation: 'start',
@@ -507,7 +510,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
         },
       },
     });
-    const startedPayload = JSON.parse(script.result.content[0].text);
+    const startedPayload = JSON.parse(script.result.content[0].text).value;
     assert.equal(startedPayload.ok, true);
     let scriptPayload = startedPayload;
     const deadline = Date.now() + 5000;
@@ -521,6 +524,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
       const waited = await client.request('tools/call', {
         name: 'run',
         arguments: {
+          extract: null,
           command: 'script',
           arguments: {
             operation: 'wait',
@@ -530,7 +534,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
           },
         },
       });
-      scriptPayload = JSON.parse(waited.result.content[0].text);
+      scriptPayload = JSON.parse(waited.result.content[0].text).value;
       afterSequence = scriptPayload.eventSequence || afterSequence;
     }
     assert.equal(scriptPayload.ok, true);
@@ -539,6 +543,7 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
     const intent = await client.request('tools/call', {
       name: 'run',
       arguments: {
+        extract: null,
         command: 'intent',
         arguments: {
           operation: 'start',
@@ -548,13 +553,14 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
         },
       },
     });
-    const intentPayload = JSON.parse(intent.result.content[0].text);
+    const intentPayload = JSON.parse(intent.result.content[0].text).value;
     assert.equal(intentPayload.ok, true, JSON.stringify(intentPayload));
     assert.equal(intentPayload.status, 'waiting_for_decision');
 
     const decision = await client.request('tools/call', {
       name: 'run',
       arguments: {
+        extract: null,
         command: 'intent',
         arguments: {
           operation: 'decide',
@@ -563,12 +569,12 @@ test('MCP production wiring persists Legacy, Script, and Intent together, then e
         },
       },
     });
-    const decisionPayload = JSON.parse(decision.result.content[0].text);
+    const decisionPayload = JSON.parse(decision.result.content[0].text).value;
     assert.equal(decisionPayload.ok, true);
     assert.equal(decisionPayload.status, 'completed');
 
-    const stopped = await client.request('tools/call', { name: 'run', arguments: { command: 'runtime', arguments: { operation: 'stop' } } });
-    assert.equal(JSON.parse(stopped.result.content[0].text).status, 'stopped');
+    const stopped = await client.request('tools/call', { name: 'run', arguments: { extract: null, command: 'runtime', arguments: { operation: 'stop' } } });
+    assert.equal(JSON.parse(stopped.result.content[0].text).value.status, 'stopped');
     const closed = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         client.child.kill();
@@ -613,11 +619,11 @@ test('MCP exposes device-wide log collection through the logcat command schema',
 test('MCP capabilities advertise install, freeze/thaw, data clear, and app control while target commands reject sample fallback', async () => {
   const responses = await mcpRequestSequence([
     { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'capabilities', arguments: { domain: 'app', includeOptions: true } } },
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run', arguments: { command: 'status' } } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'run', arguments: { extract: null, command: 'status' } } },
     { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'status', arguments: {} } },
-    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'run', arguments: { command: 'clear-app-data' } } },
+    { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'run', arguments: { extract: null, command: 'clear-app-data' } } },
     { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'clear_app_data', arguments: {} } },
-    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'run', arguments: { command: 'freeze-app' } } },
+    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'run', arguments: { extract: null, command: 'freeze-app' } } },
   ]);
 
   const capabilitiesText = responses.get(2).result.content[0].text;
@@ -646,8 +652,8 @@ test('CLI starts Web v2; MCP reads committed captures and completes commands on 
   const env = { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(directory, 'facts'), AI_APP_BRIDGE_RUNTIME_HOME: path.join(directory, 'runtimes') };
   const client = createLineJsonMcpClient({ env });
   const run = async (command, args) => JSON.parse((await client.request('tools/call', {
-    name: 'run', arguments: { command, arguments: args },
-  })).result.content[0].text);
+    name: 'run', arguments: { command, extract: null, arguments: args },
+  })).result.content[0].text).value;
   let socket;
   const received = [];
   const target = { sessionId: 'web-test-session', runtimeEpoch: 'web-document-1', targetId: 'main' };
@@ -709,7 +715,7 @@ test('CLI starts Web v2; MCP reads committed captures and completes commands on 
 
     // Disconnect a CLI while its actual provider request is in flight. The
     // runtime must accept the original completion, without cancel or replay.
-    const child = spawn(process.execPath, [cliPath, 'web-command', '--session-id', target.sessionId,
+    const child = spawn(process.execPath, [cliPath, 'web-command', '--extract', 'null', '--session-id', target.sessionId,
       '--runtime-epoch', target.runtimeEpoch, '--name', 'action', '--arguments', JSON.stringify({ name: 'demo.delayed', arguments: {} }),
       '--feedback', 'off', '--timeout-ms', '10000'], { env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     const exited = once(child, 'close');
@@ -990,7 +996,7 @@ test('clear-app-data requires an explicit package and builds adb pm clear args',
   try {
     execFileSync(process.execPath, [
       cliPath,
-      'clear-app-data',
+      'clear-app-data', '--extract', 'null',
     ], {
       encoding: 'utf8',
       env: {
@@ -1361,7 +1367,7 @@ test('explicit host port cannot bypass package endpoint discovery', async () => 
 
     const processResult = spawnSync(process.execPath, [
       cliPath,
-      'status',
+      'status', '--extract', 'null',
       '--package-name',
       'com.example.noport',
       '--serial', 'endpoint-test-device',

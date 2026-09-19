@@ -10,9 +10,7 @@ const { FactCache } = require('../test-support/fact-cache');
 const { FactRecorder } = require('../bin/fact-recorder');
 const { ObservationCollector } = require('../bin/observation-collector');
 
-function payloadOf(result) {
-  return JSON.parse(result.content[0].text);
-}
+const { payloadOf } = require('../test-support/host-client');
 
 function deferred() {
   let resolve;

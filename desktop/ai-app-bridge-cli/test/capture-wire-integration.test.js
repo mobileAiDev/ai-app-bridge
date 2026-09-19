@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { createAdbHttpFixture } = require('../test-support/adb-http-fixture');
 const { createIOSRuntimeFixture } = require('../test-support/ios-runtime-fixture');
-const { executeCommand } = require('../test-support/host-client');
+const { executeCommand, payloadOf } = require('../test-support/host-client');
 const { createLiveCaptureQuery } = require('../bin/shared-kernel/live-capture-query');
 const { createScriptCapturePort } = require('../bin/script/script-capture-port');
 const { createIntentCapturePort } = require('../bin/intent/intent-capture-port');
@@ -117,7 +117,8 @@ test('in-process router injection supplies live capture and carries its watermar
     else process.env.AI_APP_BRIDGE_FACT_CACHE = previousCaptureSetting;
   });
   const { commandRouter } = require('../bin/execution-host');
-  const runGeneric = async ({ command, arguments: args }) => require('../bin/mcp-server').toolResultForReply(await commandRouter.route(command, args));
+  const { publicReply } = require('../bin/public-reply');
+  const runGeneric = async ({ command, arguments: args }) => require('../bin/mcp-server').toolResultForReply({ value: publicReply({ command, reply: await commandRouter.route(command, args) }) });
   const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
   const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
   const store = createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
@@ -127,26 +128,26 @@ test('in-process router injection supplies live capture and carries its watermar
     } }),
     action: async () => ({ ok: true, mechanicalStatus: 'ok' }),
   };
-  const start = JSON.parse((await runGeneric({ command: 'intent', arguments: {
+  const start = payloadOf(await runGeneric({ command: 'intent', arguments: {
     operation: 'start', operationId: 'capture-mcp-wire', goal: 'inspect capture',
     target: { platform: 'android', adb, serial: 'mcp-wire', packageName: 'pkg', port },
     adapter, store,
     require: { streams: ['network'] },
-  } })).content[0].text);
+  } }));
   assert.equal(start.status, 'waiting_for_decision', JSON.stringify(start));
   assert.equal(start.capture.coverage.status, 'complete');
   assert.equal(start.capture.pages[0].watermarkCursor, 'cf2:end');
-  const after = JSON.parse((await runGeneric({ command: 'intent', arguments: {
+  const after = payloadOf(await runGeneric({ command: 'intent', arguments: {
     operation: 'decide', operationId: start.operationId, store,
     decision: { decisionId: 'click', agentDecision: 'act', basedOnRevision: start.revision, action: { action: 'tap', selector: { text: 'Home' } } },
-  } })).content[0].text);
+  } }));
   assert.equal(after.status, 'waiting_for_decision');
   assert.equal(requests[1].query.factCursor, 'cf2:end');
   assert.equal(requests[1].query.runtimeEpoch, 'epoch-1');
   assert.equal(after.capture.pages[0].window.filterApplied, true);
-  const status = JSON.parse((await runGeneric({ command: 'intent', arguments: {
+  const status = payloadOf(await runGeneric({ command: 'intent', arguments: {
     operation: 'status', operationId: start.operationId, store,
-  } })).content[0].text);
+  } }));
   const record = status.history.items.filter((item) => item.kind === 'observation').at(-1);
   assert.equal(record.payloadSummary.capturePages[0].window.factCursor, 'cf2:end');
   assert.equal(Object.hasOwn(record.payloadSummary.capturePages[0], 'items'), false);

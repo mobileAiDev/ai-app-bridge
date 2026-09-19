@@ -86,7 +86,7 @@ async function fixture(t, mode = 'complete') {
     ...(command === 'ios-h5-eval' ? { expectedPage: h5Page() } : {}), ...args });
   function cli(command, args = {}) {
     const flags = { ...device.args, ...(command === 'ios-h5-eval' ? { expectedPage: h5Page() } : {}), ...args };
-    const argv = [path.resolve(__dirname, '../bin/ai-app-bridge.js'), command];
+    const argv = [path.resolve(__dirname, '../bin/ai-app-bridge.js'), command, '--extract', 'null'];
     for (const [name, value] of Object.entries(flags)) {
       if (value !== undefined) argv.push(`--${name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`, typeof value === 'object' ? JSON.stringify(value) : String(value));
     }

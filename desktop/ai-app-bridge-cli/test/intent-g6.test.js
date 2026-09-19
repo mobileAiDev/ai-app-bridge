@@ -11,7 +11,7 @@ const { handle } = require('./helpers/intent-entry');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { handle: scriptHandle } = require('../bin/script/script-entry');
-const { runBridgeChecked } = require('../test-support/host-client');
+const { runBridgeChecked, payloadOf } = require('../test-support/host-client');
 
 const tree = {
   root: { id: 'home', className: 'Button', text: 'Home', clickable: true, children: [] },
@@ -293,7 +293,7 @@ test('G6 Agent adapter crash does not corrupt Intent, Script, or Legacy', async 
     rawRunner: async () => { throw new Error('no runner'); },
   });
   assert.match(legacy.content[0].text, /packageName/);
-  const batch = JSON.parse((await runBridgeChecked('batch', {})).content[0].text);
+  const batch = payloadOf(await runBridgeChecked('batch', {}));
   assert.equal(batch.error, 'unknown_command');
 });
 

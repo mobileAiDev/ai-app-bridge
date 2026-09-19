@@ -53,7 +53,7 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
   };
   let client = createMcpClient({ serverPath: path.join(installed, 'bin/mcp-server.js'), cwd: install, env,
     transcriptPath: path.join(out, 'mcp.jsonl'), stderrPath: path.join(out, 'mcp-stderr.log') });
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const report = { ok: false, tarball: packed.filename, sha256: crypto.createHash('sha256').update(fs.readFileSync(tarball)).digest('hex'),
     installation: 'fresh npm install; native lifecycle and successful node-gyp build observed',
     npmAllowScriptsAdvisory: installLog.includes('not yet covered by allowScripts'), device: 'controlled ADB only; no real device' };
@@ -159,7 +159,7 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
       transcriptPath: path.join(out, 'restarted-mcp.jsonl'), stderrPath: path.join(out, 'restarted-stderr.log') });
     try {
       await restarted.initialize();
-      const restartedRun = async (command, args) => payloadOf(await restarted.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+      const restartedRun = async (command, args) => payloadOf(await restarted.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
       const restoredResult = await restartedRun('script', { operation: 'result', operationId: start.operationId });
       write('restarted-script-result.json', restoredResult);
       assert.equal(restoredResult.ok, true); assert.equal(restoredResult.status, 'completed'); assert.equal(restoredResult.persisted, true);

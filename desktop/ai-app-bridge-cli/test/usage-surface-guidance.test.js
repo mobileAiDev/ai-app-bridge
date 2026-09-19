@@ -11,7 +11,7 @@ const { capabilities, commandInputSchema } = require('../bin/command-discovery')
 const { validateCommandArguments } = require('../bin/command-registry');
 const { validateRunRequest } = require('../bin/command-request');
 const { callTool, toolResultForReply } = require('../bin/mcp-server');
-const { decodeReply } = require('../bin/runtime-protocol');
+const { publicReply } = require('../bin/public-reply');
 const { helpText } = require('../bin/ai-app-bridge');
 
 const cli = path.resolve(__dirname, '../bin/ai-app-bridge.js');
@@ -31,13 +31,15 @@ test('CLI replies and help schemas are one line of compact JSON with the same st
   assert.equal(compact(help.stdout.trim()), true);
   assert.deepEqual(JSON.parse(help.stdout), commandInputSchema('script', { operation: 'wait' }));
 
-  const rejected = runCli(['script', '--operation', 'wait', '--operation-id', 'op-1', '--wait-ms', '90000']);
+  const rejected = runCli(['script', '--extract', 'null', '--operation', 'wait', '--operation-id', 'op-1', '--wait-ms', '90000']);
   assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
   assert.equal(rejected.stderr, '');
   assert.equal(compact(rejected.stdout.trim()), true);
   const reply = JSON.parse(rejected.stdout);
-  assert.deepEqual(Object.keys(reply), ['kind', 'value']);
-  assert.equal(decodeReply(reply).value.error, 'invalid_argument');
+  assert.equal(reply.kind, 'json');
+  assert.equal(reply.failureStage, 'validation');
+  assert.equal(reply.execution.error, 'invalid_argument');
+  assert.equal(reply.value.error, 'invalid_argument');
   assert.match(helpText, /one line of compact JSON/);
 });
 
@@ -48,11 +50,16 @@ test('MCP tool text is compact JSON and still decodes to the same payload', asyn
 
   const value = { ok: true, command: 'status', nested: { list: [1, { deep: 'x' }], text: '中文 与 空格' } };
   const history = { lastSequence: 3, entries: [] };
-  const tool = toolResultForReply({ value, history });
+  const reply = publicReply({ command: 'status', reply: { value, history } });
+  const tool = toolResultForReply({ value: reply });
   assert.equal(compact(tool.content[0].text), true);
-  assert.deepEqual(JSON.parse(tool.content[0].text), { ...value, _history: history });
-  assert.deepEqual(tool._meta, { 'ai-app-bridge/history': history });
-  assert.equal(toolResultForReply({ value: 'plain text' }).content[0].text, 'plain text');
+  assert.deepEqual(JSON.parse(tool.content[0].text), reply);
+  assert.deepEqual(reply.value, value);
+  assert.deepEqual(reply.control.history, history);
+  assert.equal(tool._meta, undefined);
+  assert.equal(tool.structuredContent, undefined);
+  const text = publicReply({ command: 'uia-tree', reply: { value: 'plain text' }, completed: true });
+  assert.equal(JSON.parse(toolResultForReply({ value: text }).content[0].text).value, 'plain text');
 });
 
 test('a Script target without or with an unsupported platform is rejected at the exact field', () => {
@@ -108,9 +115,9 @@ test('the two continuation cursors are documented in the exposed schemas', () =>
 });
 
 test('discovery misuse names the discovery entry, the real domains and the platform filters', async () => {
-  assert.throws(() => validateRunRequest({ command: 'capabilities' }), error => error.code === 'unknown_command' && error.field === 'command'
+  assert.throws(() => validateRunRequest({ command: 'capabilities', extract: null }), error => error.code === 'unknown_command' && error.field === 'command'
     && /capabilities is the discovery tool, not a run command/.test(error.message) && /CLI: --help <command>/.test(error.message));
-  assert.throws(() => validateRunRequest({ command: 'smoke', arguments: {} }), error => error.code === 'unknown_command'
+  assert.throws(() => validateRunRequest({ command: 'smoke', extract: null, arguments: {} }), error => error.code === 'unknown_command'
     && error.message === 'Unknown command: smoke. List command names with the capabilities tool (CLI: ai-app-bridge help).');
 
   const domain = capabilities({ domain: 'android' });
@@ -121,7 +128,7 @@ test('discovery misuse names the discovery entry, the real domains and the platf
   const command = capabilities({ command: 'smoke' });
   assert.equal(command.error, 'unknown_command');
   assert.equal(command.message, 'Unknown command: smoke. Omit command, or pass a domain, to list the command directory.');
-  const viaMcp = JSON.parse((await callTool('run', { command: 'capabilities' })).content[0].text);
+  const viaMcp = JSON.parse((await callTool('run', { command: 'capabilities', extract: null })).content[0].text).value;
   assert.equal(viaMcp.ok, false);
   assert.equal(viaMcp.error, 'unknown_command');
   assert.equal(viaMcp.dispatched, false);

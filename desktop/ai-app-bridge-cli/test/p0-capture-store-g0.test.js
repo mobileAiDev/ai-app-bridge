@@ -19,9 +19,7 @@ function readRepo(relativePath) {
   return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 }
 
-function payloadOf(result) {
-  return JSON.parse(result.content[0].text);
-}
+const { payloadOf: payloadOf } = require('../test-support/host-client');
 
 function createSqliteCache(t, budgetBytes = 2 * 1024 * 1024) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-app-bridge-p0-capture-'));

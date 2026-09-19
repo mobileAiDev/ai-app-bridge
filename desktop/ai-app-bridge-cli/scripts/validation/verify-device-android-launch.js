@@ -46,7 +46,7 @@ async function main({ out, serverPath, serial }) {
       const result = { name, feedback, ok: false, before, explicitReads: [] };
       report.cases.push(result);
       const run = async (command, args) => {
-        const value = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+        const value = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
         save(`${name}/${command}.json`, value);
         return good(value);
       };
@@ -57,7 +57,7 @@ async function main({ out, serverPath, serial }) {
         if (index === 0) {
           const readStart = performance.now();
           const read = payloadOf(await client.request('tools/call', { name: 'run', arguments: {
-            command: 'status', arguments: { ...target, full: true, feedback: 'off' },
+            extract: null, command: 'status', arguments: { ...target, full: true, feedback: 'off' },
           } }));
           save(`${name}/background-status.json`, read);
           result.backgroundRead = { ok: read.ok, error: read.error, elapsedMs: performance.now() - readStart };

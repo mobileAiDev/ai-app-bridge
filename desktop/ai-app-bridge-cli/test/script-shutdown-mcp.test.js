@@ -15,7 +15,7 @@ for (const stdinEof of [true, false]) {
     const create = name => createMcpClient({ serverPath: path.join(__dirname, '../bin/mcp-server.js'),
       env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'facts'), AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb' },
       transcriptPath: path.join(out, `${name}.jsonl`), stderrPath: path.join(out, `${name}.log`) });
-    const run = client => async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const run = client => async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     const first = create('first'); t.after(() => first.close());
     await first.initialize();
     const operations = await startShutdownScripts({ out, run: run(first) });

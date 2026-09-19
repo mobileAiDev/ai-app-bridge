@@ -10,7 +10,9 @@ function recorder(append) {
   return new FactRecorder({ cache: { append, query: () => ({ ok: true, items: [] }),
     status: () => ({ persistence: true, degraded: false }) } });
 }
-const payload = result => JSON.parse(result.content[0].text);
+// Host history is control.history of the public reply; the original result is value.
+const reply = result => JSON.parse(result.content[0].text);
+const payload = result => { const r = reply(result); return { ...r.value, _history: r.control.history }; };
 
 test('history rejection and exception remain visible with feedback off, without changing or repeating a settled action', async () => {
   for (const append of [() => ({ ok: false, stored: false, error: 'store_full' }), () => { throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); }]) {
@@ -23,7 +25,8 @@ test('history rejection and exception remain visible with feedback off, without 
     assert.equal(calls, 1); assert.equal(value.ok, true); assert.equal(value.settled, true);
     assert.equal(value.executionReceipt.actionId, 'original'); assert.equal(value._history.status, 'partial');
     assert.equal(value._history.action.stored, false); assert.equal(value._history.errors.length, 1);
-    assert.equal(value._history.replayed, false); assert.deepEqual(result._meta['ai-app-bridge/history'], value._history);
+    assert.equal(value._history.replayed, false); assert.equal(result._meta, undefined, 'history is not duplicated into _meta');
+    assert.deepEqual(reply(result).execution, { ok: true, settled: true, dispatched: true, ambiguous: false, executionReceipt: { kind: 'test-original', actionId: 'original' } });
   }
 });
 
@@ -58,15 +61,18 @@ test('an action error retains its dispatch state and receipt when error history 
   });
   const value = payload(result); assert.equal(result.isError, true); assert.equal(value.error, 'shell_output_unavailable');
   assert.equal(value.settled, true); assert.equal(value.executionReceipt.actionId, 'original');
+  assert.equal(reply(result).failureStage, 'execution'); assert.equal(reply(result).execution.executionReceipt.actionId, 'original');
   assert.equal(value._history.status, 'partial'); assert.equal(value._history.action.error, 'store_full');
 });
 
-test('raw text results carry history in MCP metadata without rewriting the original text', async () => {
+test('raw text results carry history in control without rewriting the original text', async () => {
   const result = await runBridgeChecked('uia-tree', { serial: 'history-phone', feedback: 'off' }, {
     targetExecution: new TargetExecution(), factRecorder: recorder(() => ({ ok: false, stored: false, error: 'store_full' })),
     rawRunner: async () => '<hierarchy/>',
   });
-  assert.equal(result.content[0].text, '<hierarchy/>'); assert.equal(result._meta['ai-app-bridge/history'].status, 'partial');
+  const text = reply(result);
+  assert.equal(text.kind, 'text'); assert.equal(text.value, '<hierarchy/>'); assert.deepEqual(text.execution, { ok: true });
+  assert.equal(text.control.history.status, 'partial'); assert.equal(result._meta, undefined);
 });
 
 test('failed evidence append does not poison deduplication and prevent a later read from recording that evidence', () => {

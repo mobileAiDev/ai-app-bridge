@@ -17,9 +17,7 @@ const { createScriptEvidenceStore } = require('../bin/script/script-evidence-sto
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');
 const { runBridgeChecked } = require('../test-support/host-client');
 
-function payloadOf(result) {
-  return JSON.parse(result.content[0].text);
-}
+const { payloadOf: payloadOf } = require('../test-support/host-client');
 
 function observation(operationId, extras = {}) {
   return {

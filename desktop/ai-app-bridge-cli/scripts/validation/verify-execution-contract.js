@@ -79,7 +79,7 @@ async function verifyExecutionContract({ out, serverPath }) {
   try {
     await client.initialize();
     for (const item of invalidCases({ adb, source })) {
-      const response = await client.request('tools/call', { name: 'run', arguments: { command: item.command, arguments: item.args } });
+      const response = await client.request('tools/call', { name: 'run', arguments: { extract: null, command: item.command, arguments: item.args } });
       const result = payloadOf(response);
       assert.equal(result.error, item.error, `${item.name}: ${JSON.stringify(result)}`);
       assert.equal(result.field, item.field, `${item.name}: ${JSON.stringify(result)}`);
@@ -113,7 +113,7 @@ if(args.includes('dumpsys') && args.includes('window'))process.stdout.write('mCu
   const client = createMcpClient({ serverPath, env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(directory, 'facts'), AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb',
     AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR: path.join(directory, 'ownership') },
     transcriptPath: path.join(directory, 'mcp.jsonl'), stderrPath: path.join(directory, 'stderr.log') });
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const results = [];
   try {
     await client.initialize();

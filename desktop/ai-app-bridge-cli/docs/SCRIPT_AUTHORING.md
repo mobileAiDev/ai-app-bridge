@@ -149,7 +149,7 @@ current contract with an injected device, so they match the installed package.
    `target`, and the run's values in `inputs`:
 
 ```json lifecycle-example
-{"command":"script","arguments":{"operation":"start","script":{"schemaVersion":"aab.code-script/v1","name":"labels-regression","language":"javascript","sourcePath":"./regression.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"},"inputs":{"entryText":"Labels","expectedText":"New label"}}}}
+{"command":"script","extract":null,"arguments":{"operation":"start","script":{"schemaVersion":"aab.code-script/v1","name":"labels-regression","language":"javascript","sourcePath":"./regression.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"},"inputs":{"entryText":"Labels","expectedText":"New label"}}}}
 ```
 
 2. Wait with the returned `operationId`. `waitMs` is at most 60000 per call.
@@ -157,7 +157,7 @@ current contract with an injected device, so they match the installed package.
    previous response's `eventSequence` as `afterSequence`:
 
 ```json lifecycle-example
-{"command":"script","arguments":{"operation":"wait","operationId":"<operationId>","waitMs":30000,"afterSequence":0}}
+{"command":"script","extract":null,"arguments":{"operation":"wait","operationId":"<operationId>","waitMs":30000,"afterSequence":0}}
 ```
 
    `finishing` means the program has returned and the result is still being
@@ -170,7 +170,7 @@ current contract with an injected device, so they match the installed package.
 3. When `status` is `completed`, `failed` or `cancelled`, read the value:
 
 ```json lifecycle-example
-{"command":"script","arguments":{"operation":"result","operationId":"<operationId>"}}
+{"command":"script","extract":null,"arguments":{"operation":"result","operationId":"<operationId>"}}
 ```
 
    `completed` only states that the program returned and its value was

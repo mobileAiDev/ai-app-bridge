@@ -37,6 +37,7 @@
     "bin/device-provider.js",
     "bin/command-discovery.js",
     "bin/command-request.js",
+    "bin/public-reply.js",
     "bin/execution-runtime.js",
     "bin/runtime-client.js",
     "bin/runtime-directory.js",

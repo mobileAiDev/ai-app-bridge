@@ -70,7 +70,7 @@ test('public native iOS Intent publishes real iOS selectors and binds original a
     if (body.operation === 'native-tap') h.state.tree.children[0].label = 'Saved';
   };
   await client.initialize();
-  const run = async (command, arguments_) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: arguments_ } }));
+  const run = async (command, arguments_) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: arguments_ } }));
   let result = await run('intent', { operation: 'start', goal: 'Edit and save a record', target, provider: 'native' });
   assert.equal(result.ok, true, JSON.stringify(result));
   const operationId = result.operationId;

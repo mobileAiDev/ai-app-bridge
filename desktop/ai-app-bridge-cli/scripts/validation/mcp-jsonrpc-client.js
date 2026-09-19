@@ -93,7 +93,7 @@ function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 1
       let failure;
       try {
         if (stopRuntime) {
-          const result = payloadOf(await request('tools/call', { name: 'run', arguments: { command: 'runtime', arguments: { operation: 'stop' } } }));
+          const result = payloadOf(await request('tools/call', { name: 'run', arguments: { extract: null, command: 'runtime', arguments: { operation: 'stop' } } }));
           if (result.ok !== true) throw new Error(`Validation runtime shutdown failed: ${JSON.stringify(result)}`);
         }
       } catch (error) { failure = error; }
@@ -104,12 +104,24 @@ function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 1
   };
 }
 
-function payloadOf(response) {
+// The tool text of a run call is the public reply: {command, execution,
+// control, extraction, delivery, kind, value, failureStage?}.
+function replyOf(response) {
   const text = response?.result?.content?.find((item) => item.type === 'text')?.text;
   if (typeof text !== 'string') throw new Error('MCP response has no text payload');
-  const payload = JSON.parse(text);
-  if (response.result.isError && payload.ok !== false) return { ...payload, ok: false, error: 'MCP tool returned isError' };
-  return payload;
+  return JSON.parse(text);
 }
 
-module.exports = { createMcpClient, payloadOf };
+// The original command result. Bytes are decoded; a tool error without an
+// ok:false result (e.g. a failed extraction or delivery) is surfaced as one.
+function payloadOf(response) {
+  const reply = replyOf(response);
+  if (!reply.execution || !reply.delivery) return reply;
+  const value = reply.kind === 'bytes' ? Buffer.from(reply.value, 'base64') : reply.value;
+  if (response.result.isError && (typeof value !== 'object' || value === null || value.ok !== false)) {
+    return { ok: false, error: reply.execution.error || `${reply.failureStage}_failed`, failureStage: reply.failureStage, reply };
+  }
+  return value;
+}
+
+module.exports = { createMcpClient, payloadOf, replyOf };

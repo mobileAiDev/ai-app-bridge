@@ -67,7 +67,7 @@ async function fixture(t) {
     fs.rmSync(out, { recursive: true, force: true });
   });
   await client.initialize();
-  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+  const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   return { target, run, actions, tree };
 }
 

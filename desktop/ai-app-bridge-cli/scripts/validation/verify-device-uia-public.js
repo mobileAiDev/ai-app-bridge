@@ -71,7 +71,7 @@ async function main({ out, serverPath, serial }) {
   };
   let sequence = 0;
   const withClient = client => async (command, args) => {
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     save(`${String(++sequence).padStart(3, '0')}-${command}.json`, result); return result;
   };
   const good = result => { assert.equal(result.ok, true, JSON.stringify(result)); return result; };

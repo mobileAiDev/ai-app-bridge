@@ -4,6 +4,7 @@ const { executeProviderCommand } = require('./device-provider');
 const { validateRunRequest } = require('./command-request');
 const { resolveCommandPaths } = require('./shared-kernel/request-context');
 const { commandFailure, normalizeCommandResult } = require('./command-errors');
+const { publicReply, publicFailure } = require('./public-reply');
 const { runExecution, withoutExecution } = require('./shared-kernel/execution-scope');
 const { getHostFactStore } = require('./shared-kernel/host-fact-store');
 const { FactRecorder, historyDescriptor, isMobileCaptureCommand } = require('./fact-recorder');
@@ -35,8 +36,9 @@ let closing = false;
 const activeRuns = new Set();
 
 // Callers share one execution host. The owning process controls its lifecycle.
+// Every reply is the public reply of the request, assembled exactly once here.
 function run(args, dependencies) {
-  if (closing) return Promise.resolve(valueReply({ ok: false, error: 'runtime_stopping', dispatched: false, ambiguous: false }));
+  if (closing) return Promise.resolve({ value: publicReply({ command: requestedCommand(args), reply: valueReply({ ok: false, error: 'runtime_stopping', dispatched: false, ambiguous: false }) }) });
   const task = runGeneric(args, dependencies);
   activeRuns.add(task);
   task.then(() => activeRuns.delete(task), () => activeRuns.delete(task));
@@ -147,11 +149,22 @@ function wrapIsolatedEntry(entry, namespace) {
   };
 }
 
+function requestedCommand(args) {
+  return typeof args?.command === 'string' ? args.command : undefined;
+}
+
 async function runGeneric(args = {}, dependencies = {}) {
+  const command = requestedCommand(args);
+  let request;
+  let commandArguments;
   try {
-    const request = validateRunRequest(args);
-    return commandRouter.route(request.command, resolveCommandPaths(request.command, request.arguments), dependencies);
-  } catch (error) { return valueReply(commandFailure(error, typeof args?.command === 'string' ? args.command : undefined)); }
+    request = validateRunRequest(args);
+    commandArguments = resolveCommandPaths(request.command, request.arguments);
+  } catch (error) { return { value: publicFailure({ command, stage: 'validation', error }) }; }
+  try {
+    const reply = await commandRouter.route(request.command, commandArguments, dependencies);
+    return { value: publicReply({ command: request.command, reply, completed: true }) };
+  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error }) }; }
 }
 
 async function runCommand(command, args = {}, dependencies = {}) {

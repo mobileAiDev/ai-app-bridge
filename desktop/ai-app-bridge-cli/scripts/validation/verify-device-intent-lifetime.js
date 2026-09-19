@@ -28,7 +28,7 @@ async function main({ out, serverPath, serial, packageName }) {
   const ownedClient = async name => { const client = create(name); clients.push(client); await client.initialize(); return client; };
   let sequence = 0;
   const runWith = client => async (command, args) => {
-    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args } }));
+    const result = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
     write(`${String(++sequence).padStart(3, '0')}-${command}.json`, result); return result;
   };
   const check = result => { assert.equal(result.ok, true, JSON.stringify(result)); return result; };
