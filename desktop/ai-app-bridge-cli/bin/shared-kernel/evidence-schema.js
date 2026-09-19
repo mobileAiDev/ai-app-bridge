@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { sanitizePersistentValue } = require('../fact-codec');
 
-const NAMESPACES = Object.freeze(['script', 'intent']);
+const NAMESPACES = Object.freeze(['script', 'intent', 'response']);
 const PROVIDERS = Object.freeze(['native', 'uia', 'flutter', 'h5']);
 const RECORD_SCHEMA = 'aab.execution-evidence/v1';
 const AGENT_DECISIONS = Object.freeze(['act', 'complete', 'fail', 'inconclusive']);
@@ -17,6 +17,7 @@ const KINDS = Object.freeze([
   'checkpoint',
   'result',
   'attachment',
+  'response',
 ]);
 
 function checksumOf(value) {
@@ -57,6 +58,7 @@ function verifyChecksum(record) {
 }
 
 function requiredFields(kind) {
+  if (kind === 'response') return ['operationId', 'revision', 'snapshotBase64'];
   if (kind === 'observation') {
     return ['operationId', 'revision', 'target', 'provider', 'capturedAtMs'];
   }
@@ -97,6 +99,7 @@ function validateRecord(namespace, kind, record, { archivedUnversioned = false }
   if (!record || typeof record !== 'object') {
     return { ok: false, error: 'invalid_record' };
   }
+  if ((namespace === 'response') !== (kind === 'response')) return { ok: false, error: 'invalid_kind' };
   if (!archivedUnversioned && record.schemaVersion !== undefined && record.schemaVersion !== RECORD_SCHEMA) {
     return { ok: false, error: 'unsupported_record_schema', field: 'schemaVersion' };
   }
@@ -106,6 +109,18 @@ function validateRecord(namespace, kind, record, { archivedUnversioned = false }
     if (record[field] === undefined || record[field] === null || record[field] === '') {
       return { ok: false, error: 'invalid_record', field };
     }
+  }
+  if (kind === 'response') {
+    const encoded = record.snapshotBase64;
+    if (typeof encoded !== 'string' || Buffer.from(encoded, 'base64').toString('base64') !== encoded
+      || record.revision !== 1) return { ok: false, error: 'invalid_record', field: 'snapshotBase64' };
+    try {
+      const snapshot = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'));
+      if (!['json', 'text'].includes(snapshot.kind) || !Object.hasOwn(snapshot, 'value')
+        || !snapshot.execution || !snapshot.control || snapshot.control.source !== undefined
+        || snapshot.identity?.responseId !== record.operationId || typeof snapshot.identity.command !== 'string'
+        || !Number.isSafeInteger(snapshot.identity.capturedAtMs)) throw new Error('invalid_snapshot');
+    } catch { return { ok: false, error: 'invalid_record', field: 'snapshotBase64' }; }
   }
   if (kind === 'result' && (namespace !== 'script' || !Object.hasOwn(record, 'result')
     || !Number.isSafeInteger(record.bytes) || record.bytes < 1

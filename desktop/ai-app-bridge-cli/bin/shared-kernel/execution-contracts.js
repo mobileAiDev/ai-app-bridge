@@ -172,7 +172,7 @@ function executionCommandSchema(command, permissionNames) {
     ]);
   }
   if (command === 'evidence') return variants('operation', [
-    operation('export', { namespace: { enum: ['intent', 'script'] }, operationId: text, outputDir: text, includeRecordedPayloads: boolean }, ['namespace', 'operationId', 'outputDir']),
+    operation('export', { namespace: { enum: ['intent', 'script', 'response'] }, operationId: text, outputDir: text, includeRecordedPayloads: boolean }, ['namespace', 'operationId', 'outputDir']),
     operation('verify', { archiveDir: text, manifestSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' } }, ['archiveDir', 'manifestSha256']),
   ]);
   throw new Error(`No execution contract for ${command}`);

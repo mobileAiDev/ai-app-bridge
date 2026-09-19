@@ -4,7 +4,7 @@ const { executeProviderCommand } = require('./device-provider');
 const { validateRunRequest } = require('./command-request');
 const { resolveCommandPaths } = require('./shared-kernel/request-context');
 const { commandFailure, normalizeCommandResult } = require('./command-errors');
-const { publicReply, publicFailure } = require('./public-reply');
+const { publicReply, publicFailure, responseReply } = require('./public-reply');
 const { runExecution, withoutExecution } = require('./shared-kernel/execution-scope');
 const { getHostFactStore } = require('./shared-kernel/host-fact-store');
 const { FactRecorder, historyDescriptor, isMobileCaptureCommand } = require('./fact-recorder');
@@ -162,6 +162,7 @@ async function runGeneric(args = {}, dependencies = {}) {
     commandArguments = resolveCommandPaths(request.command, request.arguments);
   } catch (error) { return { value: publicFailure({ command, stage: 'validation', error }) }; }
   try {
+    if (command === 'response') return { value: responseReply((dependencies.responseStore || getResponseStore()).read(commandArguments.ref)) };
     const reply = await commandRouter.route(request.command, commandArguments, dependencies);
     return { value: publicReply({ command: request.command, reply, completed: true }) };
   } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error }) }; }
@@ -549,6 +550,10 @@ function getSharedFactStore() {
   if (sharedFactStore) return sharedFactStore;
   sharedFactStore = getHostFactStore();
   return sharedFactStore;
+}
+
+function getResponseStore() {
+  return require('./response-store').createResponseStore({ adapter: createSegmentedEvidenceAdapter(getSharedFactStore()) });
 }
 
 function getSharedFactRecorder() {

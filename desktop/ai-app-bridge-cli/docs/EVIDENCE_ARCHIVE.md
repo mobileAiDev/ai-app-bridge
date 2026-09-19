@@ -1,7 +1,7 @@
 # Record, export and verify execution evidence
 
 Discover the public MCP command with `capabilities {"command":"evidence"}`.
-It works for both Intent operation IDs and Script execution IDs, including
+It works for Intent operation IDs, Script execution IDs and saved response IDs, including
 records retained after the execution runtime has restarted. CLI and MCP use the
 same operation IDs and export command. Export does not require a
 connected phone or a live worker.
@@ -9,6 +9,7 @@ connected phone or a live worker.
 ```json
 {
   "command": "evidence",
+  "extract": null,
   "arguments": {
     "operation": "export",
     "namespace": "intent",
@@ -23,6 +24,16 @@ execution runtime's configured FactStore (`AI_APP_BRIDGE_FACT_STORE_DIR`), drain
 queued writes, and freezes the retained records for exactly that namespace
 and operation. The parent directory must exist; the output directory must
 not exist. No existing directory is replaced.
+
+For a saved public response, use `namespace: "response"` and the unchanged
+`control.source.ref.operationId`. A response record stores the final command
+result and execution/control facts in `snapshotBase64`, using canonical UTF-8
+JSON bytes after feedback has been added. The decoded bytes are exactly the
+input used for extraction. They can differ from a UI history record captured
+earlier. Export and verification preserve these bytes and use the existing
+evidence checksum; no second snapshot checksum or archive format is added.
+Only `control.source.persisted: true` supplies a readable ref. Missing, expired
+or evicted responses fail reads; they never cause a device query or action.
 
 The response includes `archiveDir`, `manifestPath`, `manifestSha256`,
 `recordCount`, `targets`, and `coverage`. Save the returned manifest SHA256
@@ -52,6 +63,7 @@ Move or copy the directory as a unit, then call:
 ```json
 {
   "command": "evidence",
+  "extract": null,
   "arguments": {
     "operation": "verify",
     "archiveDir": "/absolute/moved-archive",

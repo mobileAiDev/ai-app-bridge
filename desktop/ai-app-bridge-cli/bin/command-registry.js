@@ -8,6 +8,7 @@ const { executionCommandSchema, nativeGestureSchema, nativeSelector, flutterSele
 const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provider-command-contracts');
 
 const commandDefinitions = [
+  { command: 'response', domain: 'evidence', summary: 'Read and re-extract one saved response using its unchanged control.source.ref. This never repeats the original action or refreshes an observation.', targetKind: 'host', options: ['operation', 'ref'] },
   { command: 'executor-prepare', domain: 'advanced', summary: 'Prepare optional test executors from the existing project: generate Android androidTest entry/dependencies and matching APKs, add Flutter dev dependency and build the generated entrypoint, prepare managed iOS WDA, or install pinned Playwright/browser. Host preparation does not install or launch a mobile application. No application ID is changed. Requires app.test in Script.', targetKind: 'host', options: ['platform'] },
   { command: 'ui-observation', domain: 'core', summary: 'Start a bounded UI observation window (100–5000 ms), inspect it, or stop its lease. Off by default; provider selects native or Flutter. New windows establish a fresh baseline.', targetApp: true, options: ['operation', 'provider', 'durationMs', 'leaseId', 'packageName', 'serial'] },
   { command: 'ios-ui-observation', domain: 'ios', summary: 'Control bounded iOS native or Flutter UI observation. Off by default; expires locally even if the Host exits.', targetKind: 'ios-app', options: ['operation', 'provider', 'durationMs', 'leaseId', 'deviceId', 'bundleId'] },
@@ -303,10 +304,10 @@ function commandContract(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw unknownCommand(command);
   const isolated = isolatedByName.has(command);
-  const platform = ['runtime', 'executor-prepare'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
+  const platform = ['runtime', 'executor-prepare', 'response'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
     : definition.domain === 'ios' ? 'ios' : definition.domain === 'web' ? 'web' : 'android';
   const role = command === 'runtime' || command === 'intent' || command === 'script' || workflowCommands.has(command) ? 'execution'
-    : command === 'evidence' ? 'evidence' : expertCommands.has(command) ? 'expert' : 'capability';
+    : ['evidence', 'response'].includes(command) ? 'evidence' : expertCommands.has(command) ? 'expert' : 'capability';
   const permission = scriptPermissionByCommand.get(command) || null;
   return {
     role, platform,
@@ -329,6 +330,7 @@ function commandContract(command) {
 function commandSchema(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw unknownCommand(command);
+  if (command === 'response') return require('./response-store').responseSchema();
   if (command === 'executor-prepare') return require('./executors/preparation').preparationSchema();
   if (require('./ui-observation').commands.has(command)) return require('./ui-observation').schema(command, optionTypes);
   if (command === 'web-executor') return require('./executors/command-schema').webExecutorSchema();

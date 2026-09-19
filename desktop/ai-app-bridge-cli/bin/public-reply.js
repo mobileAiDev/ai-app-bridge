@@ -82,6 +82,13 @@ function publicFailure({ command, stage, error }) {
   return publicReply({ command, reply: { value: commandFailure(error, command) }, stage });
 }
 
+function responseReply({ snapshot, source }) {
+  return { command: 'response', execution: { ok: true, dispatched: false, ambiguous: false },
+    control: { ...snapshot.control, origin: { ...snapshot.identity, execution: snapshot.execution }, source },
+    extraction: { status: 'skipped' }, delivery: { status: 'inline', valueBytes: Buffer.byteLength(JSON.stringify(snapshot.value)) },
+    kind: snapshot.kind, value: snapshot.value };
+}
+
 function isPublicReply(value) {
   return isRecord(value) && isRecord(value.execution) && isRecord(value.delivery) && ['json', 'text', 'bytes'].includes(value.kind);
 }
@@ -93,4 +100,4 @@ function exitCodeFor(reply) {
   return ['validation', 'execution'].includes(reply.failureStage) ? 1 : 2;
 }
 
-module.exports = { publicReply, publicFailure, isPublicReply, exitCodeFor };
+module.exports = { publicReply, publicFailure, responseReply, isPublicReply, exitCodeFor };

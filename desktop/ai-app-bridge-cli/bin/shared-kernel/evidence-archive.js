@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { checksumOf, canonicalJson, validateArchivedRecord, verifyChecksum } = require('./evidence-schema');
+const { checksumOf, canonicalJson, validateArchivedRecord, verifyChecksum, NAMESPACES } = require('./evidence-schema');
 const { analyzeRecordedPayloads } = require('./recorded-payload-archive');
 const { readRegularFile: readRecordedFile } = require('./evidence-recording');
 
@@ -23,7 +23,7 @@ function textArgument(value, field) {
 }
 
 function namespaceArgument(namespace) {
-  requireValue(namespace === 'intent' || namespace === 'script', 'invalid_argument', 'namespace');
+  requireValue(NAMESPACES.includes(namespace), 'invalid_argument', 'namespace');
 }
 
 async function handle(args = {}, { getFactStore } = {}) {

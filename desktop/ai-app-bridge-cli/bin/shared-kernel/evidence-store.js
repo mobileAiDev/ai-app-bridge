@@ -1,10 +1,10 @@
 'use strict';
 
-const { buildEnvelope, verifyChecksum } = require('./evidence-schema');
+const { buildEnvelope, verifyChecksum, NAMESPACES } = require('./evidence-schema');
 
 function createEvidenceStore({ namespace, adapter, now = Date.now, maxBytes = 8 * 1024 * 1024 } = {}) {
-  if (namespace !== 'script' && namespace !== 'intent') {
-    throw new TypeError('namespace must be script or intent');
+  if (!NAMESPACES.includes(namespace)) {
+    throw new TypeError('namespace must be script, intent or response');
   }
   if (!adapter || typeof adapter.record !== 'function' || typeof adapter.readById !== 'function') {
     throw new TypeError('adapter with record/readById is required');
