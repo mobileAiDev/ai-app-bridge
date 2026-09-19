@@ -42,7 +42,7 @@ supervised 不会仅凭 goal 自动执行：没有决策时停在 `waiting_for_d
 
 `start` 的 `script` 内提供 `target`、`language`（`javascript` 或 `python`），以及 `source`/`sourcePath` 二选一。源码入口、权限和 API 按需查 `SCRIPT_AUTHORING.md`。
 `ctx.call` 返回 envelope：先检查 `ok`，设备数据在 `result`；调用失败和 `ctx.assert` 的 verdict 由源码处理。
-用原 operationId 查询 `status`/`wait`；每次 `waitMs` 最多 60000，`running` 时用上一响应的 `eventSequence` 作为 `afterSequence` 继续等待。
+用原 operationId 查询 `status`/`wait`；每次 `waitMs` 最多 60000，`running` 或 `finishing` 时用上一响应的 `eventSequence` 作为 `afterSequence` 继续等待。
 `waiting_for_agent` 是源码的 `ctx.askAgent`：用 `agent_question_created` 事件里的 `requestId`/`revision` 调 `decide`，或 `cancel`；不要等到超时。完整 start → wait → result 范例见 `SCRIPT_AUTHORING.md` **Lifecycle: start, wait, result**。
 `completed` 仅说明源码返回并持久化；status/wait 的 `resultRef` 不是最终值。
 完成后调用 `script` 的 `operation:"result"` 读取 `result`、`resultRef` 和 `persisted`，检查 representation 及实际断言结果。读取失败保留错误，不从进度事件拼出返回值。
