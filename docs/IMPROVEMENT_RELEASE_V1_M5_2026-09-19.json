@@ -1,0 +1,152 @@
+{
+  "matrix": [
+    {
+      "environment": "macOS 27 arm64",
+      "report": "/tmp/aab-040-package-darwin-arm64/report.json",
+      "reportSha256": "e10d33ada7f52c36a5344782d5c08cf78a276d0297f7df3ade0d53ff70390751",
+      "tarball": "mobileaidev-ai-app-bridge-0.4.0.tgz",
+      "tarballSha256": "9de3364038bac6afa9790b2c4d41fa6f730f39c3f528e9a457cd10d6ef5a550b",
+      "native": {
+        "path": "/private/tmp/aab-040-package-darwin-arm64/clean-install/node_modules/@mobileaidev/ai-app-bridge/node_modules/@mobileaidev/segmented-fact-store-native/prebuilds/darwin-arm64/segmented_fact_store.node",
+        "target": "darwin-arm64",
+        "sha256": "04c0ce98f12b8628cb6c24dd9193c147fed94ad1b99eae8da4c0abe9aa3825a8",
+        "napi": 8,
+        "minSystem": "macOS 13.5",
+        "compiler": "Apple clang, -O2 -mmacosx-version-min=13.5"
+      },
+      "npx": {
+        "firstAndRepeat": true,
+        "pureMcp": true,
+        "script": "javascript",
+        "extraction": [
+          "regex",
+          "javascript"
+        ],
+        "persistedSource": {
+          "namespace": "response",
+          "evidenceId": "response:response:b688186b-b1a2-4d7b-884e-9904a106a38f:1:1",
+          "checksum": "b492dfbf752ac351071f3417b0dc34b65a6d6b2c050287c50236e2a84233a136",
+          "operationId": "b688186b-b1a2-4d7b-884e-9904a106a38f"
+        },
+        "runtimeSurvivesMcpDisconnect": true,
+        "pythonAndCompilers": "denied on PATH"
+      },
+      "commands": 123
+    },
+    {
+      "environment": "macOS 27 x64 via Rosetta",
+      "report": "/tmp/aab-040-final-darwin-x64/report.json",
+      "reportSha256": "058fc94a41656e451dc05138425762369c13b1f785f6b5cbbc82fe9f829872d7",
+      "tarball": "mobileaidev-ai-app-bridge-0.4.0.tgz",
+      "tarballSha256": "35d5a62825e1445f67d467534667fd3066b11aeeb0ffd1ffc8ec011cb4629369",
+      "native": {
+        "path": "/private/tmp/aab-040-final-darwin-x64/clean-install/node_modules/@mobileaidev/ai-app-bridge/node_modules/@mobileaidev/segmented-fact-store-native/prebuilds/darwin-x64/segmented_fact_store.node",
+        "target": "darwin-x64",
+        "sha256": "ed95bc5f818de53d479a842125316ac8c2447ab9d80a1c7903384e6818e7d8d8",
+        "napi": 8,
+        "minSystem": "macOS 13.5",
+        "compiler": "Apple clang, -O2 -mmacosx-version-min=13.5"
+      },
+      "npx": {
+        "firstAndRepeat": true,
+        "pureMcp": true,
+        "script": "javascript",
+        "extraction": [
+          "regex",
+          "javascript"
+        ],
+        "persistedSource": {
+          "namespace": "response",
+          "evidenceId": "response:response:310a5f15-a601-4fd1-996f-bf7e3596c73a:1:1",
+          "checksum": "d4715f4609db6c7830ec4577dd86dc30a21552729a3bafdb2d3215829e67f3d5",
+          "operationId": "310a5f15-a601-4fd1-996f-bf7e3596c73a"
+        },
+        "runtimeSurvivesMcpDisconnect": true,
+        "pythonAndCompilers": "denied on PATH"
+      },
+      "commands": 123
+    },
+    {
+      "environment": "Debian 12 arm64 / glibc 2.36 / VM",
+      "report": "/tmp/aab-040-final-linux-arm64-report.json",
+      "reportSha256": "2c3704e50d0f27582232020b68406ad1926609c285e4586b48522a85c7a0e25a",
+      "tarball": "mobileaidev-ai-app-bridge-0.4.0.tgz",
+      "tarballSha256": "35d5a62825e1445f67d467534667fd3066b11aeeb0ffd1ffc8ec011cb4629369",
+      "native": {
+        "path": "/tmp/aab-040-final-linux-arm64/clean-install/node_modules/@mobileaidev/ai-app-bridge/node_modules/@mobileaidev/segmented-fact-store-native/prebuilds/linux-arm64-glibc/segmented_fact_store.node",
+        "target": "linux-arm64-glibc",
+        "sha256": "f476465bc0e7b8025fb3f92cfc2dc47b2d62f57aa43b48eb2f71f892f92abd59",
+        "napi": 8,
+        "minGlibc": "2.28",
+        "minSystem": "Linux glibc 2.28",
+        "compiler": "zig cc 0.15.2, -O2 -target *-linux-gnu.2.28"
+      },
+      "npx": {
+        "firstAndRepeat": true,
+        "pureMcp": true,
+        "script": "javascript",
+        "extraction": [
+          "regex",
+          "javascript"
+        ],
+        "persistedSource": {
+          "namespace": "response",
+          "evidenceId": "response:response:4dbf544f-8bd3-46c2-9867-3f0ba13eb8a9:1:1",
+          "checksum": "160a0569ebe058a0bc3c53e3e3cfa864402333a662b5a6490480fc13e18eae31",
+          "operationId": "4dbf544f-8bd3-46c2-9867-3f0ba13eb8a9"
+        },
+        "runtimeSurvivesMcpDisconnect": true,
+        "pythonAndCompilers": "denied on PATH"
+      },
+      "commands": 123
+    },
+    {
+      "environment": "Debian 12 x64 / glibc 2.36 / Rosetta in VM",
+      "report": "/tmp/aab-040-final-linux-x64-report.json",
+      "reportSha256": "ee4303a5da72f10388af3e658ea8a8bb92517ea27818c8b30fd7a638359fde37",
+      "tarball": "mobileaidev-ai-app-bridge-0.4.0.tgz",
+      "tarballSha256": "35d5a62825e1445f67d467534667fd3066b11aeeb0ffd1ffc8ec011cb4629369",
+      "native": {
+        "path": "/tmp/aab-040-final-linux-x64/clean-install/node_modules/@mobileaidev/ai-app-bridge/node_modules/@mobileaidev/segmented-fact-store-native/prebuilds/linux-x64-glibc/segmented_fact_store.node",
+        "target": "linux-x64-glibc",
+        "sha256": "dc3d0ab106164a861c2781e7bb6771ea52e35b3735b7a87e87dfcfc5c77ae647",
+        "napi": 8,
+        "minGlibc": "2.28",
+        "minSystem": "Linux glibc 2.28",
+        "compiler": "zig cc 0.15.2, -O2 -target *-linux-gnu.2.28"
+      },
+      "npx": {
+        "firstAndRepeat": true,
+        "pureMcp": true,
+        "script": "javascript",
+        "extraction": [
+          "regex",
+          "javascript"
+        ],
+        "persistedSource": {
+          "namespace": "response",
+          "evidenceId": "response:response:f18c107c-4d02-48d5-9d84-bf50f04bf904:1:1",
+          "checksum": "af0f09e764fb636d2a926d732ecdd1134a6343ab6b838e85fa18e451d7d7d1b6",
+          "operationId": "f18c107c-4d02-48d5-9d84-bf50f04bf904"
+        },
+        "runtimeSurvivesMcpDisconnect": true,
+        "pythonAndCompilers": "denied on PATH"
+      },
+      "commands": 123
+    }
+  ],
+  "node": "26.3.0",
+  "nativeVersion": "0.2.0",
+  "hostVersion": "0.4.0",
+  "reviewRegression": {
+    "npxFirstPhaseFailureCleanup": {
+      "initialize": "passed",
+      "tools/list": "passed",
+      "extractionFailure": "passed",
+      "normalReuseThenStop": "passed"
+    },
+    "freshPackageRecheck": "/tmp/aab-040-release-candidate/report.json",
+    "freshPackageSha256": "9de3364038bac6afa9790b2c4d41fa6f730f39c3f528e9a457cd10d6ef5a550b",
+    "freshPackageOk": true
+  }
+}

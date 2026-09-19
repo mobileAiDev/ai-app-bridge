@@ -215,6 +215,7 @@ async function verifyNpx({ out, tarball, env }) {
     AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'npx-facts'), ADB: '/not-installed/adb' };
   let ref, runtimeId;
   for (const phase of ['first', 'repeat']) {
+    let preserveRuntimeForRepeat = false;
     const client = createMcpClient({ command: 'npm', args: ['exec', '--yes', '--package', tarball, '--', 'ai-app-bridge-mcp'],
       env: npxEnv, cwd, transcriptPath: path.join(out, `npx-${phase}.jsonl`), stderrPath: path.join(out, `npx-${phase}.stderr`), timeoutMs: 180000 });
     const run = async (command, args, extract = null) => replyOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args, extract } }));
@@ -236,13 +237,15 @@ async function verifyNpx({ out, tarball, env }) {
         ref = extracted.control.source.ref;
         assert.ok(ref);
         runtimeId = (await run('runtime', { operation: 'status' })).value.runtimeId;
+        assert.equal(typeof runtimeId, 'string');
+        preserveRuntimeForRepeat = true;
       } else {
         assert.equal((await run('runtime', { operation: 'status' })).value.runtimeId, runtimeId);
         const reread = await run('response', { operation: 'read', ref }, { mode: 'script', language: 'javascript',
           source: 'module.exports.main = ctx => ctx.inputs.response.result.count;' });
         assert.equal(reread.value, 7, JSON.stringify(reread));
       }
-    } finally { await client.close({ stopRuntime: phase === 'repeat' }); }
+    } finally { await client.close({ stopRuntime: !preserveRuntimeForRepeat }); }
   }
   return { firstAndRepeat: true, pureMcp: true, script: 'javascript', extraction: ['regex', 'javascript'],
     persistedSource: ref, runtimeSurvivesMcpDisconnect: true, pythonAndCompilers: 'denied on PATH' };
