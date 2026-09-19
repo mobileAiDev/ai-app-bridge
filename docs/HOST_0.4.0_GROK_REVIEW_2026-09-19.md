@@ -2,7 +2,8 @@
 
 2026-09-19。审核基线为 `447b2a2`，修复在 `codex/host-040-audit-fixes`。
 结论：两个真实缺陷，其中 iOS 的归因需要修正；第三项符合现有合同。
-本记录及代码修复尚未对外发布，不代表公开 npm 0.4.0 已经修复。
+修复现已随统一 0.4.1 对外发布，见 [0.4.1 交付记录](RELEASE_HANDOFF_0.4.1_2026-09-19.md)。
+旧 npm 0.4.0 归档保持不变；以下保留发布前复核的过程与证据。
 
 ## 1. iOS 观察控制留下无法恢复的 ownership：成立，P1
 
@@ -59,7 +60,8 @@ pending 记录；它阻止同一 iPhone 后续写入，与 App 是否相同无�
 真机目标为已连接的 iPhone 17 Pro Max / iOS 27.2 和
 `io.github.mobileaidev.kiwix.sample`。使用修复源码启动的独立 Runtime；未重启
 原全局 Runtime，未重放旧观察请求，launch 明确使用 terminateExisting=false。
-本次独立 Runtime 已停止，原全局发布入口仍是未替换的 0.4.0。
+复核结束时独立 Runtime 已停止，全局发布入口当时仍是 0.4.0；随后统一发行
+0.4.1 时已更新全局 CLI 与 Runtime，并另外验证新建 MCP 连接。
 
 原始日志和现场记录保存在
 `/Users/macbook/Documents/CompanyProject/ai-app-bridge-review-evidence/0.4.0-grok-2026-09-19`，
