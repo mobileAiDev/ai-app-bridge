@@ -28,8 +28,8 @@ CLI and MCP connect to one independent local execution runtime. Every registered
 command is available from either entrypoint, including Intent, Script, Web,
 installation and permission flows. A CLI command can start a task and a later MCP
 connection can observe or decide the same operation ID. Disconnecting either
-client leaves tasks running. Use `runtime --operation status` to inspect its
-owner, `runtime --operation stop` to drain it, and task `cancel` to stop one task.
+client leaves tasks running. Use `runtime --operation status --extract null` to inspect its
+owner, `runtime --operation stop --extract null` to drain it, and task `cancel` to stop one task.
 
 Each run explicitly supplies `extract`: `null` for the original result, or
 regex/JavaScript/Python for a smaller result. CLI: `--extract null`.
