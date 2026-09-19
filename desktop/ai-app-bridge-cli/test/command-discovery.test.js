@@ -11,13 +11,27 @@ const { callTool } = require('../bin/mcp-server');
 
 test('the light directory preserves every command while details remain explicit', () => {
   const directory = Object.values(capabilities().domains).flat();
-  const expanded = Object.values(capabilities({ includeOptions: true }).domains).flat();
+  const expanded = directory.map(item => capabilities({ command: item.command, ...(item.command === 'intent' ? { operation: 'start' } : {}) }));
   assert.deepEqual(directory.map(x => x.command), expanded.map(x => x.command));
   assert.ok(directory.every(x => typeof x.summary === 'string' && !Object.hasOwn(x, 'inputSchema') && !Object.hasOwn(x, 'scriptCatalog')));
   assert.ok(expanded.every(x => x.inputSchema && x.entrypoints));
   const domain = capabilities({ domain: 'execution' }).domains;
   assert.deepEqual(Object.keys(domain), ['execution']);
   assert.ok(domain.execution.some(x => x.command === 'intent'));
+});
+
+test('wide discovery and machine help fail within budget and their suggested query runs unchanged', async () => {
+  for (const args of [{ includeOptions: true }, { command: 'intent' }]) {
+    const result = capabilities(args);
+    assert.equal(result.error, 'discovery_output_too_large');
+    assert.equal(result.inputSchema, undefined);
+    assert.equal(result.domains, undefined);
+    assert.equal(capabilities(result.example).ok, true);
+    assert(Buffer.byteLength(JSON.stringify(result)) <= 96 * 1024);
+  }
+  const cli = spawnSync(process.execPath, [path.join(__dirname, '../bin/ai-app-bridge.js'), '--help', 'intent'], { encoding: 'utf8' });
+  assert.equal(cli.status, 1);
+  assert.equal(JSON.parse(cli.stdout).error, 'discovery_output_too_large');
 });
 
 test('operation selection keeps both Intent start modes and rejects other operations', () => {

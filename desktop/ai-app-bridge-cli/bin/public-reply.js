@@ -3,6 +3,7 @@
 const { commandFailure } = require('./command-errors');
 const { encodeReply } = require('./runtime-protocol');
 const { randomUUID } = require('node:crypto');
+const DEFAULT_OUTPUT_BYTES = 96 * 1024;
 
 // The public reply of one run request, assembled once at the Runtime boundary
 // and by the client for its local paths. The original result stays in `value`
@@ -67,19 +68,99 @@ function publicReply({ command, reply, stage, completed = false }) {
   const { kind, value } = encodeReply(reply);
   const execution = executionFacts(reply.value, completed);
   const failureStage = stage || (execution.ok !== true || execution.ambiguous === true ? 'execution' : undefined);
-  return {
+  const body = {
     command: typeof command === 'string' && command ? command : null,
     execution,
     control: { ...controlFacts(command, reply.value, reply.history), source: { responseId: randomUUID(), capturedAtMs: Date.now(), persisted: false, reason: 'not_requested' } },
     extraction: { status: 'skipped' },
-    delivery: { status: 'inline', valueBytes: Buffer.byteLength(JSON.stringify(value)) },
+    delivery: { status: 'inline' },
     kind, value,
     ...(failureStage ? { failureStage } : {}),
   };
+  try {
+    body.delivery.valueBytes = Buffer.byteLength(JSON.stringify(value));
+    JSON.stringify(body);
+    return body;
+  } catch { return serializationFailure(body); }
 }
 
-function publicFailure({ command, stage, error }) {
-  return publicReply({ command, reply: { value: commandFailure(error, command) }, stage });
+function publicFailure({ command, stage, error, maxBytes = DEFAULT_OUTPUT_BYTES }) {
+  return boundedReply(publicReply({ command, reply: { value: commandFailure(error, command) }, stage }), maxBytes);
+}
+
+function minimalExecution(execution) {
+  return { ok: execution.ok === true ? true : execution.ok === false ? false : null,
+    ...pick(execution, ['dispatched', 'ambiguous', 'settled', 'exitCode']),
+    ...(typeof execution.error === 'string' && execution.error.length < 128 ? { error: execution.error } : {}) };
+}
+
+function serializationFailure(body) {
+  return { command: body.command, execution: minimalExecution(body.execution),
+    control: { source: body.control.source, controlComplete: false }, extraction: { status: 'skipped' },
+    delivery: { status: 'unavailable', reason: 'response_serialization_failed', limitBytes: DEFAULT_OUTPUT_BYTES },
+    kind: body.kind, failureStage: body.failureStage || 'delivery' };
+}
+
+function replyBytes(body) { return Buffer.byteLength(JSON.stringify(body)); }
+
+function boundedReply(body, limitBytes = DEFAULT_OUTPUT_BYTES) {
+  body.delivery.limitBytes = limitBytes;
+  const attemptedBytes = replyBytes(body);
+  if (attemptedBytes <= limitBytes) return body;
+  delete body.value;
+  body.delivery = { ...body.delivery, status: body.control.source.persisted ? 'reference' : 'unavailable',
+    reason: 'output_budget_exceeded', attemptedBytes, limitBytes };
+  body.failureStage ||= 'delivery';
+  if (replyBytes(body) <= limitBytes) return body;
+  // A large question, receipt or diagnostic must never become a silently
+  // incomplete continuation. Keep dispatch uncertainty and the real source.
+  const source = pick(body.control.source, ['responseId', 'capturedAtMs', 'persisted', 'ref', 'reason']);
+  if (body.control.source.error) source.error = 'source_unavailable';
+  return { command: typeof body.command === 'string' && body.command.length < 256 ? body.command : null,
+    execution: minimalExecution(body.execution), control: { source, controlComplete: false },
+    extraction: pick(body.extraction, ['status', 'mode', 'language', 'durationMs', 'error']),
+    delivery: { status: source.persisted ? 'reference' : 'unavailable', reason: 'control_over_budget', attemptedBytes, limitBytes },
+    kind: body.kind, failureStage: body.failureStage };
+}
+
+async function finishReply({ body, extract, output, frozen, getStore, sourceReason = 'offline' }) {
+  const limitBytes = output?.maxBytes ?? DEFAULT_OUTPUT_BYTES;
+  body.delivery.limitBytes = limitBytes;
+  if (body.delivery.reason === 'response_serialization_failed') return boundedReply(body, limitBytes);
+  const { freezeResponse, MAX_SNAPSHOT_BYTES } = require('./response-store');
+  const extracting = extract !== null;
+  const needsSource = extracting || replyBytes(body) > limitBytes;
+  if (!needsSource) return body;
+  if (!frozen) {
+    try { frozen = freezeResponse(body); }
+    catch { return boundedReply(serializationFailure(body), limitBytes); }
+    if (getStore && body.kind !== 'bytes') {
+      try { body.control.source = await getStore().save(frozen); }
+      catch (error) { body.control.source = { ...body.control.source, reason: undefined, error: error.code || 'snapshot_save_failed' }; }
+    } else body.control.source = { ...body.control.source, reason: body.kind === 'bytes' ? 'binary_snapshot_unsupported' : sourceReason };
+  }
+  if (extracting) {
+    let result;
+    if (frozen.snapshot.kind === 'bytes') result = { ok: false, error: 'extraction_binary_unsupported' };
+    else if (frozen.bytes.length > MAX_SNAPSHOT_BYTES) result = { ok: false, error: 'extraction_input_too_large', maxBytes: MAX_SNAPSHOT_BYTES };
+    else {
+      const { kind, value: response, execution, control } = frozen.snapshot;
+      result = await require('./extraction/runner').runExtraction(extract, { kind, response, execution, control });
+    }
+    const { ok, result: value, timings, ...details } = result;
+    body.extraction = { status: ok ? 'succeeded' : 'failed', mode: extract.mode,
+      ...(extract.language ? { language: extract.language } : {}), ...details };
+    if (ok) {
+      body.kind = 'json';
+      body.value = value;
+      body.delivery.valueBytes = Buffer.byteLength(JSON.stringify(value));
+    } else {
+      delete body.value;
+      body.delivery = { status: body.control.source.persisted ? 'reference' : 'unavailable', limitBytes, reason: 'extraction_failed' };
+      body.failureStage ||= 'extraction';
+    }
+  }
+  return boundedReply(body, limitBytes);
 }
 
 function responseReply({ snapshot, source }) {
@@ -100,4 +181,4 @@ function exitCodeFor(reply) {
   return ['validation', 'execution'].includes(reply.failureStage) ? 1 : 2;
 }
 
-module.exports = { publicReply, publicFailure, responseReply, isPublicReply, exitCodeFor };
+module.exports = { publicReply, publicFailure, responseReply, isPublicReply, exitCodeFor, finishReply, boundedReply, DEFAULT_OUTPUT_BYTES };

@@ -3,7 +3,7 @@
 
 const { CommandError } = require('./command-errors');
 const { commandDefinitions, isolatedCommandDefinitions, parseCliOptions } = require('./command-registry');
-const { commandInputSchema } = require('./command-discovery');
+const { commandHelpSchema } = require('./command-discovery');
 const { publicFailure, exitCodeFor } = require('./public-reply');
 const runtime = require('./runtime-client');
 
@@ -53,7 +53,9 @@ async function main() {
       const name = command === 'help' ? '' : command;
       const { help, ...filters } = parsed.options;
       if (!name && Object.keys(filters).length) throw new CommandError('invalid_argument', 'Schema filters require a command after --help.', { field: Object.keys(filters)[0] });
-      process.stdout.write(name ? `${JSON.stringify(commandInputSchema(name, filters))}\n` : `${helpText}\n`);
+      const schema = name ? commandHelpSchema(name, filters) : null;
+      process.stdout.write(name ? `${JSON.stringify(schema)}\n` : `${helpText}\n`);
+      if (schema?.ok === false) process.exitCode = 1;
       return;
     }
     command ||= 'status';

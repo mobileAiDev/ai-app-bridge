@@ -1,0 +1,334 @@
+{
+  "at": "2026-09-19T04:44:26.121Z",
+  "environment": {
+    "os": "darwin",
+    "arch": "arm64",
+    "release": "27.0.0",
+    "cpu": "Apple M1 Pro",
+    "cores": 10,
+    "memoryBytes": 34359738368,
+    "node": "v26.3.0",
+    "python": "3.9"
+  },
+  "repeats": 5,
+  "timeoutMs": 2000,
+  "samples": [
+    {
+      "name": "large-text",
+      "snapshotBytes": 8388608,
+      "encodedSnapshotBytes": 11184812,
+      "checksum": "6b0369361bd1c0290c735517d213c49888de37cbf487dc1ca4f239743e63fe2e"
+    },
+    {
+      "name": "many-nodes",
+      "snapshotBytes": 8388608,
+      "encodedSnapshotBytes": 11184812,
+      "checksum": "9d57b3cfcda4e7d89be0ac39dedda3ef7e66234a1a0f1db846fdd5cae6ba6b30"
+    }
+  ],
+  "results": [
+    {
+      "sample": "large-text",
+      "language": "javascript",
+      "concurrency": 1,
+      "runs": 5,
+      "failures": [],
+      "totalMs": {
+        "p50": 124.15,
+        "p95": 125.35,
+        "max": 125.35
+      },
+      "coldStartMs": {
+        "p50": 73.19762500000002,
+        "p95": 74.38575000000003,
+        "max": 74.38575000000003
+      },
+      "parseMs": {
+        "p50": 7.008750000000006,
+        "p95": 7.436292000000009,
+        "max": 7.436292000000009
+      },
+      "extractionMs": {
+        "p50": 1.0356250000000102,
+        "p95": 1.058166,
+        "max": 1.058166
+      },
+      "responseMs": {
+        "p50": 121.13383300000001,
+        "p95": 122.63570800000002,
+        "max": 122.63570800000002
+      },
+      "ipcAndSerializationMs": {
+        "p50": 40.52341699999997,
+        "p95": 42.622917,
+        "max": 42.622917
+      }
+    },
+    {
+      "sample": "large-text",
+      "language": "javascript",
+      "concurrency": 2,
+      "runs": 10,
+      "failures": [],
+      "totalMs": {
+        "p50": 136.78,
+        "p95": 139.12,
+        "max": 139.12
+      },
+      "coldStartMs": {
+        "p50": 75.13204200000018,
+        "p95": 88.48058300000002,
+        "max": 88.48058300000002
+      },
+      "parseMs": {
+        "p50": 7.057083999999989,
+        "p95": 7.274665999999996,
+        "max": 7.274665999999996
+      },
+      "extractionMs": {
+        "p50": 0.9673749999999899,
+        "p95": 1.1075410000000119,
+        "max": 1.1075410000000119
+      },
+      "responseMs": {
+        "p50": 133.8991249999999,
+        "p95": 136.21604200000002,
+        "max": 136.21604200000002
+      },
+      "ipcAndSerializationMs": {
+        "p50": 39.85850000000001,
+        "p95": 54.883208000000025,
+        "max": 54.883208000000025
+      }
+    },
+    {
+      "sample": "large-text",
+      "language": "python",
+      "concurrency": 1,
+      "runs": 5,
+      "failures": [],
+      "totalMs": {
+        "p50": 84.55,
+        "p95": 85.42,
+        "max": 85.42
+      },
+      "coldStartMs": {
+        "p50": 54.06962499999986,
+        "p95": 54.95708300000001,
+        "max": 54.95708300000001
+      },
+      "parseMs": {
+        "p50": 7.774333000000008,
+        "p95": 7.9341660000000065,
+        "max": 7.9341660000000065
+      },
+      "extractionMs": {
+        "p50": 0.27279199999999393,
+        "p95": 0.29683299999999635,
+        "max": 0.29683299999999635
+      },
+      "responseMs": {
+        "p50": 83.18399999999997,
+        "p95": 84.0369169999999,
+        "max": 84.0369169999999
+      },
+      "ipcAndSerializationMs": {
+        "p50": 20.927874000000006,
+        "p95": 21.05175000000012,
+        "max": 21.05175000000012
+      }
+    },
+    {
+      "sample": "large-text",
+      "language": "python",
+      "concurrency": 2,
+      "runs": 10,
+      "failures": [],
+      "totalMs": {
+        "p50": 100.07,
+        "p95": 101.74,
+        "max": 101.74
+      },
+      "coldStartMs": {
+        "p50": 56.04770899999994,
+        "p95": 69.24558400000001,
+        "max": 69.24558400000001
+      },
+      "parseMs": {
+        "p50": 8.040124999999994,
+        "p95": 8.273708000000005,
+        "max": 8.273708000000005
+      },
+      "extractionMs": {
+        "p50": 0.22433299999999323,
+        "p95": 0.30987499999998724,
+        "max": 0.30987499999998724
+      },
+      "responseMs": {
+        "p50": 98.51420799999983,
+        "p95": 100.03095899999994,
+        "max": 100.03095899999994
+      },
+      "ipcAndSerializationMs": {
+        "p50": 21.87966700000015,
+        "p95": 35.97508400000004,
+        "max": 35.97508400000004
+      }
+    },
+    {
+      "sample": "many-nodes",
+      "language": "javascript",
+      "concurrency": 1,
+      "runs": 5,
+      "failures": [],
+      "totalMs": {
+        "p50": 127.09,
+        "p95": 129.2,
+        "max": 129.2
+      },
+      "coldStartMs": {
+        "p50": 73.10525000000007,
+        "p95": 74.27983300000005,
+        "max": 74.27983300000005
+      },
+      "parseMs": {
+        "p50": 12.971500000000006,
+        "p95": 13.286833000000001,
+        "max": 13.286833000000001
+      },
+      "extractionMs": {
+        "p50": 1.0503750000000025,
+        "p95": 1.0809169999999995,
+        "max": 1.0809169999999995
+      },
+      "responseMs": {
+        "p50": 124.607125,
+        "p95": 126.68587500000012,
+        "max": 126.68587500000012
+      },
+      "ipcAndSerializationMs": {
+        "p50": 37.10329200000014,
+        "p95": 40.553290999999945,
+        "max": 40.553290999999945
+      }
+    },
+    {
+      "sample": "many-nodes",
+      "language": "javascript",
+      "concurrency": 2,
+      "runs": 10,
+      "failures": [],
+      "totalMs": {
+        "p50": 144.9,
+        "p95": 146.76,
+        "max": 146.76
+      },
+      "coldStartMs": {
+        "p50": 73.11483399999997,
+        "p95": 91.17945800000007,
+        "max": 91.17945800000007
+      },
+      "parseMs": {
+        "p50": 13.476041999999993,
+        "p95": 13.672083,
+        "max": 13.672083
+      },
+      "extractionMs": {
+        "p50": 0.9490830000000017,
+        "p95": 1.1281669999999906,
+        "max": 1.1281669999999906
+      },
+      "responseMs": {
+        "p50": 141.88566600000013,
+        "p95": 143.76283299999977,
+        "max": 143.76283299999977
+      },
+      "ipcAndSerializationMs": {
+        "p50": 38.8024579999996,
+        "p95": 56.273250000000004,
+        "max": 56.273250000000004
+      }
+    },
+    {
+      "sample": "many-nodes",
+      "language": "python",
+      "concurrency": 1,
+      "runs": 5,
+      "failures": [],
+      "totalMs": {
+        "p50": 102.71,
+        "p95": 103.45,
+        "max": 103.45
+      },
+      "coldStartMs": {
+        "p50": 53.72479199999998,
+        "p95": 55.684957999999824,
+        "max": 55.684957999999824
+      },
+      "parseMs": {
+        "p50": 20.976790999999995,
+        "p95": 21.42316600000001,
+        "max": 21.42316600000001
+      },
+      "extractionMs": {
+        "p50": 0.2954999999999902,
+        "p95": 0.4120419999999875,
+        "max": 0.4120419999999875
+      },
+      "responseMs": {
+        "p50": 101.01987499999996,
+        "p95": 101.87320799999998,
+        "max": 101.87320799999998
+      },
+      "ipcAndSerializationMs": {
+        "p50": 25.16554200000015,
+        "p95": 25.99104200000009,
+        "max": 25.99104200000009
+      }
+    },
+    {
+      "sample": "many-nodes",
+      "language": "python",
+      "concurrency": 2,
+      "runs": 10,
+      "failures": [],
+      "totalMs": {
+        "p50": 120.61,
+        "p95": 122.09,
+        "max": 122.09
+      },
+      "coldStartMs": {
+        "p50": 55.35091700000066,
+        "p95": 73.3960419999994,
+        "max": 73.3960419999994
+      },
+      "parseMs": {
+        "p50": 21.044584000000004,
+        "p95": 21.338417,
+        "max": 21.338417
+      },
+      "extractionMs": {
+        "p50": 0.2707499999999863,
+        "p95": 0.3487500000000088,
+        "max": 0.3487500000000088
+      },
+      "responseMs": {
+        "p50": 118.8139170000004,
+        "p95": 119.92925000000014,
+        "max": 119.92925000000014
+      },
+      "ipcAndSerializationMs": {
+        "p50": 25.36658300000071,
+        "p95": 43.68562399999974,
+        "max": 43.68562399999974
+      }
+    }
+  ],
+  "deviceCalls": 0,
+  "notes": [
+    "totalMs includes worker termination and temporary-directory cleanup; responseMs stops at the final frame.",
+    "ipcAndSerializationMs is the residual after cold start, input parse and extraction; includes Host serialization and scheduling.",
+    "Source preflight and snapshot persistence precede the extraction timer and are excluded. This is one reference machine, not a cross-platform performance claim."
+  ],
+  "ok": true
+}

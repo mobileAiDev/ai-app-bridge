@@ -35,6 +35,8 @@ function createResponseStore({ adapter, now } = {}) {
     if (bytes.length > MAX_SNAPSHOT_BYTES) return { ...source, error: 'snapshot_too_large', bytes: bytes.length, maxBytes: MAX_SNAPSHOT_BYTES };
     const stored = await evidence.persist('response', { operationId: identity.responseId, revision: 1, snapshotBase64: bytes.toString('base64') });
     if (!stored.ok) return { ...source, error: stored.error };
+    const retained = evidence.read(stored.evidenceId);
+    if (!retained.ok || retained.record.checksum !== stored.checksum) return { ...source, error: 'snapshot_not_retained' };
     return { ...source, persisted: true, ref: { namespace: 'response', evidenceId: stored.evidenceId,
       checksum: stored.checksum, operationId: identity.responseId } };
   }

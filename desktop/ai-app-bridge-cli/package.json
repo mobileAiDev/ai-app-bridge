@@ -39,6 +39,7 @@
     "bin/command-request.js",
     "bin/public-reply.js",
     "bin/response-store.js",
+    "bin/extraction",
     "bin/execution-runtime.js",
     "bin/runtime-client.js",
     "bin/runtime-directory.js",

@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const readline = require('node:readline');
+const { errorDiagnostic } = require('./script-diagnostics');
 
 const artifactPath = process.argv[2];
 const replies = new Map();
@@ -37,6 +38,7 @@ function waitReply(id) {
 rl.on('line', (line) => {
   if (!line) return;
   let message;
+  const parseStarted = performance.now();
   try {
     message = JSON.parse(line);
   } catch {
@@ -44,10 +46,13 @@ rl.on('line', (line) => {
     process.exit(1);
     return;
   }
+  const inputParseMs = performance.now() - parseStarted;
   if (message.type === 'start') {
     applyControl(message.control);
-    run(message).catch((error) => {
-      send({ type: 'fail', error: error.message || String(error) });
+    run(message, inputParseMs).catch((error) => {
+      const diagnostic = errorDiagnostic(error);
+      send({ type: 'fail', error: message.extraction ? (error.code || 'extraction_failed') : diagnostic.message,
+        message: diagnostic.message, diagnostic });
       process.exit(1);
     });
     return;
@@ -92,7 +97,29 @@ function holdIfPaused() {
   });
 }
 
-async function run(start) {
+async function run(start, inputParseMs) {
+  if (start.extraction) {
+    const executionStarted = performance.now();
+    let result;
+    if (start.extraction.mode === 'regex') result = require('../extraction/regex').extractRegex(start.inputs.response, start.extraction);
+    else {
+      const Module = require('node:module');
+      const path = require('node:path');
+      const filename = path.resolve(start.sourceName || artifactPath);
+      const loaded = new Module(filename, module);
+      loaded.filename = filename;
+      loaded.paths = Module._nodeModulePaths(path.dirname(filename));
+      loaded._compile(fs.readFileSync(artifactPath, 'utf8'), filename);
+      const main = typeof loaded.exports === 'function' ? loaded.exports : loaded.exports.main;
+      if (typeof main !== 'function') throw new TypeError('Extraction source must export main(ctx).');
+      result = await main({ inputs: start.inputs });
+    }
+    require('../extraction/json-value').validateJsonValue(result);
+    if (Buffer.byteLength(JSON.stringify(result)) > 256 * 1024) throw Object.assign(new Error('Extraction result exceeds 256 KiB.'), { code: 'extraction_output_too_large' });
+    send({ type: 'return', result, timings: { inputParseMs, executionMs: performance.now() - executionStarted } });
+    process.exit(0);
+    return;
+  }
   const loaded = require(artifactPath);
   const entry = start.entrypoint || 'main';
   const main = typeof loaded === 'function' && entry === 'main' ? loaded : loaded[entry];

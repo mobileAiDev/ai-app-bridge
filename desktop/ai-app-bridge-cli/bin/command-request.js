@@ -61,12 +61,9 @@ function validateRunRequest(args) {
   }
   validateValue(args.extract, extractSchema, 'extract');
   if (Object.hasOwn(args, 'output')) validateValue(args.output, outputSchema, 'output');
-  // Extraction modes and output budgets are delivered by M2c. Until then the
-  // public schema is exposed and both are rejected before any dispatch.
-  if (args.extract !== null) throw new CommandError('unsupported_argument', `extract mode ${args.extract.mode} is not available in this build; pass extract null. Nothing was dispatched.`, { field: 'extract.mode' });
-  if (Object.hasOwn(args, 'output')) throw new CommandError('unsupported_argument', 'output budgets are not available in this build; omit output. Nothing was dispatched.', { field: 'output' });
   const command = typeof args.command === 'string' ? args.command : '';
-  return { command, arguments: validateCommandArguments(command, args.arguments === undefined ? {} : args.arguments), extract: args.extract };
+  return { command, arguments: validateCommandArguments(command, args.arguments === undefined ? {} : args.arguments), extract: args.extract,
+    ...(args.output ? { output: args.output } : {}) };
 }
 
 module.exports = { validateRunRequest, publicRequestSchema, extractSchema, outputSchema };

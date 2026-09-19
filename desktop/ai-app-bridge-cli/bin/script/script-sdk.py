@@ -1,9 +1,14 @@
 import asyncio
 import json
 import sys
+import math
+import traceback
+import time
+from types import SimpleNamespace
 
 
 _real_stdout = sys.stdout
+_input_parse_ms = 0
 HELD = {
     "pause_requested",
     "paused_manual",
@@ -20,10 +25,14 @@ def send(message):
 
 
 def read_message():
+    global _input_parse_ms
     line = sys.stdin.readline()
     if not line:
         return None
-    return json.loads(line)
+    started = time.perf_counter()
+    message = json.loads(line)
+    _input_parse_ms = (time.perf_counter() - started) * 1000
+    return message
 
 
 class HostContext:
@@ -120,11 +129,57 @@ class HostContext:
         return checkpoint["state"]
 
 
-def load_namespace(path):
+def load_namespace(path, source_name=None):
     namespace = {}
     with open(path, "r", encoding="utf-8") as handle:
-        exec(handle.read(), namespace, namespace)
+        exec(compile(handle.read(), source_name or path, "exec"), namespace, namespace)
     return namespace
+
+
+def validate_json(value, location="", parents=None):
+    parents = set() if parents is None else parents
+
+    def invalid(reason):
+        error = TypeError(f"{location or '/'}: {reason}")
+        error.code = "extraction_type_error"
+        error.value_path = location
+        raise error
+
+    if value is None or isinstance(value, (str, bool)):
+        return
+    if isinstance(value, (int, float)):
+        if (isinstance(value, int) and abs(value) > 9007199254740991) or (isinstance(value, float) and
+                (not math.isfinite(value) or value.is_integer() and abs(value) > 9007199254740991)):
+            invalid("expected a finite number in the safe integer range")
+        return
+    if type(value) not in (list, dict):
+        invalid(f"unsupported JSON type: {type(value).__name__}")
+    if id(value) in parents:
+        invalid("cyclic value")
+    parents.add(id(value))
+    entries = enumerate(value) if isinstance(value, list) else value.items()
+    for key, item in entries:
+        if isinstance(value, dict) and not isinstance(key, str):
+            invalid("object keys must be strings")
+        suffix = str(key).replace("~", "~0").replace("/", "~1")
+        validate_json(item, f"{location}/{suffix}", parents)
+    parents.remove(id(value))
+
+
+def bounded(value, size):
+    return str(value).encode("utf-8", errors="replace")[:size].decode("utf-8", errors="ignore")
+
+
+def diagnostic(error):
+    result = {"type": type(error).__name__, "message": bounded(error, 2048),
+              "stack": bounded("".join(traceback.format_exception(type(error), error, error.__traceback__)), 8192)}
+    frames = traceback.extract_tb(error.__traceback__)
+    if frames:
+        frame = frames[-1]
+        result["location"] = {"file": bounded(frame.filename, 1024), "line": frame.lineno}
+    if hasattr(error, "value_path"):
+        result["valuePath"] = bounded(error.value_path, 1024)
+    return result
 
 
 def main():
@@ -132,10 +187,13 @@ def main():
     send({"type": "ready"})
     start = read_message()
     sys.stdout = sys.stderr
-    ctx = HostContext(start.get("inputs") or {}, start.get("control") or {"status": "running", "pauseReason": None})
+    extraction = start.get("extraction") is not None
+    ctx = SimpleNamespace(inputs=start["inputs"]) if extraction else HostContext(start.get("inputs") or {}, start.get("control") or {"status": "running", "pauseReason": None})
     entry = start.get("entrypoint") or "main"
     try:
-        namespace = load_namespace(artifact_path)
+        execution_started = time.perf_counter()
+        input_parse_ms = _input_parse_ms
+        namespace = load_namespace(artifact_path, start.get("sourceName"))
         loaded = namespace.get(entry)
         if not callable(loaded):
             send({"type": "fail", "error": "unsupported_entrypoint"})
@@ -143,9 +201,20 @@ def main():
         result = loaded(ctx)
         if asyncio.iscoroutine(result):
             result = asyncio.run(result)
-        send({"type": "return", "result": result})
+        if extraction:
+            validate_json(result)
+            if len(json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")) > 256 * 1024:
+                error = ValueError("Extraction result exceeds 256 KiB.")
+                error.code = "extraction_output_too_large"
+                raise error
+        frame = {"type": "return", "result": result}
+        if extraction:
+            frame["timings"] = {"inputParseMs": input_parse_ms, "executionMs": (time.perf_counter() - execution_started) * 1000}
+        send(frame)
     except Exception as error:
-        send({"type": "fail", "error": str(error)})
+        detail = diagnostic(error)
+        send({"type": "fail", "error": getattr(error, "code", "extraction_failed") if extraction else detail["message"],
+              "message": detail["message"], "diagnostic": detail})
         sys.exit(1)
 
 

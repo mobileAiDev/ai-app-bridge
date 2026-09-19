@@ -27,7 +27,19 @@ const commandDomains = {
 };
 const supportedTargetsText = `AI App Bridge supports ${supportedTargets.join('; ')}.`;
 const commandDomainsText = `Command domains: ${Object.entries(commandDomains).map(([domain, summary]) => `${domain}(${summary})`).join('; ')}.`;
-const discoveryText = 'Use capabilities with a domain for a command directory, then request one command and operation when applicable. For intent decide, narrow by the actual platform, provider and action. Omit filters for the complete command contract; includeOptions:true explicitly expands a directory. Execute with run and command-specific arguments.';
+const discoveryText = 'Use capabilities with a domain for a command directory, then request one command and operation when applicable. For intent decide, narrow by the actual platform, provider and action. Discovery output is limited to 96 KiB; narrow the query if a full schema or includeOptions:true exceeds this budget. Execute with run, command-specific arguments and explicit extract.';
+
+function discoveryBudget(value) {
+  const limitBytes = require('./public-reply').DEFAULT_OUTPUT_BYTES;
+  const attemptedBytes = Buffer.byteLength(JSON.stringify(value));
+  if (attemptedBytes <= limitBytes) return value;
+  return { ok: false, error: 'discovery_output_too_large', attemptedBytes, limitBytes,
+    message: 'Request a command directory without includeOptions, then one command and operation. For intent decide, add platform/provider/action. No schema was truncated.',
+    filters: ['domain', 'command', ...schemaFilterNames], example: { command: 'intent', operation: 'start' } };
+}
+
+function capabilities(args) { return discoveryBudget(capabilityPayload(args)); }
+function commandHelpSchema(command, filters) { return discoveryBudget(commandInputSchema(command, filters)); }
 function capabilityPayload(args = {}) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return { ok: false, error: 'invalid_argument', field: 'arguments', dispatched: false, ambiguous: false };
   const invalidKey = Object.keys(args).find(key => !['command', 'domain', 'includeOptions', ...schemaFilterNames].includes(key));
@@ -142,4 +154,4 @@ function shapeCommandDefinition(definition, includeOptions, filters = {}) {
 
 
 function normalizeCommandName(value) { return typeof value === 'string' ? value : ''; }
-module.exports = { capabilities: capabilityPayload, commandInputSchema, commandDomains, supportedTargets, supportedTargetsText, commandDomainsText, discoveryText };
+module.exports = { capabilities, commandInputSchema, commandHelpSchema, commandDomains, supportedTargets, supportedTargetsText, commandDomainsText, discoveryText };

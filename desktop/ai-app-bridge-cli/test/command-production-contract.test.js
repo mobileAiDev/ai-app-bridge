@@ -25,8 +25,14 @@ test('one discoverable registry supplies all live command schemas and only two M
   for (const definition of definitions) {
     const schema = commandSchema(definition.command);
     assert.equal(schema.additionalProperties, false);
-    assert.deepEqual(capabilityPayload({ command: definition.command }).inputSchema, schema);
-    assert.equal(capabilityPayload({ command: definition.command }).entrypoints.cli, true);
+    const discovered = capabilityPayload({ command: definition.command });
+    if (definition.command === 'intent') {
+      assert.equal(discovered.error, 'discovery_output_too_large');
+      assert.equal(capabilityPayload({ command: 'intent', operation: 'start' }).entrypoints.cli, true);
+    } else {
+      assert.deepEqual(discovered.inputSchema, schema);
+      assert.equal(discovered.entrypoints.cli, true);
+    }
   }
   for (const command of ['smoke', 'launch-native-test', 'launch-flutter', 'batch', 'tap_text']) {
     assert.equal(capabilityPayload({ command }).ok, false);
@@ -255,7 +261,7 @@ test('Script discovery is first-class, and fixture permissions are opt-in with t
   const { createDeviceMutationLease } = require('../bin/shared-kernel/device-mutation-lease');
   const { authorizeCommand, catalogPayload } = require('../bin/script/script-catalog');
   assert.deepEqual(Object.keys(capabilityPayload().domains).slice(0, 2), ['execution', 'evidence']);
-  for (const command of ['script', 'intent']) assert.equal(capabilityPayload({ command }).role, 'execution');
+  for (const command of ['script', 'intent']) assert.equal(capabilityPayload({ command, operation: 'start' }).role, 'execution');
   assert.equal(authorizeCommand('clear-app-data').ok, false);
   assert.equal(authorizeCommand('clear-app-data', ['app.lifecycle']).ok, true);
   assert.equal(authorizeCommand('permission-revoke', ['app.permissions']).ok, true);

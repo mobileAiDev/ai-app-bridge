@@ -20,6 +20,23 @@ test('a terminal frame failure remains available to late readers and discards qu
   channel.stop();
 });
 
+test('IPC input and output limits are independent and include the newline', async () => {
+  const makeChild = () => Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
+  const message = { type: 'start', inputs: 'x'.repeat(1000) };
+  const inputBytes = Buffer.byteLength(JSON.stringify(message)) + 1;
+  const child = makeChild();
+  const channel = createScriptSessionChannel(child, { maxInputFrameBytes: inputBytes, maxOutputFrameBytes: 64 });
+  let sent = '';
+  child.stdin.on('data', chunk => { sent += chunk; });
+  channel.send(message);
+  assert.equal(Buffer.byteLength(sent), inputBytes);
+  child.stdout.write(JSON.stringify({ type: 'return', result: 'x'.repeat(100) }) + '\n');
+  assert.equal((await channel.nextMessage()).error, 'frame_too_large');
+  const other = createScriptSessionChannel(makeChild(), { maxInputFrameBytes: inputBytes - 1, maxOutputFrameBytes: 10000 });
+  other.send(message);
+  assert.equal((await other.nextMessage()).error, 'frame_too_large');
+});
+
 for (const [language, makeRuntime, source] of [
   ['javascript', createNodeRuntimeAdapter, 'module.exports.main = async ctx => { await ctx.call("events", {}); await ctx.call("tap-native", {}); };'],
   ['python', createPythonRuntimeAdapter, 'def main(ctx):\n    ctx.call("events", {})\n    ctx.call("tap-native", {})\n'],

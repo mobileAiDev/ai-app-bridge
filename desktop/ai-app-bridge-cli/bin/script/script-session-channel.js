@@ -2,7 +2,8 @@
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 
-function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } = {}) {
+function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
+  maxInputFrameBytes = maxFrameBytes, maxOutputFrameBytes = maxFrameBytes, maxDiagnosticBytes = 8192 } = {}) {
   let buffer = '';
   let closed = false;
   let failure = null;
@@ -12,10 +13,19 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
   const pending = [];
   const replies = new Map();
   const maxPending = 32;
+  const stderr = [];
+  let stderrBytes = 0;
+  let stderrTotalBytes = 0;
 
   if (child.stderr) {
-    child.stderr.on('data', () => {});
+    child.stderr.on('data', chunk => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stderrTotalBytes += bytes.length;
+      const retained = bytes.subarray(0, Math.max(0, maxDiagnosticBytes - stderrBytes));
+      if (retained.length) { stderr.push(retained); stderrBytes += retained.length; }
+    });
   }
+  child.stdin.on('error', error => fail(error));
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
     if (closed) return;
@@ -25,7 +35,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
       const line = buffer.slice(0, index);
       buffer = buffer.slice(index + 1);
       index = buffer.indexOf('\n');
-      if (Buffer.byteLength(line, 'utf8') > maxFrameBytes) {
+      if (Buffer.byteLength(line, 'utf8') + 1 > maxOutputFrameBytes) {
         fail(new Error('frame_too_large'));
         return;
       }
@@ -57,7 +67,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
       }
       pending.push(message);
     }
-    if (Buffer.byteLength(buffer, 'utf8') > maxFrameBytes) {
+    if (Buffer.byteLength(buffer, 'utf8') > maxOutputFrameBytes) {
       fail(new Error('frame_too_large'));
     }
   });
@@ -67,7 +77,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
   function send(message) {
     if (closed || !child.stdin.writable) return;
     const line = `${JSON.stringify(message)}\n`;
-    if (Buffer.byteLength(line, 'utf8') > maxFrameBytes) {
+    if (Buffer.byteLength(line, 'utf8') > maxInputFrameBytes) {
       fail(new Error('frame_too_large'));
       return;
     }
@@ -76,14 +86,11 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
 
   function nextMessage() {
     return new Promise((resolve) => {
-      if (closed) {
-        resolve(failure);
-        return;
-      }
       if (pending.length > 0) {
         resolve(pending.shift());
         return;
       }
+      if (closed) { resolve(failure); return; }
       waiters.push(resolve);
     });
   }
@@ -108,7 +115,9 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
     closed = true;
     const frame = { type: 'fail', error: error.message || String(error) };
     failure = frame;
+    const terminal = error.message === 'channel_closed' ? pending.find(message => ['return', 'fail'].includes(message.type)) : null;
     pending.length = 0;
+    if (terminal) pending.push(terminal);
     buffer = '';
     while (waiters.length > 0) waiters.shift()(frame);
     for (const resolve of replies.values()) resolve(frame);
@@ -121,7 +130,10 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES } =
     if (child.kill('SIGTERM') && !killTimer) killTimer = setTimeout(() => child.kill('SIGKILL'), 250);
   }
 
-  return { send, nextMessage, waitReply, stop };
+  function diagnostics() {
+    return stderrTotalBytes ? { stderr: Buffer.concat(stderr).toString('utf8'), stderrTruncated: stderrTotalBytes > stderrBytes } : {};
+  }
+  return { send, nextMessage, waitReply, stop, diagnostics };
 }
 
 module.exports = { createScriptSessionChannel };

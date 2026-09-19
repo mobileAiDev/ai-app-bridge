@@ -24,7 +24,7 @@ test('public validation rejects missing and invalid extract before touching a pr
   let calls = 0;
   const dependencies = { rawRunner: async () => { calls++; return { ok: true }; }, factRecorder: null, observationCollector: null };
   for (const fields of [{}, { extract: 'null' }, { extract: true }, { extract: {} },
-    { extract: { mode: 'regex', pattern: 'x', inputPath: '' } }, { extract: null, output: { maxBytes: 16384 } }]) {
+    { extract: { mode: 'regex', pattern: '[', inputPath: '' } }, { extract: null, output: { maxBytes: 1 } }]) {
     const { value: reply } = await host.run({ command: 'tree', arguments: target, ...fields }, dependencies);
     assert.equal(reply.failureStage, 'validation');
     assert.equal(reply.execution.ok, false);

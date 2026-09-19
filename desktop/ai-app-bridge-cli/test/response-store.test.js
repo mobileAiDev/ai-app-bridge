@@ -117,3 +117,16 @@ test('real FactStore survives a new process and exports/verifies exactly the sav
   assert.deepEqual(reply.value, input.snapshot.value);
   assert.deepEqual(reply.control.source, source);
 });
+
+test('8 MiB source bytes survive real segmented storage including base64 and record overhead', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-response-max-'));
+  const facts = createFactStore({ directory, profile: '256mb' });
+  t.after(() => { facts.close(); fs.rmSync(directory, { recursive: true, force: true }); });
+  const store = createResponseStore({ adapter: createSegmentedEvidenceAdapter(facts) });
+  const input = frozen({ ok: true, text: '' });
+  input.snapshot.value.text = 'x'.repeat(MAX_SNAPSHOT_BYTES - input.bytes.length);
+  input.bytes = Buffer.from(require('../bin/shared-kernel/evidence-schema').canonicalJson(input.snapshot));
+  const source = await store.save(input);
+  assert.equal(source.persisted, true, JSON.stringify(source));
+  assert.deepEqual(store.read(source.ref).bytes, input.bytes);
+});

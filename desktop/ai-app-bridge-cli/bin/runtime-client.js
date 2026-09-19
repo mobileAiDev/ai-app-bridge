@@ -6,7 +6,7 @@ const http = require('node:http');
 const { fork } = require('node:child_process');
 const { CommandError } = require('./command-errors');
 const { validateRunRequest } = require('./command-request');
-const { publicReply, publicFailure, isPublicReply } = require('./public-reply');
+const { publicReply, publicFailure, isPublicReply, finishReply } = require('./public-reply');
 const { protocol, maxMessageBytes, readJson, decodeReply } = require('./runtime-protocol');
 const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, readEndpoint, prepareDirectory } = require('./runtime-directory');
 const { executablePath } = require('./shared-kernel/executable-path');
@@ -138,9 +138,16 @@ async function ensureRuntime(location, identity, signal) {
 // assembled here with the same module.
 async function run(request, { signal } = {}) {
   const command = typeof request?.command === 'string' ? request.command : undefined;
-  try { request = validateRunRequest(request); }
+  let extract;
+  try {
+    request = validateRunRequest(request);
+    if (request.command === 'runtime' || (request.command === 'evidence' && request.arguments.operation === 'verify')) {
+      extract = require('./extraction/prepare').prepareExtraction(request.extract);
+    }
+  }
   catch (error) { return { value: publicFailure({ command, stage: 'validation', error }) }; }
-  const local = reply => ({ value: publicReply({ command: request.command, reply, completed: true }) });
+  const local = async reply => ({ value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true }),
+    extract, output: request.output }) });
   try {
     // Verification is an offline command in both transports; it neither
     // opens FactStore nor depends on a running owner or valid store profile.
@@ -163,9 +170,10 @@ async function run(request, { signal } = {}) {
     // Authentication and request-decoding failures precede execute dispatch,
     // so the internal RPC cannot yet identify the requested public command.
     if (reply.value?.ok === false && reply.value.dispatched === false
-      && ['runtime_access_denied', 'runtime_protocol_error', 'runtime_message_too_large'].includes(reply.value.error)) return local(reply);
+      && ['runtime_access_denied', 'runtime_protocol_error', 'runtime_message_too_large'].includes(reply.value.error)) return { value: publicFailure({
+        command: request.command, stage: 'execution', error: new CommandError(reply.value.error, reply.value.message), maxBytes: request.output?.maxBytes }) };
     throw new CommandError('runtime_protocol_error', 'Execute returned no public reply.', { dispatched: null, ambiguous: true });
-  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error }) }; }
+  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error, maxBytes: request.output?.maxBytes }) }; }
 }
 
 module.exports = { run, exchange };

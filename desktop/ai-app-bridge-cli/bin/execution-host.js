@@ -4,7 +4,8 @@ const { executeProviderCommand } = require('./device-provider');
 const { validateRunRequest } = require('./command-request');
 const { resolveCommandPaths } = require('./shared-kernel/request-context');
 const { commandFailure, normalizeCommandResult } = require('./command-errors');
-const { publicReply, publicFailure, responseReply } = require('./public-reply');
+const { publicReply, publicFailure, responseReply, finishReply, boundedReply } = require('./public-reply');
+const { prepareExtraction } = require('./extraction/prepare');
 const { runExecution, withoutExecution } = require('./shared-kernel/execution-scope');
 const { getHostFactStore } = require('./shared-kernel/host-fact-store');
 const { FactRecorder, historyDescriptor, isMobileCaptureCommand } = require('./fact-recorder');
@@ -38,7 +39,7 @@ const activeRuns = new Set();
 // Callers share one execution host. The owning process controls its lifecycle.
 // Every reply is the public reply of the request, assembled exactly once here.
 function run(args, dependencies) {
-  if (closing) return Promise.resolve({ value: publicReply({ command: requestedCommand(args), reply: valueReply({ ok: false, error: 'runtime_stopping', dispatched: false, ambiguous: false }) }) });
+  if (closing) return Promise.resolve({ value: boundedReply(publicReply({ command: requestedCommand(args), reply: valueReply({ ok: false, error: 'runtime_stopping', dispatched: false, ambiguous: false }) })) });
   const task = runGeneric(args, dependencies);
   activeRuns.add(task);
   task.then(() => activeRuns.delete(task), () => activeRuns.delete(task));
@@ -157,15 +158,21 @@ async function runGeneric(args = {}, dependencies = {}) {
   const command = requestedCommand(args);
   let request;
   let commandArguments;
+  let extract;
   try {
     request = validateRunRequest(args);
     commandArguments = resolveCommandPaths(request.command, request.arguments);
-  } catch (error) { return { value: publicFailure({ command, stage: 'validation', error }) }; }
+    extract = prepareExtraction(request.extract);
+  } catch (error) { return { value: publicFailure({ command, stage: 'validation', error, maxBytes: request?.output?.maxBytes }) }; }
   try {
-    if (command === 'response') return { value: responseReply((dependencies.responseStore || getResponseStore()).read(commandArguments.ref)) };
+    const getStore = () => dependencies.responseStore || getResponseStore();
+    if (command === 'response') {
+      const frozen = getStore().read(commandArguments.ref);
+      return { value: await finishReply({ body: responseReply(frozen), extract, output: request.output, frozen }) };
+    }
     const reply = await commandRouter.route(request.command, commandArguments, dependencies);
-    return { value: publicReply({ command: request.command, reply, completed: true }) };
-  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error }) }; }
+    return { value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true }), extract, output: request.output, getStore }) };
+  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error, maxBytes: request.output?.maxBytes }) }; }
 }
 
 async function runCommand(command, args = {}, dependencies = {}) {

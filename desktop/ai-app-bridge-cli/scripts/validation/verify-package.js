@@ -76,8 +76,15 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     report.progressiveDiscovery = { selection: selected.selection, sharedCliMcpSchema: true,
       directoryBytes: Buffer.byteLength(JSON.stringify(directory)), selectedHelpBytes: Buffer.byteLength(selectedHelp) };
     write('selected-capabilities.json', selected);
-    const capabilities = payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: { includeOptions: true } }));
-    const commands = Object.values(capabilities.domains).flat(); report.commandCount = commands.length;
+    const wide = payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: { includeOptions: true } }));
+    assert.equal(wide.error, 'discovery_output_too_large');
+    const commands = [];
+    for (const { command } of Object.values(directory.domains).flat()) {
+      commands.push(payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: {
+        command, ...(command === 'intent' ? { operation: 'start' } : {}),
+      } })));
+    }
+    report.commandCount = commands.length;
     assert(commands.length > 0); assert.equal(commands.some(item => item.command === 'batch'), false);
     for (const command of commands) {
       assert.equal(command.entrypoints.cli, true, command.command);
@@ -85,7 +92,7 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     }
     assert.equal(commands.find(item => item.command === 'intent').role, 'execution');
     assert.equal(commands.find(item => item.command === 'tap-uia').entrypoints.script, true);
-    write('capabilities.json', capabilities);
+    write('capabilities.json', commands);
     const uiaArgs = { serial: 'controlled-package-device', packageName: 'example.uia', adb: uia.adb, feedback: 'off' };
     const preciseCli = await cli('tap-uia', { ...uiaArgs, selector: { contentDescription: 'Package UI probe' } });
     const preciseMcp = await run('tap-uia', { ...uiaArgs, selector: { resourceName: 'example.uia:id/child' } });
