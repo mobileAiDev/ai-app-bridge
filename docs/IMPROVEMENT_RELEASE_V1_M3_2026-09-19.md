@@ -21,3 +21,5 @@
 - 真实 Gradle 8.9 / AGP 8.7.0 / JDK 17.0.20，临时 Android 项目：compileSdk 33 在配置阶段拒绝；同项目 34 配置阶段通过。执行任务为 help，未构建或安装 APK。保留的[结构化报告](IMPROVEMENT_RELEASE_V1_M3_PREFLIGHT_2026-09-19.json)展示实际配置与影响范围。
 - 日志：`/tmp/aab-m3-final.log`、`/tmp/aab-m3-gradle-preflight/gradle.log`、`/tmp/aab-m3-gradle-preflight/compatible.log`。
 - 全套、最终 tarball、跨平台免编译安装和真机对照尚不计为通过，进入 M4/M5。
+
+补审收口：固定 M3 提交的 Standards 审核通过。Spec 补审的两个 P2 已各补原反例：CLI 词法错误在预算参数前/后都保留 16 KiB 限制（真实 CLI 10 项公共返回测试通过）；非 UTF-8 stderr 解码扩张后再次按完整字符截取尾部，JS/Python 实际写二进制 stderr 的回归通过（诊断组 7/7）。这两项不是放宽预算或截断 JSON。

@@ -45,6 +45,11 @@ for (const language of ['javascript', 'python']) {
       : 'def main(ctx):\n    print("before-timeout", flush=True)\n    while True: pass\n', sourcePath, 500);
     assert.equal(timeout.error, 'timeout');
     assert.match(timeout.diagnostics.stderr, /before-timeout/);
+    const binary = await run(make(), language === 'javascript' ?
+      'module.exports.main = () => { require("node:fs").writeSync(2, Buffer.from(Array(5000).fill([97,255]).flat())); throw Error("binary"); };' :
+      'import os\ndef main(ctx):\n    os.write(2, bytes([97,255])*5000)\n    raise ValueError("binary")\n', sourcePath);
+    assert.ok(Buffer.byteLength(binary.diagnostics.stderr) <= 8192);
+    assert.equal(binary.diagnostics.stderrTruncated, true);
   });
 }
 
