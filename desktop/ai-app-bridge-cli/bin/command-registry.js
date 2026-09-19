@@ -290,9 +290,18 @@ const workflowCommands = new Set(['install-apk', 'permission-dialog']);
 const permissionCommands = new Set(['permission-state', 'permission-grant', 'permission-revoke']);
 const expertCommands = new Set(['uia-runtime', 'freeze-app', 'thaw-app', 'flutter-action', 'h5-eval', 'flutter-h5-eval', 'ios-h5-eval', 'ios-flutter-action', 'ios-setup', 'web-command', 'forward', 'remove-forward', 'webview-pages', 'appops-set', 'permission-grant', 'permission-revoke']);
 const deviceCommands = new Set(['uia-tree', 'screenshot', 'tap', 'tap-uia-text', 'keyboard-state', 'hide-keyboard', 'swipe', 'keyevent', 'logcat', 'permission-dialog', 'install-apk', 'remove-forward']);
+// Discovery is a recorded misuse of run: point at the discovery entry instead of
+// only rejecting the name.
+function unknownCommand(command) {
+  const message = command === 'capabilities'
+    ? 'capabilities is the discovery tool, not a run command. Call the capabilities tool (CLI: --help <command>) with an optional domain or command filter, then run one of the listed command names.'
+    : `Unknown command: ${command}. List command names with the capabilities tool (CLI: ai-app-bridge help).`;
+  return new CommandError('unknown_command', message, { field: 'command' });
+}
+
 function commandContract(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
-  if (!definition) throw new CommandError('unknown_command', `Unknown command: ${command}`, { field: 'command' });
+  if (!definition) throw unknownCommand(command);
   const isolated = isolatedByName.has(command);
   const platform = ['runtime', 'executor-prepare'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
     : definition.domain === 'ios' ? 'ios' : definition.domain === 'web' ? 'web' : 'android';
@@ -319,7 +328,7 @@ function commandContract(command) {
 
 function commandSchema(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
-  if (!definition) throw new CommandError('unknown_command', `Unknown command: ${command}`, { field: 'command' });
+  if (!definition) throw unknownCommand(command);
   if (command === 'executor-prepare') return require('./executors/preparation').preparationSchema();
   if (require('./ui-observation').commands.has(command)) return require('./ui-observation').schema(command, optionTypes);
   if (command === 'web-executor') return require('./executors/command-schema').webExecutorSchema();

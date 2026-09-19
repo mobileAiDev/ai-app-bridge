@@ -19,7 +19,7 @@ async function recordTrial(status = 'completed', checkpoint = false) {
     return receipt;
   };
   const store = createScriptEvidenceStore({ adapter });
-  const target = { serial: 'durable-test-device', packageName: 'durable.test.app' };
+  const target = { platform: 'android', serial: 'durable-test-device', packageName: 'durable.test.app' };
   const spec = { schemaVersion: 'aab.code-script/v1', name: 'durable-contract', language: 'javascript',
     source: 'exports.main = async () => {};', target, inputs: { expected: { title: ['fixture-title'] } },
     permissions: ['app.read', 'app.interact'], policy: { restartPolicy: 'none' } };
@@ -72,7 +72,8 @@ for (const status of ['completed', 'failed', 'cancelled']) {
   test('accepts the real supervisor ' + status + ' persistence sequence', async () => {
     const fixture = await recordTrial(status);
     assert.deepEqual(review(fixture), { actions: 2, terminalStatus: status });
-    assert.deepEqual(fixture.facts.map(fact => fact.globalSeq), [3, 6, 9, 12, 15, 18]);
+    // A completed run also persists its result record before the terminal checkpoint.
+    assert.deepEqual(fixture.facts.map(fact => fact.globalSeq), status === 'completed' ? [3, 6, 9, 12, 15, 18, 21] : [3, 6, 9, 12, 15, 18]);
   });
 }
 
@@ -118,7 +119,7 @@ for (const [name, mutate, error] of corruptions) {
 for (const [field, value] of Object.entries({
   name: 'another-script', language: 'python', sourcePath: '/other/source.js', entrypoint: 'other',
   inputs: { expected: { title: ['wrong-title'] } }, policy: { restartPolicy: 'checkpoint' },
-  permissions: ['app.read'], target: { serial: 'other-device', packageName: 'durable.test.app' },
+  permissions: ['app.read'], target: { platform: 'android', serial: 'other-device', packageName: 'durable.test.app' },
 })) {
   test('rejects changed checkpoint ' + field + ' despite an unchanged script hash', () => {
     const fixture = structuredClone(baseline);

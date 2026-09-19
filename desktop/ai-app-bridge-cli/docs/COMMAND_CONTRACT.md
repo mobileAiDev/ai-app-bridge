@@ -93,7 +93,10 @@ there; Script freezes its `cwd`, source and target before starting. Subsequent
 clients cannot change those paths. `evidence verify` is offline in both adapters
 and requires neither a running runtime nor an available FactStore.
 
-CLI results are one JSON envelope: `{kind: "json"|"text"|"bytes", value, history?}`.
+CLI results are one JSON envelope on one line, without indentation:
+`{kind: "json"|"text"|"bytes", value, history?}`. `--help COMMAND` prints the
+selected schema the same way; MCP tool text is also compact JSON. Whitespace is
+the only difference from earlier indented output; structure and values are equal.
 JSON false, zero and null remain values; text is a string and bytes are base64.
 `history` contains the same recording outcome that MCP exposes as `_history`.
 Command failures have `value.ok:false` and exit code 1. MCP uses its normal
@@ -502,6 +505,30 @@ The last permitted Agent reply is validated and may act or finish. A spent actio
 or call budget prevents another Agent call. Malformed replies remain
 `waiting_for_decision` with a field error and require explicit correction; they
 neither dispatch nor trigger another Agent request automatically.
+
+A supervised Intent is driven by the caller: observe, decide against the
+observed revision, observe again, judge independently. One complete lifecycle,
+as sent to `run` (the repository test suite runs this sequence against the
+current contract with an injected device):
+
+```json lifecycle-example
+{"command":"intent","arguments":{"operation":"start","goal":"Open the Labels screen","target":{"platform":"android","serial":"<serial>","packageName":"<package>"}}}
+{"command":"intent","arguments":{"operation":"decide","operationId":"<operationId>","decision":{"decisionId":"d-1","agentDecision":"act","basedOnRevision":1,"action":{"action":"tap","selector":{"text":"Labels"}}}}}
+{"command":"intent","arguments":{"operation":"status","operationId":"<operationId>","limit":20}}
+{"command":"intent","arguments":{"operation":"status","operationId":"<operationId>","limit":20,"afterSequence":"<history.lastSequence of the previous page>"}}
+{"command":"intent","arguments":{"operation":"decide","operationId":"<operationId>","decision":{"decisionId":"d-2","agentDecision":"complete","basedOnRevision":2}}}
+```
+
+`start` and each `decide` return the committed observation with its `revision`
+and `summary`; the next decision must carry that `revision` as
+`basedOnRevision`. `status` returns the current state plus one history page.
+`limit` bounds entries, not bytes: a page of `summary` entries can still be
+large, so read the current state with a small `limit` and page history
+deliberately. The next page's `afterSequence` is the previous page's
+`history.lastSequence`; it is not an `eventSequence`, which belongs to Script.
+Supervised mode never acts on its own: without a decision the Intent stays
+`waiting_for_decision` until `timeoutMs`, and `complete` records the caller's
+judgment rather than evidence of the business outcome.
 
 Every decision requires `decisionId`, positive integer `basedOnRevision`, and
 `agentDecision`. `act` requires a provider-specific `action`; terminal decisions

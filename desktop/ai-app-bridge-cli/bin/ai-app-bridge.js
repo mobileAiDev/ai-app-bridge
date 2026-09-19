@@ -25,7 +25,7 @@ Intent decide also accepts --platform, --provider and --action schema filters.
 CLI flags use kebab-case, for example --package-name, --tap-x, --timeout-ms.
 Objects, arrays, nullable objects and Script decisions use JSON flag values.
 Only --category and --extra repeat as individual strings.
-Results are JSON: {kind: "json"|"text"|"bytes", value, history?}.
+Results are one line of compact JSON: {kind: "json"|"text"|"bytes", value, history?}.
 Bytes are base64; value.ok:false exits with code 1. Help is plain text.
 Relative file paths use the calling directory. Script cwd defaults to it.
 Example: ai-app-bridge script --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./regression.js"}'
@@ -50,15 +50,15 @@ async function main() {
       const name = command === 'help' ? '' : command;
       const { help, ...filters } = parsed.options;
       if (!name && Object.keys(filters).length) throw new CommandError('invalid_argument', 'Schema filters require a command after --help.', { field: Object.keys(filters)[0] });
-      process.stdout.write(name ? `${JSON.stringify(commandInputSchema(name, filters), null, 2)}\n` : `${helpText}\n`);
+      process.stdout.write(name ? `${JSON.stringify(commandInputSchema(name, filters))}\n` : `${helpText}\n`);
       return;
     }
     command ||= 'status';
     const reply = await runtime.run({ command, arguments: parseCliOptions(command, parsed.options) }, { signal: connection.signal });
-    process.stdout.write(`${JSON.stringify(encodeReply(reply), null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(encodeReply(reply))}\n`);
     if (reply.value?.ok === false) process.exitCode = 1;
   } catch (error) {
-    process.stdout.write(`${JSON.stringify(encodeReply({ value: commandFailure(error, command) }), null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(encodeReply({ value: commandFailure(error, command) }))}\n`);
     process.exitCode = 1;
   } finally {
     process.removeListener('SIGINT', disconnect);

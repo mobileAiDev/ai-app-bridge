@@ -133,8 +133,15 @@ function scriptSpecSchema(permissionNames) {
 }
 
 function executionCommandSchema(command, permissionNames) {
-  const read = { afterSequence, limit: pageLimit };
-  const scriptRead = { ...read, eventLimit: pageLimit, includeCatalog: boolean };
+  // Script and Intent page with different cursors; the schema states which one.
+  const historyRead = {
+    afterSequence: { ...afterSequence, description: 'History page cursor: the previous response\'s history.lastSequence. Not an eventSequence.' },
+    limit: { ...pageLimit, description: 'History entries per page; it bounds entries, not response bytes.' },
+  };
+  const scriptRead = {
+    afterSequence: { ...afterSequence, description: 'Continuation cursor: the previous status/wait response\'s eventSequence; events and history after it are returned. Not history.lastSequence.' },
+    limit: pageLimit, eventLimit: pageLimit, includeCatalog: boolean,
+  };
   const operation = (name, properties, required = []) => object({ operation: { const: name }, ...properties }, ['operation', ...required]);
   const control = (name, properties = {}) => operation(name, { operationId: text, ...properties }, ['operationId']);
   if (command === 'script') return variants('operation', [
@@ -144,7 +151,8 @@ function executionCommandSchema(command, permissionNames) {
         { if: { required: ['recordingDir'] }, then: { properties: { script: { properties: { policy: { properties: { restartPolicy: { const: 'none' } } } } } } } },
       ] },
     control('result'),
-    control('status', scriptRead), control('wait', { ...scriptRead, waitMs: { ...integer(0, 60000), default: 30000 } }),
+    control('status', scriptRead), control('wait', { ...scriptRead, waitMs: { ...integer(0, 60000), default: 30000,
+      description: 'Upper bound of one wait call in milliseconds. To keep waiting, call wait again with the same operationId and afterSequence set to the last eventSequence.' } }),
     ...['pause', 'resume', 'cancel'].map(name => control(name, scriptRead)),
     operation('decide', { operationId: text, requestId: text, revision, decision: { contentMediaType: 'application/json', description: 'JSON answer to the current ctx.askAgent request; business data is preserved.' }, ...scriptRead }, ['operationId', 'requestId', 'revision', 'decision']),
     operation('runtime-status', {}),
@@ -156,7 +164,7 @@ function executionCommandSchema(command, permissionNames) {
     return variants('operation', [
       operation('start', { ...start, mode: { const: 'supervised', default: 'supervised' } }, ['goal', 'target']),
       operation('start', { ...start, mode: { const: 'autonomous' }, agentModule: text, budget: intentBudget }, ['goal', 'target', 'mode', 'agentModule']),
-      control('status', read), control('observe', { basedOnRevision: revision, observationTarget: observationTargetSchema,
+      control('status', historyRead), control('observe', { basedOnRevision: revision, observationTarget: observationTargetSchema,
         provider: { ...provider, description: 'Observe through this provider on the frozen target. Becomes selected only after the new observation and summary are committed; omitted retains the last committed selection.' } }),
       operation('decide', { operationId: text, decision: intentDecisionSchema() }, ['operationId', 'decision']),
       ...['pause', 'resume', 'cancel'].map(name => control(name)),

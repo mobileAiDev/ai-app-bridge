@@ -22,7 +22,7 @@ async function exportedTrial(t) {
   const out = path.join(root, 'run'), storeDirectory = path.join(root, 'source-facts');
   const trialDirectory = path.join(out, 'positive-1');
   fs.mkdirSync(trialDirectory, { recursive: true });
-  const target = { serial: 'device-free-test', packageName: 'public.archive.test' };
+  const target = { platform: 'android', serial: 'device-free-test', packageName: 'public.archive.test' };
   const spec = {
     schemaVersion: 'aab.code-script/v1', name: 'public-archive-trial', language: 'javascript',
     source: 'exports.main = async () => {};', target, inputs: { expected: 'fixed-value' },
@@ -79,9 +79,10 @@ test('durable review uses two new public offline verifiers and preserves action 
   assert.equal(result.freshVerifierProcesses, 2);
   assert.equal(result.offlineFactStoreUnavailable, true);
   assert.equal(result.archivesUnchanged, true);
-  assert.equal(result.records, 6);
+  // checkpoint, two dispatch-marker/action-receipt pairs, the persisted result and the terminal checkpoint.
+  assert.equal(result.records, 7);
   assert.equal(result.actions, 2);
-  assert.equal(result.operations[0].recordCount, 6);
+  assert.equal(result.operations[0].recordCount, 7);
   assert.equal(result.operations[0].manifestSha256, fixture.trial.archive.manifestSha256);
   assert.deepEqual(directoryHashes(fixture.trial.archive.archiveDir), before);
   const review = path.join(fixture.out, 'durable-review');
@@ -93,11 +94,12 @@ test('durable review uses two new public offline verifiers and preserves action 
     assert.deepEqual(read(path.join(directory, 'host-exit.json')), { code: 0, signal: null });
     const transcript = fs.readFileSync(path.join(directory, 'mcp.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     const calls = transcript.filter(item => item.direction === 'request' && item.message.method === 'tools/call');
-    assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].message.params.arguments, {
-      command: 'evidence', arguments: { operation: 'verify', archiveDir: fixture.trial.archive.archiveDir,
-        manifestSha256: fixture.trial.archive.manifestSha256 },
-    });
+    // Offline verify is the only evidence call; the harness client then stops its isolated runtime on close.
+    assert.deepEqual(calls.map(item => item.message.params.arguments), [
+      { command: 'evidence', arguments: { operation: 'verify', archiveDir: fixture.trial.archive.archiveDir,
+        manifestSha256: fixture.trial.archive.manifestSha256 } },
+      { command: 'runtime', arguments: { operation: 'stop' } },
+    ]);
   }
 });
 

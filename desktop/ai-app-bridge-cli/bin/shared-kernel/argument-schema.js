@@ -14,19 +14,16 @@ function validateValue(value, schema, field = '') {
   if (Object.hasOwn(schema, 'const') && value !== schema.const) throw invalid(field, `${label} must be ${JSON.stringify(schema.const)}.`);
   if (schema.enum && !schema.enum.includes(value)) throw invalid(field, `${label} must be one of: ${schema.enum.join(', ')}.`);
   const type = schema.type;
-  const matches = type === undefined || (type === 'array' ? Array.isArray(value)
-    : type === 'null' ? value === null
-    : type === 'object' ? value !== null && typeof value === 'object' && !Array.isArray(value)
-    : type === 'integer' ? Number.isSafeInteger(value)
-    : type === 'number' ? typeof value === 'number' && Number.isFinite(value)
-    : typeof value === type);
-  if (!matches) throw invalid(field, `${label} must be ${type}; no implicit type conversion is performed.`);
+  if (!matchesType(value, type)) throw invalid(field, `${label} must be ${type}; no implicit type conversion is performed.`);
   if (schema.minLength !== undefined && value.length < schema.minLength) throw invalid(field, `${label} must not be empty.`);
   if (schema.maxLength !== undefined && value.length > schema.maxLength) throw invalid(field, `${label} must contain at most ${schema.maxLength} characters.`);
   if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) throw invalid(field, `${label} must match ${schema.pattern}.`);
-  if (schema.minimum !== undefined && value < schema.minimum) throw invalid(field, `${label} must be >= ${schema.minimum}.`);
-  if (schema.exclusiveMinimum !== undefined && value <= schema.exclusiveMinimum) throw invalid(field, `${label} must be > ${schema.exclusiveMinimum}.`);
-  if (schema.maximum !== undefined && value > schema.maximum) throw invalid(field, `${label} must be <= ${schema.maximum}.`);
+  // A range violation quotes the field's documented meaning, so the caller can
+  // correct the call without reading the nested schema.
+  const explained = message => schema.description ? `${message} ${schema.description}` : message;
+  if (schema.minimum !== undefined && value < schema.minimum) throw invalid(field, explained(`${label} must be >= ${schema.minimum}.`));
+  if (schema.exclusiveMinimum !== undefined && value <= schema.exclusiveMinimum) throw invalid(field, explained(`${label} must be > ${schema.exclusiveMinimum}.`));
+  if (schema.maximum !== undefined && value > schema.maximum) throw invalid(field, explained(`${label} must be <= ${schema.maximum}.`));
   if (type === 'array') {
     if (schema.minItems !== undefined && value.length < schema.minItems) throw invalid(field, `${label} requires at least ${schema.minItems} item(s).`);
     if (schema.maxItems !== undefined && value.length > schema.maxItems) throw invalid(field, `${label} accepts at most ${schema.maxItems} item(s).`);
@@ -68,6 +65,15 @@ function validateValue(value, schema, field = '') {
   if (Object.keys(schema).every(key => ['description', 'default'].includes(key))) validateJson(value, field);
 }
 
+function matchesType(value, type) {
+  return type === undefined || (type === 'array' ? Array.isArray(value)
+    : type === 'null' ? value === null
+    : type === 'object' ? value !== null && typeof value === 'object' && !Array.isArray(value)
+    : type === 'integer' ? Number.isSafeInteger(value)
+    : type === 'number' ? typeof value === 'number' && Number.isFinite(value)
+    : typeof value === type);
+}
+
 function accepts(value, schema, field) {
   try { validateValue(value, schema, field); return true; }
   catch (error) { if (!(error instanceof CommandError)) throw error; return false; }
@@ -82,20 +88,39 @@ function validateUnion(value, branches, field, exactlyOne) {
   }
   if (matched && (!exactlyOne || matched === 1)) return;
   if (!matched) {
+    // A branch for another JSON type cannot explain this value, e.g. the null
+    // branch of a nullable target never explains an object missing platform.
+    const explained = failures.filter(({ branch }) => matchesType(value, branch.type));
+    if (!explained.length) {
+      throw invalid(field, `${field || 'arguments'} must be ${[...new Set(failures.map(({ branch }) => branch.type))].join(' or ')}; no implicit type conversion is performed.`);
+    }
     // A tagged branch gives a useful precise error instead of a generic union
     // failure, e.g. decision.action.durationMs for an observed long press.
-    const tagged = failures.filter(({ branch }) => {
+    const tagged = explained.filter(({ branch }) => {
       const tags = Object.entries(branch.properties || {}).filter(([, rule]) => Object.hasOwn(rule, 'const'));
       return tags.some(([key, rule]) => value?.[key] === rule.const)
         && tags.every(([key, rule]) => Object.hasOwn(value || {}, key) ? value[key] === rule.const : !branch.required?.includes(key));
     });
     if (tagged.length === 1) throw tagged[0].error;
-    const candidates = tagged.length ? tagged : failures;
+    const candidates = tagged.length ? tagged : explained;
     if (candidates.every(({ error }) => error.code === candidates[0].error.code && error.field === candidates[0].error.field && error.message === candidates[0].error.message)) throw candidates[0].error;
+    // Every branch is selected by one shared discriminator and the supplied
+    // value selects none: name the accepted values instead of every variant.
+    const discriminator = sharedDiscriminator(explained.map(({ branch }) => branch));
+    if (discriminator && !tagged.length && Object.hasOwn(value || {}, discriminator.key)) {
+      const child = fieldAt(field, discriminator.key);
+      throw invalid(child, `${child} must be one of: ${discriminator.values.map(item => JSON.stringify(item)).join(', ')}.`);
+    }
     if (branches.length === 1) throw failures[0].error;
   }
   throw new CommandError('invalid_argument', `${field || 'arguments'} must match ${exactlyOne ? 'exactly one' : 'one'} of the documented variants.`,
     { field: field || 'arguments', details: { variants: failures.map(({ error }) => ({ field: error.field, error: error.code, message: error.message })) } });
+}
+
+function sharedDiscriminator(branches) {
+  const [first, ...rest] = branches.map(branch => branch.properties || {});
+  const key = Object.keys(first).find(name => Object.hasOwn(first[name], 'const') && rest.every(properties => Object.hasOwn(properties[name] || {}, 'const')));
+  return key === undefined ? null : { key, values: [...new Set(branches.map(branch => branch.properties[key].const))] };
 }
 
 function validateJson(value, field = '', ancestors = new Set(), depth = 0) {

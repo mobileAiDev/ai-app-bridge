@@ -278,7 +278,9 @@ test('Script discovery is first-class, and fixture permissions are opt-in with t
 test('Script requires platform-discriminated targets and hashes target and permissions for restore', () => {
   const { compileScriptSpec } = require('../bin/script/script-spec');
   const script = { schemaVersion: 'aab.code-script/v1', language: 'javascript', source: 'module.exports.main = async () => 1;', target };
-  assert.equal(compileScriptSpec({ ...script, target: { deviceId: 'iphone', bundleId: 'app' } }).error, 'invalid_argument');
+  const undiscriminated = compileScriptSpec({ ...script, target: { deviceId: 'iphone', bundleId: 'app' } });
+  assert.equal(undiscriminated.error, 'missing_argument');
+  assert.equal(undiscriminated.field, 'target.platform');
   const original = compileScriptSpec(script);
   assert.notEqual(original.hash, compileScriptSpec({ ...script, target: { ...target, serial: 'different-phone' } }).hash);
   assert.notEqual(original.hash, compileScriptSpec({ ...script, permissions: ['app.lifecycle'] }).hash);

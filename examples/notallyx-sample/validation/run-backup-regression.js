@@ -45,7 +45,9 @@ async function main(options) {
       stderr:String(r.stderr||''),stdoutSha256:sha(bytes),stdoutBytes:bytes.length,...(!binary?{stdout:bytes.toString()}: {})})+'\n');
     if(r.error||!allowed.includes(r.status))throw Error(`adb:${args[0]}:${r.error?.message||r.stderr||r.status}`);return binary?bytes:bytes.toString().trim();
   }
-  async function run(command,args={}) {const r=payloadOf(await client.request('tools/call',{name:'run',arguments:{command,arguments:{...target,feedback:'off',...args}}}));
+  // Script operations carry their platform-qualified target inside script.target; device commands take the flat target.
+  const scriptTarget={platform:'android',...target};
+  async function run(command,args={}) {const r=payloadOf(await client.request('tools/call',{name:'run',arguments:{command,arguments:command==='script'?args:{...target,feedback:'off',...args}}}));
     if((r.ok===false||r.error)&&!(command==='script'&&r.operationId&&['failed','cancelled'].includes(r.status)))throw Error(`${command}:${r.error}`);return r;}
   async function launch(name) {
     write(path.join(out,name+'-launch.json'),await run('launch-app',{clearTask:true}));let status;const deadline=Date.now()+20000;
@@ -67,7 +69,7 @@ async function main(options) {
   async function epochProof(record,directory) {
     const out=path.join(directory,'epoch-proof');fs.mkdirSync(out);
     const start=await run('script',{operation:'start',script:{schemaVersion:'aab.code-script/v1',name:'notallyx-epoch-evidence',language:'javascript',sourcePath:path.join(frozen,'backup-epoch-script.js'),
-      target,inputs:{out,runtimeEpoch:record.runtimeEpoch,previousEpoch:result.runtimeEpochs.at(-1).previousEpoch,sinceMs:record.deviceStartedAtMs,operationId:record.operationId},policy:{timeoutMs:30000,onFailure:'fail',restartPolicy:'none'}}});
+      target:scriptTarget,inputs:{out,runtimeEpoch:record.runtimeEpoch,previousEpoch:result.runtimeEpochs.at(-1).previousEpoch,sinceMs:record.deviceStartedAtMs,operationId:record.operationId},policy:{timeoutMs:30000,restartPolicy:'none'}}});
     write(path.join(out,'start.json'),start);let current=start;
     while(!['completed','failed','cancelled'].includes(current.status))current=await run('script',{operation:'wait',operationId:start.operationId,waitMs:1000,afterSequence:current.eventSequence||0});
     const final=await run('script',{operation:'status',operationId:start.operationId,afterSequence:0,limit:4096});write(path.join(out,'final.json'),final);
@@ -83,9 +85,9 @@ async function main(options) {
     await launch(name);const directory=path.join(out,name);fs.mkdirSync(directory);
     const pid=adb(['shell','pidof',PACKAGE]);if(!/^\d+$/.test(pid))throw Error('one_sample_pid_required');
     const startedAtMs=Date.now();const start=await run('script',{operation:'start',script:{schemaVersion:'aab.code-script/v1',name:'notallyx-backup-'+name,language:'javascript',
-      sourcePath:path.join(frozen,'backup-script.js'),target,inputs:{out:directory,moduleDirectory:frozen,runId,phase:name,fixtureDirectory,filename,noteTitle:options.noteTitle,
+      sourcePath:path.join(frozen,'backup-script.js'),target:scriptTarget,inputs:{out:directory,moduleDirectory:frozen,runId,phase:name,fixtureDirectory,filename,noteTitle:options.noteTitle,
         previousEpoch:result.runtimeEpochs.at(-1).previousEpoch},
-      policy:{timeoutMs:240000,onFailure:'fail',restartPolicy:'none'}}});
+      policy:{timeoutMs:240000,restartPolicy:'none'}}});
     operationId=start.operationId;write(path.join(directory,'start.json'),start);if(!operationId)throw Error('script_operation_required');
     let current=start;const deadline=Date.now()+250000;
     while(!['completed','failed','cancelled'].includes(current.status)){

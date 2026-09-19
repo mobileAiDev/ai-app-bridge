@@ -30,9 +30,10 @@ connection can observe or decide the same operation ID. Disconnecting either
 client leaves tasks running. Use `runtime --operation status` to inspect its
 owner, `runtime --operation stop` to drain it, and task `cancel` to stop one task.
 
-CLI output is `{kind: "json"|"text"|"bytes", value, history?}`. Read the command
-payload from `value`; binary values are base64. Failure uses `value.ok:false` and
-exit code 1. MCP wraps the same payload/history in its content format. See the
+CLI output is one line of compact JSON: `{kind: "json"|"text"|"bytes", value, history?}`.
+Read the command payload from `value`; binary values are base64. Failure uses
+`value.ok:false` and exit code 1. MCP wraps the same payload/history, also as
+compact JSON, in its content format. See the
 [shared lifecycle and configuration contract](docs/COMMAND_CONTRACT.md#shared-runtime-lifecycle).
 
 Execution operations and nested controls use strict schemas. Supply an explicit

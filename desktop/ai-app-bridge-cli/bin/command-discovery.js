@@ -46,7 +46,7 @@ function capabilityPayload(args = {}) {
       return {
         ok: Boolean(definition),
         command: requestedCommand,
-        ...(definition ? shapeCommandDefinition(definition, true, filters) : { error: 'unknown_command' }),
+        ...(definition ? shapeCommandDefinition(definition, true, filters) : { error: 'unknown_command', message: `Unknown command: ${requestedCommand}. Omit command, or pass a domain, to list the command directory.` }),
       };
     } catch (error) {
       if (!(error instanceof CommandError)) throw error;
@@ -56,7 +56,10 @@ function capabilityPayload(args = {}) {
 
   const requestedDomain = args.domain ? String(args.domain) : '';
   const domains = {};
-  if (requestedDomain && !Object.hasOwn(commandDomains, requestedDomain)) return { ok: false, error: 'unknown_domain', field: 'domain', dispatched: false, ambiguous: false };
+  if (requestedDomain && !Object.hasOwn(commandDomains, requestedDomain)) {
+    return { ok: false, error: 'unknown_domain', field: 'domain', dispatched: false, ambiguous: false,
+      message: `Unknown domain: ${requestedDomain}. Domains: ${Object.keys(commandDomains).join(', ')}. android, ios and web are platforms, not domains; they narrow intent decide schemas, e.g. {"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}.` };
+  }
   for (const definition of [...isolatedCommandDefinitions, ...commandDefinitions]) {
     if (requestedDomain && definition.domain !== requestedDomain) continue;
     if (!domains[definition.domain]) domains[definition.domain] = [];

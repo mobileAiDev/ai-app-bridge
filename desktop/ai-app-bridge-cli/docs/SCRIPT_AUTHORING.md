@@ -138,6 +138,111 @@ Terminal rolling summaries freeze elapsed and active durations at the terminal
 event. Later status queries do not add idle time. For end-to-end measurement,
 retain the public start timestamp and terminal event timestamp separately.
 
+## Lifecycle: start, wait, result
+
+A fixed regression is one start, a wait loop and one result read. The caller
+drives these three `run` calls; the program owns observation, actions and
+assertions. The repository test suite runs the two sources below against the
+current contract with an injected device, so they match the installed package.
+
+1. Start with `sourcePath` for repeated runs (or `source`), a platform-qualified
+   `target`, and the run's values in `inputs`:
+
+```json lifecycle-example
+{"command":"script","arguments":{"operation":"start","script":{"schemaVersion":"aab.code-script/v1","name":"labels-regression","language":"javascript","sourcePath":"./regression.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"},"inputs":{"entryText":"Labels","expectedText":"New label"}}}}
+```
+
+2. Wait with the returned `operationId`. `waitMs` is at most 60000 per call.
+   While `status` is `running`, call `wait` again with the previous response's
+   `eventSequence` as `afterSequence`:
+
+```json lifecycle-example
+{"command":"script","arguments":{"operation":"wait","operationId":"<operationId>","waitMs":30000,"afterSequence":0}}
+```
+
+   `waiting_for_agent` means the program called `ctx.askAgent`; the question is
+   the `agent_question_created` event with `requestId`, `revision` and `request`.
+   Answer it with `decide` or end the run with `cancel`. Keep every event page:
+   a later `afterSequence` no longer returns that event. Do not wait it out.
+
+3. When `status` is `completed`, `failed` or `cancelled`, read the value:
+
+```json lifecycle-example
+{"command":"script","arguments":{"operation":"result","operationId":"<operationId>"}}
+```
+
+   `completed` only states that the program returned and its value was
+   persisted; the verdicts inside `result` decide each case. `failed` and
+   `cancelled` return `result_unavailable`; the terminal event and `error`
+   carry the reason.
+
+The JavaScript program. Each case records a device assertion against the
+observation it judges, and the run stops at the first case that is not `passed`:
+
+```javascript regression-example
+'use strict';
+
+// Fixed regression: observe, act once, observe again. Per-run values arrive in
+// ctx.inputs; the returned cases are read with script operation:"result".
+module.exports.main = async function main(ctx) {
+  const cases = [];
+  async function observe(step) {
+    const read = await ctx.call('tree', { compact: true, visibleOnly: true, maxNodes: 1000 });
+    if (!read.ok) throw new Error(`${step}:tree:${read.error}`);
+    return read;
+  }
+  async function check(name, read, condition) {
+    const verdict = await ctx.assert({ name, condition, requiredEvidence: ['tree'], evidence: read.evidence });
+    cases.push({ name, verdict: verdict.verdict, reason: verdict.reason || null });
+    if (verdict.verdict !== 'passed') throw new Error(`${name}:${verdict.verdict}`);
+  }
+  const before = await observe('before');
+  await check('entry control is visible', before,
+    before.result.nodes.some(node => node.text === ctx.inputs.entryText && node.visible === true));
+  const tap = await ctx.call('tap-text', { targetText: ctx.inputs.entryText });
+  if (!tap.ok) throw new Error(`tap-text:${tap.error}`);
+  const after = await observe('after');
+  await check('expected text is shown after the tap', after,
+    after.result.nodes.some(node => node.text === ctx.inputs.expectedText));
+  await ctx.progress({ phase: 'done', cases: cases.length });
+  return { cases, actionId: tap.execution.actionId };
+};
+```
+
+The same program in Python; `ctx.assert_` takes one dictionary and envelopes are
+dictionaries:
+
+```python regression-example
+# Fixed regression: observe, act once, observe again. Per-run values arrive in
+# ctx.inputs; the returned cases are read with script operation:"result".
+def main(ctx):
+    cases = []
+
+    def observe(step):
+        read = ctx.call("tree", {"compact": True, "visibleOnly": True, "maxNodes": 1000})
+        if not read["ok"]:
+            raise Exception(f"{step}:tree:{read['error']}")
+        return read
+
+    def check(name, read, condition):
+        verdict = ctx.assert_({"name": name, "condition": condition, "requiredEvidence": ["tree"], "evidence": read["evidence"]})
+        cases.append({"name": name, "verdict": verdict["verdict"], "reason": verdict.get("reason")})
+        if verdict["verdict"] != "passed":
+            raise Exception(f"{name}:{verdict['verdict']}")
+
+    before = observe("before")
+    check("entry control is visible", before,
+          any(node.get("text") == ctx.inputs["entryText"] and node.get("visible") is True for node in before["result"]["nodes"]))
+    tap = ctx.call("tap-text", {"targetText": ctx.inputs["entryText"]})
+    if not tap["ok"]:
+        raise Exception(f"tap-text:{tap['error']}")
+    after = observe("after")
+    check("expected text is shown after the tap", after,
+          any(node.get("text") == ctx.inputs["expectedText"] for node in after["result"]["nodes"]))
+    ctx.progress({"phase": "done", "cases": len(cases)})
+    return {"cases": cases, "actionId": tap["execution"]["actionId"]}
+```
+
 ## Capability selection
 
 Use `capabilities` to inspect each command's `inputSchema` and `entrypoints.script`.

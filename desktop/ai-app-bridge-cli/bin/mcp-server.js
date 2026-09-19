@@ -294,8 +294,9 @@ function toolText(text, isError = false) {
   };
 }
 
+// Compact JSON: indentation is context cost for the calling model, not information.
 function toolJson(value, isError = false) {
-  return toolText(JSON.stringify(value, null, 2), isError);
+  return toolText(JSON.stringify(value), isError);
 }
 
 function sendResult(id, result) {

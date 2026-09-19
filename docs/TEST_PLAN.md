@@ -15,7 +15,7 @@ cd ios/ai-app-bridge-ios && swift package dump-package && xcodebuild -scheme AiA
 cd flutter/ai_app_bridge_flutter && flutter analyze --no-pub
 ```
 
-When a device is available, also run the Android sample smoke below. Existing
+When a device is available, also run the Android sample validation below. Existing
 Android/MCP commands must keep their current names, arguments, and output/error
 shapes unless a migration note and compatibility alias are provided.
 
@@ -29,17 +29,41 @@ cd desktop/ai-app-bridge-cli && npm test
 node bin/ai-app-bridge.js --help
 ```
 
-## Android Sample Smoke
+## Android Sample Validation
 
-Build and install the sample app, then run:
+The former `smoke` command no longer exists; a client that still lists `smoke`
+or `batch` is showing a stale tool cache. Build and install the sample app,
+open its native test Activity, then run the UI → state → network loop through
+a real MCP client and JS Script (see
+`desktop/ai-app-bridge-cli/scripts/validation/android-sample-capture-loop.md`
+for its preconditions and assertions):
 
 ```bash
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js smoke --package-name io.github.mobileaidev.aiappbridge.sample
+node desktop/ai-app-bridge-cli/scripts/validation/android-sample-capture-loop.js --serial <serial> --out <new-output-dir>
 ```
 
-The smoke covers status, Android tree, UIAutomator tree, screenshot, native tap, native WebView DOM operations, logs, network, state, events, permission state, Flutter snapshot availability when a Flutter host is present, and OkHttp auto capture when the plugin is enabled.
-It also attaches to the sample WebView through DevTools/CDP and verifies H5
-network and console capture.
+The loop covers status, tree, `tap-text`, state, network, screenshot and OkHttp
+auto capture when the plugin is enabled. Cover the remaining read paths with the
+individual commands; each returns one line of compact JSON with the business
+value in `value`:
+
+```bash
+CLI="node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js"
+PKG=io.github.mobileaidev.aiappbridge.sample
+$CLI uia-tree --serial <serial> --package-name $PKG
+$CLI h5-dom --serial <serial> --package-name $PKG
+$CLI webview-pages --serial <serial> --package-name $PKG
+$CLI logs --serial <serial> --package-name $PKG --limit 20
+$CLI events --serial <serial> --package-name $PKG --limit 20
+$CLI permission-state --serial <serial> --package-name $PKG --permission android.permission.CAMERA
+$CLI flutter-tree --serial <serial> --package-name $PKG
+```
+
+Without a Flutter host the SDK answers `flutter-tree` with
+`ok:false, error:flutter_action_handler_absent` (exit code 1); a Flutter host is
+required for a positive result. `webview-pages` lists the DevTools/CDP pages of
+the sample WebView; `webview-network`/`webview-console` then capture H5 network
+and console records through the selected page.
 
 ## iOS Full-Control Smoke
 
