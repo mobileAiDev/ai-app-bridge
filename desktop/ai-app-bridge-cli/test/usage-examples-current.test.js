@@ -26,10 +26,21 @@ const documentedRun = (text, command, operation) => fenced(text, 'json lifecycle
 const target = { platform: 'android', serial: 'example-device', packageName: 'com.example.notes' };
 const nodes = text => ({ ok: true, compact: true, nodes: [{ className: 'TextView', text, visible: true, clickable: true, bounds: [0, 0, 100, 40] }] });
 
-// The documented three-call lifecycle: start, wait while running, then result.
-async function runDocumentedScript(language, source) {
+// Result persistence that takes longer than one wait call, so the caller
+// observes status "finishing" before the terminal status.
+function slowResultAdapter(delayMs) {
+  const adapter = createMemoryEvidenceAdapter();
+  const record = adapter.record;
+  adapter.record = envelope => envelope.kind === 'result'
+    ? new Promise(resolve => setTimeout(() => resolve(record(envelope)), delayMs))
+    : record(envelope);
+  return adapter;
+}
+
+// The documented three-call lifecycle: start, wait while running or finishing, then result.
+async function runDocumentedScript(language, source, adapter = createMemoryEvidenceAdapter()) {
   const commands = [];
-  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
+  const store = createScriptEvidenceStore({ adapter });
   const [startCall] = documentedRun(authoring, 'script', 'start');
   const [waitCall] = documentedRun(authoring, 'script', 'wait');
   const [resultCall] = documentedRun(authoring, 'script', 'result');
@@ -44,20 +55,25 @@ async function runDocumentedScript(language, source) {
       throw new Error(`unexpected device command ${command}`);
     } });
   assert.equal(started.ok, true, JSON.stringify(started));
+  const resultArguments = { ...resultCall.arguments, operationId: started.operationId };
+  validateCommandArguments('script', resultArguments);
   let page = { status: 'running', eventSequence: waitCall.arguments.afterSequence };
   const events = [];
-  for (let polls = 0; page.status === 'running'; polls += 1) {
+  const statuses = [];
+  let earlyResult = null;
+  for (let polls = 0; ['running', 'finishing'].includes(page.status); polls += 1) {
     assert(polls < 200, 'documented wait loop did not finish');
     const waitArguments = { ...waitCall.arguments, operationId: started.operationId, waitMs: 200, afterSequence: page.eventSequence };
     validateCommandArguments('script', waitArguments);
     page = await scriptHandle(waitArguments);
     events.push(...page.events);
+    statuses.push(page.status);
+    // Reading the result while the run is still finishing is the mistake the loop avoids.
+    if (page.status === 'finishing' && !earlyResult) earlyResult = await scriptHandle(resultArguments);
   }
-  const resultArguments = { ...resultCall.arguments, operationId: started.operationId };
-  validateCommandArguments('script', resultArguments);
   const result = await scriptHandle(resultArguments);
   await store.close();
-  return { started, page, events, result, commands };
+  return { started, page, events, statuses, earlyResult, result, commands };
 }
 
 for (const language of ['javascript', 'python']) {
@@ -80,6 +96,17 @@ for (const language of ['javascript', 'python']) {
     assert.equal(new Set(run.events.map(event => event.sequence)).size, run.events.length);
   });
 }
+
+test('the documented wait loop keeps waiting through finishing while the result is persisted slowly', async () => {
+  const [source] = fenced(authoring, 'javascript regression-example');
+  const run = await runDocumentedScript('javascript', source, slowResultAdapter(700));
+  assert.equal(run.statuses.includes('finishing'), true, JSON.stringify(run.statuses));
+  assert.equal(run.statuses.at(-1), 'completed');
+  assert.equal(run.earlyResult.ok, false);
+  assert.equal(run.earlyResult.error, 'result_not_ready', JSON.stringify(run.earlyResult));
+  assert.equal(run.result.ok, true, JSON.stringify(run.result));
+  assert.equal(run.result.result.cases.length, 2);
+});
 
 test('the documented Intent lifecycle pages history with history.lastSequence and never acts alone', async () => {
   resetIntentOperations();

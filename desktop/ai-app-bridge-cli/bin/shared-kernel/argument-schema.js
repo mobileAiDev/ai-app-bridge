@@ -104,12 +104,12 @@ function validateUnion(value, branches, field, exactlyOne) {
     if (tagged.length === 1) throw tagged[0].error;
     const candidates = tagged.length ? tagged : explained;
     if (candidates.every(({ error }) => error.code === candidates[0].error.code && error.field === candidates[0].error.field && error.message === candidates[0].error.message)) throw candidates[0].error;
-    // Every branch is selected by one shared discriminator and the supplied
-    // value selects none: name the accepted values instead of every variant.
-    const discriminator = sharedDiscriminator(explained.map(({ branch }) => branch));
-    if (discriminator && !tagged.length && Object.hasOwn(value || {}, discriminator.key)) {
-      const child = fieldAt(field, discriminator.key);
-      throw invalid(child, `${child} must be one of: ${discriminator.values.map(item => JSON.stringify(item)).join(', ')}.`);
+    // No branch accepts every supplied tag: name the tag the intended variants
+    // reject and its accepted values instead of listing every variant.
+    const rejected = tagged.length ? null : rejectedDiscriminator(value || {}, explained.map(({ branch }) => branch));
+    if (rejected) {
+      const child = fieldAt(field, rejected.key);
+      throw invalid(child, `${child} must be one of: ${rejected.values.map(item => JSON.stringify(item)).join(', ')}.`);
     }
     if (branches.length === 1) throw failures[0].error;
   }
@@ -117,10 +117,17 @@ function validateUnion(value, branches, field, exactlyOne) {
     { field: field || 'arguments', details: { variants: failures.map(({ error }) => ({ field: error.field, error: error.code, message: error.message })) } });
 }
 
-function sharedDiscriminator(branches) {
-  const [first, ...rest] = branches.map(branch => branch.properties || {});
-  const key = Object.keys(first).find(name => Object.hasOwn(first[name], 'const') && rest.every(properties => Object.hasOwn(properties[name] || {}, 'const')));
-  return key === undefined ? null : { key, values: [...new Set(branches.map(branch => branch.properties[key].const))] };
+// The branches agreeing with the most supplied tags are the intended variants,
+// e.g. the two start variants for {operation:"start", mode:"wrong"}. A supplied
+// tag they all reject is the field to correct; its accepted values are theirs.
+function rejectedDiscriminator(value, branches) {
+  const suppliedTags = branch => Object.entries(branch.properties || {}).filter(([key, rule]) => Object.hasOwn(rule, 'const') && Object.hasOwn(value, key));
+  const agreement = branch => suppliedTags(branch).filter(([key, rule]) => value[key] === rule.const).length;
+  const best = Math.max(...branches.map(agreement));
+  const closest = branches.filter(branch => agreement(branch) === best);
+  const key = suppliedTags(closest[0]).map(([name]) => name)
+    .find(name => closest.every(branch => Object.hasOwn(branch.properties[name] || {}, 'const') && value[name] !== branch.properties[name].const));
+  return key === undefined ? null : { key, values: [...new Set(closest.map(branch => branch.properties[key].const))] };
 }
 
 function validateJson(value, field = '', ancestors = new Set(), depth = 0) {

@@ -58,7 +58,7 @@ function capabilityPayload(args = {}) {
   const domains = {};
   if (requestedDomain && !Object.hasOwn(commandDomains, requestedDomain)) {
     return { ok: false, error: 'unknown_domain', field: 'domain', dispatched: false, ambiguous: false,
-      message: `Unknown domain: ${requestedDomain}. Domains: ${Object.keys(commandDomains).join(', ')}. android, ios and web are platforms, not domains; they narrow intent decide schemas, e.g. {"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}.` };
+      message: `Unknown domain: ${requestedDomain}. Domains: ${Object.keys(commandDomains).join(', ')}. android is a platform, not a domain: platform, provider and action narrow intent decide schemas, e.g. {"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}.` };
   }
   for (const definition of [...isolatedCommandDefinitions, ...commandDefinitions]) {
     if (requestedDomain && definition.domain !== requestedDomain) continue;

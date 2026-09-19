@@ -49,6 +49,13 @@ async function main(options) {
   const scriptTarget={platform:'android',...target};
   async function run(command,args={}) {const r=payloadOf(await client.request('tools/call',{name:'run',arguments:{command,arguments:command==='script'?args:{...target,feedback:'off',...args}}}));
     if((r.ok===false||r.error)&&!(command==='script'&&r.operationId&&['failed','cancelled'].includes(r.status)))throw Error(`${command}:${r.error}`);return r;}
+  // One status page holds at most 1000 entries; the complete history is read page by page from history.lastSequence.
+  async function fullStatus(operationId) {
+    const final=await run('script',{operation:'status',operationId,afterSequence:0,limit:1000});
+    for(let page=final;page.history.hasMore;){page=await run('script',{operation:'status',operationId,afterSequence:page.history.lastSequence,limit:1000});
+      final.events.push(...page.events);final.history.items.push(...page.history.items);Object.assign(final.history,{lastSequence:page.history.lastSequence,hasMore:page.history.hasMore,gap:final.history.gap||page.history.gap});}
+    return final;
+  }
   async function launch(name) {
     write(path.join(out,name+'-launch.json'),await run('launch-app',{clearTask:true}));let status;const deadline=Date.now()+20000;
     do {try {status=await run('status');if(status.app?.packageName===PACKAGE&&status.debugBridge?.runtimeEpoch
@@ -72,7 +79,7 @@ async function main(options) {
       target:scriptTarget,inputs:{out,runtimeEpoch:record.runtimeEpoch,previousEpoch:result.runtimeEpochs.at(-1).previousEpoch,sinceMs:record.deviceStartedAtMs,operationId:record.operationId},policy:{timeoutMs:30000,restartPolicy:'none'}}});
     write(path.join(out,'start.json'),start);let current=start;
     while(!['completed','failed','cancelled'].includes(current.status))current=await run('script',{operation:'wait',operationId:start.operationId,waitMs:1000,afterSequence:current.eventSequence||0});
-    const final=await run('script',{operation:'status',operationId:start.operationId,afterSequence:0,limit:4096});write(path.join(out,'final.json'),final);
+    const final=await fullStatus(start.operationId);write(path.join(out,'final.json'),final);
     record.epochProof={operationId:start.operationId,status:current.status,path:out};save();
     if(current.status!=='completed')throw Error('epoch_proof_failed:'+current.error);
     const proof=read(path.join(out,'result.json'));
@@ -94,7 +101,7 @@ async function main(options) {
       if(Date.now()>deadline)throw Error('script_wait_deadline');current=await run('script',{operation:'wait',operationId,waitMs:1000,afterSequence:current.eventSequence||0});
       if(['paused','intervention_required'].includes(current.status))throw Error('script_attention:'+current.status);
     }
-    const final=await run('script',{operation:'status',operationId,afterSequence:0,limit:4096});write(path.join(directory,'final.json'),final);
+    const final=await fullStatus(operationId);write(path.join(directory,'final.json'),final);
     const logcat=adb(['logcat','-d','--pid='+pid,'-v','epoch','-t','3000']);fs.writeFileSync(path.join(directory,'logcat.txt'),logcat+'\n');
     const record={phase:name,operationId,status:current.status,startedAtMs,deviceStartedAtMs:result.runtimeEpochs.at(-1).updatedAtMs,finishedAtMs:Date.now(),pid,logcatPath:path.join(directory,'logcat.txt'),runtimeEpoch:lastEpoch};result.phases.push(record);save();operationId=null;
     if(current.status!=='completed')throw Error(`script_failed:${name}:${current.error}`);

@@ -13,7 +13,7 @@ description: 使用 AI App Bridge 观察、操作和验证 Android、iOS、Flutt
 
 ## 共享调用合同
 
-MCP 入口是 `capabilities` 和 `run`；`capabilities` 是独立工具，不是 `run` 的命令。命令参数全部放在 `run.arguments`，包括目标和 operation，使用当前命令名与 JSON 类型。默认 capabilities 或 domain 查询只取目录；domain 取值为 execution、evidence、core、app、action、flutter、webview、ios、web、diagnostics、advanced，android/ios/web 是平台筛选而不是 domain。用 `command` 查合同，Intent/Script/evidence 加 `operation` 只取当前操作。Intent decide 可再加实际 `platform`、`provider`、`action`，例如 `{"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}`。CLI `--help COMMAND` 接受相同筛选；`includeOptions:true` 才展开整个目录，按需使用。
+MCP 入口是 `capabilities` 和 `run`；`capabilities` 是独立工具，不是 `run` 的命令。命令参数全部放在 `run.arguments`，包括目标和 operation，使用当前命令名与 JSON 类型。默认 capabilities 或 domain 查询只取目录；domain 取值为 execution、evidence、core、app、action、flutter、webview、ios、web、diagnostics、advanced；android 是平台不是 domain，平台筛选只用于 Intent decide 的 `platform`。用 `command` 查合同，Intent/Script/evidence 加 `operation` 只取当前操作。Intent decide 可再加实际 `platform`、`provider`、`action`，例如 `{"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}`。CLI `--help COMMAND` 接受相同筛选；`includeOptions:true` 才展开整个目录，按需使用。
 
 CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响应是一行紧凑 JSON，业务值在 `value`；MCP 工具正文同样是紧凑 JSON。Script 的调用返回值另见下文。客户端退出不会取消任务，用原 operationId 显式 cancel。取消不撤销已派发效果；更换 Runtime 版本或环境前先显式 stop。
 

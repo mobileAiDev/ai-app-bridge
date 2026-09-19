@@ -71,6 +71,22 @@ test('a Script target without or with an unsupported platform is rejected at the
   validateCommandArguments('script', { operation: 'start', script: scriptSpec({ platform: 'android', serial: 'd', packageName: 'a.b' }) });
 });
 
+test('a rejected discriminator is named only when the supplied value is not accepted', () => {
+  const target = { platform: 'android', serial: 'd', packageName: 'a.b' };
+  // operation:"start" is valid; mode selects between the two start variants.
+  assert.deepEqual(rejection('intent', { operation: 'start', mode: 'wrong', goal: 'g', target }),
+    { code: 'invalid_argument', field: 'mode', message: 'mode must be one of: "supervised", "autonomous".' });
+  assert.deepEqual(rejection('intent', { operation: 'start', mode: 'autonomous', goal: 'g', target }),
+    { code: 'missing_argument', field: 'agentModule', message: 'agentModule is required.' });
+  // action:"tap" is valid; provider selects among the tap variants.
+  const decide = action => ({ operation: 'decide', operationId: 'op', decision: { decisionId: 'd1', basedOnRevision: 1, agentDecision: 'act', action } });
+  assert.deepEqual(rejection('intent', decide({ provider: 'wrong', action: 'tap', selector: { text: 'Labels' } })),
+    { code: 'invalid_argument', field: 'decision.action.provider', message: 'decision.action.provider must be one of: "native", "uia", "flutter", "h5".' });
+  assert.equal(rejection('intent', decide({ provider: 'native', action: 'wrong', selector: { text: 'Labels' } })).field, 'decision.action.action');
+  assert.deepEqual(rejection('intent', decide({ provider: 'native', action: 'longPress', selector: { text: 'Labels' }, durationMs: 100 })),
+    { code: 'invalid_argument', field: 'decision.action.durationMs', message: 'decision.action.durationMs must be >= 500.' });
+});
+
 test('range violations quote the documented meaning, including how to keep waiting', () => {
   const wait = rejection('script', { operation: 'wait', operationId: 'op', waitMs: 90000 });
   assert.equal(wait.field, 'waitMs');

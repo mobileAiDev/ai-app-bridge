@@ -153,13 +153,15 @@ current contract with an injected device, so they match the installed package.
 ```
 
 2. Wait with the returned `operationId`. `waitMs` is at most 60000 per call.
-   While `status` is `running`, call `wait` again with the previous response's
-   `eventSequence` as `afterSequence`:
+   While `status` is `running` or `finishing`, call `wait` again with the
+   previous response's `eventSequence` as `afterSequence`:
 
 ```json lifecycle-example
 {"command":"script","arguments":{"operation":"wait","operationId":"<operationId>","waitMs":30000,"afterSequence":0}}
 ```
 
+   `finishing` means the program has returned and the result is still being
+   persisted; `result` answers `result_not_ready` until the status is terminal.
    `waiting_for_agent` means the program called `ctx.askAgent`; the question is
    the `agent_question_created` event with `requestId`, `revision` and `request`.
    Answer it with `decide` or end the run with `cancel`. Keep every event page:
