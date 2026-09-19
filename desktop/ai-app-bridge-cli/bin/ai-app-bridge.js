@@ -51,6 +51,9 @@ async function main() {
     if (!argv.length) { process.stdout.write(`${helpText}\n`); return; }
     const parsed = parseArgs(argv);
     command = parsed.command;
+    const envelopeOutput = publicFields({ output: parsed.options.output });
+    maxBytes = publicOutputLimit(envelopeOutput);
+    if (parsed.error) throw parsed.error;
     if (parsed.options.help || command === 'help') {
       const name = command === 'help' ? '' : command;
       const { help, ...filters } = parsed.options;
@@ -64,8 +67,7 @@ async function main() {
     // The public fields leave the CLI options before the command's own parser
     // sees them; each is one JSON value and never reaches the device action.
     const { extract, output, ...options } = parsed.options;
-    const request = { command, ...publicFields({ output }) };
-    maxBytes = publicOutputLimit(request);
+    const request = { command, ...envelopeOutput };
     Object.assign(request, publicFields({ extract }));
     request.arguments = parseCliOptions(command, options);
     const { value: reply } = await runtime.run(request, { signal: connection.signal });
@@ -97,6 +99,13 @@ function publicFields(fields) {
 function parseArgs(argv) {
   const options = {};
   let command = '';
+  let error;
+  // Finish reading named tokens after a lexical error so its reply can still
+  // honor a valid output budget. The first error rejects the entire request.
+  const append = (name, value) => {
+    try { appendOption(options, name, value); }
+    catch (cause) { error ||= cause; }
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (!arg.startsWith('--') && !command) {
@@ -104,22 +113,24 @@ function parseArgs(argv) {
       continue;
     }
     if (!arg.startsWith('--')) {
-      throw new CommandError('unexpected_argument', `Unexpected positional argument: ${arg}. Supply values through named flags.`, { field: `argv[${index}]` });
+      error ||= new CommandError('unexpected_argument', `Unexpected positional argument: ${arg}. Supply values through named flags.`, { field: `argv[${index}]` });
+      continue;
     }
     const rawName = arg.slice(2);
     if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(rawName)) {
-      throw new CommandError('invalid_argument', `Invalid CLI flag: ${arg}. Use --kebab-case flags followed by separate value tokens.`, { field: `argv[${index}]` });
+      error ||= new CommandError('invalid_argument', `Invalid CLI flag: ${arg}. Use --kebab-case flags followed by separate value tokens.`, { field: `argv[${index}]` });
+      continue;
     }
     const name = rawName.replace(/-([a-z])/g, (_, value) => value.toUpperCase());
     const next = argv[index + 1];
     if (name === 'help' || next === undefined || next.startsWith('--')) {
-      appendOption(options, name, true);
+      append(name, true);
       continue;
     }
-    appendOption(options, name, next);
+    append(name, next);
     index += 1;
   }
-  return { command, options };
+  return { command, options, error };
 }
 
 function appendOption(options, name, value) {

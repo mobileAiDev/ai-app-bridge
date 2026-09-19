@@ -69,12 +69,15 @@ test('Host, MCP and CLI validation errors honor a valid budget before business v
     check(JSON.parse(result.result.content[0].text));
     assert.equal(result.result.isError, true);
   } finally { await client.close({ stopRuntime: false }); }
-  for (const args of [[`--${unknown}`, 'true', '--extract', 'null'], ['--extract', 'x'.repeat(20000)]]) {
+  for (const args of [[`--${unknown}`, 'true', '--extract', 'null'], ['--extract', 'x'.repeat(20000)],
+    ['--extract', 'null', 'x'.repeat(20000)], ['--extract', 'null', '--' + 'X'.repeat(20000)]]) {
     const result = spawnSync(process.execPath, [cli, 'tree', '--serial', target.serial,
       '--package-name', target.packageName, '--output', '{"maxBytes":16384}', ...args], { env, encoding: 'utf8' });
     assert.equal(result.status, 1, result.stderr);
     check(JSON.parse(result.stdout));
   }
+  const early = spawnSync(process.execPath, [cli, 'tree', 'x'.repeat(20000), '--extract', 'null', '--output', '{"maxBytes":16384}'], { env, encoding: 'utf8' });
+  assert.equal(early.status, 1); check(JSON.parse(early.stdout));
   assert.equal(fs.existsSync(env.AI_APP_BRIDGE_RUNTIME_HOME), false);
 });
 
