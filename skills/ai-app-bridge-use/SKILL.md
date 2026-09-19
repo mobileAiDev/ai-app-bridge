@@ -13,11 +13,21 @@ description: 使用 AI App Bridge 观察、操作和验证 Android、iOS、Flutt
 
 ## 共享调用合同
 
-MCP 入口是 `capabilities` 和 `run`；`capabilities` 是独立工具，不是 `run` 的命令。命令参数全部放在 `run.arguments`，包括目标和 operation，使用当前命令名与 JSON 类型。默认 capabilities 或 domain 查询只取目录；domain 取值为 execution、evidence、core、app、action、flutter、webview、ios、web、diagnostics、advanced；android 是平台不是 domain，平台筛选只用于 Intent decide 的 `platform`。用 `command` 查合同，Intent/Script/evidence 加 `operation` 只取当前操作。Intent decide 可再加实际 `platform`、`provider`、`action`，例如 `{"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}`。CLI `--help COMMAND` 接受相同筛选；`includeOptions:true` 才展开整个目录，按需使用。
+MCP 入口是 `capabilities` 和 `run`；`capabilities` 是独立工具，不是 `run` 的命令。命令参数全部放在 `run.arguments`，包括目标和 operation，使用当前命令名与 JSON 类型。默认 capabilities 或 domain 查询只取目录；domain 取值为 execution、evidence、core、app、action、flutter、webview、ios、web、diagnostics、advanced；android 是平台不是 domain，平台筛选只用于 Intent decide 的 `platform`。用 `command` 查合同，Intent/Script/evidence 加 `operation` 只取当前操作。Intent decide 可再加实际 `platform`、`provider`、`action`，例如 `{"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}`。CLI `--help COMMAND` 接受相同筛选；发现正文上限 96 KiB，宽查询超限时按提示用 command/operation 收窄，不反复读取整个 schema。
 
-CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响应是一行紧凑 JSON，业务值在 `value`；MCP 工具正文同样是紧凑 JSON。Script 的调用返回值另见下文。客户端退出不会取消任务，用原 operationId 显式 cancel。取消不撤销已派发效果；更换 Runtime 版本或环境前先显式 stop。
+每次 `run` 顶层必填 `extract`：只需整个小结果时显式 `null`；树、网络、日志等大结果优先用 regex 或 JS/Python 提取需要的字段。业务参数仍在 `arguments`；`extract/output` 不传入设备命令。CLI 使用 `--extract null` 或 JSON 对象。
+
+CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响应是一行紧凑 JSON，业务值在 `value`；MCP 工具正文同样是紧凑 JSON。Script 的调用返回值另见下文。客户端退出不会取消任务，用原 operationId 显式 cancel。取消不撤销已派发效果；版本错误会列出两侧身份，只在确定 Runtime 是待更新一侧时安排显式 stop。
 
 旧 MCP 实例可能与已安装 CLI 不同。缺少 Intent/Script 或参数不匹配时，核对实际入口版本，选用支持当前合同的入口；不要套用旧 batch、工具别名或外层参数。
+
+## 响应与提取
+
+先看 `execution` 的原执行事实及 `failureStage`，再消费 `value`；Script 内部 `ctx.call` 仍按 `ok/result` 处理，不加 extract。`control` 保留续跑字段和采集覆盖；当前 Script 问题从 `control.pendingQuestion` 读取，即使 events 被游标过滤也可回答。
+
+默认最终正文预算 96 KiB，可用 `output.maxBytes` 设为 16–256 KiB。提取失败或超预算不等于动作失败；存在 `control.source.persisted:true` 时，用 `response` 的 `operation:read`、原 `ref` 和新的 extract 重读，不重发原动作。未保存或留存已过期时没有可恢复的大结果，不捏造 ref。提取会减少交付内容，不承诺减少采集耗时。
+
+提取脚本只使用 `ctx.inputs = {kind, response, execution, control}`，返回严格 JSON；没有 `ctx.call`。保留实际断言需要的来源身份、时间和状态，不能将选出的几条成功记录当作完整覆盖。完整示例见 `docs/RESPONSE_EXTRACTION.md`。
 
 ## 目标与动作
 
@@ -43,7 +53,7 @@ supervised 不会仅凭 goal 自动执行：没有决策时停在 `waiting_for_d
 `start` 的 `script` 内提供 `target`、`language`（`javascript` 或 `python`），以及 `source`/`sourcePath` 二选一。源码入口、权限和 API 按需查 `SCRIPT_AUTHORING.md`。
 `ctx.call` 返回 envelope：先检查 `ok`，设备数据在 `result`；调用失败和 `ctx.assert` 的 verdict 由源码处理。
 用原 operationId 查询 `status`/`wait`；每次 `waitMs` 最多 60000，`running` 或 `finishing` 时用上一响应的 `eventSequence` 作为 `afterSequence` 继续等待。
-`waiting_for_agent` 是源码的 `ctx.askAgent`：用 `agent_question_created` 事件里的 `requestId`/`revision` 调 `decide`，或 `cancel`；不要等到超时。完整 start → wait → result 范例见 `SCRIPT_AUTHORING.md` **Lifecycle: start, wait, result**。
+`waiting_for_agent` 是源码的 `ctx.askAgent`：用 `control.pendingQuestion`（或本页 `agent_question_created` 事件）里的 `requestId`/`revision` 调 `decide`，或 `cancel`；不要等到超时。完整 start → wait → result 范例见 `SCRIPT_AUTHORING.md` **Lifecycle: start, wait, result**。
 `completed` 仅说明源码返回并持久化；status/wait 的 `resultRef` 不是最终值。
 完成后调用 `script` 的 `operation:"result"` 读取 `result`、`resultRef` 和 `persisted`，检查 representation 及实际断言结果。读取失败保留错误，不从进度事件拼出返回值。
 
@@ -61,3 +71,5 @@ supervised 不会仅凭 goal 自动执行：没有决策时停在 `waiting_for_d
 - `docs/COMMAND_CONTRACT.md`：入口与 Runtime 看 **Discovery and entrypoints**；Intent 看 **Execution operation contracts**；目标看 **Target and dispatch** 及对应 iOS/H5/Web 章节；安装/权限看 **Installation is an Intent operation** / **Runtime permission requests use Intent**。
 - `docs/SCRIPT_AUTHORING.md`：首次写脚本看 **Start and observe**、**Lifecycle: start, wait, result**（含可运行的 JS/Python 回归范例）、**Calls and assertions**；命令准入看 **Capability selection**；采集或暂停需求再读对应章节。
 - `docs/EVIDENCE_ARCHIVE.md`：需要记录、导出或离线校验时读取，包含文件范围与 coverage 的具体边界。
+
+- `docs/RESPONSE_EXTRACTION.md`：单次提取、两语言源码、正文预算、失败后原 ref 重读及退出码。

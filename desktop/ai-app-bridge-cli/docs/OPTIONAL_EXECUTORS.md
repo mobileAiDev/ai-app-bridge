@@ -20,12 +20,12 @@ These dependencies are isolated from ordinary production source sets. They are v
 Use `executor-prepare` from CLI, MCP `run`, or JavaScript/Python `ctx.call` with `app.test`. This is a Host operation: it does not require a device target, install an App, start UI observation, or open an executor session. Preparation uses the selected project's existing toolchain and keeps its application ID. The result separates preparation from installation and session readiness.
 
 ```sh
-ai-app-bridge executor-prepare --platform android --project-dir /project \
+ai-app-bridge executor-prepare --extract null --platform android --project-dir /project \
   --module :app --variant debug --adapters '["espresso-web"]'
-ai-app-bridge executor-prepare --platform flutter --project-dir /flutter-app \
+ai-app-bridge executor-prepare --extract null --platform flutter --project-dir /flutter-app \
   --flutter-path /flutter-sdk/bin/flutter
-ai-app-bridge executor-prepare --platform ios
-ai-app-bridge executor-prepare --platform web --browser chromium
+ai-app-bridge executor-prepare --extract null --platform ios
+ai-app-bridge executor-prepare --extract null --platform web --browser chromium
 ```
 
 - Android: a temporary Gradle init script adds the test dependencies and a generated session class only for this invocation. The dependency-check plugin is applied automatically. The result contains the actual application ID, instrumentation component, test class, APK paths and SHA-256 values. Existing matching test dependencies/runners are reused; conflicting Bridge test dependencies are rejected. Business Gradle, manifest and source files are not edited. Select the actual module and debuggable variant; flavors and APK splits retain their original identities. The current build integration uses the AGP 7.4–8.x variant API on macOS/Linux; AGP 9 and Windows preparation are not part of this profile. A local `file:` Maven `repositoryUrl` can explicitly select development artifacts; ordinary preparation resolves the same release version from JitPack.
@@ -74,8 +74,8 @@ Opening a session **restarts and instruments the target application**. Install t
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
 adb -s DEVICE install -r -t app/build/outputs/apk/debug/app-debug.apk
 adb -s DEVICE install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-ai-app-bridge android-executor --operation status --serial DEVICE
-ai-app-bridge android-executor --operation open --serial DEVICE \
+ai-app-bridge android-executor --extract null --operation status --serial DEVICE
+ai-app-bridge android-executor --extract null --operation open --serial DEVICE \
   --package-name example.app \
   --instrumentation example.app.test/androidx.test.runner.AndroidJUnitRunner \
   --test-class example.app.BridgeSessionTest --activity example.app.MainActivity
@@ -124,7 +124,7 @@ void main() => aiAppBridgeTest(app.main);
 flutter build apk --debug --target integration_test/bridge_test.dart \
   --dart-define=INTEGRATION_TEST_SHOULD_REPORT_RESULTS_TO_NATIVE=false
 adb -s DEVICE install -r -t build/app/outputs/flutter-apk/app-debug.apk
-ai-app-bridge flutter-executor --operation open --serial DEVICE \
+ai-app-bridge flutter-executor --extract null --operation open --serial DEVICE \
   --package-name example.app --activity example.app.MainActivity
 ```
 
@@ -133,9 +133,9 @@ This version supports the standard **Android Flutter embedder**, with its normal
 ## Web
 
 ```sh
-ai-app-bridge web-executor --operation status --browser chromium
-ai-app-bridge web-executor --operation prepare --browser chromium --timeout-ms 300000
-ai-app-bridge web-executor --operation open --url http://localhost:3000 --browser chromium
+ai-app-bridge web-executor --extract null --operation status --browser chromium
+ai-app-bridge web-executor --extract null --operation prepare --browser chromium --timeout-ms 300000
+ai-app-bridge web-executor --extract null --operation open --url http://localhost:3000 --browser chromium
 ```
 
 The CLI manages exact Playwright **1.63.0**, an included npm lock file and matching browser downloads. `prepare` is explicit; normal SDK usage does not download browsers. Cache keys include the dependency lock digest, OS and CPU architecture. Node **26.3.x** is the verified Host baseline (`>=26.3.0 <27` contract). Browser preparation is serialized and reports failures. `status` separates the static version from actual executable availability.

@@ -193,6 +193,7 @@ Use the same public export call with `includeRecordedPayloads: true`:
 ```json
 {
   "command": "evidence",
+  "extract": null,
   "arguments": {
     "operation": "export",
     "namespace": "script",

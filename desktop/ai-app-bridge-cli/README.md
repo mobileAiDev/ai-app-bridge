@@ -7,10 +7,11 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.3.8`; registry publication is a separate release step.
+This source version is `0.4.0`; registry publication is a separate release step.
 The default installation includes the Script/Intent and capture contracts below.
 Local package verification does not change npm dist-tags.
 The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
+See [the simplest MCP setup and Host requirements](docs/INSTALLATION.md).
 See [the release guide](docs/RELEASE.md) for local packaging and coordinated publication.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
@@ -30,11 +31,14 @@ connection can observe or decide the same operation ID. Disconnecting either
 client leaves tasks running. Use `runtime --operation status` to inspect its
 owner, `runtime --operation stop` to drain it, and task `cancel` to stop one task.
 
-CLI output is one line of compact JSON: `{kind: "json"|"text"|"bytes", value, history?}`.
-Read the command payload from `value`; binary values are base64. Failure uses
-`value.ok:false` and exit code 1. MCP wraps the same payload/history, also as
-compact JSON, in its content format. See the
-[shared lifecycle and configuration contract](docs/COMMAND_CONTRACT.md#shared-runtime-lifecycle).
+Each run explicitly supplies `extract`: `null` for the original result, or
+regex/JavaScript/Python for a smaller result. CLI: `--extract null`.
+The compact body is `{command, execution, control, extraction, delivery, kind,
+value?, failureStage?}`. Original execution facts and continuation controls stay
+separate from the extracted value. Default body budget: 96 KiB UTF-8; overflow
+can return a saved response ref. Retry with `response read`, not the original
+action. CLI exits 0 / 1 / 2 for delivery success / execution failure or unknown /
+post-success extraction or delivery failure. See [extraction and recovery](docs/RESPONSE_EXTRACTION.md).
 
 Execution operations and nested controls use strict schemas. Supply an explicit
 `operation`, use `script.target` and canonical `javascript`/`python` languages,
@@ -61,31 +65,31 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.3.8
+npm install -g @mobileaidev/ai-app-bridge@0.4.0
 
-ai-app-bridge status --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge tree --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge clear-app-data --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge launch-app --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge launch-activity --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample --activity .MainActivity --extra route=/home
-ai-app-bridge screenshot --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge input-text --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
-ai-app-bridge network --package-name io.github.mobileaidev.aiappbridge.sample --compact --url-filter /api/
-ai-app-bridge webview-network --package-name io.github.mobileaidev.aiappbridge.sample --duration-ms 3000
-ai-app-bridge ios-devices
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
-ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
-ai-app-bridge ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-ai-app-bridge ios-execution --operation status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-ai-app-bridge ios-execution --operation reconcile --device-id <device-or-udid> --bundle-id <original.ios.bundle.id>
-ai-app-bridge ios-execution --operation reconcile --kind wda --device-id <device-or-udid> --wda-runner-bundle-id <runner.bundle.id>
-ai-app-bridge ios-wda-session --operation create --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id>
-ai-app-bridge ios-tap --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id> --wda-session-id <created-session> --tap-x 120 --tap-y 360
-ai-app-bridge ios-input --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id> --wda-session-id <created-session> --accessibility-id sample_text_field --clear-first --text "hello"
-ai-app-bridge web-session-start --web-port 18180
-ai-app-bridge runtime --operation status
-ai-app-bridge thaw-app --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
-ai-app-bridge freeze-app --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge clear-app-data --extract null --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge launch-app --extract null --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge launch-activity --extract null --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample --activity .MainActivity --extra route=/home
+ai-app-bridge screenshot --extract null --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge input-text --extract null --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample --text "中文输入" --hide-keyboard
+ai-app-bridge network --extract null --package-name io.github.mobileaidev.aiappbridge.sample --compact --url-filter /api/
+ai-app-bridge webview-network --extract null --package-name io.github.mobileaidev.aiappbridge.sample --duration-ms 3000
+ai-app-bridge ios-devices --extract null
+ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
+ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-status --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-execution --extract null --operation status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-execution --extract null --operation reconcile --device-id <device-or-udid> --bundle-id <original.ios.bundle.id>
+ai-app-bridge ios-execution --extract null --operation reconcile --kind wda --device-id <device-or-udid> --wda-runner-bundle-id <runner.bundle.id>
+ai-app-bridge ios-wda-session --extract null --operation create --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-tap --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id> --wda-session-id <created-session> --tap-x 120 --tap-y 360
+ai-app-bridge ios-input --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id> --wda-session-id <created-session> --accessibility-id sample_text_field --clear-first --text "hello"
+ai-app-bridge web-session-start --extract null --web-port 18180
+ai-app-bridge runtime --extract null --operation status
+ai-app-bridge thaw-app --extract null --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
+ai-app-bridge freeze-app --extract null --serial DEVICE --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge-mcp --help
 ```
 
@@ -204,7 +208,13 @@ Script/Intent history to inspect execution records separately:
 ```json
 {
   "command": "events",
-  "arguments": { "serial": "DEVICE", "packageName": "com.example.app", "history": true, "limit": 100 }
+  "extract": null,
+  "arguments": {
+    "serial": "DEVICE",
+    "packageName": "com.example.app",
+    "history": true,
+    "limit": 100
+  }
 }
 ```
 

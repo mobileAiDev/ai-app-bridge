@@ -12,6 +12,7 @@ Call MCP `run` with this shape, replacing the target and source path:
 ```json
 {
   "command": "script",
+  "extract": null,
   "arguments": {
     "operation": "start",
     "script": {
@@ -20,10 +21,21 @@ Call MCP `run` with this shape, replacing the target and source path:
       "language": "javascript",
       "sourcePath": "/absolute/flow.js",
       "entrypoint": "main",
-      "target": {"platform":"android", "serial": "explicit-device", "packageName": "explicit.package"},
+      "target": {
+        "platform": "android",
+        "serial": "explicit-device",
+        "packageName": "explicit.package"
+      },
       "inputs": {},
-      "permissions": ["app.read", "app.interact", "capture.read"],
-      "policy": {"timeoutMs": 180000, "restartPolicy": "none"}
+      "permissions": [
+        "app.read",
+        "app.interact",
+        "capture.read"
+      ],
+      "policy": {
+        "timeoutMs": 180000,
+        "restartPolicy": "none"
+      }
     }
   }
 }
@@ -32,9 +44,9 @@ Call MCP `run` with this shape, replacing the target and source path:
 The same request is available through CLI:
 
 ```sh
-ai-app-bridge script --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./flow.js","permissions":["app.read","app.interact","capture.read"]}'
-ai-app-bridge script --operation status --operation-id RETURNED_ID
-ai-app-bridge script --operation result --operation-id RETURNED_ID
+ai-app-bridge script --extract null --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./flow.js","permissions":["app.read","app.interact","capture.read"]}'
+ai-app-bridge script --extract null --operation status --operation-id RETURNED_ID
+ai-app-bridge script --extract null --operation result --operation-id RETURNED_ID
 ```
 
 The CLI returns the operation under `value`. CLI and MCP share a persistent runtime;

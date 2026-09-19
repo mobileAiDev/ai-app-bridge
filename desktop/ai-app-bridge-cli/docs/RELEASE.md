@@ -1,122 +1,60 @@
-# 0.3.8 发行与接入交接
+# 0.4.0 改善版发行检查
 
-本文件记录正式版的依赖关系和出仓库交付入口。封版要求是同一提交的源码、发行包与公开接入合同一致；单个样本的测试进度不改变包版本或发布状态。推送 Git、创建远端标签及发布 npm/pub 包由维护者执行。
+源码版本、可发布验收、registry 发布和正在运行的客户端是四个不同状态。
+本文件描述发行操作；源码中的版本号不代表 npm/JitPack/pub.dev 已发布。
+当前实施与放行证据统一记录于仓库 `docs/IMPROVEMENT_RELEASE_V1_2026-09-18.md`
+及各 M1–M5 交付记录。最终 A01–A16 对账未全通过前不宣称完整发布验收。
 
-## 0.3.8 自动准备
+## 兼容与迁移
 
-- 新增 `executor-prepare`，为原工程准备可选测试执行器，公开命令数为 122。
-- Android 自动生成 androidTest 入口、注入测试依赖并构建原包名的主包与测试包；Flutter 自动添加 dev_dependency、生成入口并检查业务依赖版本。
-- iOS 管理并校验可复用的 WDA 工程；Web 复用精确版本 Playwright 和浏览器准备流程。
-- 准备不启动持续 UI 观察，不自动升级业务工具链；实际设备/浏览器验证与发布证据另行记录。
-- Espresso 增加显式 `replaceTextViaInputConnection` 输入选项，并返回可勾选控件的实际状态；原有 setter 和按键输入分别保留其语义。NotallyX 真机回归验证了自定义 `setText` 抑制业务监听的情况，不能只以屏幕文字变化认定保存成功。
-- 允许安装标准 AGP 生成的无版本号 androidTest APK，包名、签名和安装后文件哈希校验继续执行。
+0.4.0 的外部 run 必填 `extract`，不提取显式 null；CLI `--extract null`。
+返回公共封套含 execution/control/extraction/delivery，删除额外 `_history`、
+`_meta` 副本。旧请求不自动补字段。业务 value 在 null 且预算内保持原值，
+Script 的内部 ctx.call 仍返回 ok/result。Runtime 协议仍是 aab.runtime/v1。
 
-## 随本版包含的 0.3.7 修复
+调用方先核对 execution 和控制字段；提取失败后用原 source ref 调 response
+read，不重放动作。详见 [公共提取合同与完整示例](RESPONSE_EXTRACTION.md)。
+发现正文超预算时按 command/operation 收窄，不静默裁剪 schema。
 
-- Android Host 读取全部焦点记录，跳过 `null`，不再依赖记录排列顺序。只有一个有效窗口时直接使用；多个窗口通过系统 `mTopFocusedDisplayId` 选择，仍不能唯一定位时返回 `foreground_ambiguous`。
-- 包名匹配、SDK 窗口与控件身份校验沿用既有路径。App SDK 只同步发行版本。
+## 发行资源
 
-## 随本版包含的 0.3.6 能力
+| 资源 | 源码版本 | 发行渠道 |
+| --- | --- | --- |
+| Desktop CLI/MCP | 0.4.0 | npm @mobileaidev/ai-app-bridge |
+| 嵌入式 native store | 0.2.0 | 随主包 bundleDependencies，包括四个预编译 addon |
+| Android SDK / Gradle plugin / executor modules | 0.4.0 | 同仓库 Git tag / JitPack |
+| iOS Swift 包 | Git tag 0.4.0 | 根 Package.swift |
+| Flutter SDK / test helper | 0.4.0 | pub.dev；Android 固定依赖同版 SDK |
+| Web SDK | 0.4.0 | npm @mobileaidev/ai-app-bridge-web |
 
-- Android、iOS、Flutter、Web 与内嵌 H5 的持续 UI 观察默认关闭；仅按需开启 100–5000 ms 的观察窗口，期限到达、主动停止或相应生命周期退出时清理观察任务。新增三个平台观察控制命令，公开命令共 121 个。
-- Flutter 当前树改为显式读取 `/v1/flutter/snapshot`，状态请求不再触发树遍历；CLI/MCP 与 App 内 SDK 需要配套升级。Android 指纹编码减少 JNI 调用与临时分配。实测证据及边界见仓库中的 UI 观察性能评估记录。
+UIA bundle、WDA 14.1.1、iOS WDA 模板、Playwright helper 与三类范例随主包。
+未改变代码的设备组件不需要仅为 Host 返回合同重新安装；需要测试新发行
+设备产物时记录实际版本/包/序列号，不能用旧安装冒充新包验收。
 
-- 可选 Android Instrumentation 会话，复用业务 androidTest；UI Automator、Espresso、Espresso-Web 和 Compose 可在同一会话内选择。
-- 可选 Flutter integration_test/WidgetTester 测试入口，以及 Host 管理的 Playwright 1.63.0 浏览器执行器。
-- 公开 capabilities + run、Python/JS Script 的 app.test 权限、观测身份、原始回执、取消和设备占用接线。
-- Compose 主包/测试包版本检查；按测试配置隔离依赖，不自动升级业务 AGP/Kotlin/Compose。
-- Android 7 权限输出的零 flags 省略及空格分隔格式支持，来源为实际 API-25 环境和 AOSP Settings 输出实现。
-- 本地交付和外部发布分开记录；这份源码不表示 npm/JitPack/pub.dev 已发布 0.3.8。
+## 发布前门禁
 
-接入合同、具体依赖和实测性能见 [OPTIONAL_EXECUTORS.md](OPTIONAL_EXECUTORS.md)。
+1. 固定审核提交，核对工作包和 A01–A16，保留失败与未验证项。完整 npm
+   功能组与安静环境串行性能组通过，范例由文档读取实际执行。
+2. 对 [Host 支持矩阵](INSTALLATION.md) 的四个 artifact 校验 checksum 和
+   实际加载，运行 native tests 与全新 tarball 安装。正常安装和纯 MCP
+   JS/regex 路径禁止调用本地编译器/Python；Python 回归使用单独环境。
+3. 核对 npm pack 清单真实包含 addon、加载器、source read/worker 和文档，
+   codeFingerprint 哈希实际选中的二进制。固定版本 npx 首次/重复启动、
+   MCP 断连后 Runtime 存续、明确 stop/restart 与持久化恢复均有证据。
+4. 核实实际 CLI 路径、MCP 启动版本/指纹、Runtime code/config/Node 身份，
+   并检查受影响消费脚本的 extract/公共响应迁移。安装成功不替代入口更新。
+5. Android/Swift/Flutter/Web 的发行清单和版本一致。需要时运行相应构建，
+   真实设备证据和离线/受控 ADB 测试分开记录。三类实际任务对照保留来源、
+   时间、目标和原始记录，不能将缺设备写成不适用。
 
-## 随本版包含的 0.3.5 修复
+## 对外发布顺序
 
-- 修正 UIA nodeRef 原回执对账，正常重启和死进程后的显式启动可完成原 session 审计；未知回执和失效引用仍受保护。
-- UIA node runtime 支持 Android API 25+，保留 POSIX 原子重命名、fsync、进程锁与原始 Binder 回调；不使用 dump 或坐标回退。Android 7 权限观察支持未初始化的权限状态以及旧 ActivityManager 的身份字段。
-- iOS 对未就绪的 list 快照先执行所选设备的 details 探测；原始 4016 使用断言拒绝可按精确调用公开对账，不删除占用记录。
-- WDA 启动前持久保存 XCTest 调用身份。原始启用自动化超时能结算；旧 ios-setup 记录用原公开响应、Host action 与 XCTest 结果公开对账，未知结果继续保留。
-- 没有待处理安装时，cancel-install 明确返回 install_action_not_pending，不把空操作报告成安装取消成功。
-- 各 SDK 同步版本；原生 SDK 设备执行逻辑沿用 0.3.4。真实业务验收与渠道发布状态单独记录。
+在已授权的发布操作中，维护者先推送已验收提交和 0.4.0 tag，核实 JitPack
+公开坐标成功解析，再发布依赖它们的 Flutter SDK/helper。Web npm 与主
+CLI/MCP npm 分别发布，并核实 registry 实际返回的 tarball/checksum；设置
+对应 dist-tag 和 GitHub Release。远端流水线成功与设备业务验收分别列明。
+本地构建或 MavenLocal/path 替换不能证明公开坐标可安装。
 
-## 随本版包含的 0.3.3 修复
-
-- Native 观察按当前 Activity 的窗口组选择节点，保留 Dialog/Popup；修复返回和前进时 Activity 与节点不一致。
-- Android 安装与执行校验实际探测 standalone、toybox、busybox 的 SHA-256；保留完整性校验，不要求固定 PATH 命令。
-- iOS 未安装 App 的明确启动拒绝及时释放设备；未知回执保留原始结果文件并支持公开核对，不因 JSON 版本号差异拒绝有效结果。
-- `device-ownership cancel-install` 可凭原 actionId 取消遗留 PM 会话；恢复只读同一份回执，不重发安装，也不声称回滚。
-- CLI `--version`、录制目录、错误字段、Script 起步权限及 Reader UIA 只读重试修正；明确 freeze 与 MCP 重连语义。
-- Android Gradle 无实现的历史开关发出弃用提示，旧 DSL 仍可构建；各端统一版本。
-
-## 新增可选分发物
-
-Android `ai-app-bridge-test-core`、`ai-app-bridge-test-uia`、`ai-app-bridge-test-espresso`、`ai-app-bridge-test-instrumentation`、`ai-app-bridge-test-espresso-web`、`ai-app-bridge-test-compose` 均使用 0.3.8，通过 androidTestImplementation 消费。Gradle 插件增加 `io.github.mobileaidev.aiappbridge.test` 依赖校验入口。新 Flutter 包 `ai_app_bridge_test` 使用 0.3.8，只作为 dev_dependency；它的发布不依赖 Android SDK 的 JitPack 坐标。
-
-## 版本与消费方式
-
-| 交付物 | 发行版本 | 独立消费入口 | 发布依赖 |
-| --- | --- | --- | --- |
-| Android SDK | `0.3.8` | JitPack `com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.8` | 同名 Git tag，JitPack 对该提交成功构建 |
-| Android Gradle 插件 | `0.3.8` | JitPack `ai-app-bridge-gradle-plugin` 模块及插件 ID `io.github.mobileaidev.aiappbridge.android` | 与 SDK 相同的 Git tag；不再使用旧默认 `0.2.8` |
-| 原生 iOS SDK | Git tag `0.3.8` | Git URL 的仓库根 `Package.swift`，产品 `AiAppBridgeIOS` | 根清单包含 Swift runtime、C adapter 和 segmented C store，无外部 C 包路径 |
-| Flutter 插件 | `0.3.8` | pub `ai_app_bridge_flutter` | Android 固定依赖上述 SDK；iOS Swift/C 源码随插件分发 |
-| Desktop CLI/MCP | `0.3.8` | npm `@mobileaidev/ai-app-bridge` | 包含 UIA bundle、WDA 模板和 native store 源码；WDA 上游固定 `14.1.1` |
-| Web SDK | `0.3.8` | npm `@mobileaidev/ai-app-bridge-web` | 独立浏览器源码包，无 npm 对 CLI 的安装依赖 |
-| Native store | `0.1.0` | 随 CLI 的 bundled dependency 安装 | 不要求另行发布到 npm；`file:../../native/segmented-fact-store` 是工作区构建入口，最终 tarball 必须包含该依赖源码 |
-
-Flutter 的 podspec 是随 pub 插件消费的本地 podspec，不是独立 CocoaPods trunk 发布包；原生 iOS 使用根 Swift package。Flutter SwiftPM 的 `../FlutterFramework` 由 Flutter 的集成生成，不能当作本仓库的外部私有依赖，也不应将本机 Flutter framework 打包进插件。
-
-Host 支持范围声明为 Node `>=26.3.0 <27`，本轮实际验证基线是 **26.3.0**。共享 runtime 与查询索引依赖 `node:sqlite`，native store 安装需要 node-gyp 所需的 Python 和 C/C++ 编译工具。未对其他 Node 版本或跨主版本兼容作实测声明。Python Script 另需可用的 `python3`，从实际 `script runtime-status` 读取环境能力。
-
-## 发布顺序
-
-1. 完成源码审阅并冻结一个提交，核对以下命令的产物确实来自它；包含当前 untracked 的实际源码、测试和文档，排除本机生成目录。所有对外发行版本使用同一个 `0.3.8`，若需要改版本，先同时更新上表涉及的 manifest 与固定依赖。
-2. 维护者推送提交与 `0.3.8` 标签，让 JitPack 构建 Android SDK/插件。确认两条公开坐标可解析后，再发布依赖它们的 Flutter 包。本地 Gradle project/path/AAR 替换不能证明 JitPack 坐标可消费。
-3. 原生 iOS 消费相同 Git tag 的根 package；完成根 package 的 iOS 构建，不仅构建 `ios/ai-app-bridge-ios/Package.swift`。Flutter iOS 则检查实际 pub 包内 Swift/C 源码与声明相符。
-4. CLI 与 Web SDK 可分别发布到 npm 的 `latest` dist-tag。CLI 的 native store 已打包随行，不等待一个不存在的单独 registry 依赖。Flutter 包发布以第 2 步完成为前提。
-5. 同步 npm `next` 指向 `0.3.8`，让已有候选入口也使用本次正式版。将 GitHub `main` 与发行提交同步，并创建非预发布的 GitHub Release。
-6. 从 registry/tag 安装刚发布的确切版本，读取 `capabilities` 和版本，核对来源及支持范围，确认默认安装入口指向本次发行版本。正式发布不自动等于全平台生产验收完成。
-
-正式发布命令需在对应目录由维护者执行，例如 npm 使用 `npm publish --tag latest`；pub 使用 `flutter pub publish`。这些命令属于发布动作，不能混入本地验证脚本。
-
-## 本地检查与最终包验证
-
-以下检查不发布版本。路径相对仓库根；输出使用新的、Git 忽略的目录。
-
-```sh
-swift package --package-path . dump-package
-swift package --package-path ios/ai-app-bridge-ios dump-package
-
-cd desktop/ai-app-bridge-cli
-npm pack --dry-run --json --ignore-scripts
-
-cd ../../web/ai-app-bridge-web
-npm pack --dry-run --json --ignore-scripts
-
-cd ../../flutter/ai_app_bridge_flutter
-flutter pub publish --dry-run
-```
-
-`dump-package` 只证明 manifest 可解析及目标声明，不能替代 iOS 编译；`npm pack --dry-run` 只证明拟打包文件清单，不能替代安装；pub dry-run 中的分析/网络检查结果应原样记录。干净安装与 Host 协议验证必须在核心源码冻结、没有运行中修改时执行：
-
-```sh
-cd desktop/ai-app-bridge-cli
-npm ci
-npm run verify:package -- ../../build/ai_app_bridge_artifacts/release-package-NEW
-```
-
-`verify:package` 在仓库外安装实际 tarball，检查 native 安装编译、CLI/MCP 共享运行时、控制接口与随包运行时身份。它使用受控 ADB，不声称完成新真机业务验收。报告、tgz 哈希、安装日志和源码提交身份一起交接；已运行的旧包验证不能代替后来修改过的包。
-
-CLI 的 `files` 已排除旧 `fact-cache.js` 发布载荷及 fake/P9/旧设备 adapter；旧 fact-cache 实现仅保留为 `test-support` 测试夹具，无生产引用。各 npm 包和 Flutter 目录的 `LICENSE`/`NOTICE` 均来自仓库根原文，发行时核对内容一致，不生成替代版权说明。
-
-## 升级进程与后续修复
-
-npm 升级不会替换已连接的 MCP 进程。用 `ai-app-bridge --version` 核对本机入口；
-已有工作结束后显式停止旧 Runtime，并在 Cursor 等客户端重连 MCP，核对 initialize
-中的 `serverInfo.version`。工具描述仍有旧 `batch`/`smoke` 时刷新客户端缓存。
-
-实际发布状态与验证边界见仓库 `docs/RELEASE_HANDOFF_0.3.8_2026-09-15.md`。
-Android Gradle 插件的 `webSocketCaptureEnabled`、`logInstrumentationEnabled`、
-`webViewDebuggingEnabled` 没有对应插桩实现，现明确弃用并在显式设置时输出提示；
-旧配置仍可构建。当前有效开关是 `enabled`、`okHttpCaptureEnabled`，以及可选
-`runtimeDependencyNotation`。不要把弃用选项的配置值当作采集功能已经启用。
+客户端升级时退出旧 MCP 再重新连接。若是旧客户端碰到新 Runtime，先升
+客户端；只有明确 Runtime 是待升级一侧时，在其任务结束后显式 stop。
+同版本不同指纹只能说明构建或 Node 环境不一致，不能凭 hash 判断新旧。

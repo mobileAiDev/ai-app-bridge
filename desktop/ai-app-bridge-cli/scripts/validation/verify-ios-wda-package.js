@@ -30,7 +30,8 @@ try {
 } finally { fs.closeSync(log); }
 const installLog = fs.readFileSync(path.join(output, 'install.log'), 'utf8');
 assert.match(installLog, /@mobileaidev\/segmented-fact-store-native@[^\s]+ install/);
-assert.match(installLog, /gyp info ok/);
+assert.match(installLog, /FactStore prebuild /);
+assert.doesNotMatch(installLog, /node-gyp rebuild|gyp info/);
 const installed = path.join(install, 'node_modules/@mobileaidev/ai-app-bridge');
 const checked = [];
 for (const file of packed.files.filter(file => /^(bin\/|runtime\/ios-wda\/)/.test(file.path))) {
@@ -80,7 +81,7 @@ const help = execFileSync(process.execPath, [path.join(installed, 'bin/ai-app-br
 assert.match(help, /wdaRunnerBundleId|wda-runner-bundle-id/);
 fs.writeFileSync(path.join(output, 'session-help.txt'), help);
 const report = { ok: true, tarball: packed.filename, sha256: sha256(tarball),
-  installation: 'fresh npm install with actual successful native node-gyp lifecycle',
+  installation: 'fresh npm install with verified native prebuild load',
   runtimeFileCount: checked.filter(file => file.path.startsWith('bin/')).length,
   wdaSourceFileCount: checked.filter(file => file.path.startsWith('runtime/ios-wda/')).length,
   checked, preparedProject: probeResult.prepared, physicalDeviceClaim: false };

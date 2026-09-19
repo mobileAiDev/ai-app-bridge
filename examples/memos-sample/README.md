@@ -52,8 +52,9 @@ stdout 给出 `target`，相同内容保存在 `target.json`。保持该进程�
 
 ```json
 {
-  "name": "script-start",
   "command": "script",
+  "extract": null,
+  "name": "script-start",
   "arguments": {
     "operation": "start",
     "recordingDir": "/absolute/new-recording-directory",
@@ -63,10 +64,26 @@ stdout 给出 `target`，相同内容保存在 `target.json`。保持该进程�
       "language": "javascript",
       "sourcePath": "/absolute/repo/examples/memos-sample/validation/memos-flow.js",
       "entrypoint": "main",
-      "target": {"platform":"web","sessionId":"实际 session","runtimeEpoch":"实际 runtime","targetId":"main"},
-      "inputs": {"marker":"新 marker","content":"原始完整内容","editedContent":"编辑后的完整内容","credentialsPath":"/absolute/repo/examples/memos-sample/data/bridge-credentials.json"},
-      "permissions": ["app.read", "app.interact"],
-      "policy": {"timeoutMs":180000,"restartPolicy":"none"}
+      "target": {
+        "platform": "web",
+        "sessionId": "实际 session",
+        "runtimeEpoch": "实际 runtime",
+        "targetId": "main"
+      },
+      "inputs": {
+        "marker": "新 marker",
+        "content": "原始完整内容",
+        "editedContent": "编辑后的完整内容",
+        "credentialsPath": "/absolute/repo/examples/memos-sample/data/bridge-credentials.json"
+      },
+      "permissions": [
+        "app.read",
+        "app.interact"
+      ],
+      "policy": {
+        "timeoutMs": 180000,
+        "restartPolicy": "none"
+      }
     }
   }
 }

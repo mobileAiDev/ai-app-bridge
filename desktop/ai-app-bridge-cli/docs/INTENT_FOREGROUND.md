@@ -5,6 +5,7 @@ An Intent can keep its original business target while navigating through explici
 ```json
 {
   "command": "intent",
+  "extract": null,
   "arguments": {
     "operation": "start",
     "goal": "Export a backup, choose its file in the system picker, and return to the notes app",
@@ -12,7 +13,9 @@ An Intent can keep its original business target while navigating through explici
     "target": {
       "serial": "DEVICE_SERIAL",
       "packageName": "io.github.mobileaidev.notallyx.sample",
-      "foregroundPackages": ["com.coloros.filemanager"]
+      "foregroundPackages": [
+        "com.coloros.filemanager"
+      ]
     }
   }
 }

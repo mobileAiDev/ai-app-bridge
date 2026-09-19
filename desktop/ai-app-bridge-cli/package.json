@@ -1,6 +1,6 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.3.8",
+  "version": "0.4.0",
   "description": "Desktop CLI and MCP server for AI App Bridge across Android, iOS, Flutter, WebView, and Web targets.",
   "repository": {
     "type": "git",
@@ -77,12 +77,16 @@
     "runtime/ios-wda",
     "LICENSE",
     "NOTICE",
-    "docs/RELEASE.md"
+    "docs/RELEASE.md",
+    "docs/RESPONSE_EXTRACTION.md",
+    "docs/INSTALLATION.md"
   ],
   "scripts": {
-    "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node --import ./test-support/ownership-test-sandbox.js --test",
-    "test": "node --import ./test-support/ownership-test-sandbox.js --test",
-    "verify:package": "node scripts/validation/verify-package.js"
+    "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node scripts/validation/test-suite.js",
+    "test": "node scripts/validation/test-suite.js",
+    "verify:package": "node scripts/validation/verify-package.js",
+    "test:functional": "node scripts/validation/test-suite.js functional",
+    "test:performance": "node scripts/validation/test-suite.js performance"
   },
   "license": "Apache-2.0",
   "dependencies": {

@@ -15,9 +15,9 @@ cd ios/ai-app-bridge-ios && swift package dump-package && xcodebuild -scheme AiA
 cd flutter/ai_app_bridge_flutter && flutter analyze --no-pub
 ```
 
-When a device is available, also run the Android sample validation below. Existing
-Android/MCP commands must keep their current names, arguments, and output/error
-shapes unless a migration note and compatibility alias are provided.
+When a device is available, also run the Android sample validation below. Public contract changes require an explicit migration note. The 0.4.0 required
+`extract` field and reply envelope are documented in RESPONSE_EXTRACTION.md;
+old requests are rejected, without compatibility aliases or implicit null.
 
 ## Static Checks
 
@@ -50,13 +50,13 @@ value in `value`:
 ```bash
 CLI="node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js"
 PKG=io.github.mobileaidev.aiappbridge.sample
-$CLI uia-tree --serial <serial> --package-name $PKG
-$CLI h5-dom --serial <serial> --package-name $PKG
-$CLI webview-pages --serial <serial> --package-name $PKG
-$CLI logs --serial <serial> --package-name $PKG --limit 20
-$CLI events --serial <serial> --package-name $PKG --limit 20
-$CLI permission-state --serial <serial> --package-name $PKG --permission android.permission.CAMERA
-$CLI flutter-tree --serial <serial> --package-name $PKG
+$CLI --extract null uia-tree --serial <serial> --package-name $PKG
+$CLI --extract null h5-dom --serial <serial> --package-name $PKG
+$CLI --extract null webview-pages --serial <serial> --package-name $PKG
+$CLI --extract null logs --serial <serial> --package-name $PKG --limit 20
+$CLI --extract null events --serial <serial> --package-name $PKG --limit 20
+$CLI --extract null permission-state --serial <serial> --package-name $PKG --permission android.permission.CAMERA
+$CLI --extract null flutter-tree --serial <serial> --package-name $PKG
 ```
 
 Without a Flutter host the SDK answers `flutter-tree` with
@@ -87,18 +87,19 @@ cd examples/ios-native-sample
 xcodebuild -project AiAppBridgeIOSSample.xcodeproj -scheme AiAppBridgeIOSSample -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 cd ../..
 
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-devices
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-install-app --device-id <device-or-udid> --app-path <DerivedData>/Build/Products/Debug-iphoneos/AiAppBridgeIOSSample.app
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-launch-app --device-id <device-or-udid> --bundle-id io.github.mobileaidev.aiappbridge.iossample
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-tree --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-h5-dom --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-uia-tree --bundle-id <ios.bundle.id> --wda-url <wda-url-from-setup>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-tap --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-input --bundle-id <ios.bundle.id> --accessibility-id <field-accessibility-id> --clear-first --text "hello" --wda-url <wda-url-from-setup>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-swipe --bundle-id <ios.bundle.id> --start-x 160 --start-y 620 --end-x 160 --end-y 220 --duration-ms 500 --wda-url <wda-url-from-setup>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-devices --extract null
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-install-app --extract null --device-id <device-or-udid> --app-path <DerivedData>/Build/Products/Debug-iphoneos/AiAppBridgeIOSSample.app
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-launch-app --extract null --device-id <device-or-udid> --bundle-id io.github.mobileaidev.aiappbridge.iossample
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-status --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-tree --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-h5-dom --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-wda-session --extract null --operation create --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-uia-tree --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --wda-session-id <created-session> --bundle-id <ios.bundle.id> --wda-url <wda-url-from-setup>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-tap --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --wda-session-id <created-session> --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-input --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --wda-session-id <created-session> --bundle-id <ios.bundle.id> --accessibility-id <field-accessibility-id> --text "hello" --wda-url <wda-url-from-setup>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js ios-swipe --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --wda-session-id <created-session> --bundle-id <ios.bundle.id> --start-x 160 --start-y 620 --end-x 160 --end-y 220 --duration-ms 500 --wda-url <wda-url-from-setup>
 ```
 
 If any prerequisite requires a user action, such as enabling Developer Mode, trusting the Mac, unlocking the device, adding an Apple account/team in Xcode, or accepting a signing/device prompt, stop and record the blocker. Do not skip WDA or fall back to a reduced iOS mode for full-control validation.
@@ -124,11 +125,12 @@ through `web-command`, and can exercise DOM helpers through `web-click`,
 `web-input`, `web-wait`, or `web-scroll` where the page fixture exposes stable
 selectors.
 
-To verify the published npm packages rather than local source:
+After publishing 0.4.0, verify the registry packages. The checked-in remote-smoke
+lock remains pinned to the last published 0.3.8 until that release exists:
 
 ```bash
 npm install -g @mobileaidev/ai-app-bridge@latest
-cd web/remote-smoke && npm install && npm run check
+cd web/remote-smoke && npm install @mobileaidev/ai-app-bridge-web@0.4.0 && npm run check
 ```
 
 Then start `ai-app-bridge-mcp`, run `web-session-start`, open
@@ -141,13 +143,13 @@ Then start `ai-app-bridge-mcp`, run `web-session-start`, open
 For unattended compatibility runs, validate at least:
 
 ```bash
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js status --package-name <package>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js tree --package-name <package>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js screenshot --package-name <package> --out-file <file>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js keyboard-state --package-name <package>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js install-apk --package-name <package> --apk-path <apk>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js webview-pages --package-name <package>
-node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js webview-network --package-name <package> --duration-ms 3000
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js status --extract null --package-name <package>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js tree --extract null --package-name <package>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js screenshot --extract null --package-name <package> --out-file <file>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js keyboard-state --extract null --package-name <package>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js install-apk --extract null --package-name <package> --apk-path <apk>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js webview-pages --extract null --package-name <package>
+node desktop/ai-app-bridge-cli/bin/ai-app-bridge.js webview-network --extract null --package-name <package> --duration-ms 3000
 ```
 
 Large Gradle apps should run under an external watchdog that records the last

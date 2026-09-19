@@ -38,7 +38,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.0")
 }
 ```
 
@@ -77,7 +77,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.0"
 }
 
 aiAppBridge {
@@ -92,7 +92,7 @@ The plugin keeps one public id and chooses the implementation internally: AGP 7+
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.8")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.0")
 ```
 
 Start the runtime once from app startup code:
@@ -117,24 +117,25 @@ The runtime exposes app-level evidence over HTTP from the first available port s
 Full iOS control also requires XCUITest/WebDriverAgent. The app runtime provides structured evidence from inside the app; WDA provides system-level actions and external UI tree access, including taps, text input, swipes, screenshots, permission dialogs, and UI outside the app process.
 
 ```bash
-ai-app-bridge ios-devices
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
-ai-app-bridge ios-status --device-id <device-or-udid> --bundle-id <ios.bundle.id>
-ai-app-bridge ios-tap --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
-ai-app-bridge ios-input --bundle-id <ios.bundle.id> --accessibility-id <field-accessibility-id> --clear-first --text "hello" --wda-url <wda-url-from-setup>
+ai-app-bridge ios-devices --extract null
+ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-status --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-wda-session --extract null --operation create --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --bundle-id <ios.bundle.id>
+ai-app-bridge ios-tap --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --wda-session-id <created-session> --bundle-id <ios.bundle.id> --tap-x 120 --tap-y 360 --wda-url <wda-url-from-setup>
+ai-app-bridge ios-input --extract null --device-id <device-or-udid> --wda-runner-bundle-id <runner-from-setup> --wda-session-id <created-session> --bundle-id <ios.bundle.id> --accessibility-id <field-accessibility-id> --text "hello" --wda-url <wda-url-from-setup>
 ```
 
 If WDA is not already running, `ios-setup` can attempt to start the CLI-vendored
 `appium-webdriveragent` project when the signing team is supplied. Use
-`--wda-bundle-id` only when your Apple team needs a different unique bundle id.
+`--wda-test-bundle-id` only when your Apple team needs a different unique bundle id.
 
 ```bash
-ai-app-bridge ios-setup \
+ai-app-bridge ios-setup --extract null \
   --device-id <device-or-udid> \
   --bundle-id <ios.bundle.id> \
   --team-id <APPLE_TEAM_ID> \
-  --wda-bundle-id io.example.unique.wda \
+  --wda-test-bundle-id io.example.unique.wda \
   --start-wda
 ```
 
@@ -149,7 +150,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: ^0.3.8
+  ai_app_bridge_flutter: ^0.4.0
 ```
 
 Initialize once:
@@ -214,10 +215,10 @@ whitelisted page commands.
 ```bash
 npm install -g @mobileaidev/ai-app-bridge
 
-ai-app-bridge status --package-name <android.package>
-ai-app-bridge webview-pages --package-name <android.package>
-ai-app-bridge webview-network --package-name <android.package> --duration-ms 3000
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id>
+ai-app-bridge status --extract null --package-name <android.package>
+ai-app-bridge webview-pages --extract null --package-name <android.package>
+ai-app-bridge webview-network --extract null --package-name <android.package> --duration-ms 3000
+ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id>
 ai-app-bridge-mcp --help
 ai-app-bridge-mcp
 ```

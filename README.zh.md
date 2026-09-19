@@ -37,7 +37,7 @@ CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Scrip
 - `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。
 - Android 和 iOS 的 `logs` / `network` / `state` / `events` 使用手机侧持久存储，连接时通过 `history:true` 查询保留的事实；Host 分别保存执行与观察证据。Web 采集在接收时写入 Host FactStore。每次查询均需核对 refs、目标、epoch、coverage 和保留范围。
 
-`0.3.8` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码版本；外部发布是单独步骤，本地构建不会修改 npm/pub.dev 默认版本。新增能力见[可选执行器接入指南](desktop/ai-app-bridge-cli/docs/OPTIONAL_EXECUTORS.md)。
+`0.4.0` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码版本；外部发布是单独步骤，本地构建不会修改 npm/pub.dev 默认版本。新增能力见[可选执行器接入指南](desktop/ai-app-bridge-cli/docs/OPTIONAL_EXECUTORS.md)。
 本地构建和发布顺序见[发行指南](desktop/ai-app-bridge-cli/docs/RELEASE.md)。Script 为可选能力；
 执行结束、纯代码断言和有设备证据的结果分别统计。当前设备强断言仅支持完整单页，
 多页查询可以取数，但尚不支持合并为一个完整窗口断言。恢复仅适用于显式可重入
@@ -109,7 +109,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.0")
 }
 ```
 
@@ -142,7 +142,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.0"
 }
 
 aiAppBridge {
@@ -157,7 +157,7 @@ aiAppBridge {
 在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.8")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.0")
 ```
 
 在 debug app 进程启动一次 runtime：
@@ -173,9 +173,9 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 安装桌面 CLI，并检查完整 iOS 控制栈：
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.8
-ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
+npm install -g @mobileaidev/ai-app-bridge@0.4.0
+ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
 
 iOS 控制栈需要 Xcode、已信任且解锁并开启 Developer Mode 的设备、App debug runtime，以及经过准备和签名的 WDA Runner。`ios-setup --start-wda --team-id <APPLE_TEAM_ID>` 会从固定 WDA 14.1.1 生成独立副本并加入 Bridge 身份校验。`--wda-test-bundle-id` 设置测试包，默认 `io.github.mobileaidev.aiappbridge.wda`；setup 返回对应 Runner App ID。后续 WDA 命令必须带确切设备和 `wdaRunnerBundleId`，可选的转发 `wdaUrl` 不能跳过容器身份校验。在已经位于前台的 App 中显式创建 `ios-wda-session` 后才能读树和操作。WDA 已提供排队取消、原完成记录持久化及 `ios-execution --kind wda` 恢复；进行中事件取消、输入焦点限制及待完成的真机关口见 [WDA 合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md#ios-wda-target-and-session)。iOS Intent 和 Script 已支持明确目标绑定的 native、H5、Flutter provider；平台能力与每个真实 App 的业务验收结果分别判断。
@@ -188,7 +188,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.8
+  ai_app_bridge_flutter: 0.4.0
 ```
 
 初始化一次：
@@ -250,36 +250,13 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 
 ### 安装 MCP server
 
-```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.8
-```
-
-在你的 AI agent / 模型客户端 / IDE 的 MCP 配置里添加。
-
-macOS / Linux：
+安装 Node >=26.3.0 <27，然后只需一份固定版本 MCP 配置。包内已包含嵌入式 FactStore 原生扩展，不需要另外安装数据库服务、编译器或 Python；Python 只用于 Python Script/extract。支持矩阵及发布前本地 tarball 接入见[安装说明](desktop/ai-app-bridge-cli/docs/INSTALLATION.md)。0.4.0 实际发布后下面的 registry 配置才可解析。
 
 ```json
-{
-  "mcpServers": {
-    "ai-app-bridge": {
-      "command": "ai-app-bridge-mcp"
-    }
-  }
-}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.0","ai-app-bridge-mcp"]}}}
 ```
 
-Windows：
-
-```json
-{
-  "mcpServers": {
-    "ai-app-bridge": {
-      "command": "cmd",
-      "args": ["/c", "ai-app-bridge-mcp"]
-    }
-  }
-}
-```
+每次 run 顶层明确提供 `extract:null` 取得预算内原始结果，或者 regex/JS/Python 提取对象。大结果和提取失败可通过原 ref 重读，不重放动作；详见[公共返回与提取](desktop/ai-app-bridge-cli/docs/RESPONSE_EXTRACTION.md)。
 
 ## 仅限 debug 构建
 

@@ -35,6 +35,7 @@ dependencies {
     androidTestImplementation(composeBom)
     implementation(project(":ai-app-bridge-android"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation(project(":ai-app-bridge-test-instrumentation"))
     androidTestImplementation(project(":ai-app-bridge-test-espresso-web"))
     androidTestImplementation(project(":ai-app-bridge-test-compose"))

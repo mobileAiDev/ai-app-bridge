@@ -21,17 +21,30 @@ import io.github.mobileaidev.aiappbridge.sample.R
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.json.JSONObject
-import java.io.File
+import java.net.InetAddress
 import java.net.Proxy
 
 class DebugBridgeNativeTestActivity : Activity() {
     private var counter = 0
     private lateinit var statusView: TextView
     private lateinit var inputView: EditText
+    private val networkFixture = MockWebServer()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // This sample owns its HTTP fixture. SDK transport is localabstract and
+        // has no TCP port; capture tests must not rely on an old port file.
+        networkFixture.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = MockResponse()
+                .setResponseCode(200).setHeader("Content-Type", "application/json")
+                .setBody("{\"ok\":true,\"source\":\"native-sample-http-fixture\"}")
+        }
+        networkFixture.start(InetAddress.getByName("127.0.0.1"), 0)
         setContentView(buildContentView())
         recordScreenState(action = "created")
         AiAppBridge.recordLog(
@@ -40,6 +53,11 @@ class DebugBridgeNativeTestActivity : Activity() {
             message = "native AI app bridge test activity created",
             dataJson = stateJson(action = "created"),
         )
+    }
+
+    override fun onDestroy() {
+        networkFixture.shutdown()
+        super.onDestroy()
     }
 
     private fun buildContentView(): ScrollView {
@@ -314,7 +332,7 @@ class DebugBridgeNativeTestActivity : Activity() {
         Thread {
             val result = try {
                 val request = Request.Builder()
-                    .url("${ownBridgeUrl()}/v1/logs?limit=1")
+                    .url("${networkFixtureUrl()}/v1/logs?limit=1")
                     .get()
                     .build()
                 okHttpClient().newCall(request).execute().use { response ->
@@ -339,7 +357,7 @@ class DebugBridgeNativeTestActivity : Activity() {
                     .put("data", JSONObject().put("input", inputView.text.toString()))
                     .toString()
                 val request = Request.Builder()
-                    .url("${ownBridgeUrl()}/v1/events")
+                    .url("${networkFixtureUrl()}/v1/events")
                     .post(payload.toRequestBody())
                     .build()
                 okHttpClient().newCall(request).execute().use { response ->
@@ -374,12 +392,8 @@ class DebugBridgeNativeTestActivity : Activity() {
         }.start()
     }
 
-    private fun ownBridgeUrl(): String {
-        val state = JSONObject(File(filesDir, "ai_app_bridge_port.json").readText())
-        check(state.getBoolean("ok") && state.getString("packageName") == packageName)
-        val port = state.getInt("port")
-        check(port in 1..65535)
-        return "http://127.0.0.1:$port"
+    private fun networkFixtureUrl(): String {
+        return "http://127.0.0.1:${networkFixture.port}"
     }
 
     private fun okHttpClient(): OkHttpClient {
@@ -394,6 +408,7 @@ class DebugBridgeNativeTestActivity : Activity() {
             .put("counter", counter)
             .put("input", if (::inputView.isInitialized) inputView.text.toString() else "")
             .put("activity", javaClass.name)
+            .put("networkBaseUrl", networkFixtureUrl())
             .put("timestampMs", System.currentTimeMillis())
             .toString()
     }

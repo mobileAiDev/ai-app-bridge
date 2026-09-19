@@ -150,3 +150,27 @@ test('the documented Intent lifecycle pages history with history.lastSequence an
   assert.equal(adapter.calls.filter(call => call.name === 'action').length, 1, 'complete is a judgment, not an action');
   resetIntentOperations();
 });
+
+// Single-query examples exercise public delivery (not the internal Script API).
+test('documented null, regex and both-language extraction requests run through the public local path', async t => {
+  const os = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-extraction-example-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const text = fs.readFileSync(path.resolve(__dirname, '../docs/RESPONSE_EXTRACTION.md'), 'utf8');
+  const requests = fenced(text, 'json extraction-example').map(block => JSON.parse(block));
+  assert.equal(requests.length, 4);
+  for (const request of requests) {
+    validateRunRequest(request);
+    const child = spawnSync(process.execPath, [path.resolve(__dirname, '../bin/ai-app-bridge.js'), request.command,
+      '--operation', request.arguments.operation, '--extract', JSON.stringify(request.extract)], { encoding: 'utf8', env: { ...process.env,
+        AI_APP_BRIDGE_FACT_STORE_DIR: path.join(directory, 'facts'), AI_APP_BRIDGE_RUNTIME_HOME: path.join(directory, 'runtimes') } });
+    assert.equal(child.status, 0, child.stderr + child.stdout);
+    const reply = JSON.parse(child.stdout);
+    assert.equal(reply.execution.ok, true);
+    if (request.extract === null) assert.equal(reply.value.status, 'stopped');
+    else if (request.extract.mode === 'regex') assert.deepEqual(reply.value, [{ match: 'stopped', groups: [], namedGroups: {} }]);
+    else assert.deepEqual(reply.value, { status: 'stopped', commandOk: true });
+  }
+  assert.equal(fs.existsSync(path.join(directory, 'facts')), false);
+});

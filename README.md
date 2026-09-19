@@ -37,7 +37,7 @@ CLI and MCP use the same independent local execution runtime and command contrac
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
 - Android and iOS `logs` / `network` / `state` / `events` use phone-side persistent storage. `history:true` reads retained phone facts while connected; Host stores execution/observation evidence separately. Web capture is committed to the Host FactStore at ingress. Check refs, target, epoch, coverage and retention for each query.
 
-The coordinated `0.3.8` source version covers the CLI, Android SDK/plugin, Flutter,
+The coordinated `0.4.0` source version covers the CLI, Android SDK/plugin, Flutter,
 Web and iOS. Registry publication is a separate release step; local builds do not change npm/pub.dev defaults.
 See the [optional executor guide](desktop/ai-app-bridge-cli/docs/OPTIONAL_EXECUTORS.md) and [release guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
 Script is optional. Execution completion, code assertions and
@@ -114,7 +114,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.3.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.0")
 }
 ```
 
@@ -147,7 +147,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.3.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.0"
 }
 
 aiAppBridge {
@@ -162,7 +162,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.3.8")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.0")
 ```
 
 Start the runtime once in the debug app process:
@@ -178,9 +178,9 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.8
-ai-app-bridge ios-setup --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
-ai-app-bridge ios-doctor --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
+npm install -g @mobileaidev/ai-app-bridge@0.4.0
+ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
+ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
 
 The iOS stack requires Xcode, a trusted/unlocked device with Developer Mode, the App debug runtime, and the prepared signed WDA Runner. `ios-setup --start-wda --team-id <APPLE_TEAM_ID>` builds a separate copy of pinned WDA 14.1.1 with Bridge identity checks. `--wda-test-bundle-id` sets the test bundle (default `io.github.mobileaidev.aiappbridge.wda`); setup returns its Runner App ID. WDA commands require that `wdaRunnerBundleId` and the exact device; an optional forwarded `wdaUrl` cannot bypass container binding. Create an explicit `ios-wda-session` before reading or acting in an already foreground App. WDA supports queued cancellation and original durable completion recovery through `ios-execution --kind wda`. See [the WDA contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md#ios-wda-target-and-session) for in-flight cancellation, input/focus limits and the pending physical-device gates. iOS Intent and Script support native, H5 and Flutter providers with explicit target binding; capability support and each real-App acceptance result remain separate.
@@ -193,7 +193,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.3.8
+  ai_app_bridge_flutter: 0.4.0
 ```
 
 Initialize once:
@@ -255,36 +255,20 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 
 ### Install the MCP server
 
-```bash
-npm install -g @mobileaidev/ai-app-bridge@0.3.8
-```
-
-Add this MCP server to your AI agent, model client, or IDE MCP config.
-
-macOS / Linux:
-
-```json
-{
-  "mcpServers": {
-    "ai-app-bridge": {
-      "command": "ai-app-bridge-mcp"
-    }
-  }
-}
-```
-
-Windows:
+Install Node >=26.3.0 <27, then use this fixed-version MCP configuration.
+The package includes the embedded FactStore prebuild; no database service,
+C/C++ compiler or Python is needed for ordinary commands and JS/regex extraction.
+Python is only needed for Python scripts/extraction. See the [Host support
+matrix and local-tarball setup](desktop/ai-app-bridge-cli/docs/INSTALLATION.md).
+Version 0.4.0 must be published before this registry configuration can resolve.
 
 ```json
-{
-  "mcpServers": {
-    "ai-app-bridge": {
-      "command": "cmd",
-      "args": ["/c", "ai-app-bridge-mcp"]
-    }
-  }
-}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.0","ai-app-bridge-mcp"]}}}
 ```
+
+Every run explicitly supplies `extract:null` for the original result, or a
+focused regex/JS/Python extraction. See [response extraction and safe ref
+recovery](desktop/ai-app-bridge-cli/docs/RESPONSE_EXTRACTION.md).
 
 ## Debug Builds Only
 

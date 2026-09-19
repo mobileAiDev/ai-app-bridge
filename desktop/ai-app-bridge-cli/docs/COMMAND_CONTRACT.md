@@ -13,7 +13,7 @@ a light command directory. Use `capabilities {"command":"tap-text"}`
 for its current `inputSchema`, platform, role and supported entrypoints. Domain
 `execution` contains Intent, Script, runtime lifecycle and device ownership;
 `evidence` contains archive operations.
-`capabilities {"includeOptions":true}` returns every current command schema.
+Discovery has a fixed 96 KiB budget. Broad `includeOptions:true` queries may return `discovery_output_too_large`; use the returned narrower query. Schemas are never silently pruned.
 
 Load only the operation needed for Intent, Script or evidence, for example
 `capabilities {"command":"intent","operation":"start"}`. To inspect an Intent
@@ -24,10 +24,19 @@ runtime contract. Intent terminal decisions remain available in the selected
 decision schema. Unsupported operations or scope combinations return an error
 with the offending field. Omit filters to read the complete command contract.
 
-All parameters are under `run.arguments`:
+Business parameters are under `run.arguments`. The required top-level `extract` chooses delivery; explicit `null` requests the original result within budget:
 
 ```json
-{"command":"tap-text","arguments":{"serial":"DEVICE","packageName":"com.example.app","targetText":"设置","provider":"auto"}}
+{
+  "command": "tap-text",
+  "extract": null,
+  "arguments": {
+    "serial": "DEVICE",
+    "packageName": "com.example.app",
+    "targetText": "设置",
+    "provider": "auto"
+  }
+}
 ```
 
 Names are canonical and case-sensitive. Unknown arguments, aliases, invalid
@@ -93,15 +102,26 @@ there; Script freezes its `cwd`, source and target before starting. Subsequent
 clients cannot change those paths. `evidence verify` is offline in both adapters
 and requires neither a running runtime nor an available FactStore.
 
-CLI results are one JSON envelope on one line, without indentation:
-`{kind: "json"|"text"|"bytes", value, history?}`. `--help COMMAND` prints the
-selected schema the same way; MCP tool text is also compact JSON. Whitespace is
-the only difference from earlier indented output; structure and values are equal.
-JSON false, zero and null remain values; text is a string and bytes are base64.
-`history` contains the same recording outcome that MCP exposes as `_history`.
-Command failures have `value.ok:false` and exit code 1. MCP uses its normal
-content and `isError` representation. These are wire-format differences;
-validation, dispatch, task control and evidence semantics are shared.
+CLI results are one compact JSON envelope:
+`{command, execution, control, extraction, delivery, kind, value?, failureStage?}`.
+MCP returns this same body in tool text; no second `_meta`, `_history` or
+`structuredContent` copy is attached. `execution` records the command outcome;
+`control` retains continuation, current pending questions, receipts and capture
+coverage. With `extract:null`, `value` is the command's original value including
+`_feedback`; otherwise it is the extracted JSON value when delivered.
+
+The default final-body budget is 96 KiB UTF-8. `output.maxBytes` can select
+16–256 KiB. Overflow never returns a truncated JSON document or a large original
+fallback. Inspect `control.source`: only `persisted:true` provides a readable
+ref. Retry extraction with `response read` and this ref; repeating the original
+action with the same requestId is not a recovery guarantee. Original response
+snapshots and their exports preserve the original JSON representation.
+
+Exit 0 means requested delivery succeeded; 1 means validation/execution failed
+or remained unknown; 2 means the command succeeded but extraction/delivery
+failed. `failureStage` prioritizes validation, execution, extraction, delivery.
+MCP sets `isError` consistently. See [response extraction](RESPONSE_EXTRACTION.md)
+for exact examples, budgets, ref recovery and the distinction from Script.
 
 `batch`, `smoke`, `launch-native-test` and `launch-flutter` were removed. Use a
 code Script for sequences, `launch-app` for a Flutter app's actual launcher, and
@@ -1213,7 +1233,23 @@ exact and come from one fresh visible provider tree; metadata, hidden windows
 and text from another provider cannot complete a condition. For example:
 
 ```json
-{"command":"wait-text","arguments":{"serial":"DEVICE","packageName":"com.example.app","provider":"native","targetText":"Save, draft","requireText":["Editor"],"absentText":["Loading"],"timeoutMs":5000}}
+{
+  "command": "wait-text",
+  "extract": null,
+  "arguments": {
+    "serial": "DEVICE",
+    "packageName": "com.example.app",
+    "provider": "native",
+    "targetText": "Save, draft",
+    "requireText": [
+      "Editor"
+    ],
+    "absentText": [
+      "Loading"
+    ],
+    "timeoutMs": 5000
+  }
+}
 ```
 
 At least one condition is required. Pure absence or Activity-only waits require
@@ -1562,11 +1598,11 @@ provider operation. A history failure never retries or rewrites that operation.
 Intent/Script required evidence commits retain their existing strict admission
 and terminal-evidence contracts.
 
-Object results carry `_history` with schema `aab.command-history/v1`, including
-when `feedback:"off"`. Every ordinary CLI/MCP result also carries the same value in
-`_meta["ai-app-bridge/history"]`, so raw text/image-result consumers can inspect
-history without rewriting the original content. This is MCP history metadata;
-CLI and MCP use the same history store; direct internal provider calls do not acquire an auxiliary one.
+Public replies carry command recording status in `control.history` with schema
+`aab.command-history/v1`, where applicable. Full Intent history and original
+business values remain in value; only page/continuation fields are protected.
+CLI and MCP share the same compact body. There is no duplicate `_history` or
+MCP `_meta["ai-app-bridge/history"]` attachment.
 
 - `stored`: this invocation's action and returned Host evidence references were
   committed. It is not a claim of complete mobile history or business correctness.
@@ -1589,7 +1625,16 @@ Background observer health remains separate from this foreground write report.
 Trigger the runtime permission request through the App's existing flow, then call:
 
 ```json
-{"command":"permission-dialog","arguments":{"serial":"DEVICE","packageName":"com.example.app","permission":"android.permission.RECORD_AUDIO","outcome":"allow-once"}}
+{
+  "command": "permission-dialog",
+  "extract": null,
+  "arguments": {
+    "serial": "DEVICE",
+    "packageName": "com.example.app",
+    "permission": "android.permission.RECORD_AUDIO",
+    "outcome": "allow-once"
+  }
+}
 ```
 
 This MCP entry returns an ordinary Intent ID, the actual UI summary, and

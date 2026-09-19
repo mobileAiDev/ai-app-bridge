@@ -81,14 +81,12 @@ async function sampleMain(ctx) {
     const initialCounter = Number(counters[0].slice('Native counter: '.length));
     const status = await call('status');
     if (status.result.app?.packageName !== packageName || !Number.isFinite(status.result.updatedAtMs)
-      || !Number.isInteger(status.result.debugBridge?.port) || typeof status.result.debugBridge.runtimeEpoch !== 'string') throw new Error('sample_status_identity_missing');
+      || typeof status.result.debugBridge?.runtimeEpoch !== 'string') throw new Error('sample_status_identity_missing');
     if (status.result.capturePersistence?.persistent !== true || status.result.capturePersistence?.lifecycleState !== 'OPEN'
       || status.result.debugBridge.version !== ctx.inputs.expectedSdkVersion) throw new Error('current_persistent_sample_required');
     const deviceSinceMs = status.result.updatedAtMs;
-    const expectedUrl = `http://127.0.0.1:${status.result.debugBridge.port}/v1/logs?limit=1`;
     results.initialCounter = initialCounter;
     results.expectedCounter = initialCounter + 1;
-    results.expectedUrl = expectedUrl;
     results.deviceSinceMs = deviceSinceMs;
     results.beforeEpoch = status.result.debugBridge.runtimeEpoch;
     write();
@@ -96,12 +94,16 @@ async function sampleMain(ctx) {
     const beforeState = await poll('state-baseline', 'state', { sinceMs: deviceSinceMs, runtimeEpoch: results.beforeEpoch, limit: 200 }, complete);
     const stateQuery = boundary(beforeState);
     results.references.stateBoundary = beforeState.evidence;
-    const increment = await call('tap-text', { targetText: 'Native Increment', appLocalAction: true });
+    const increment = await call('tap-text', { targetText: 'Native Increment' });
     results.increment = increment.execution;
     const afterState = await poll('counter-state', 'state', stateQuery,
       (response) => complete(response) && Boolean(stateItem(response, initialCounter + 1)));
     results.references.state = afterState.evidence;
     results.stateRecord = stateItem(afterState, initialCounter + 1);
+    const baseUrl = results.stateRecord.value.networkBaseUrl;
+    if (typeof baseUrl !== 'string' || !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) throw new Error('sample_network_fixture_identity_missing');
+    const expectedUrl = `${baseUrl}/v1/logs?limit=1`;
+    results.expectedUrl = expectedUrl;
     results.refs.state = concreteRef(afterState, results.stateRecord, 'state');
     const afterTree = await call('tree');
     results.references.tree = afterTree.evidence;
@@ -119,7 +121,7 @@ async function sampleMain(ctx) {
     const beforeNetwork = await poll('network-baseline', 'network', { sinceMs: networkClock.result.updatedAtMs, runtimeEpoch: results.beforeEpoch, limit: 200 }, complete);
     const networkQuery = boundary(beforeNetwork);
     results.references.networkBoundary = beforeNetwork.evidence;
-    const networkAction = await call('tap-text', { targetText: 'Run OkHttp Auto Capture', appLocalAction: true });
+    const networkAction = await call('tap-text', { targetText: 'Run OkHttp Auto Capture' });
     results.networkAction = networkAction.execution;
     const networkUi = await poll('network-ui', 'tree', {}, (response) => texts(response.result).includes('OkHttp auto capture: HTTP 200'));
     const networkItem = (response) => response.result.items.find((item) => item.source === 'okhttp-auto'
