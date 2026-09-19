@@ -200,6 +200,45 @@ test('budgets count final UTF-8 replies, preserve refs and stop incomplete contr
   assert.equal(boundedReply(body, 16384).delivery.status, 'unavailable');
 });
 
+test('cleanup failures preserve extraction success or the original failure without replay', async t => {
+  const remove = fs.rmSync;
+  const retained = new Set();
+  const mock = t.mock.method(fs, 'rmSync', (file, options) => {
+    if (path.basename(file).startsWith('aab-extract-')) {
+      retained.add(file);
+      throw Object.assign(new Error('Injected extraction cleanup failure'), { code: 'EACCES' });
+    }
+    return remove(file, options);
+  });
+  try {
+    for (const [extract, status, error] of [
+      [js('module.exports.main=ctx=>ctx.inputs.response.text'), 'succeeded', undefined],
+      [js('module.exports.main=()=>{throw new Error("original failure")}'), 'failed', 'extraction_failed'],
+    ]) {
+      const f = fixture();
+      const reply = await f.run(extract);
+      assert.equal(reply.extraction.status, status);
+      assert.equal(reply.extraction.error, error);
+      assert.equal(reply.extraction.cleanupError, 'EACCES');
+      assert.equal(reply.execution.ok, true);
+      assert.equal(f.calls(), 1);
+      if (status === 'succeeded') {
+        assert.equal(reply.value, 'response');
+        assert.equal(exitCodeFor(reply), 0);
+      } else {
+        assert.match(reply.extraction.message, /original failure/);
+        assert.equal(reply.failureStage, 'extraction');
+      }
+    }
+  } finally {
+    mock.mock.restore();
+    for (const file of retained) remove(file, { recursive: true, force: true });
+  }
+  const next = await fixture().run(js('module.exports.main=()=>42'));
+  assert.equal(next.value, 42, 'cleanup failure must release the extraction worker slot');
+  assert.equal(next.extraction.cleanupError, undefined);
+});
+
 test('storage failure is independent from small extraction success and offline local extraction does not start a Runtime', async () => {
   const body = publicReply({ command: 'tree', reply: { value: { ok: true, data: 'x'.repeat(180000) } } });
   const result = await finishReply({ body, extract: prepareExtraction(js('module.exports.main=()=>null')),

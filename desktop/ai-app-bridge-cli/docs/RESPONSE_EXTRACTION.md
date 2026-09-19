@@ -70,6 +70,10 @@ requested delivery, 1 for validation/failed or unknown execution, and 2 when a
 known successful command could not be extracted/delivered. MCP uses `isError`
 consistently. A successful Script execution is separate from its business verdict.
 
+A temporary-directory removal failure after the worker exits is reported as
+`extraction.cleanupError`. It does not replace a successful value or the original
+extraction error, change the exit code, or replay the command.
+
 Preserve source identity, timestamps, state and coverage needed by the actual
 assertion. A selected successful row does not prove complete business coverage.
 

@@ -66,7 +66,7 @@ async function runExtraction(prepared, inputs) {
     // every descendant to close its copies of stdout/stderr.
     child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy();
     try { if (directory) fs.rmSync(directory, { recursive: true, force: true }); }
-    catch (error) { result = { ok: false, error: 'extraction_cleanup_failed', message: error.message }; }
+    catch (error) { result.cleanupError = error.code || 'extraction_cleanup_failed'; }
     finally { active--; }
   }
   const diagnostics = channel?.diagnostics();

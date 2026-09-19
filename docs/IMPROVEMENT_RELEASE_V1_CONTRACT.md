@@ -100,6 +100,9 @@ JSON 与文本提取是首版范围。二进制/媒体本体不运行提取器�
 | kind / value | kind 为 json/text/bytes；成功交付时 value 可以是合法 null；未交付时省略 value，由 delivery.status 明确区分 |
 | failureStage | 仅发生公共失败时出现：validation/execution/extraction/delivery；多处失败按此前后顺序定位首要失败，三段具体事实仍保留；快照读取失败归 execution，不冒充原动作失败 |
 
+提取进程退出后的临时目录清理错误单独记录为 `extraction.cleanupError`（错误码），
+不改变已经得到的提取值、提取状态、原始提取错误或退出码，也不重放原命令。
+
 以下原则约束具体编码，不允许 Adapter 再定义一套结构：
 
 1. Runtime 的公共边界组装并序列化一次；本地路径使用同一个处理模块。CLI stdout 是该紧凑 JSON 加一个换行，MCP `content[0].text` 是该紧凑 JSON。预算不含 CLI 换行、JSON-RPC 转义和 MCP 固定外壳，这些另记传输指标。
