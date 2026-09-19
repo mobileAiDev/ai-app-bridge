@@ -407,10 +407,12 @@ entry point explicitly.
 
 `ai-app-bridge --version` (also `-V`) reads the installed entrypoint's package
 version without requiring a device. Upgrading npm replaces files; it does not
-replace an MCP process already connected to Cursor or another client. Stop the
-shared Runtime with `ai-app-bridge runtime --operation stop` when existing work
-has finished, then reconnect the client's MCP server. The MCP initialize
+replace an MCP process already connected to Cursor or another client. Reconnect
+the client's MCP server after upgrading. Follow the mismatch diagnostic: upgrade
+an older client first; only stop an older Runtime after its existing work finishes,
+using `ai-app-bridge runtime --operation stop --extract null`. The MCP initialize
 response reports `serverInfo.version`; refresh cached tool descriptions in the
 client when they still show removed commands such as `batch` or `smoke`.
-A running Runtime from different source code reports `runtime_code_mismatch`
-until explicitly stopped, so in-flight work is not silently moved to new code.
+A same-version fingerprint mismatch requires aligning the source and Node
+environment; the hash alone does not identify which side is newer. In-flight
+work is not silently moved to new code.

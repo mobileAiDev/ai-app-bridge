@@ -3,6 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const assert = require('node:assert/strict');
 const { createMcpClient, payloadOf } = require('./mcp-jsonrpc-client');
 
 const PACKAGE = 'io.github.mobileaidev.aiappbridge.sample';
@@ -190,11 +191,22 @@ async function main(options) {
       if (current.ok !== true) throw new Error(`script_wait:${current.error}`);
       if (['paused', 'intervention_required'].includes(current.status)) throw new Error(`script_needs_attention:${current.status}`);
     }
-    const full = await run('script', { operation: 'status', operationId, afterSequence: 0, limit: 4096 });
+    const full = await run('script', { operation: 'status', operationId, afterSequence: current.eventSequence, limit: 1 });
     write('script-final.json', full);
+    assert.equal(full.ok, true, JSON.stringify(full));
+    assert.equal(full.status, current.status);
     report.executionStatus = current.status;
     const resultsPath = path.join(options.out, 'script-results.json');
     const results = fs.existsSync(resultsPath) ? JSON.parse(fs.readFileSync(resultsPath, 'utf8')) : null;
+    if (current.status === 'completed') {
+      const retained = await run('script', { operation: 'result', operationId });
+      write('script-result.json', retained);
+      assert.equal(retained.ok, true, JSON.stringify(retained));
+      assert.equal(retained.persisted, true);
+      assert.deepEqual(retained.result, { outputPath: resultsPath, positive: results.positive, negative: results.negative },
+        'the retained Script verdicts must match the scenario evidence');
+      report.resultRef = retained.resultRef;
+    }
     report.results = results;
     if (results) {
       report.refs = results.refs;

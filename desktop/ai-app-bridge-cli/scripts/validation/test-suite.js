@@ -10,7 +10,10 @@ function tests(directory) {
     return entry.isDirectory() ? tests(file) : entry.name.endsWith('.test.js') ? [file] : [];
   });
 }
-const timingFiles = new Set(['p3-script-runners.test.js', 'p8-handshake-bench.test.js', 'p8-start-overhead-bench.test.js', 'p8-material-summary-p95.test.js', 'p8-spawn-residual.test.js']);
+// Keep mixed files intact: their functional assertions still run, serially.
+const timingFiles = new Set(['p2-script-supervisor.test.js', 'p3-script-runners.test.js',
+  'p8-handshake-bench.test.js', 'p8-start-overhead-bench.test.js', 'p8-material-summary-p95.test.js',
+  'p8-spawn-residual.test.js', 'p8-page-summary-bench.test.js', 'stability-g8.test.js']);
 const isTiming = file => file.includes(`${path.sep}performance${path.sep}`) || timingFiles.has(path.basename(file));
 const groups = { functional: tests(path.join(root, 'test')).filter(file => !isTiming(file)),
   performance: tests(path.join(root, 'test')).filter(isTiming) };
