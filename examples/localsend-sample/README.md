@@ -73,7 +73,7 @@ Preparation from the Bridge repository root:
 
 1. Download `source.json.archiveUrl`, verify `archiveSha256`, and extract it into
    an empty `examples/localsend-sample/upstream` with one leading path removed.
-2. After the coordinated 0.4.0 publication, confirm `ai_app_bridge_flutter: 0.4.0` is available on pub.dev and its Android dependency resolves Bridge `0.4.0` from JitPack. Local path builds before publication do not prove these public coordinates.
+2. After the coordinated 0.4.1 publication, confirm `ai_app_bridge_flutter: 0.4.1` is available on pub.dev and its Android dependency resolves Bridge `0.4.1` from JitPack. Local path builds before publication do not prove these public coordinates.
 3. Run `python3 examples/localsend-sample/integrate.py` once on the fresh source.
 4. From `upstream/app`, use the pinned Flutter SDK to run `flutter pub get` and
    `flutter build apk --debug --target-platform android-arm64`. The upstream

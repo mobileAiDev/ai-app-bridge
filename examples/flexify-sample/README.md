@@ -5,10 +5,10 @@ using `source.json`. The upstream source, MIT license and lockfile remain in
 ignored `upstream/`. Its Flutter 3.44.8 SDK is isolated from the LocalSend SDK.
 
 `integrate.py --archive <pinned-tar.gz> --team-id <Apple-Team-ID>` verifies the
-original source before adding the Bridge dependency (`0.4.0`), Debug startup and
+original source before adding the Bridge dependency (`0.4.1`), Debug startup and
 route observer, and an independent iOS bundle/signing identity. It does not
 change exercise, plan, calculation, notification or database behavior.
-Confirm that `ai_app_bridge_flutter` 0.4.0 is available on pub.dev before running
+Confirm that `ai_app_bridge_flutter` 0.4.1 is available on pub.dev before running
 the integration and resolving dependencies.
 
 The intended business proof is creation of a training plan, recording and editing

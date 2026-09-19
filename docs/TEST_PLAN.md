@@ -125,12 +125,12 @@ through `web-command`, and can exercise DOM helpers through `web-click`,
 `web-input`, `web-wait`, or `web-scroll` where the page fixture exposes stable
 selectors.
 
-After publishing 0.4.0, verify the registry packages. The checked-in remote-smoke
+After publishing 0.4.1, verify the registry packages. The checked-in remote-smoke
 lock remains pinned to the last published 0.3.8 until that release exists:
 
 ```bash
 npm install -g @mobileaidev/ai-app-bridge@latest
-cd web/remote-smoke && npm install @mobileaidev/ai-app-bridge-web@0.4.0 && npm run check
+cd web/remote-smoke && npm install @mobileaidev/ai-app-bridge-web@0.4.1 && npm run check
 ```
 
 Then start `ai-app-bridge-mcp`, run `web-session-start`, open

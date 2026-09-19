@@ -1,3 +1,8 @@
+## 0.4.1
+
+- Align the native runtime identities and Android dependency with the coordinated 0.4.1 release.
+- Device execution behavior is unchanged; Host 0.4.1 fixes iOS observation ownership and extraction cleanup handling.
+
 ## 0.4.0
 
 - Align the bundled native runtime and Android dependency with the 0.4.0 release; mobile execution behavior is unchanged.

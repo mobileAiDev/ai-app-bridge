@@ -5,7 +5,8 @@ The same npm package contains CLI and MCP; running only MCP is supported.
 FactStore is an embedded library bundled in that package. There is no separate
 database, FactStore service or CLI process to install first.
 
-This source targets 0.4.0. Registry publication is a separate step; before
+This source targets the coordinated 0.4.1 release.
+Registry publication is a separate step; before
 publication, use the reviewed local tarball instead of expecting this registry
 version to resolve.
 
@@ -14,7 +15,7 @@ version to resolve.
   "mcpServers": {
     "ai-app-bridge": {
       "command": "npx",
-      "args": ["--yes", "--package", "@mobileaidev/ai-app-bridge@0.4.0", "ai-app-bridge-mcp"]
+      "args": ["--yes", "--package", "@mobileaidev/ai-app-bridge@0.4.1", "ai-app-bridge-mcp"]
     }
   }
 }

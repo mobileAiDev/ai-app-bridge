@@ -1,3 +1,7 @@
+## 0.4.1
+
+- Align the optional executor helper identity with the coordinated 0.4.1 release; its execution contract is unchanged.
+
 ## 0.4.0
 
 - Align the optional Flutter executor helper version with the 0.4.0 release; its execution contract is unchanged.
