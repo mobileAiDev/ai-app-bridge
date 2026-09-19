@@ -19,6 +19,7 @@
         "-Wpedantic"
       ],
       "xcode_settings": {
+        "MACOSX_DEPLOYMENT_TARGET": "13.5",
         "GCC_C_LANGUAGE_STANDARD": "c11",
         "WARNING_CFLAGS": [
           "-Wall",

@@ -8,7 +8,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
-const { createMcpClient, payloadOf } = require('./mcp-jsonrpc-client');
+const { createMcpClient, payloadOf, replyOf } = require('./mcp-jsonrpc-client');
 const { createUiaRuntimeFixture } = require('../../test-support/uia-runtime-fixture');
 const { runCli } = require('../../test-support/cli-client');
 
@@ -17,16 +17,23 @@ async function main(directory) {
   fs.mkdirSync(out); // Refuse to overwrite a previous validation run.
   const source = path.resolve(__dirname, '../..');
   const write = (name, value) => fs.writeFileSync(path.join(out, name), JSON.stringify(value, null, 2) + '\n');
+  const unavailable = path.join(out, 'unavailable-build-tools'); fs.mkdirSync(unavailable);
+  const attempted = path.join(out, 'unexpected-build-tool');
+  for (const tool of ['python', 'python3', 'cc', 'c++', 'clang', 'clang++', 'gcc', 'g++', 'make', 'gmake', 'node-gyp']) {
+    fs.writeFileSync(path.join(unavailable, tool), `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(attempted)}, process.argv[1]+'\\n'); process.exit(127);\n`, { mode: 0o755 });
+  }
   const env = { ...process.env, NODE_PATH: '', AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'host-facts'),
     AI_APP_BRIDGE_RUNTIME_HOME: path.join(out, 'runtimes'),
     AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR: path.join(out, 'ownership') };
+  const cleanEnv = { ...env, PATH: `${unavailable}${path.delimiter}${process.env.PATH}`, AI_APP_BRIDGE_PYTHON: path.join(unavailable, 'python3'),
+    CC: path.join(unavailable, 'cc'), CXX: path.join(unavailable, 'c++') };
   const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', out], { cwd: source, env, encoding: 'utf8' }))[0];
   write('pack.json', packed);
   const tarball = path.join(out, packed.filename);
   const install = path.join(out, 'clean-install'); fs.mkdirSync(install);
   fs.writeFileSync(path.join(install, 'package.json'), JSON.stringify({ name: 'aab-package-validation', private: true }) + '\n');
   const log = fs.openSync(path.join(out, 'install.log'), 'w');
-  try { execFileSync('npm', ['install', '--foreground-scripts', '--prefer-offline', '--no-audit', '--no-fund', tarball], { cwd: install, env, stdio: ['ignore', log, log], timeout: 300000 }); }
+  try { execFileSync('npm', ['install', '--foreground-scripts', '--prefer-offline', '--no-audit', '--no-fund', tarball], { cwd: install, env: cleanEnv, stdio: ['ignore', log, log], timeout: 300000 }); }
   finally { fs.closeSync(log); }
   const installed = path.join(install, 'node_modules/@mobileaidev/ai-app-bridge');
   for (const entry of ['ai-app-bridge.js', 'mcp-server.js']) {
@@ -35,7 +42,14 @@ async function main(directory) {
   }
   const installLog = fs.readFileSync(path.join(out, 'install.log'), 'utf8');
   assert.match(installLog, /@mobileaidev\/segmented-fact-store-native@[^\s]+ install/, 'native install lifecycle must actually run');
-  assert.match(installLog, /gyp info ok/, 'native compilation must succeed in the fresh install');
+  assert.match(installLog, /FactStore prebuild /, 'the bundled prebuild must actually load');
+  assert.doesNotMatch(installLog, /gyp info|node-gyp rebuild/, 'normal installation must not compile');
+  assert.equal(fs.existsSync(attempted), false, 'installation invoked a compiler or Python');
+  const nativeInfo = JSON.parse(execFileSync(process.execPath, ['-e',
+    "require('@mobileaidev/segmented-fact-store-native'); process.stdout.write(JSON.stringify(require('@mobileaidev/segmented-fact-store-native/binding-path').resolveBinding()))"],
+  { cwd: installed, env, encoding: 'utf8' }));
+  assert.ok(nativeInfo.path.startsWith(fs.realpathSync(installed) + path.sep));
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(nativeInfo.path)).digest('hex'), nativeInfo.sha256);
   const calls = path.join(out, 'controlled-adb.jsonl');
   const adb = path.join(out, 'controlled-adb');
   const uia = await createUiaRuntimeFixture({ directory: path.join(out, 'controlled-uia'), serial: 'controlled-package-device',
@@ -55,9 +69,10 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     transcriptPath: path.join(out, 'mcp.jsonl'), stderrPath: path.join(out, 'mcp-stderr.log') });
   const run = async (command, args) => payloadOf(await client.request('tools/call', { name: 'run', arguments: { command, extract: null, arguments: args } }));
   const report = { ok: false, tarball: packed.filename, sha256: crypto.createHash('sha256').update(fs.readFileSync(tarball)).digest('hex'),
-    installation: 'fresh npm install; native lifecycle and successful node-gyp build observed',
+    installation: 'fresh npm install; prebuilt native addon loaded with compiler and Python commands denied', nativeInfo,
     npmAllowScriptsAdvisory: installLog.includes('not yet covered by allowScripts'), device: 'controlled ADB only; no real device' };
   try {
+    report.npx = await verifyNpx({ out, tarball, env: cleanEnv });
     const bundle = JSON.parse(fs.readFileSync(path.join(installed, 'runtime/uia/manifest.json')));
     assert.equal(bundle.schemaVersion, 'aab.uia.bundle.v1'); assert.equal(bundle.minApi, 25);
     assert.equal(bundle.sha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(installed, 'runtime/uia/ai-app-bridge-uia.jar'))).digest('hex'));
@@ -193,3 +208,42 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
 
 if (require.main === module) main(process.argv[2]).catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; });
 module.exports = { main };
+
+async function verifyNpx({ out, tarball, env }) {
+  const cwd = path.join(out, 'npx-only'); fs.mkdirSync(cwd);
+  const npxEnv = { ...env, npm_config_cache: path.join(out, 'npx-cache'),
+    AI_APP_BRIDGE_FACT_STORE_DIR: path.join(out, 'npx-facts'), ADB: '/not-installed/adb' };
+  let ref, runtimeId;
+  for (const phase of ['first', 'repeat']) {
+    const client = createMcpClient({ command: 'npm', args: ['exec', '--yes', '--package', tarball, '--', 'ai-app-bridge-mcp'],
+      env: npxEnv, cwd, transcriptPath: path.join(out, `npx-${phase}.jsonl`), stderrPath: path.join(out, `npx-${phase}.stderr`), timeoutMs: 180000 });
+    const run = async (command, args, extract = null) => replyOf(await client.request('tools/call', { name: 'run', arguments: { command, arguments: args, extract } }));
+    try {
+      await client.initialize();
+      const listed = await client.request('tools/list', {});
+      assert.ok(listed.result.tools.find(tool => tool.name === 'run').inputSchema.required.includes('extract'));
+      if (phase === 'first') {
+        const started = await run('script', { operation: 'start', script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', permissions: [],
+          source: 'module.exports.main = () => ({ text: "value=7", count: 7 });' } });
+        assert.equal(started.execution.ok, true, JSON.stringify(started));
+        let state = started.value;
+        while (['running', 'finishing'].includes(state.status)) state = (await run('script', { operation: 'wait', operationId: state.operationId,
+          afterSequence: state.eventSequence, waitMs: 1000 })).value;
+        assert.equal(state.status, 'completed', JSON.stringify(state));
+        const extracted = await run('script', { operation: 'result', operationId: state.operationId },
+          { mode: 'regex', pattern: '\\d+', inputPath: '/result/text' });
+        assert.equal(extracted.extraction.status, 'succeeded', JSON.stringify(extracted));
+        ref = extracted.control.source.ref;
+        assert.ok(ref);
+        runtimeId = (await run('runtime', { operation: 'status' })).value.runtimeId;
+      } else {
+        assert.equal((await run('runtime', { operation: 'status' })).value.runtimeId, runtimeId);
+        const reread = await run('response', { operation: 'read', ref }, { mode: 'script', language: 'javascript',
+          source: 'module.exports.main = ctx => ctx.inputs.response.result.count;' });
+        assert.equal(reread.value, 7, JSON.stringify(reread));
+      }
+    } finally { await client.close({ stopRuntime: phase === 'repeat' }); }
+  }
+  return { firstAndRepeat: true, pureMcp: true, script: 'javascript', extraction: ['regex', 'javascript'],
+    persistedSource: ref, runtimeSurvivesMcpDisconnect: true, pythonAndCompilers: 'denied on PATH' };
+}

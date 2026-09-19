@@ -31,7 +31,10 @@ function calculateCodeFingerprint() {
   }
   const nativeDirectory = path.dirname(require.resolve('@mobileaidev/segmented-fact-store-native'));
   hash.update(fs.readFileSync(path.join(nativeDirectory, 'index.js')));
-  hash.update(fs.readFileSync(path.join(nativeDirectory, 'build/Release/segmented_fact_store.node')));
+  hash.update(fs.readFileSync(path.join(nativeDirectory, 'binding-path.js')));
+  hash.update(fs.readFileSync(path.join(nativeDirectory, 'prebuilds/manifest.json')));
+  const nativeBinding = require('@mobileaidev/segmented-fact-store-native/binding-path').resolveBinding();
+  hash.update(fs.readFileSync(nativeBinding.path));
   hash.update(JSON.stringify({ node: process.versions.node, modules: process.versions.modules }));
   return hash.digest('hex');
 }

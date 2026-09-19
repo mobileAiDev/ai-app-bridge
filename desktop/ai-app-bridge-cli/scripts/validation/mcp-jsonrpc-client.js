@@ -3,10 +3,10 @@
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
-function createMcpClient({ serverPath, transcriptPath, stderrPath, timeoutMs = 120_000, env = {}, cwd }) {
+function createMcpClient({ serverPath, command = process.execPath, args = [serverPath], transcriptPath, stderrPath, timeoutMs = 120_000, env = {}, cwd }) {
   const transcript = fs.openSync(transcriptPath, 'a');
   const diagnostics = fs.openSync(stderrPath, 'a');
-  const child = spawn(process.execPath, [serverPath], {
+  const child = spawn(command, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(cwd ? { cwd } : {}),
     env: { ...process.env, ...env },

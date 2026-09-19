@@ -1,9 +1,9 @@
 {
   "name": "@mobileaidev/segmented-fact-store-native",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable segmented mmap fact-store core and Node-API binding for AI App Bridge.",
   "main": "index.js",
-  "gypfile": true,
+  "gypfile": false,
   "files": [
     "binding.gyp",
     "index.js",
@@ -11,11 +11,17 @@
     "src",
     "bindings/node/sfs_node.c",
     "LICENSE",
-    "NOTICE"
+    "NOTICE",
+    "binding-path.js",
+    "install.js",
+    "prebuilds",
+    "scripts",
+    "PREBUILDS.md"
   ],
   "scripts": {
-    "build": "node-gyp rebuild",
-    "test": "node --test bindings/node/test/*.test.js"
+    "build": "node-gyp rebuild && node scripts/stage-prebuild.js",
+    "test": "node --test bindings/node/test/*.test.js",
+    "install": "node install.js"
   },
   "engines": {
     "node": ">=18"
