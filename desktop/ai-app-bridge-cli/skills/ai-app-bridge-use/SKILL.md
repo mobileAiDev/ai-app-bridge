@@ -21,6 +21,8 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 
 旧 MCP 实例可能与已安装 CLI 不同。缺少 Intent/Script 或参数不匹配时，核对实际入口版本，选用支持当前合同的入口；不要套用旧 batch、工具别名或外层参数。
 
+**卡死 / 换 agent：** Android 遇到 `target_busy`、`device_ownership_unresolved` 或旧动作一直没有终态时，按返回的 `recoveryHint` 调 `device-ownership {operation:"force-stop",serial:"原设备"}`；CLI 为 `ai-app-bridge device-ownership --operation force-stop --serial 原设备 --extract null`。这是独立重置入口：无需旧回执，强制结束旧 Host 及共享 Runtime 的任务，重置手机执行器并解除占用。共享这些 Host 的其他任务也会结束；已派发效果记为未知。读取 `ownershipReleased/remoteResetPending`；手机已重置后重新观察并开始新操作，手机断开时重连后再执行一次。
+
 ## 响应与提取
 
 先看 `execution` 的原执行事实及 `failureStage`，再消费 `value`；Script 内部 `ctx.call` 仍按 `ok/result` 处理，不加 extract。`control` 保留续跑字段和采集覆盖；当前 Script 问题从 `control.pendingQuestion` 读取，即使 events 被游标过滤也可回答。

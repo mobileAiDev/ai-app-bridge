@@ -17,7 +17,7 @@ const commandDefinitions = [
   { command: 'flutter-executor', domain: 'advanced', summary: 'Optional Flutter integration_test executor on Android. Open the installed application test entrypoint, observe widgets, run WidgetTester actions, query receipts and close the test process. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
   { command: 'web-executor', domain: 'web', summary: 'Optional Playwright executor: inspect readiness, prepare pinned browser dependencies, open a browser, observe bound frames, act, wait, query original receipts, or close. Browser input and test operations retain their actual mechanisms. Script requires app.test.', targetKind: 'web-target', options: ['operation'] },
   { command: 'runtime', domain: 'execution', summary: 'Inspect, start or orderly stop the shared local execution runtime. CLI exit and MCP disconnect leave operations running; stop cancels and drains them.', targetKind: 'host-runtime', options: ['operation'] },
-  { command: 'device-ownership', domain: 'execution', summary: 'Read ownership, reconcile original completion, explicitly cancel a retained install by actionId, or read a retained UIA receipt by serial/runtimeEpoch/actionId. Installation cancellation abandons its original PM session; it does not roll back an installed APK.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
+  { command: 'device-ownership', domain: 'execution', summary: 'Read ownership, reconcile completion, or force-stop stuck tasks and reset device occupancy without requiring old receipts. Force-stop terminates the owning and shared Host runtimes, resets phone UIA history, and stops recorded SDK apps; dispatched effects keep an unknown outcome. Also cancel-install or read a retained UIA receipt.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
   { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start or orderly stop the Android API 25+ UIA node runtime. Start checks the phone process lock; unacknowledged original receipts are retained.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
@@ -252,7 +252,7 @@ function isMutationCommand(command, args = {}) {
   if (command === 'web-executor') return ['prepare', 'open', 'act', 'navigate', 'close'].includes(args.operation);
   if (command === 'web-command' && args.name === 'domSnapshot') return false;
   return mutationCommands.has(command) || (command === 'logcat' && args.clear === true)
-    || (command === 'device-ownership' && args.operation === 'cancel-install')
+    || (command === 'device-ownership' && ['cancel-install', 'force-stop'].includes(args.operation))
     || (command === 'ios-wda-session' && args.operation !== 'status')
     || (command === 'uia-runtime' && args.operation !== 'status')
     || ((command === 'webview-network' || command === 'webview-console') && args.script !== undefined);
@@ -321,7 +321,7 @@ function commandContract(command) {
       providersByPlatform: { android: ['native', 'uia', 'flutter', 'h5'], ios: ['native', 'h5', 'flutter'], web: ['h5'] } } : {}),
     execution: { kind: role === 'execution' ? 'operation' : isMutationCommand(command) ? 'mutation' : 'query',
       mutation: isMutationCommand(command),
-      conditionalMutation: command === 'web-executor' ? 'operation in prepare,open,act,navigate,close' : ['android-executor', 'flutter-executor'].includes(command) ? 'operation in open,act,close' : command === 'uia-runtime' ? 'operation != status' : command === 'logcat' ? 'clear=true' : ['webview-network', 'webview-console'].includes(command) ? 'script is supplied' : null,
+      conditionalMutation: command === 'device-ownership' ? 'operation in reconcile,cancel-install,force-stop' : command === 'web-executor' ? 'operation in prepare,open,act,navigate,close' : ['android-executor', 'flutter-executor'].includes(command) ? 'operation in open,act,close' : command === 'uia-runtime' ? 'operation != status' : command === 'logcat' ? 'clear=true' : ['webview-network', 'webview-console'].includes(command) ? 'script is supplied' : null,
       arbitration: command === 'script' || command === 'intent' ? 'target-platform-physical-device'
         : isAndroidMutation(command) ? 'cross-process-physical-android-device'
         : platform === 'ios' && isMutationCommand(command) ? 'cross-process-physical-ios-device'
@@ -342,11 +342,11 @@ function commandSchema(command) {
     properties: { operation: { enum: ['start', 'status', 'stop'] } } };
   if (definition.domain === 'web') return require('./web/command-schema').webSchema(command);
   if (command === 'device-ownership') return { type: 'object', additionalProperties: false,
-    properties: { operation: { enum: ['status', 'reconcile', 'receipt', 'cancel-install'] }, serial: { type: 'string', minLength: 1 },
+    properties: { operation: { enum: ['status', 'reconcile', 'receipt', 'cancel-install', 'force-stop'] }, serial: { type: 'string', minLength: 1 },
       runtimeEpoch: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' },
       actionId: { type: 'string', minLength: 1, maxLength: 1024 }, timeoutMs: { type: 'integer', minimum: 1, maximum: 30000 } },
     required: ['operation', 'serial'], oneOf: [
-      { properties: { operation: { enum: ['status', 'reconcile'] }, runtimeEpoch: false, actionId: false } },
+      { properties: { operation: { enum: ['status', 'reconcile', 'force-stop'] }, runtimeEpoch: false, actionId: false } },
       { properties: { operation: { const: 'receipt' }, timeoutMs: false }, required: ['runtimeEpoch', 'actionId'] },
       { properties: { operation: { const: 'cancel-install' }, runtimeEpoch: false }, required: ['actionId'] },
     ] };

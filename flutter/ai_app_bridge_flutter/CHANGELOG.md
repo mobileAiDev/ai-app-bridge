@@ -1,3 +1,8 @@
+## 0.4.2
+
+- Align all public Bridge components and native dependencies with 0.4.2.
+- Host adds an explicit device force-stop/reset control for stuck tasks; existing SDK execution behavior is unchanged.
+
 ## 0.4.1
 
 - Align the native runtime identities and Android dependency with the coordinated 0.4.1 release.

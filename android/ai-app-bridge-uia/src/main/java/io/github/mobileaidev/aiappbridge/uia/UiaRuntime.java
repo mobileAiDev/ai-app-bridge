@@ -133,9 +133,10 @@ public final class UiaRuntime {
         try {
             if (Build.VERSION.SDK_INT < 25) throw new Wire.Failure("uia_android_api_25_required");
             boolean ownerStatus = args.length == 3 && args[2].equals("owner-status");
+            boolean forceReset = args.length == 3 && args[2].equals("force-reset");
             boolean acknowledge = args.length == 4 && args[2].equals("acknowledge-record");
             boolean recover = args.length == 4 && args[2].equals("recover-record");
-            if (args.length != 2 && !ownerStatus && !acknowledge && !recover || !args[1].matches("[0-9a-f]{64}")) throw new Wire.Failure("uia_invalid_start_arguments");
+            if (args.length != 2 && !ownerStatus && !forceReset && !acknowledge && !recover || !args[1].matches("[0-9a-f]{64}")) throw new Wire.Failure("uia_invalid_start_arguments");
             File root = new File(args[0]).getAbsoluteFile();
             if (!root.toString().equals("/data/local/tmp/ai-app-bridge-uia/v1")
                     && !root.toString().matches("/data/local/tmp/ai-app-bridge-uia-test-[a-z0-9-]+"))
@@ -144,9 +145,16 @@ public final class UiaRuntime {
             if (classpath == null || !Wire.sha256(DurableFiles.readBytes(new File(classpath), 2 * 1024 * 1024)).equals(args[1]))
                 throw new Wire.Failure("uia_runtime_artifact_mismatch");
             files.directory(root);
+            if (forceReset) stopOldProcesses();
             try (RandomAccessFile lockFile = new RandomAccessFile(new File(root, "owner.lock"), "rw");
                  FileChannel channel = lockFile.getChannel()) {
                 FileLock lock = channel.tryLock();
+                if (forceReset) {
+                    long deadline = SystemClock.elapsedRealtime() + 5000;
+                    while (lock == null && SystemClock.elapsedRealtime() < deadline) {
+                        Thread.sleep(25); lock = channel.tryLock();
+                    }
+                }
                 if (ownerStatus) {
                     try {
                         System.out.println(new JSONObject().put("ok", true).put("schemaVersion", "aab.uia.owner.v1")
@@ -156,6 +164,7 @@ public final class UiaRuntime {
                 }
                 if (lock == null) throw new Wire.Failure("uia_runtime_already_running");
                 try {
+                    if (forceReset) { System.out.println(UiaReset.archive(root, files)); return; }
                     if (acknowledge || recover) {
                         if (args[3].length() > 1024) throw new Wire.Failure("uia_completion_identity_mismatch");
                         UiaJournal journal = new UiaJournal(root, files);
@@ -172,6 +181,32 @@ public final class UiaRuntime {
             try { System.err.println(Wire.failure(error)); }
             catch (Exception formatting) { System.err.println(error.toString()); }
             System.exit(2);
+        }
+    }
+
+    private static void stopOldProcesses() throws Exception {
+        File[] processes = new File("/proc").listFiles();
+        if (processes == null) throw new Wire.Failure("uia_process_inventory_unavailable");
+        String mainClass = UiaRuntime.class.getName();
+        for (File process : processes) {
+            if (!process.getName().matches("[0-9]+")) continue;
+            int pid = Integer.parseInt(process.getName());
+            if (pid == android.os.Process.myPid()) continue;
+            String raw;
+            try { raw = DurableFiles.read(new File(process, "cmdline"), 8192); }
+            catch (java.io.IOException inaccessible) { continue; }
+            String[] argv = raw.split("\u0000");
+            if (argv.length == 0) continue;
+            if (UiaReset.isUiaProcess(argv, mainClass)) android.os.Process.killProcess(pid);
+            // Managed shell workers run in a detached process group. Kill the
+            // group so their command children cannot outlive the forced reset.
+            if ((argv[0].equals("sh") || argv[0].endsWith("/sh")) && argv.length == 2
+                && argv[1].matches("/data/local/tmp/ai-app-bridge-shell/v1/[0-9a-f-]+/worker\\.sh")) {
+                try { android.system.Os.kill(-pid, 9); }
+                catch (android.system.ErrnoException gone) {
+                    if (gone.errno != android.system.OsConstants.ESRCH) throw gone;
+                }
+            }
         }
     }
 }

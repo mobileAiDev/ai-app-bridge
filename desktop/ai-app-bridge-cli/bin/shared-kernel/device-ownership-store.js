@@ -88,7 +88,8 @@ function createOwnershipStore(directory = defaultDirectory()) {
       throw new CommandError('device_ownership_unavailable', 'Cannot commit device ownership; no new action is allowed.', { details: { serial, cause: error.message } });
     }
   }
-  return { directory, read, lock, write };
+  const controlLock = serial => createOwnershipStore(path.join(directory, 'reset-controls')).lock(serial);
+  return { directory, read, lock, write, paths, controlLock };
 }
 
 module.exports = { createOwnershipStore, defaultDirectory, schemaVersion };

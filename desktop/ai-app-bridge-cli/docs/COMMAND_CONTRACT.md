@@ -710,8 +710,8 @@ the local ADB process does not by itself confirm a cancelled install has settled
 Use `device-ownership {operation:"status",serial:"DEVICE"}` to inspect ownership,
 or `operation:"reconcile"` to query the recorded action through its original
 package and transport configuration. Reconciliation exclusively owns the device
-while checking; there is no force-release, caller-supplied replacement target,
-expiry, or action replay. Android Native, Flutter, H5 and managed shell actions can
+while checking; normal reconciliation does not expire or replay actions, or
+substitute their target. Android Native, Flutter, H5 and managed shell actions can
 recover from an identity-matching `aab.native-execution/v1`,
 `aab.flutter-execution/v1`, `aab.h5-execution/v1` or
 `aab.android-shell-execution/v1` terminal receipt. UIA node actions use
@@ -724,6 +724,30 @@ A missing action, idle SDK, changed runtime or failed connection is insufficient
 Other transports without a matching completion protocol remain unresolved.
 Installation uses the original phone job and PackageInstaller session contract
 described below.
+
+**Stuck device / agent handoff:** use `device-ownership
+{operation:"force-stop",serial:"DEVICE"}`. CLI: `ai-app-bridge device-ownership
+--operation force-stop --serial DEVICE --extract null`. This emergency reset runs
+in the CLI/MCP client before connecting to the execution Runtime, including when
+the Runtime hangs, its queue is blocked, or its version differs. It kills the
+recorded owning Host and the shared Host runtime, including Script/Intent child
+processes and queued tasks. Other tasks in those Host processes also stop.
+On the selected phone it kills UIA and managed shell worker groups, archives UIA
+sessions while retaining the process-lock inode, and stops recorded SDK apps.
+A retained instrumentation/Flutter test owner is stopped and its UiAutomation
+claim archived, so a replacement agent can observe the phone again.
+A new observation starts a fresh UIA epoch. No terminal callback is required.
+
+The ownership journal becomes idle. `disposition:force_stopped,outcome:unknown`
+preserves abandoned action identities and the original archived journal; this
+does not roll back dispatched effects or fabricate the original outcome.
+Even a corrupt Host task journal is archived as bytes and reset explicitly.
+Device admission and force-stop share an independent administrative gate.
+If the phone cannot reset, local tasks and occupancy still stop; the reply has
+`ownershipReleased:true,remoteResetPending:true`. Reconnect and repeat force-stop.
+A durable reset-required marker prevents new dispatch until phone reset succeeds,
+including after a reset-client crash. Occupancy failures include a short
+`recoveryHint` with exact force-stop arguments. Resetting an idle device is valid.
 
 The ownership journal is `aab.device-ownership/v2`, under the **same physical
 lock directory** above. Reading v1 preserves every unresolved identity and

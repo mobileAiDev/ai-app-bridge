@@ -294,6 +294,25 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
   }
 
   return {
+    async forceStop() {
+      // Host reset owns the separate administrative gate and has already
+      // terminated previous Host writers. This never waits for old callbacks.
+      const asset = bundle(), destination = await installAsset(asset);
+      let raw;
+      try { raw = await shell(`CLASSPATH=${quote(destination)} app_process /system/bin ${mainClass} ${quote(root)} ${asset.manifest.sha256} force-reset`); }
+      catch (error) {
+        let remote;
+        try { remote = JSON.parse(error.stderr?.trim()); } catch { /* non-protocol ADB failure */ }
+        if (typeof remote?.error === 'string') throw failure(remote.error, remote.message || 'The phone rejected forced reset.');
+        throw error;
+      }
+      let result;
+      try { result = JSON.parse(raw); }
+      catch { throw failure('uia_force_reset_invalid', 'The phone did not return a forced-reset receipt.'); }
+      if (result?.ok !== true || result.schemaVersion !== 'aab.uia.reset.v1' || result.stopped !== true)
+        throw failure(result?.error || 'uia_force_reset_unconfirmed', 'The UIA executor was not force-reset.');
+      return result;
+    },
     async withInstrumentation(descriptorFile, start) {
       return withConnectionLock(async () => {
         const automation = require('../executors/automation-owner');

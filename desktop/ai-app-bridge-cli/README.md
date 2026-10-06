@@ -7,9 +7,9 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.4.1`; registry publication is a separate release step.
+This source version is `0.4.2`; registry publication is a separate release step.
 It fixes iOS observation ownership and preserves extraction results when
-temporary cleanup fails. Device and Web SDKs share version `0.4.1`; their execution contracts are unchanged.
+temporary cleanup fails. Device and Web SDKs share version `0.4.2`; their execution contracts are unchanged.
 The default installation includes the Script/Intent and capture contracts below.
 Local package verification does not change npm dist-tags.
 The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
@@ -67,7 +67,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.4.1
+npm install -g @mobileaidev/ai-app-bridge@0.4.2
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
@@ -341,6 +341,12 @@ recovery. `uia-runtime --serial DEVICE --operation status|start|stop` controls
 its lifecycle. Fresh observation rotates a full, durably acknowledged session;
 startup retires only confirmed history. Explicit start checks the phone's
 process lock before reopening a dead runtime; unknown actions still block it.
+For a stuck action or agent handoff, run `ai-app-bridge device-ownership
+--operation force-stop --serial DEVICE --extract null`. This independent reset
+stops old Host tasks and phone executors, archives the unknown action, and frees
+occupancy without waiting for its receipt. Tasks sharing those Host processes
+also stop. New operations can then start; dispatched effects are not rolled back.
+Occupancy errors include the same recovery hint.
 Host crashes leave a durable pending-acknowledgement queue. `device-ownership
 --operation reconcile --serial DEVICE` commits completion history, acknowledges
 live or stopped phone records and retires that queue without replay.

@@ -80,7 +80,7 @@ function requireCompatible(status, client) {
   let next;
   if (!codeMismatch) next = 'Use matching persistent/provider configuration; the running Runtime was not restarted.';
   else if (outdatedSide === 'client') next = 'The client package is older. Update and reconnect the client; do not stop the newer Runtime to fix this client.';
-  else if (outdatedSide === 'runtime') next = 'The Runtime package is older. Finish its active tasks, then explicitly run runtime --operation stop --extract null and reconnect with the updated installation.';
+  else if (outdatedSide === 'runtime') next = 'The Runtime package is older. Finish its active tasks, then explicitly run runtime --operation stop --extract null and reconnect with the updated installation. If a device task is stuck, device-ownership --operation force-stop --serial <serial> --extract null forcibly stops old tasks and resets occupancy.';
   else next = 'Builds or Node environments differ. Align the installations and reconnect; fingerprints alone cannot identify an older side.';
   throw new CommandError(codeMismatch ? 'runtime_code_mismatch' : 'runtime_configuration_mismatch',
     `Client: ${describe(client)}. Runtime: ${describe(runtime)}. ${next}`,

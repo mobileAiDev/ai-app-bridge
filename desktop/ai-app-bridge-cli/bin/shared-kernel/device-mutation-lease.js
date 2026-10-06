@@ -9,10 +9,15 @@ const acknowledgements = require('./device-acknowledgements');
 const context = new AsyncLocalStorage();
 const effectContext = new AsyncLocalStorage();
 
+const recoveryHint = serial => ({ command: 'device-ownership', arguments: { operation: 'force-stop', serial },
+  message: 'If stuck, force-stop this device to cancel old tasks and reset occupancy. Already dispatched effects are not rolled back.' });
+
 function rejection(error, serial, ownership) {
   return { ok: false, error, serial, active: 1, dispatched: false, ambiguous: false,
     message: error === 'target_busy' ? 'Another Host operation owns this physical device.'
+      : error === 'device_reset_required' ? 'Phone reset is incomplete. Reconnect and repeat device-ownership force-stop before new actions.'
       : 'A previous device action has no confirmed completion. Reconcile device ownership before another mutation.',
+    recoveryHint: recoveryHint(serial),
     ...(ownership ? { ownership: structuredClone(ownership) } : {}) };
 }
 
@@ -39,13 +44,19 @@ function createDeviceMutationLease({ directory } = {}) {
       }, release() {} };
     }
     if (held.has(serial)) return rejection('target_busy', serial, held.get(serial).state);
-    const lock = store.lock(serial);
-    if (!lock) return rejection('target_busy', serial);
+    const control = store.controlLock(serial);
+    if (!control) return rejection('target_busy', serial);
+    let lock;
     try {
+      lock = store.lock(serial);
+      if (!lock) return rejection('target_busy', serial);
       const previous = store.read(serial);
+      if (previous?.resetRequired) { lock.close(); return rejection('device_reset_required', serial, previous); }
       if (previous?.pending || previous?.reservations.length) { lock.close(); return rejection('device_ownership_unresolved', serial, previous); }
-      const state = { schemaVersion, serial, phase: 'owned', owner: { id: randomUUID(), pid: process.pid, acquiredAtMs: Date.now() },
+      const state = { schemaVersion, serial, phase: 'owned', owner: { id: randomUUID(), pid: process.pid,
+        processStart: require('./host-process-stop').processStart(), acquiredAtMs: Date.now() },
         pending: null, reservations: [], lastSettlement: previous?.lastSettlement ?? null,
+        lastReset: previous?.lastReset ?? null,
         pendingAcknowledgements: previous?.pendingAcknowledgements ?? [] };
       store.write(serial, state);
       const owner = { serial, directory: store.directory, state, closed: false,
@@ -94,7 +105,8 @@ function createDeviceMutationLease({ directory } = {}) {
           finally { owner.closed = true; held.delete(serial); lock.close(); }
         },
       };
-    } catch (error) { lock.close(); throw error; }
+    } catch (error) { lock?.close(); throw error; }
+    finally { control.close(); }
   }
   async function run(serial, action) {
     const token = acquire(serial);
@@ -108,11 +120,16 @@ function createDeviceMutationLease({ directory } = {}) {
       const state = store.read(serial);
       const unresolved = state?.pending || state?.reservations.length;
       return { ok: true, serial, active: !lock || unresolved ? 1 : 0, maxActive: 1,
-        phase: !lock ? 'owned' : unresolved ? 'unresolved' : 'idle', ownership: state ? structuredClone(state) : null };
+        phase: !lock ? 'owned' : unresolved ? 'unresolved' : 'idle', ownership: state ? structuredClone(state) : null,
+        ...(unresolved || state?.resetRequired ? { recoveryHint: recoveryHint(serial) } : {}) };
     } finally { lock?.close(); }
   }
   async function reconcile(serial, verify) {
-    const lock = held.has(serial) ? null : store.lock(serial);
+    const control = store.controlLock(serial);
+    if (!control) return rejection('target_busy', serial);
+    let lock;
+    try { lock = held.has(serial) ? null : store.lock(serial); }
+    finally { control.close(); }
     if (!lock) return rejection('target_busy', serial);
     try {
       const state = store.read(serial);
@@ -132,7 +149,11 @@ function createDeviceMutationLease({ directory } = {}) {
     } finally { lock.close(); }
   }
   async function drainAcknowledgements(serial, acknowledge) {
-    const lock = held.has(serial) ? null : store.lock(serial);
+    const control = store.controlLock(serial);
+    if (!control) return rejection('target_busy', serial);
+    let lock;
+    try { lock = held.has(serial) ? null : store.lock(serial); }
+    finally { control.close(); }
     if (!lock) return rejection('target_busy', serial);
     try {
       const state = store.read(serial), errors = [], retired = [];

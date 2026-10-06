@@ -137,7 +137,8 @@ async function run(request, { signal } = {}) {
   let extract;
   try {
     request = validateRunRequest(request);
-    if (request.command === 'runtime' || (request.command === 'evidence' && request.arguments.operation === 'verify')) {
+    if (request.command === 'runtime' || (request.command === 'evidence' && request.arguments.operation === 'verify')
+      || (request.command === 'device-ownership' && request.arguments.operation === 'force-stop')) {
       extract = require('./extraction/prepare').prepareExtraction(request.extract);
     }
   }
@@ -145,6 +146,9 @@ async function run(request, { signal } = {}) {
   const local = async reply => ({ value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true }),
     extract, output: request.output }) });
   try {
+    if (request.command === 'device-ownership' && request.arguments.operation === 'force-stop') {
+      return local({ value: await require('./shared-kernel/device-force-stop').forceStopDevice(request.arguments) });
+    }
     // Verification is an offline command in both transports; it neither
     // opens FactStore nor depends on a running owner or valid store profile.
     if (request.command === 'evidence' && request.arguments.operation === 'verify') {

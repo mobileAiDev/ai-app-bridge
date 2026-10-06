@@ -176,7 +176,7 @@ test('public recovery verifies matching SDK completion and never treats idle or 
   assert.equal(createDeviceMutationLease({ directory }).status('phone').active, 0);
 });
 
-test('recovery has a strict public contract with no force, target substitution or ownership path argument', () => {
+test('normal reconcile forbids implicit force, target substitution and ownership path arguments', () => {
   assert.deepEqual(commandSchema('device-ownership').required, ['operation', 'serial']);
   assert.throws(() => validateCommandArguments('device-ownership', { serial: 'phone', operation: 'release' }), { code: 'invalid_argument' });
   for (const name of ['force', 'packageName', 'directory', 'adb']) {
