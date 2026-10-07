@@ -1,4 +1,4 @@
-# 0.4.4 发布与本机升级进度
+# 0.4.4 发布与本机升级验收
 
 冻结发行提交：`20a8c19780e7dcd5223bc3c44ade94a6f1a36a88`。
 新 tag、main 和工作分支已正常快进推送；旧 tag 保留。
@@ -30,12 +30,12 @@ owner/package/UID、Activity、进程及窗口生命周期核验和点击前守�
 | GitHub tag / Release / iOS Swift tag 源码 | 已发布，tag 对应冻结提交 |
 | Android SDK / Gradle plugin / 六执行器 | JitPack 首次构建成功；8 模块的 16 个公开 POM/二进制核验通过 |
 | Flutter SDK / test helper | 已发布；公开归档分别 56 / 6 文件匹配冻结提交 |
-| npm CLI/MCP / Web SDK | 待本次发布的安全密钥验证；尚未发布 0.4.4，latest/next 未升级 |
+| npm CLI/MCP / Web SDK | 已发布，latest/next 均为 0.4.4；公开归档分别 198 / 6 文件匹配冻结提交及受检原包 |
 
-npm 登录已有效，但本次 publish 要求安全密钥/Touch ID。Mac 已锁屏，自动
-解锁失败；两次发布认证等待超时，未把认证 URL、OTP 或凭据写入发行证据。
-先由用户解锁，再重新弹出当前 publish 验证页。无需再次 npm login。
-之后发布已受检的两个 npm 归档，升级 latest/next 并下载核对完整性。
+用户解锁并完成本次安全密钥/Touch ID 验证后，两个 npm 包及标签更新已完成。
+公开矩阵 13 项均通过，包含包版本、latest/next、GitHub tag/Release、Swift
+tag 源码、JitPack 和公开归档完整性。上传后的短暂 404、认证过期重试记录
+保留；没有把认证 URL、OTP 或凭据写入发行证据。
 
 ## 本机与消费依赖
 
@@ -44,27 +44,35 @@ Runtime 均已升级为 0.4.4 且 compatible=true：默认、独立真机、模�
 EOL 候选事实目录。它们均使用全局包，原 provider 配置 fingerprint、事实
 目录及 profile 保留。内部 native store 保持 0.2.0。
 
-新全局 MCP 的六项实际调用通过：null、regex、JavaScript/Python 提取、
-预期提取失败和 Script runtime-status。此证据基于冻结受检候选归档，不能
-代替尚未完成的 npm 公开下载核验。
+本机全局包 198 文件再次核对，与公开 npm 归档完全一致。Codex、Cursor
+和 Antigravity 的配置入口均解析到这个全局 0.4.4 包。
+
+完成公开归档核验后，新全局 MCP 的六项实际调用通过：null、regex、
+JavaScript/Python 提取、预期提取失败和 Script runtime-status，实际返回
+0.4.4、compatible=true。该验证使用新建 MCP 子进程。
 
 旧 Codex Bridge stdio 客户端已关闭以重新加载新版；Codex 未自动重建连接，
 当前原工具调用返回 `Transport closed`，需应用内重连 Bridge 或重启 Codex。
-Runtime 不受此客户端关闭影响，新版 CLI 可继续调用。
+界面工具拒绝访问 `com.openai.codex`，无法由本任务点击应用内重连；未重启
+整个 Codex。Runtime 不受此客户端关闭影响，新版 CLI 可继续调用。发布及
+软件升级已完成，当前 Codex 连接的恢复仍待用户重连或重启，未记为通过。
 
 “接续分身兼容性回归”已获通知，继续使用全局新版或保留候选事实目录的
 新 launcher；原 0.4.3 候选源码与真机证据保留。remote-smoke 的精确 Web
-依赖暂仍为已公开的 0.4.3，待 npm Web 0.4.4 公开后更新依赖、锁文件及验证。
+依赖和锁文件已更新为公开 0.4.4；实际安装的 6 文件与公开归档一致，
+`npm run check` 通过。
 
-## 外置证据与后续收口
+## 外置证据与剩余连接恢复
 
 证据目录：`/Users/macbook/Documents/CompanyProject/ai-app-bridge-release-evidence/0.4.4-2026-10-07`。
 关键报告：`component-validation-report.json`、`candidate-matches-frozen-source.json`、
 `device-evidence-review.json`、`package-release-verified/report.json`，以及
 `publication/report.json`、`publication/version-matrix-final.json`、
 `publication/jitpack/report.json`、`publication/runtime-upgrade-results.json`、
-`publication/candidate-mcp/report.json`、`publication/connected-mcp-reload-result.json`。
+`publication/cli-integrity.json`、`publication/web-integrity.json`、
+`publication/global-mcp/report.json`、`publication/consumer-binding.json`、
+`publication/client-config-binding.json`、`publication/connected-mcp-final.json`。
 
-完成 npm 后再运行公开包完整性检查和 `publication/global-mcp/verify.cjs`，
-更新 remote-smoke、复核当前 MCP 重连及各渠道 latest/next，最后更新本页和
-总报告。公开校验始终显式指定冻结提交，不以此后文档提交替代发行提交。
+剩余操作仅为恢复当前 Codex 的 MCP 连接；无需再次发布、重装包或升级这
+四个 Runtime。公开校验始终显式指定冻结提交，不以此后文档及消费依赖
+提交替代发行提交。
