@@ -1,9 +1,10 @@
 # 0.4.3 前台窗口归属修复与发布交接
 
 发行源码与标签固定于 `eaaf5c94a082355d4e32ef094b7d4d79e67e9019`。
-本记录为阶段性交接：公开渠道状态以 **2026-10-07 10:46（UTC+8）** 快照为准，
-本机状态包含随后完成的第三个 Runtime 升级。JitPack、Flutter SDK 和 CLI 的
-`next` 标签仍待完成，不能据此认定所有渠道已发布。后续记录不移动发行标签。
+2026-10-07，CLI/MCP、Android SDK/Gradle plugin/六个执行器、iOS Swift 包、
+Flutter SDK/测试辅助包、Web SDK 已完成 **0.4.3** 公开发布及渠道核验。
+本机全局安装与三个 Runtime 已升级；当前 Codex 对话的旧 MCP 连接仍待用户
+重启后核验。发行标签未移动，首次失败与中间状态证据均保留。
 
 ## 修复范围与安全合同
 
@@ -30,19 +31,20 @@ API 25/30 目前只有 AOSP 源码与离线 fixture 验证，尚无对应实际�
 
 ## 公开渠道
 
-| 渠道 | 已核验结果与待完成项 |
+| 渠道 | 已核验结果 |
 | --- | --- |
 | [GitHub Release / iOS Swift Package](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.3) | 公开正式版且为 latest；标签提交一致；公开 iOS 源码版本和哈希与冻结源码一致 |
-| [npm CLI/MCP](https://www.npmjs.com/package/@mobileaidev/ai-app-bridge/v/0.4.3) | 0.4.3 和 latest 已公开；公开 tarball 与候选包逐字节一致，198 个文件与发行源码一致；**next 仍为 0.4.2，验证过期后待重新验证并更新** |
+| [npm CLI/MCP](https://www.npmjs.com/package/@mobileaidev/ai-app-bridge/v/0.4.3) | latest、next 均为 0.4.3；公开 tarball 与候选包逐字节一致，198 个文件与发行源码一致 |
 | [npm Web SDK](https://www.npmjs.com/package/@mobileaidev/ai-app-bridge-web/v/0.4.3) | latest、next 均为 0.4.3；公开 tarball 与候选包逐字节一致，6 个文件与发行源码一致 |
-| [JitPack Android](https://jitpack.io/#mobileAiDev/ai-app-bridge/0.4.3) | **首次构建失败，状态 Error，尚未删除失败构建或重建**；提交一致，但无可验收产物；待同标签、同提交重建成功后核验 SDK、插件、六个执行器的 16 个公开 POM/二进制 |
-| [pub.dev Flutter SDK](https://pub.dev/packages/ai_app_bridge_flutter) | **0.4.3 尚未发布，公开 latest 为 0.4.2**；本地验证及发布预检已通过，待 JitPack 完成后发布并核验公开归档 |
+| [JitPack Android](https://jitpack.io/#mobileAiDev/ai-app-bridge/0.4.3) | 同标签、同提交重建一次后成功；状态 API 中提交一致；SDK、插件、六个执行器的 16 个公开 POM/二进制全部核验通过 |
+| [pub.dev Flutter SDK](https://pub.dev/packages/ai_app_bridge_flutter/versions/0.4.3) | 0.4.3 已公开；公开归档 SHA-256 与服务端元数据一致，56 个文件与发行源码一致 |
 | [pub.dev 测试辅助包](https://pub.dev/packages/ai_app_bridge_test/versions/0.4.3) | 0.4.3 已公开；公开归档 SHA-256 与服务端元数据一致，6 个文件与发行源码一致 |
 
 | 已核验公开归档 | SHA-256 |
 | --- | --- |
 | npm CLI/MCP | `5e85609113c751435a2756e37b665e271b4b90fde36e8c09883fca61f277bed0` |
 | npm Web SDK | `4782a3a18d665e2fbd2363a54e975516fff876b4086e1ed300b3452fcbdf2dca` |
+| pub.dev Flutter SDK | `affd2a07cf0d05633c05998614f846093e7f58d302a8e49e983111c47324d9cd` |
 | pub.dev 测试辅助包 | `29f6c31b69d57b2017ebc20cb8b19d14d45958c37471d0949f3b13fa5a92ff92` |
 
 公开组件的源码版本均为 0.4.3；嵌入式 native store 是内部依赖，仍为 0.2.0。
@@ -100,7 +102,7 @@ runtime-status 六项通过。**当前 Codex 对话的旧 MCP 连接尚未重启
 remote-smoke 的公开 npm 依赖、锁文件及实际安装均为 Web SDK 0.4.3；
 require 检查与 npm ls 通过，6 个安装文件与公开归档一致。
 
-## 保留的失败与待完成项
+## 保留的失败与后续核验
 
 旧版真实窗口查询与 MCP 观察的 owner mismatch 保留为修复前证据。设备流程中
 普通启动动画曾触发原有 UIA 引用刷新拒绝；等待页面稳定并重新观察后通过，
@@ -109,13 +111,19 @@ exit 65、各一条警告；冻结源码提交后重新预检通过，原记录�
 
 JitPack 首次构建的 Android 单测 194 项中 1 项失败，位置为
 `G8RecordOverheadBenchTest.kt:43` 的 p99 ≤ 3 ms 断言；同一日志还记录 lint
-private API 缓存的 `OutOfMemoryError: Java heap space`。目前没有成功重建证据，
-不将本地通过替代公开构建通过，也不据此推断两项日志之间的因果关系。
-CLI 的 `next` 更新验证已过期；Web 的 `next` 已更新成功。
+private API 缓存的 `OutOfMemoryError: Java heap space`。保留首次失败日志后，
+仅删除该失败构建，同标签、同提交重建一次，最终 `BUILD SUCCESSFUL`，公开
+16 个产物通过。成功日志仍有 lint 缓存 OOM 诊断，但该次构建没有因此失败；
+不据此推断首次性能断言失败的原因。日志因 dubious ownership 未打印 Git
+提交，提交一致性由 JitPack 构建状态 API 核验，原发行标签未变。
 
-后续需要：完成 JitPack 同标签、同提交重建及 16 个公开产物核验；随后发布并
-核验 Flutter SDK 0.4.3；重新验证并仅更新 CLI 的 `next` 到 0.4.3；用户重启
-Codex 后核验当前 MCP 连接。各项完成后更新本记录的终态，保留首次失败证据。
+CLI 的 `next` 更新验证曾过期，重新验证后更新成功；CLI/Web 的 latest、next
+均已从匿名 registry 确认为 0.4.3。JitPack 成功后，Flutter SDK 发布命令
+exit 0，随后公开归档校验通过。
+
+发布渠道已完成。剩余本机会话核验为：用户重启/重连 Codex 后，确认当前旧
+MCP 连接加载新版代码；全局安装、三个 Runtime 和新建 MCP 连接的已通过证据
+不能代替该旧连接的重连核验。
 
 ## 证据索引
 
@@ -129,6 +137,7 @@ Codex 后核验当前 MCP 连接。各项完成后更新本记录的终态，保
 | 各组件及两份最终发布预检 | `component-validation-report.json` |
 | 修复前失败与六个实际设备场景 | `device/baseline/report.json`、`device/release-package/report.json`、`device/projected-before-window.txt` |
 | AOSP 合同、API 36/37 查询及最终 98 项 | `owner-review-20261007T022745Z/{FINAL-REVIEW,SOURCE-CONTRACT-REVIEW,DEVICE-RESULTS,TEST-RESULTS}.json` |
-| 公开渠道快照、归档校验 | `publication/version-matrix-observed-20261007T024608Z.json`、`publication/{cli,web,pub-helper}-integrity.json` |
+| 公开渠道终态、归档校验 | `publication/report.json`、`publication/version-matrix-final.json`、`publication/dist-tags.json`、`publication/{cli,web,pub-sdk,pub-helper}-integrity.json` |
+| 发布中间状态快照 | `publication/version-matrix-observed-20261007T024608Z.json` |
 | 本机与新 MCP | `publication/local-runtime-inventory.json`、`publication/global-installed-integrity.json`、`publication/{global,emu,independent-physical}-runtime-status.json`、`publication/global-mcp/report.json`、`publication/remote-smoke.json` |
-| JitPack 首次失败 | `publication/jitpack/build-failed-first.log` |
+| JitPack 首次失败、一次重建及最终核验 | `publication/jitpack/build-failed-first.log`、`publication/jitpack/delete-failed-build.json`、`publication/jitpack/rebuild-observation.json`、`publication/jitpack/build-rebuild-success.log`、`publication/jitpack/report.json` |
