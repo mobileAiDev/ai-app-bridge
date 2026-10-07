@@ -3,8 +3,9 @@
 发行源码与标签固定于 `eaaf5c94a082355d4e32ef094b7d4d79e67e9019`。
 2026-10-07，CLI/MCP、Android SDK/Gradle plugin/六个执行器、iOS Swift 包、
 Flutter SDK/测试辅助包、Web SDK 已完成 **0.4.3** 公开发布及渠道核验。
-本机全局安装与三个 Runtime 已升级；当前 Codex 对话的旧 MCP 连接仍待用户
-重启后核验。发行标签未移动，首次失败与中间状态证据均保留。
+本机全局安装与三个 Runtime 已升级；用户重启 Codex 后，当前对话的 MCP
+连接已核验为 0.4.3、`compatible:true`。发行标签未移动，首次失败与中间状态
+证据均保留。
 
 ## 修复范围与安全合同
 
@@ -86,8 +87,8 @@ API 25/30 目前只有 AOSP 源码与离线 fixture 验证，尚无对应实际�
 全局 `/opt/homebrew/bin/ai-app-bridge` 及 MCP server 已为 0.4.3，198 个安装
 文件与已核验公开 npm 归档一致。Codex、Cursor 的绝对脚本路径及 Antigravity
 的 `ai-app-bridge-mcp` 启动命令均解析到这份全局 0.4.3 安装；这项入口核验
-不代表已有客户端进程已重载。三个存活 Runtime 均已升级并返回
-`compatible:true`，独立 Runtime 的 facts/profile/config 保留：
+不代表已有客户端进程已重载。以下为发布升级时的三个存活 Runtime 快照，
+均返回 `compatible:true`，独立 Runtime 的 facts/profile/config 保留：
 
 | Runtime | runtimeId | PID |
 | --- | --- | --- |
@@ -96,8 +97,10 @@ API 25/30 目前只有 AOSP 源码与离线 fixture 验证，尚无对应实际�
 | 独立真机 | `a711acdb-7167-4dd8-a369-4b8a1dcbf5f4` | 24684 |
 
 新建全局 MCP 连接的 null、regex、JS、Python、预期提取失败及 Script
-runtime-status 六项通过。**当前 Codex 对话的旧 MCP 连接尚未重启，用户稍后
-重启/重连后仍需核验该连接。** 新连接测试没有重载已有客户端连接。
+runtime-status 六项通过。用户随后重启 Codex，当前对话通过实际 MCP 调用
+确认默认 Runtime 为 0.4.3、`compatible:true`；重启后的 runtimeId 为
+`82f78817-b022-4474-a698-9fab4a6d15b4`，PID 为 `36256`，取代上表默认
+Runtime 的发布升级时快照。
 
 remote-smoke 的公开 npm 依赖、锁文件及实际安装均为 Web SDK 0.4.3；
 require 检查与 npm ls 通过，6 个安装文件与公开归档一致。
@@ -121,9 +124,8 @@ CLI 的 `next` 更新验证曾过期，重新验证后更新成功；CLI/Web 的
 均已从匿名 registry 确认为 0.4.3。JitPack 成功后，Flutter SDK 发布命令
 exit 0，随后公开归档校验通过。
 
-发布渠道已完成。剩余本机会话核验为：用户重启/重连 Codex 后，确认当前旧
-MCP 连接加载新版代码；全局安装、三个 Runtime 和新建 MCP 连接的已通过证据
-不能代替该旧连接的重连核验。
+发布渠道与当前 Codex MCP 连接核验均已完成。当前连接的实际返回于
+2026-10-07 11:15:22（UTC+8）保存至 `publication/connected-mcp-final.json`。
 
 ## 证据索引
 
@@ -140,4 +142,5 @@ MCP 连接加载新版代码；全局安装、三个 Runtime 和新建 MCP 连�
 | 公开渠道终态、归档校验 | `publication/report.json`、`publication/version-matrix-final.json`、`publication/dist-tags.json`、`publication/{cli,web,pub-sdk,pub-helper}-integrity.json` |
 | 发布中间状态快照 | `publication/version-matrix-observed-20261007T024608Z.json` |
 | 本机与新 MCP | `publication/local-runtime-inventory.json`、`publication/global-installed-integrity.json`、`publication/{global,emu,independent-physical}-runtime-status.json`、`publication/global-mcp/report.json`、`publication/remote-smoke.json` |
+| Codex 重启后的当前 MCP 连接 | `publication/connected-mcp-final.json` |
 | JitPack 首次失败、一次重建及最终核验 | `publication/jitpack/build-failed-first.log`、`publication/jitpack/delete-failed-build.json`、`publication/jitpack/rebuild-observation.json`、`publication/jitpack/build-rebuild-success.log`、`publication/jitpack/report.json` |
