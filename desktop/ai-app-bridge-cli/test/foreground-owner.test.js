@@ -12,6 +12,10 @@ const fixture = options => androidForegroundFixture(host, { title: `${guest}/.Gu
 const parsed = dump => parseForegroundWindowIdentity(dump, parseForegroundWindow(dump));
 const verified = value => verifyForegroundPackageUid(verifyForegroundProcessIdentity(parsed(value.windowDump), value.processDump), value.packageDump);
 
+// WindowManager.LayoutParams can continue flags on the next line after ty.
+// Observed on the physical API 36 device, with no trailing space after the type.
+const wrapAttributes = dump => dump.replace(/(\bty=[A-Z_0-9]+)\}\n/, '$1\n      fl=LAYOUT_IN_SCREEN HARDWARE_ACCELERATED\n    }\n');
+
 function transport(value, change = {}) {
   const calls = [];
   let windowReads = 0, processReads = 0;
@@ -44,6 +48,37 @@ for (const apiLevel of [25, 30, 36]) test(`API ${apiLevel} owner format preserve
   const result = await foregroundWindow({}, transport(value));
   assert.equal(result.ok, true, result.error); assert.equal(result.taskId, 93);
   assert.equal(result.userId, 10); assert.equal(result.packageUid, 1010001);
+});
+
+for (const apiLevel of [25, 30, 36]) test(`API ${apiLevel} multiline attributes retain complete owner verification`, async () => {
+  const value = fixture({ apiLevel });
+  value.windowDump = wrapAttributes(value.windowDump);
+  const ports = transport(value);
+  const result = await foregroundWindow({}, ports);
+  assert.equal(result.ok, true, result.error);
+  assert.equal(result.packageName, host); assert.equal(result.windowType, 1);
+  assert.equal(result.ownerUid, value.uid); assert.equal(result.ownerPid, value.pid);
+  assert.equal(result.processStartTicks, '34951868'); assert.equal(validForegroundIdentity(result), true);
+  assert.deepEqual(ports.calls.map(args => args[1]), ['dumpsys', 'cat', 'dumpsys', 'dumpsys', 'cat']);
+});
+
+for (const [name, mutate, error] of [
+  ['missing type', s => s.replace('ty=BASE_APPLICATION', 'flags=0'), 'foreground_window_type_missing'],
+  ['unknown symbolic type', s => s.replace('ty=BASE_APPLICATION', 'ty=FUTURE_TYPE'), 'foreground_window_type_unsupported'],
+  ['unknown numeric type', s => s.replace('ty=BASE_APPLICATION', 'ty=9999'), 'foreground_window_type_unsupported'],
+  ['duplicate attributes', s => s.replace('      fl=', '    mAttrs={ty=BASE_APPLICATION\n      fl='), 'foreground_window_type_missing'],
+  ['foreign Activity', s => s.replace(`mActivityRecord=ActivityRecord{ddeeff u0 ${host}/`, `mActivityRecord=ActivityRecord{ddeeff u0 ${guest}/`), 'foreground_activity_owner_conflict'],
+]) test(`multiline attributes reject ${name}`, () => {
+  const result = parsed(mutate(wrapAttributes(fixture().windowDump)));
+  assert.equal(result.ok, false); assert.equal(result.error, error);
+});
+
+test('multiline attributes still reject process owner changes during verification', async () => {
+  const value = fixture(); value.windowDump = wrapAttributes(value.windowDump);
+  const result = await foregroundWindow({}, transport(value, {
+    processDump: value.processDump.replace('Uid:\t10001\t10001', 'Uid:\t10002\t10001'),
+  }));
+  assert.equal(result.ok, false); assert.equal(result.error, 'foreground_process_changed_during_verification');
 });
 
 test('non-Activity system window with a non-component title keeps its owner and null Activity', async () => {

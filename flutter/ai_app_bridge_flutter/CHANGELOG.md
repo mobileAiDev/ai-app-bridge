@@ -1,3 +1,9 @@
+## 0.4.4
+
+- Align native runtime identities and the Android dependency with the coordinated 0.4.4 release.
+- Host accepts complete WindowManager type tokens at the end of a line while retaining owner, UID, process and window lifetime checks.
+- Flutter SDK execution behavior is unchanged.
+
 ## 0.4.3
 
 - Align the native runtime identities and Android dependency with the coordinated 0.4.3 release.

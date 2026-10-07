@@ -69,7 +69,7 @@ function parseForegroundWindowIdentity(raw, focus) {
   // Only taskId denotes this Activity's task; the others are not interchangeable.
   const metadata = owner.lines.map(line => line.match(/^\s*mDisplayId=(\d+)\b(.*?)\bmSession=Session\{\w+ (\d+):[^}]+\}/)).filter(Boolean);
   const packages = owner.lines.map(line => line.match(/^\s*mOwnerUid=(\d+)\b.*\bpackage=([^\s]+)(?:\s|$)/)).filter(Boolean);
-  const attributes = owner.lines.map(line => line.match(/^\s*mAttrs=\{.*\bty=([A-Z_]+|\d+)(?:\s|\})/)).filter(Boolean);
+  const attributes = owner.lines.map(line => line.match(/^\s*mAttrs=\{.*\bty=([A-Z_]+|\d+)(?:\s|\}|$)/)).filter(Boolean);
   if (metadata.length !== 1 || packages.length !== 1) return reject('foreground_window_owner_missing');
   if (attributes.length !== 1) return reject('foreground_window_type_missing');
   const type = attributes[0][1];

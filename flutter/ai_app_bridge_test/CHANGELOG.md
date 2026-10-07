@@ -1,3 +1,8 @@
+## 0.4.4
+
+- Align the optional executor helper identity with the coordinated 0.4.4 release.
+- Host corrects multiline Android window type parsing; the helper execution contract is unchanged.
+
 ## 0.4.3
 
 - Align the optional Flutter executor helper identity with the coordinated 0.4.3 release.
