@@ -1,3 +1,9 @@
+## 0.4.3
+
+- Align the native runtime identities and Android dependency with the coordinated 0.4.3 release.
+- Host foreground checks use WindowManager owner metadata and recheck window lifetime, including focused system windows without an Activity component. Package allowlists and UIA target guards remain active.
+- Flutter SDK execution behavior is unchanged.
+
 ## 0.4.2
 
 - Align all public Bridge components and native dependencies with 0.4.2.

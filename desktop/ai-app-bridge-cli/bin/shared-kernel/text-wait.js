@@ -5,6 +5,7 @@ const { foregroundNativeWindow, explicitlyHidden } = require('./native-target');
 const { parseXmlAttributes } = require('./xml-attributes');
 const { looksLikeAndroidUiHierarchyXml, visitAndroidUiHierarchyTags } = require('../android-uia-xml');
 const { runExecution, checkExecution, executionSleep } = require('./execution-scope');
+const { validForegroundIdentity, sameForegroundWindow } = require('./android-foreground-identity');
 
 function validateTextConditions({ targetText, requireText = [], absentText = [], requireActivity, provider = 'auto' }) {
   const invalid = (field, message) => { throw new CommandError('invalid_argument', message, { field }); };
@@ -75,6 +76,7 @@ async function waitForText({ options, readTree, readForeground }) {
         const foreground = await readForeground();
         checkExecution();
         if (!foreground?.ok) throw new CommandError('foreground_probe_failed', 'The foreground app could not be verified.');
+        if (!validForegroundIdentity(foreground)) throw new CommandError('foreground_identity_required', 'The foreground window identity is required.');
         if (options.packageName && foreground.packageName !== options.packageName) throw new CommandError('foreground_package_mismatch', 'The foreground app differs from packageName.');
         let nativeTree;
         let successfulReads = 0;
@@ -89,7 +91,7 @@ async function waitForText({ options, readTree, readForeground }) {
             const labels = visibleLabels(provider, rawTree);
             const after = await readForeground();
             checkExecution();
-            if (!after?.ok || after.component !== foreground.component || after.packageName !== foreground.packageName) {
+            if (!after?.ok || !validForegroundIdentity(after) || !sameForegroundWindow(after, foreground)) {
               throw new CommandError('foreground_changed_during_observation', 'The foreground changed while reading text.');
             }
             successfulReads++;

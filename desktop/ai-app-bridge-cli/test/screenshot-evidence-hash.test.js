@@ -14,7 +14,7 @@ test('screenshot hashes actual captured bytes and Host refs retain that digest',
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7G8AAAAASUVORK5CYII=', 'base64');
   const fakeAdb = path.join(directory, 'fake-adb');
-  fs.writeFileSync(fakeAdb, `#!${process.execPath}\nconst args=process.argv.slice(2);if(args.includes('screencap'))process.stdout.write(Buffer.from('${png.toString('base64')}','base64'));else if(args.includes('dumpsys'))process.stdout.write('mCurrentFocus=Window{1 u0 sample.test/sample.test.MainActivity}');else process.exit(9);\n`, { mode: 0o755 });
+  fs.writeFileSync(fakeAdb, `#!${process.execPath}\nconst args=process.argv.slice(2);if(args.includes('screencap'))process.stdout.write(Buffer.from('${png.toString('base64')}','base64'));else if(require(${JSON.stringify(require.resolve('../test-support/android-foreground-fixture'))}).handleAndroidForegroundFixture(args,'sample.test')){}else process.exit(9);\n`, { mode: 0o755 });
   const host = createScriptHostPort({ executionId: 'screenshot-test', target: { platform: 'android', serial: 'simulated-device', packageName: 'sample.test' },
     actions: (command, args) => executeCommand(command, { ...args, adb: fakeAdb }) });
   const result = await host.call('screenshot', { outFile: path.join(directory, 'captured.png') });

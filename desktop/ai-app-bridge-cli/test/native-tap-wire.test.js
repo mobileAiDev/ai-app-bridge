@@ -8,7 +8,7 @@ const { nativeSelector } = require('../bin/shared-kernel/execution-contracts');
 const { withNativeTargetRefs, nativeBridgeStatus, nativeExecutionReceipt } = require('../test-support/native-target-fixture');
 
 const ctx = { serial: 'native-tap', packageName: 'example.native', explicitPackageName: true, httpTimeoutMs: 5000 };
-const foreground = { ok: true, packageName: ctx.packageName, component: 'example.native/.Main' };
+const foreground = { ok: true, packageName: ctx.packageName, component: 'example.native/.Main', windowIdentity: 'native-window:token:pid:start' };
 const selector = { resourceName: 'id/open', within: { text: 'Second', ancestor: { resourceName: 'id/row' } } };
 function tree() {
   const view = (resourceName, top, bottom, extra = {}) => ({ resourceName, visible: true, enabled: true,

@@ -32,9 +32,7 @@ if (args.includes('input')) {
   fs.writeFileSync(${JSON.stringify(ready + '.tmp')}, String(process.pid));
   fs.renameSync(${JSON.stringify(ready + '.tmp')}, ${JSON.stringify(ready)});
   setInterval(() => {}, 1000);
-} else if (args.includes('dumpsys') && args.includes('window')) {
-  process.stdout.write('mCurrentFocus=Window{test u0 example.shutdown/example.shutdown.MainActivity}');
-}
+} else require(${JSON.stringify(require.resolve('../../test-support/android-foreground-fixture'))}).handleAndroidForegroundFixture(args, 'example.shutdown');
 }
 `, { mode: 0o755 });
     const starting = run('intent', { operation: 'start', operationId, goal: 'Controlled shutdown lifecycle probe',

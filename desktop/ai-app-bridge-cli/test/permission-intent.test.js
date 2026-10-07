@@ -183,7 +183,10 @@ async function fixture(t, options = {}) {
     dependencies: { readState, readRequest,
       ports: {
         createBridgeContext: args => args,
-        foregroundWindow: async () => ({ ok: true, packageName: 'vendor.dialog', component: 'vendor.dialog/vendor.dialog.Request', activity: 'vendor.dialog.Request' }),
+        foregroundWindow: async () => ({ ok: true, packageName: 'vendor.dialog', component: 'vendor.dialog/vendor.dialog.Request', activity: 'vendor.dialog.Request',
+          windowKind: 'activity', windowType: 1, ownershipVerified: true,
+          windowIdentity: `permission-dialog:${token}:pid100:start1000`, ownerUid: 1010489, ownerPid: 100,
+          bootId: '1457c3c8-cc65-4fa8-b835-fd601361df91', processStartTicks: '1000' }),
         uiaTreeOnce: async () => { treeReads++; if (options.treeRead) await options.treeRead(treeReads); return uiaXml(`<hierarchy><node package="vendor.dialog" class="FrameLayout" bounds="[0,0][400,800]"><node package="vendor.dialog" text="${label}" class="Button" resource-id="vendor.dialog:id/choice" enabled="true" clickable="true" bounds="[20,100][380,180]"/></node></hierarchy>`); },
         uiaTap: async (ctx, binding) => binding.target.selector.value !== label
           ? { ok: false, error: 'uia_reobserve_required', dispatched: false, ambiguous: false }

@@ -33,12 +33,13 @@ fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify(args) + '\\n');
 const file = ${JSON.stringify(statePath)};
 const state = JSON.parse(fs.readFileSync(file));
 const save = () => fs.writeFileSync(file, JSON.stringify(state));
-if (args.includes('get-current-user')) console.log('10');
+if (require(${JSON.stringify(require.resolve('../../test-support/android-foreground-fixture'))}).handleAndroidForegroundFixture(args, 'vendor.dialog', { userId: 10, activity: 'vendor.dialog.Request' })) {}
+else if (args.includes('get-current-user')) console.log('10');
 else if (args.includes('dumpsys') && args.includes('package')) console.log('Packages:\\n  Package [example.permission] (123):\\n    appId=10488\\n    User 10: installed=true\\n      runtime permissions:\\n        android.permission.RECORD_AUDIO: granted=' + state.granted + ', flags=[ ' + state.flags.join('|') + ']');
 else if (args.includes('dumpsys') && args.includes('activities')) {
   const component = state.dialog ? 'vendor.dialog/.Request' : 'example.permission/.Main';
   console.log('RootTask:\\n  topResumedActivity=ActivityRecord{abc u10 ' + component + ' t12}\\n  * Hist  #1: ActivityRecord{abc u10 ' + component + ' t12}\\n    launchedFromUid=1010488 launchedFromPackage=example.permission launchedFromFeature=null userId=10\\n    Intent { act=' + (state.dialog ? 'android.content.pm.action.REQUEST_PERMISSIONS' : 'android.intent.action.MAIN') + ' cmp=' + component + ' }');
-} else if (args.includes('dumpsys') && args.includes('window')) console.log('mCurrentFocus=Window{abc u10 vendor.dialog/vendor.dialog.Request}');
+}
 else if (args.includes('input')) {
   state.dialog = false; state.granted = state.outcome.startsWith('allow');
   state.flags = state.outcome === 'allow-once' ? ['ONE_TIME','USER_SET'] : state.outcome === 'deny' ? ['USER_SET'] : []; save();

@@ -226,7 +226,7 @@ async function createUiaRuntimeFixture({ directory, serial = randomUUID(), xml =
 const args = process.argv.slice(2);
 if (require(${JSON.stringify(__filename)}).handleUiaRuntimeFixture(args, ${JSON.stringify({ directory, descriptorReady })})) {
   ${descriptorReady ? '' : 'process.exit(0);'}
-} else if (args.includes('dumpsys') && args.includes('window')) process.stdout.write(${JSON.stringify(`mCurrentFocus=Window{test u0 ${foregroundPackage}/${foregroundPackage}.MainActivity}\n`)});
+} else if (require(${JSON.stringify(require.resolve('./android-foreground-fixture'))}).handleAndroidForegroundFixture(args, ${JSON.stringify(foregroundPackage)})) {}
 else { process.stderr.write('Unsupported controlled UIA ADB call'); process.exitCode = 2; }
 `, { mode: 0o755 });
   fixture = { directory, serial, adb, peer, port, requests, dispatches, records, respond, complete, publish, envelope, rotate,

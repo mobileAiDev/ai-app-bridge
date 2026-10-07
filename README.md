@@ -37,9 +37,11 @@ CLI and MCP use the same independent local execution runtime and command contrac
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
 - Android and iOS `logs` / `network` / `state` / `events` use phone-side persistent storage. `history:true` reads retained phone facts while connected; Host stores execution/observation evidence separately. Web capture is committed to the Host FactStore at ingress. Check refs, target, epoch, coverage and retention for each query.
 
-The coordinated `0.4.2` release adds independent forced device reset for stuck tasks and covers CLI/MCP, Android SDK/plugin, Flutter, Web
-and iOS. It stops old execution processes, archives unknown outcomes and releases occupancy;
-the device and Web SDK execution contracts are unchanged. Registry publication is a
+The coordinated `0.4.3` release resolves Android foreground ownership from WindowManager
+owner metadata and rechecks the window lifetime before actions. It also recognizes
+focused system windows without an Activity component while preserving package allowlists
+and UIA target guards. CLI/MCP, Android SDK/plugin, Flutter, Web and iOS share this version.
+Registry publication is a
 separate release step; local builds do not change npm/pub.dev defaults.
 See the [optional executor guide](desktop/ai-app-bridge-cli/docs/OPTIONAL_EXECUTORS.md) and [release guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
 Script is optional. Execution completion, code assertions and
@@ -116,7 +118,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.2")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.3")
 }
 ```
 
@@ -149,7 +151,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.2"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.3"
 }
 
 aiAppBridge {
@@ -164,7 +166,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.2")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.3")
 ```
 
 Start the runtime once in the debug app process:
@@ -180,7 +182,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.2
+npm install -g @mobileaidev/ai-app-bridge@0.4.3
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -195,7 +197,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.2
+  ai_app_bridge_flutter: 0.4.3
 ```
 
 Initialize once:
@@ -262,10 +264,10 @@ The package includes the embedded FactStore prebuild; no database service,
 C/C++ compiler or Python is needed for ordinary commands and JS/regex extraction.
 Python is only needed for Python scripts/extraction. See the [Host support
 matrix and local-tarball setup](desktop/ai-app-bridge-cli/docs/INSTALLATION.md).
-The configuration pins the coordinated 0.4.2 release.
+The configuration pins the coordinated 0.4.3 release.
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.2","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.3","ai-app-bridge-mcp"]}}}
 ```
 
 Every run explicitly supplies `extract:null` for the original result, or a

@@ -26,11 +26,13 @@ async function fixture(t, options = {}) {
   const serial = `install-${Math.random()}`;
   const store = createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   let done; let jobs = 0; let releases = 0; let queries = 0; let pkg = 'vendor.dynamic';
+  let windowIdentity = 'installer:token1:pid100:start1000';
   const calls = [];
   const label = 'Proceed with version 2 — continuar';
   const ports = {
     createBridgeContext: value => value,
-    foregroundWindow: async () => ({ ok: true, packageName: pkg, component: `${pkg}/.Screen`, activity: '.Screen', source: 'test' }),
+    foregroundWindow: async () => ({ ok: true, packageName: pkg, component: `${pkg}/.Screen`, activity: '.Screen', source: 'test',
+      windowKind: 'activity', windowType: 1, ownershipVerified: true, windowIdentity }),
     uiaTreeOnce: async () => uiaXml(`<hierarchy><node package="${pkg}" class="FrameLayout" bounds="[0,0][400,800]"><node package="${pkg}" text="${label}" resource-id="${pkg}:id/next" enabled="true" clickable="true" bounds="[20,100][380,180]"/></node></hierarchy>`),
     uiaTap: async (ctx, binding) => { calls.push({ packageName: ctx.packageName, actionId: ctx.runtimeActionId, binding }); return { ok: true }; },
     tap: async () => assert.fail('Installer text choices must use a bound UIA node'),
@@ -46,7 +48,8 @@ async function fixture(t, options = {}) {
     prepareJob: async () => job,
   } });
   t.after(async () => { if (!workflow.isFinished()) await workflow.cancel(); });
-  return { serial, store, workflow, calls, label, finish: done, get jobs() { return jobs; }, get queries() { return queries; }, get releases() { return releases; }, setForeground(value) { pkg = value; } };
+  return { serial, store, workflow, calls, label, finish: done, get jobs() { return jobs; }, get queries() { return queries; }, get releases() { return releases; },
+    setForeground(value) { pkg = value; }, setWindowIdentity(value) { windowIdentity = value; } };
 }
 
 test('install starts an Intent operation and routes its controls through the existing entry', async () => {
@@ -128,6 +131,19 @@ test('foreground change cannot reuse coordinates from the previously observed in
   assert.equal(result.error, 'reobserve_required'); assert.equal(h.calls.length, 0);
   const next = await h.workflow.observe(); assert.equal(next.summary.foreground.packageName, 'another.window');
 });
+
+for (const identity of ['installer:token2:pid100:start1000', 'installer:token1:pid101:start1001', 'installer:token1:pid100:start2000']) {
+  test(`installer identity change requires a fresh selector: ${identity}`, async t => {
+    const h = await fixture(t); await h.workflow.start();
+    const observed = await h.workflow.observe();
+    h.setWindowIdentity(identity);
+    const result = await h.workflow.decide({ decisionId: 'replaced-installer', basedOnRevision: observed.revision,
+      agentDecision: 'act', action: { action: 'tap', selector: { text: h.label } } });
+    assert.equal(result.error, 'reobserve_required');
+    assert.equal(h.calls.length, 0);
+    assert.equal((await h.workflow.observe()).summary.foreground.windowIdentity, identity);
+  });
+}
 
 test('ADB success cannot pass when the installed bytes differ, or when verification is unavailable', async t => {
   for (const after of [{ ...present, identityMatches: false, sha256: 'c'.repeat(64) }, { known: false, installed: null, identityMatches: false }]) {

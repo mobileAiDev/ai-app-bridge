@@ -9,6 +9,7 @@ const { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest } = require
 const { selectUiaNode } = require('../shared-kernel/uia-target');
 const { observedTarget: observedUiaTarget } = require('../shared-kernel/uia-protocol');
 const { checkExecution } = require('../shared-kernel/execution-scope');
+const { validForegroundIdentity, sameForegroundWindow } = require('../shared-kernel/android-foreground-identity');
 
 function createProductionIntentDeviceAdapter({
   lease = getProcessTargetLease(),
@@ -63,10 +64,13 @@ function createProductionIntentDeviceAdapter({
     if (!['native', 'uia', 'flutter', 'h5'].includes(provider)) throw new Error('unsupported_provider');
     const foreground = await impl.foregroundWindow(ctx);
     if (!foreground?.ok) throw new Error(foreground?.error || 'foreground_probe_failed');
-    if (!foreground.packageName || !foreground.component || !foreground.activity) throw new Error('foreground_identity_required');
+    if (!validForegroundIdentity(foreground)) throw new Error('foreground_identity_required');
     if (foreground.packageName !== ctx.packageName && !foregroundPackages.includes(foreground.packageName)) throw new Error('foreground_package_not_allowed');
-    return { provider: foreground.packageName === ctx.packageName ? provider : 'uia', packageName: foreground.packageName,
-      activity: foreground.activity, component: foreground.component, source: foreground.source, observedAtMs: Date.now() };
+    return { provider: foreground.packageName === ctx.packageName && foreground.windowKind === 'activity' ? provider : 'uia', packageName: foreground.packageName,
+      activity: foreground.activity, component: foreground.component, source: foreground.source,
+      windowKind: foreground.windowKind, windowType: foreground.windowType, windowIdentity: foreground.windowIdentity,
+      ownershipVerified: foreground.ownershipVerified, ownerUid: foreground.ownerUid, ownerPid: foreground.ownerPid,
+      bootId: foreground.bootId, processStartTicks: foreground.processStartTicks, observedAtMs: Date.now() };
   }
 
   return {
@@ -91,7 +95,7 @@ function createProductionIntentDeviceAdapter({
           else rawTree = await impl.bridgeTree(activeContext);
           if (route) {
             const after = await foregroundRoute(ctx, provider, foregroundPackages);
-            if (after.component !== route.component || after.provider !== route.provider) throw new Error('foreground_changed_during_observation');
+            if (!sameForegroundWindow(after, route) || after.provider !== route.provider) throw new Error('foreground_changed_during_observation');
             if (activeProvider === 'uia') {
               const root = typeof rawTree === 'string' && rawTree.match(/<node\b[^>]*>/);
               if (!root || parseXmlAttributes(root[0]).package !== route.packageName) throw new Error('observed_foreground_package_mismatch');
@@ -123,7 +127,7 @@ function createProductionIntentDeviceAdapter({
             checkExecution();
             if (route) {
               const current = await foregroundRoute(context({ serial, packageName: targetPackageName, port, adb: targetAdb }), primaryProvider, foregroundPackages);
-              if (current.component !== route.component || current.provider !== route.provider) {
+              if (!sameForegroundWindow(current, route) || current.provider !== route.provider) {
                 return { ok: false, error: 'reobserve_required', dispatched: false };
               }
             }
@@ -133,13 +137,14 @@ function createProductionIntentDeviceAdapter({
           };
         }
         // Foreground routing is explicit. Never reinterpret a prior tree after a
-        // package/activity change, and never send an SDK action to a system app.
+        // window/process change, and never send an SDK action to a system app.
         if (foregroundPackages !== undefined) {
           try {
             if (!route) return shapeAction({ ok: false, error: 'observed_foreground_required', dispatched: false });
+            if (!validForegroundIdentity(route)) return shapeAction({ ok: false, error: 'reobserve_required', dispatched: false });
             if (spec.provider !== route.provider) return shapeAction({ ok: false, error: 'observation_provider_mismatch', dispatched: false });
             const current = await foregroundRoute(ctx, primaryProvider, foregroundPackages);
-            if (current.component !== route.component || current.provider !== route.provider) return shapeAction({ ok: false, error: 'reobserve_required', dispatched: false });
+            if (!sameForegroundWindow(current, route) || current.provider !== route.provider) return shapeAction({ ok: false, error: 'reobserve_required', dispatched: false });
             ctx = context({ serial, packageName: route.packageName, port, adb: targetAdb, runtimeActionId: actionId });
           } catch (error) {
             return shapeAction({ ok: false, error: error.message, dispatched: false });

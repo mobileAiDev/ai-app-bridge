@@ -8,7 +8,8 @@ const { runExecution, executionSleep } = require('../bin/shared-kernel/execution
 const { validateCommandArguments, parseCliOptions } = require('../bin/command-registry');
 
 const ctx = { packageName: 'example.app', explicitPackageName: true };
-const fg = { ok: true, packageName: 'example.app', component: 'example.app/.Main', activity: 'example.app.Main' };
+const fg = { ok: true, packageName: 'example.app', component: 'example.app/.Main', activity: 'example.app.Main',
+  windowKind: 'activity', windowType: 1, ownershipVerified: true, windowIdentity: 'window:token1:pid100:start1000' };
 const node = text => ({ visible: true, enabled: true, text, bounds: { left: 0, top: 0, right: 100, bottom: 200 } });
 const tree = (...texts) => ({ activity: { current: 'Metadata only' }, root: { ...node(''), children: texts.map(node) } });
 function ports(extra = {}) {
@@ -69,6 +70,32 @@ test('foreground changes invalidate the text snapshot instead of reporting succe
     foregroundWindow: async () => ++reads === 1 ? fg : { ...fg, component: 'example.app/.Other' },
   }));
   assert.equal(result.ok, false); assert.equal(result.failures[0].error, 'foreground_changed_during_observation');
+});
+
+for (const identity of ['window:token2:pid100:start1000', 'window:token1:pid101:start1001', 'window:token1:pid100:start2000']) {
+  test(`text cannot match across a changed canonical identity ${identity}`, async () => {
+    let reads = 0;
+    const result = await waitText(ctx, 'Save, draft', { provider: 'native', timeoutMs: 100 }, ports({
+      foregroundWindow: async () => ++reads === 1 ? fg : { ...fg, windowIdentity: identity },
+    }));
+    assert.equal(result.ok, false);
+    assert.equal(result.failures[0].error, 'foreground_changed_during_observation');
+  });
+}
+
+test('missing canonical identity cannot prove matching text', async () => {
+  await assert.rejects(waitText(ctx, 'Save, draft', { provider: 'native', timeoutMs: 100 }, ports({
+    foregroundWindow: async () => ({ ...fg, windowIdentity: undefined }),
+  })), { code: 'foreground_identity_required' });
+});
+
+test('UIA text can match a verified non-Activity window without inventing an Activity', async () => {
+  const foreground = { ...fg, windowKind: 'non-activity', windowType: 2014, component: null, activity: null };
+  const result = await waitText(ctx, 'Other page', { provider: 'uia', timeoutMs: 100 }, ports({
+    foregroundWindow: async () => foreground,
+  }));
+  assert.equal(result.ok, true);
+  assert.equal(result.matched.activity, null);
 });
 
 test('wait cancellation interrupts an owned provider read and cannot pass absence', async () => {

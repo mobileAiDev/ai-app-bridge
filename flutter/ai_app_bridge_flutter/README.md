@@ -1,6 +1,6 @@
 # AI App Bridge Flutter
 
-This source targets 0.4.2; registry publication is a separate step. Use a local path dependency before that version is published.
+This source targets 0.4.3; registry publication is a separate step. Use a local path dependency before that version is published.
 
 Flutter plugin for AI App Bridge. It exposes Flutter widget snapshots, runtime actions, structured logs, network records, state records, events, and H5 adapter registration so local AI agents can inspect, operate, verify, and iterate on Flutter apps on Android and iOS.
 
@@ -22,10 +22,10 @@ To pin this release, use:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.2
+  ai_app_bridge_flutter: 0.4.3
 ```
 
-The plugin's Android debug variant includes the `0.4.2` Android runtime from
+The plugin's Android debug variant includes the `0.4.3` Android runtime from
 JitPack and starts the bridge server on the device. The iOS plugin starts the
 Swift runtime from the app process. Release builds should not expose the debug
 runtime automatically.

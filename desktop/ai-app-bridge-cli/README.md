@@ -7,9 +7,11 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.4.2`; registry publication is a separate release step.
-It fixes iOS observation ownership and preserves extraction results when
-temporary cleanup fails. Device and Web SDKs share version `0.4.2`; their execution contracts are unchanged.
+This source version is `0.4.3`; registry publication is a separate release step.
+It resolves Android foreground ownership from WindowManager owner metadata,
+rechecks the window lifetime before actions, and recognizes focused system windows
+without an Activity component. Package allowlists and UIA target guards remain active.
+Device and Web SDKs share version `0.4.3`; their execution contracts are unchanged.
 The default installation includes the Script/Intent and capture contracts below.
 Local package verification does not change npm dist-tags.
 The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
@@ -67,7 +69,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.4.2
+npm install -g @mobileaidev/ai-app-bridge@0.4.3
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample

@@ -1,3 +1,8 @@
+## 0.4.3
+
+- Align the optional Flutter executor helper identity with the coordinated 0.4.3 release.
+- Host Android foreground ownership and window lifetime checks are corrected; the Flutter executor helper contract is unchanged.
+
 ## 0.4.2
 
 - Align all public Bridge components and native dependencies with 0.4.2.

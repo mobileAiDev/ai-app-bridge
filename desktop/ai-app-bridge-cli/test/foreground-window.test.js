@@ -100,6 +100,20 @@ test('empty and null-only dumps still report foreground_not_found', () => {
   }
 });
 
+test('a focused system window title is retained instead of selecting the app behind it', () => {
+  const result = parseForegroundWindow('mCurrentFocus=Window{aaa u0 ImmersiveModeConfirmation}\nmFocusedApp=ActivityRecord{bbb u0 com.example.main/.MainActivity}');
+  assert.equal(result.ok, true);
+  assert.equal(result.source, 'mCurrentFocus');
+  assert.equal(result.packageName, undefined, 'client titles do not supply owner identity');
+  assert.match(result.raw, /ImmersiveModeConfirmation/);
+});
+
+test('a sole focus cannot override conflicting or mismatched focused-display metadata', () => {
+  for (const suffix of ['mTopFocusedDisplayId=1', 'mTopFocusedDisplayId=0\nmTopFocusedDisplayId=1']) {
+    assert.equal(parseForegroundWindow(`${display(0, main)}\n${suffix}`).error, 'foreground_ambiguous');
+  }
+});
+
 test('tap retains package and ambiguity checks after parsing all focus records', async () => {
   for (const raw of [
     `${display(1, 'null')}\n${display(0, other)}`,

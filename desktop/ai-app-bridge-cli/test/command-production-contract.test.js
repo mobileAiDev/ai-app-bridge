@@ -206,7 +206,7 @@ test('automatic text routing discovers providers before one action and never ret
   const { tapText } = require('../bin/device-provider');
   const calls = [];
   const ctx = { explicitPackageName: true, packageName: 'contract.app' };
-  const foreground = { ok: true, packageName: 'contract.app', component: 'contract.app/.Main' };
+  const foreground = { ok: true, packageName: 'contract.app', component: 'contract.app/.Main', windowIdentity: 'contract-window:token:pid:start' };
   const deps = {
     foregroundWindow: async () => foreground,
     bridgeTree: async () => { calls.push('observe-native'); return { ok: true, root: { visible: true, enabled: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 }, children: [] } }; },
@@ -230,7 +230,7 @@ test('automatic text routing discovers providers before one action and never ret
 test('automatic text routing permits read-only discovery failure but refuses ambiguous or changed targets', async () => {
   const { tapText } = require('../bin/device-provider');
   const ctx = { explicitPackageName: true, packageName: 'contract.app' };
-  const foreground = { ok: true, packageName: 'contract.app', component: 'contract.app/.Main' };
+  const foreground = { ok: true, packageName: 'contract.app', component: 'contract.app/.Main', windowIdentity: 'contract-window:token:pid:start' };
   const xml = require('../test-support/uia-target-fixture').uiaXml('<hierarchy><node package="contract.app" text="设置" bounds="[10,20][30,40]" enabled="true" /></hierarchy>');
   let dispatches = 0;
   const deps = {

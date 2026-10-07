@@ -20,7 +20,7 @@ if (args.includes('files/ai_app_bridge_endpoint.json')) process.stdout.write(JSO
   runtimeEpoch: ${JSON.stringify(runtimeEpoch)}, socketName: ${JSON.stringify(socketName)},
   version: 'test', updatedAtMs: 1788970540000,
 }));
-${foregroundPackage ? `if (args.includes('dumpsys') && args.includes('window')) process.stdout.write(${JSON.stringify(`mCurrentFocus=Window{test u0 ${foregroundPackage}/${foregroundPackage}.MainActivity}\n`)});` : ''}
+${foregroundPackage ? `require(${JSON.stringify(require.resolve('./android-foreground-fixture'))}).handleAndroidForegroundFixture(args, ${JSON.stringify(foregroundPackage)});` : ''}
 `, { mode: 0o755 });
   return file;
 }

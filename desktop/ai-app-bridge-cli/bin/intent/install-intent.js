@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizeExecutionTarget } = require('../shared-kernel/execution-target');
+const { sameForegroundWindow } = require('../shared-kernel/android-foreground-identity');
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -117,7 +118,7 @@ function installerDeviceAdapter(args, ports, deviceAdapter) {
       }
       const ctx = bridge.createBridgeContext({ ...args, packageName: request.route.packageName });
       const foreground = await bridge.foregroundWindow(ctx);
-      if (!foreground.ok || foreground.component !== request.route.component) {
+      if (!foreground.ok || !sameForegroundWindow(foreground, request.route)) {
         return { ok: false, error: 'reobserve_required', dispatched: false, ambiguous: false };
       }
       return base.action({ ...request, primaryProvider: 'uia', foregroundPackages: [request.route.packageName],

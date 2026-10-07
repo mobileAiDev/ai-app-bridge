@@ -8,7 +8,7 @@ const { nativeTargetRequest } = require('../bin/shared-kernel/native-target');
 const { nativeTargetRef, nativeBridgeStatus: bridgeStatus, nativeExecutionReceipt } = require('../test-support/native-target-fixture');
 
 const ctx = { serial: 'atomic-fixture', packageName: 'example.atomic', explicitPackageName: true, httpTimeoutMs: 5000 };
-const foregroundWindow = async () => ({ ok: true, packageName: ctx.packageName, component: `${ctx.packageName}/.Main` });
+const foregroundWindow = async () => ({ ok: true, packageName: ctx.packageName, component: `${ctx.packageName}/.Main`, windowIdentity: 'atomic-window:token:pid:start' });
 const selector = { resourceName: 'id/Save' };
 const targetRef = nativeTargetRef();
 const nativeTarget = { selector, targetRef };

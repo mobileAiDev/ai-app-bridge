@@ -108,7 +108,7 @@ if (require(${JSON.stringify(require.resolve('../../test-support/uia-runtime-fix
 const call=require(${JSON.stringify(require.resolve('../../test-support/android-shell-fixture'))}).handleAndroidShellFixture(process.argv.slice(2));
 if(call.handled)process.exit(0); const args=call.args;
 fs.appendFileSync(${JSON.stringify(io)}, JSON.stringify(args)+'\\n');
-if(args.includes('dumpsys') && args.includes('window'))process.stdout.write('mCurrentFocus=Window{test u0 example.contract/example.contract.MainActivity}');
+require(${JSON.stringify(require.resolve('../../test-support/android-foreground-fixture'))}).handleAndroidForegroundFixture(args, 'example.contract');
 `, { mode: 0o755 });
   const client = createMcpClient({ serverPath, env: { AI_APP_BRIDGE_FACT_STORE_DIR: path.join(directory, 'facts'), AI_APP_BRIDGE_FACT_CACHE_PROFILE: '64mb',
     AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR: path.join(directory, 'ownership') },

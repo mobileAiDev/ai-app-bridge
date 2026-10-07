@@ -24,6 +24,8 @@ const { IOSBridgeProvider } = require('./ios-provider');
 const { discoverAndroidSdkEndpoint } = require('./shared-kernel/android-sdk-endpoint');
 const { createBridgeForward, verifyBridgeForward, removeBridgeForward } = require('./bridge-forward');
 const { decodeXmlAttribute, parseXmlAttributes } = require('./shared-kernel/xml-attributes');
+const { parseForegroundWindowIdentity, verifyForegroundPackageUid, verifyForegroundProcessIdentity,
+  sameForegroundWindow } = require('./shared-kernel/android-foreground-identity');
 const {
   artifactTimestamp,
   defaultArtifactDirectory,
@@ -1730,10 +1732,29 @@ function pngSize(filePath) {
   };
 }
 
-async function foregroundWindow(ctx) {
+async function foregroundWindow(ctx, dependencies = {}) {
   try {
-    const result = await adb(ctx, ['shell', 'dumpsys', 'window']);
-    return parseForegroundWindow(result.stdout);
+    const runAdb = dependencies.adb || adb;
+    const readWindow = async () => {
+      const dump = await runAdb(ctx, ['shell', 'dumpsys', 'window', '-a']);
+      return parseForegroundWindowIdentity(dump.stdout, parseForegroundWindow(dump.stdout));
+    };
+    const window = await readWindow();
+    if (!window.ok) return window;
+    const processArgs = ['shell', 'cat', '/proc/sys/kernel/random/boot_id',
+      `/proc/${window.ownerPid}/stat`, `/proc/${window.ownerPid}/status`];
+    const process = verifyForegroundProcessIdentity(window, (await runAdb(ctx, processArgs)).stdout);
+    if (!process.ok) return process;
+    const packages = await runAdb(ctx, ['shell', 'dumpsys', 'package', window.packageName]);
+    const verified = verifyForegroundPackageUid(process, packages.stdout);
+    if (!verified.ok) return verified;
+    const currentWindow = await readWindow();
+    if (!currentWindow.ok || !sameForegroundWindow(window, currentWindow))
+      return { ...verified, ok: false, ownershipVerified: false, error: 'foreground_changed_during_verification' };
+    const currentProcess = verifyForegroundProcessIdentity(currentWindow, (await runAdb(ctx, processArgs)).stdout);
+    if (!currentProcess.ok || currentProcess.processIdentity !== process.processIdentity)
+      return { ...verified, ok: false, ownershipVerified: false, error: 'foreground_process_changed_during_verification' };
+    return verified;
   } catch (error) {
     if (error instanceof CommandError) throw error;
     return {
@@ -1764,7 +1785,8 @@ function parseForegroundWindow(raw) {
     const focus = line.match(/^\s*(mCurrentFocus|mTopResumedActivity|mResumedActivity|mFocusedApp)(?:\[(\d+)\])?\s*[:=]\s*(.*)$/);
     if (!focus) continue;
     const component = parseComponentFromWindowLine(focus[3]);
-    if (!component) continue;
+    const focusedWindow = focus[1] === 'mCurrentFocus' && /^Window\{\w+ u\d+ .+\}$/.test(focus[3].trim());
+    if (!component && !focusedWindow) continue;
     records.push({
       source: focus[1],
       displayId: focus[2] === undefined ? displayId : Number(focus[2]),
@@ -1783,7 +1805,8 @@ function parseForegroundWindow(raw) {
     const focusedDisplayId = focusedDisplayIds.size === 1 ? [...focusedDisplayIds][0] : null;
     const selected = candidates.length === 1 ? candidates
       : candidates.filter((item) => focusedDisplayId !== null && item.displayId === focusedDisplayId);
-    if (selected.length !== 1) {
+    if (selected.length !== 1 || focusedDisplayIds.size > 1
+      || (focusedDisplayId !== null && selected[0].displayId !== null && selected[0].displayId !== focusedDisplayId)) {
       return {
         ok: false,
         error: 'foreground_ambiguous',
@@ -1796,6 +1819,8 @@ function parseForegroundWindow(raw) {
     return {
       ok: true,
       source: marker,
+      displayId: record.displayId,
+      focusedDisplayId,
       ...record.component,
       raw: record.raw,
     };
@@ -1972,7 +1997,7 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
     if (['native', 'flutter'].includes(provider) && !match.guarded.ok) return { ...match.guarded, targetText, provider, observations };
     if (provider !== 'uia' && (!Number.isFinite(match.x) || !Number.isFinite(match.y) || match.x < 0 || match.y < 0)) return reject('invalid_observed_coordinates');
     const current = await readForeground(ctx);
-    if (!current.ok || current.component !== foreground.component || current.packageName !== foreground.packageName) return reject('foreground_changed_during_observation');
+    if (!current.ok || !sameForegroundWindow(current, foreground)) return reject('foreground_changed_during_observation');
     checkExecution();
     const revalidatedAtMs = Date.now();
     const result = provider === 'uia'
@@ -2093,7 +2118,7 @@ async function bindNativeCommandTarget(ctx, selector, editable, dependencies) {
   const binding = nativeTargetRequest(selected.node, selector);
   if (!binding.ok) return binding;
   const current = await readForeground(ctx);
-  if (!current.ok || current.component !== foreground.component || current.packageName !== foreground.packageName) return {
+  if (!current.ok || !sameForegroundWindow(current, foreground)) return {
     ok: false, error: 'foreground_changed_during_observation', dispatched: false, ambiguous: false,
   };
   checkExecution();
@@ -2133,7 +2158,7 @@ async function tapUia(ctx, options = {}) {
     binding = observedUiaTarget(xml, selected.node, options.selector, ctx.packageName);
   }
   const current = await foregroundWindow(ctx);
-  if (!current.ok || current.component !== foreground.component || current.packageName !== foreground.packageName)
+  if (!current.ok || !sameForegroundWindow(current, foreground))
     return { ok: false, error: 'foreground_changed_during_observation', dispatched: false, ambiguous: false };
   checkExecution();
   const result = await uiaTap(ctx, binding, options);
