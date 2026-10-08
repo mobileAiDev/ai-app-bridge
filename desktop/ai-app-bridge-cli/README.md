@@ -7,16 +7,11 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.4.4`; registry publication is a separate release step.
-It resolves Android foreground ownership from WindowManager owner metadata,
-rechecks the window lifetime before actions, and recognizes focused system windows
-without an Activity component. Package allowlists and UIA target guards remain active.
-Device and Web SDKs share version `0.4.4`; their execution contracts are unchanged.
-The default installation includes the Script/Intent and capture contracts below.
-Local package verification does not change npm dist-tags.
-The supported Node range is `>=26.3.0 <27`; this release was checked on 26.3.0.
-See [the simplest MCP setup and Host requirements](docs/INSTALLATION.md).
-See [the release guide](docs/RELEASE.md) for local packaging and coordinated publication.
+This source version is `0.4.5`; registry publication is a separate release step.
+Android foreground facts and warnings are separate from action execution. Window
+formatting, mismatch or changes do not veto an explicit action or switch its target.
+The SDK and UIA executors retain exact node/reference validation and original receipts.
+Device and Web SDKs share version `0.4.5`.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
 and Playwright executors use the existing `capabilities + run` and Python/JS Script contracts.
@@ -69,7 +64,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.4.4
+npm install -g @mobileaidev/ai-app-bridge@0.4.5
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample

@@ -52,7 +52,7 @@ function permissionDeviceAdapter({ args, origin, expectedState, canDispatch, onD
         const observed = await base.observe({ ...request, provider: 'uia', packageName: before.request.packageName, foregroundPackages: [] });
         if (!observed.ok) return providerResult(observed, 'observation');
         const after = await readRequest(args);
-        if (!sameRequest(before.request, after.request) || after.request.component !== `${observed.route.packageName}/${observed.route.activity}`) return rejection('permission_request_changed');
+        if (!sameRequest(before.request, after.request)) return rejection('permission_request_changed');
         return { ...observed, route: { ...observed.route, permissionRequest: after.request } };
       } catch (error) { return rejection(error.code || 'permission_request_query_failed'); }
     },
@@ -220,6 +220,7 @@ async function createPermissionIntent({ args, operationId, store, recording, dep
       const receiptId = worker.context.latestEvidenceIds.receipt;
       if (receiptId && receiptId !== previous) {
         const receipt = store.read(receiptId);
+        if (!result.ok && receipt.ok && receipt.record.dispatched === false && !receipt.record.ambiguous) return { result };
         if (!receipt.ok || receipt.record.mechanicalStatus !== 'ok' || receipt.record.ambiguous || !receipt.record.dispatched) {
           return { verdict: { status: 'inconclusive', error: 'permission_action_not_verified' } };
         }

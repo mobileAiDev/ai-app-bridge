@@ -3,7 +3,7 @@
 const { checkExecution } = require('./execution-scope');
 
 // The SDK owns Android window topology and publishes its foreground decision.
-// Focus ownership is an input permission, not an Activity/window relationship.
+// Explicit references bind their original window regardless of focus.
 
 function visible(node) {
   return node && (node.effectiveVisible === true || node.visible === true)
@@ -16,11 +16,11 @@ function validBounds(bounds) {
     && bounds.right > bounds.left && bounds.bottom > bounds.top;
 }
 
-function foregroundNativeWindow(rawTree) {
+function foregroundNativeWindow(rawTree, selectedWindowId) {
   if (!rawTree || typeof rawTree !== 'object') return null;
   const windows = Array.isArray(rawTree.windows) ? rawTree.windows : [];
   if (windows.length) {
-    const id = rawTree.foregroundWindowId;
+    const id = selectedWindowId ?? rawTree.foregroundWindowId;
     if (typeof id !== 'string' || !id.trim()) return null;
     const matches = windows.map((window, index) => window?.windowId === id ? index : -1).filter(index => index >= 0);
     if (matches.length !== 1) return null;
@@ -33,8 +33,8 @@ function foregroundNativeWindow(rawTree) {
   return rawTree.root ? { index: null, root: rawTree.root, bounds: rawTree.root.bounds, type: 'activity' } : null;
 }
 
-function nativeWindow(rawTree) {
-  const window = foregroundNativeWindow(rawTree);
+function nativeWindow(rawTree, selectedWindowId) {
+  const window = foregroundNativeWindow(rawTree, selectedWindowId);
   return window && visible(window.root) && validBounds(window.bounds) ? window : null;
 }
 
@@ -43,12 +43,12 @@ function explicitlyHidden(node) {
     || node.visibility === 'gone' || node.visibility === 'invisible' || node.alpha === 0);
 }
 
-function selectNativeNode(rawTree, spec, editable) {
+function selectNativeNode(rawTree, spec, editable, selectedWindowId) {
   const reject = (error) => ({ ok: false, error, dispatched: false });
-  if (rawTree?.windows?.length && (typeof rawTree.foregroundWindowId !== 'string' || !rawTree.foregroundWindowId.trim())) {
+  if (!selectedWindowId && rawTree?.windows?.length && (typeof rawTree.foregroundWindowId !== 'string' || !rawTree.foregroundWindowId.trim())) {
     return reject('native_window_metadata_unavailable');
   }
-  const window = nativeWindow(rawTree);
+  const window = nativeWindow(rawTree, selectedWindowId);
   if (!window) return reject('visible_observed_window_required');
   const selector = spec.selector || (typeof spec.text === 'string' ? { text: spec.text } : null);
   if (spec.exact === false || (spec.selector && spec.text != null)) return reject('explicit_native_selector_required');
@@ -123,7 +123,7 @@ function nativeNodeIdentity(node) {
 }
 
 function nativeWindowIdentity(window) {
-  return { type: window?.type ?? null, index: window?.index ?? null, windowId: window?.windowId ?? null, root: nativeNodeIdentity(window?.root) };
+  return { type: window?.type ?? null, windowId: window?.windowId ?? null, root: nativeNodeIdentity(window?.root) };
 }
 
 function nativeTargetRequest(node, selector) {
@@ -146,7 +146,7 @@ async function revalidateNativeNode(readTree, rawTree, spec, editable = false) {
   const observed = selectNativeNode(rawTree, spec, editable);
   if (!observed.ok) return observed;
   checkExecution();
-  const current = selectNativeNode(await readTree(), spec, editable);
+  const current = selectNativeNode(await readTree(), spec, editable, observed.window.windowId);
   checkExecution();
   if (!current.ok) return current;
   if (JSON.stringify(nativeSelectionIdentity(observed)) !== JSON.stringify(nativeSelectionIdentity(current))) {

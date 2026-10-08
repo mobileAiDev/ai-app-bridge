@@ -1,7 +1,6 @@
 'use strict';
 
 const { normalizeExecutionTarget } = require('../shared-kernel/execution-target');
-const { sameForegroundWindow } = require('../shared-kernel/android-foreground-identity');
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -99,29 +98,20 @@ async function installedIdentity(args, artifact, run = execute) {
   } catch (error) { return { known: false, installed: true, identityMatches: false, error: error.code || 'installed_hash_unavailable' }; }
 }
 
-// This adapter only discovers the current system window. The Agent chooses an
-// exact selector through the ordinary Intent decision contract. No UI label or
-// coordinate is stored here, and a failed action never switches provider.
+// Installer UI uses the same explicit observation target as ordinary Intent.
+// The agent identifies the system package from observations before selecting it.
 function installerDeviceAdapter(args, ports, deviceAdapter) {
   const bridge = ports || require('../device-provider');
   const base = deviceAdapter || createProductionIntentDeviceAdapter({ ports: bridge, adb: args.adb });
   return {
     async observe(request) {
-      const ctx = bridge.createBridgeContext({ ...args, packageName: request.packageName });
-      const foreground = await bridge.foregroundWindow(ctx);
-      if (!foreground.ok || !foreground.packageName) return { ok: false, error: 'foreground_probe_failed' };
-      return base.observe({ ...request, packageName: foreground.packageName, provider: 'uia', foregroundPackages: [] });
+      return base.observe({ ...request, provider: 'uia' });
     },
     async action(request) {
       if (!request.route || request.spec?.action !== 'tap' || !request.spec?.selector) {
         return { ok: false, error: 'installer_requires_observed_exact_selector', dispatched: false, ambiguous: false };
       }
-      const ctx = bridge.createBridgeContext({ ...args, packageName: request.route.packageName });
-      const foreground = await bridge.foregroundWindow(ctx);
-      if (!foreground.ok || !sameForegroundWindow(foreground, request.route)) {
-        return { ok: false, error: 'reobserve_required', dispatched: false, ambiguous: false };
-      }
-      return base.action({ ...request, primaryProvider: 'uia', foregroundPackages: [request.route.packageName],
+      return base.action({ ...request, primaryProvider: 'uia', foregroundPackages: [request.route.targetPackageName],
         spec: { ...request.spec, provider: 'uia', exact: true, requireClickable: true } });
     },
   };

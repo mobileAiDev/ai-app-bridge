@@ -669,6 +669,8 @@ function trackHost(host, record, now) {
           ambiguous: result.ambiguous === true,
           dispatched: result.dispatched ?? null,
           executionReceipt: result.executionReceipt ?? null,
+          ...(result.warnings === undefined ? {} : { warnings: result.warnings }),
+          ...(result.foregroundObservations === undefined ? {} : { foregroundObservations: result.foregroundObservations }),
           ...(result.executionReceipts === undefined ? {} : { executionReceipts: result.executionReceipts }),
           evidenceRefs: result.evidence?.refs || [],
         };

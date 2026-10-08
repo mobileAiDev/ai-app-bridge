@@ -1,3 +1,7 @@
+## 0.4.5
+
+- Coordinate with the Android foreground observation and explicit-action contract. Android window formatting differences are diagnosed without vetoing actions; target references and execution receipts remain authoritative.
+
 ## 0.4.4
 
 - Align the optional executor helper identity with the coordinated 0.4.4 release.

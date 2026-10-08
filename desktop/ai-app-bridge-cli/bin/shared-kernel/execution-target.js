@@ -22,7 +22,7 @@ function executionTargetSchema({ intent = false, nullable = false } = {}) {
     if (platform === 'android') {
       properties.packageName = identifier;
       properties.port = integer(1, 65535);
-      if (intent) properties.foregroundPackages = { type: 'array', items: identifier, maxItems: 32, uniqueItems: true };
+      if (intent) properties.foregroundPackages = { type: 'array', items: identifier, maxItems: 32, uniqueItems: true, description: 'Legacy metadata; does not route or veto actions. Use Intent observe observationTarget.packageName to select another Android app.' };
     }
     if (platform === 'ios') properties.iosPort = integer(1, 65535);
     return object(properties, ['platform', ...definition.identity]);

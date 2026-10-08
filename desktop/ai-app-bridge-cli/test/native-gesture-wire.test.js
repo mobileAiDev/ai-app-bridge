@@ -59,10 +59,12 @@ test('Native gestures send one bound SDK request with no Host coordinates', asyn
   assert.deepEqual(calls, [{ endpoint: '/v1/action/gesture-target', body: managedPayload(payload, 4100) }]);
 });
 
-test('device scope, a different foreground, and pre-dispatch cancellation never send a gesture or cleanup', async () => {
+test('app scope and cancellation retain their errors independently of foreground warnings', async () => {
   const forbidden = () => assert.fail('unexpected dispatch');
   assert.equal((await nativeGesture({ ...context, explicitPackageName: false }, payload, { foregroundWindow: forbidden })).error, 'native_target_requires_app_scope');
-  assert.equal((await nativeGesture(context, payload, { foregroundWindow: async () => ({ ok: true, packageName: 'other.app' }), bridgePost: forbidden })).error, 'foreground_package_mismatch');
+  const different = await nativeGesture(context, payload, { foregroundWindow: async () => ({ ok: true, packageName: 'other.app' }), bridgeStatus: async () => ({}), bridgePost: forbidden });
+  assert.equal(different.error, 'native_execution_unavailable');
+  assert.equal(different.warnings[0].code, 'foreground_package_mismatch');
   const result = await nativeGesture(context, payload, { foregroundWindow, bridgeStatus, cancelBridgePost: forbidden,
     bridgePost: async () => { throw Object.assign(new Error('Stopped before POST'), { code: 'cancelled', dispatched: false, aiAppBridgeRequestNotStarted: true }); } });
   assert.equal(result.error, 'cancelled'); assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false);

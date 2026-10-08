@@ -102,7 +102,7 @@ test('an unknown installer language/package is observed; only a revision-bound A
   assert.deepEqual(h.store.list(h.serial).map(x => x.kind), ['plan', 'dispatch-marker']);
   const lease = getProcessDeviceMutationLease();
   assert.equal(lease.acquire(h.serial).error, 'target_busy');
-  const observed = await h.workflow.observe();
+  const observed = await h.workflow.observe({ observationTarget: { packageName: 'vendor.dynamic' } });
   assert.equal(observed.summary.nodes.some(node => node.text === h.label), true);
   assert.equal(h.calls.length, 0, 'observation must not infer a hard-coded positive button');
   assert.equal((await h.workflow.decide({ decisionId: 'force-pass', agentDecision: 'complete' })).error, 'installation_requires_package_verification');
@@ -124,23 +124,26 @@ test('an unknown installer language/package is observed; only a revision-bound A
   assert.equal(action.settled, true); assert.deepEqual(action.executionReceipt, ended.installation.process.executionReceipt);
 });
 
-test('foreground change cannot reuse coordinates from the previously observed installer', async t => {
+test('foreground change preserves the exact observed installer node and returns warnings', async t => {
   const h = await fixture(t); await h.workflow.start();
-  const observed = await h.workflow.observe(); h.setForeground('another.window');
+  const observed = await h.workflow.observe({ observationTarget: { packageName: 'vendor.dynamic' } }); h.setForeground('another.window');
   const result = await h.workflow.decide({ decisionId: 'moved', basedOnRevision: observed.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: h.label } } });
-  assert.equal(result.error, 'reobserve_required'); assert.equal(h.calls.length, 0);
+  assert.equal(result.ok, true); assert.equal(h.calls.length, 1);
+  assert.ok(result.lastAction.warnings.some(w => w.code === 'foreground_package_mismatch'));
+  assert.equal(h.calls[0].packageName, 'vendor.dynamic');
   const next = await h.workflow.observe(); assert.equal(next.summary.foreground.packageName, 'another.window');
 });
 
 for (const identity of ['installer:token2:pid100:start1000', 'installer:token1:pid101:start1001', 'installer:token1:pid100:start2000']) {
-  test(`installer identity change requires a fresh selector: ${identity}`, async t => {
+  test(`installer foreground identity change leaves node validation to the executor: ${identity}`, async t => {
     const h = await fixture(t); await h.workflow.start();
-    const observed = await h.workflow.observe();
+    const observed = await h.workflow.observe({ observationTarget: { packageName: 'vendor.dynamic' } });
     h.setWindowIdentity(identity);
     const result = await h.workflow.decide({ decisionId: 'replaced-installer', basedOnRevision: observed.revision,
       agentDecision: 'act', action: { action: 'tap', selector: { text: h.label } } });
-    assert.equal(result.error, 'reobserve_required');
-    assert.equal(h.calls.length, 0);
+    assert.equal(result.ok, true);
+    assert.equal(h.calls.length, 1);
+    assert.ok(result.lastAction.warnings.some(w => w.code === 'foreground_changed'));
     assert.equal((await h.workflow.observe()).summary.foreground.windowIdentity, identity);
   });
 }

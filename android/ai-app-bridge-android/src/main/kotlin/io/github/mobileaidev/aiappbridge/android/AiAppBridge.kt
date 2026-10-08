@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.4.4"
+    private const val bridgeVersion = "0.4.5"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     @Volatile
@@ -1019,7 +1019,10 @@ object AiAppBridge {
                 recordEvent("interaction", "h5.action.settled", data.toString())
             }
         })
-        private val h5Bridge = AndroidH5Bridge(runtimeEpoch, context.packageName, { webViewAdapters.toList() }) {
+        private val h5Bridge = AndroidH5Bridge(runtimeEpoch, context.packageName, { webViewAdapters.toList() }, {
+            val owner = activity() ?: throw H5EvaluationFailure("no_current_activity")
+            windowRoots(owner).map { AndroidH5Bridge.Window(it.root, owner.javaClass.name, it.type) }
+        }) {
             val activity = activity() ?: throw H5EvaluationFailure("no_current_activity")
             val window = foregroundH5Window(activity)
             AndroidH5Bridge.Window(window.root, activity.javaClass.name, window.type)
@@ -1463,7 +1466,7 @@ object AiAppBridge {
             val root = activity.window?.decorView ?: throw NativeTargetFailure("no_decor_view")
             val counter = NodeCounter()
             val roots = windowRoots(activity)
-            val foreground = foregroundWindow(roots)
+            val foreground = runCatching { foregroundWindow(roots) }
             val windows = JSONArray()
             roots.forEachIndexed { index, windowRoot ->
                 windows.put(
@@ -1484,7 +1487,8 @@ object AiAppBridge {
             val json = JSONObject()
                 .put("ok", true)
                 .put("activity", activity.javaClass.name)
-                .put("foregroundWindowId", viewIdentity(foreground.root))
+                .put("foregroundWindowId", foreground.getOrNull()?.let { viewIdentity(it.root) } ?: JSONObject.NULL)
+                .put("foregroundWarning", foreground.exceptionOrNull()?.let { (it as? NativeTargetFailure)?.code ?: it.message } ?: JSONObject.NULL)
                 .put("root", viewToJson(activity, root, counter, depth = 0, parentEffectiveVisible = true))
                 .put("windows", windows)
                 .put("windowCount", roots.size)
@@ -1773,6 +1777,12 @@ object AiAppBridge {
                     .put("localX", localX.toDouble())
                     .put("localY", localY.toDouble())
                     .put("windowType", target.type)
+                    .put("windowFocused", target.root.hasWindowFocus())
+                    .put("warnings", JSONArray().apply {
+                        if (!target.root.hasWindowFocus()) put(JSONObject().put("code", "native_window_not_focused")
+                            .put("source", "View.hasWindowFocus").put("observedAtMs", System.currentTimeMillis())
+                            .put("windowId", viewIdentity(target.root)))
+                    })
                     .put("rootClassName", target.root.javaClass.name)
                     .put("rootBounds", rectToJson(target.bounds))
                     .put("target", hitTarget ?: JSONObject.NULL)
@@ -1795,7 +1805,6 @@ object AiAppBridge {
                 findInputTextTarget(listOf(window), request.optDouble("x", Double.NaN).toFloat(), request.optDouble("y", Double.NaN).toFloat())
                     ?: throw NativeTargetFailure("input_target_not_found")
             }
-            if (!target.root.root.hasWindowFocus()) throw NativeTargetFailure("native_input_window_not_focused")
             val response = CaptureActionContext.withActionId(actionId) {
                 mutation.dispatch()
                 val requestedFocus = target.view.requestFocus()
@@ -1858,13 +1867,12 @@ object AiAppBridge {
         }
 
         private fun validateInputBinding(activity: Activity, target: TextInputTarget, semanticRequest: JSONObject?) {
-            if (activity() !== activity || foregroundActionWindow(activity).root !== target.root.root) {
+            if (windowRoots(activity).none { it.root === target.root.root }) {
                 throw NativeTargetFailure("native_window_changed")
             }
             if (!target.view.isAttachedToWindow || target.view.rootView !== target.root.root) {
                 throw NativeTargetFailure("native_target_replaced")
             }
-            if (!target.root.root.hasWindowFocus()) throw NativeTargetFailure("native_input_window_not_focused")
             if (!target.view.isFocused) throw NativeTargetFailure("input_focus_changed")
             if (!target.view.isShown || !target.view.isEnabled || target.view.alpha <= 0f) {
                 throw NativeTargetFailure("input_target_not_operable")
@@ -1921,18 +1929,15 @@ object AiAppBridge {
             if (!ownsPoint) throw NativeTargetFailure("native_target_obscured")
             return NativeGestureTarget(root.root, Rect(root.bounds), root.type, selected.selection.node.getJSONObject("targetRef"),
                 startX.toFloat(), startY.toFloat(), endX.toFloat(), endY.toFloat()) {
-                activity() === owner && foregroundWindow(windowRoots(owner)).let { current ->
-                    current.root === root.root && current.bounds == root.bounds &&
-                        NativeWindowContract.pointerError(current.root.hasWindowFocus(), current.focusable,
-                            current.touchable, current.focusOwnerWindowId) == null
-                }
+                windowRoots(owner).singleOrNull { it.root === root.root }?.let { current ->
+                    current.bounds == root.bounds && current.touchable && selected.view.isAttachedToWindow
+                } == true
             }
         }
 
         private fun foregroundActionWindow(activity: Activity): WindowRoot {
             val window = foregroundWindow(windowRoots(activity))
-            NativeWindowContract.pointerError(window.root.hasWindowFocus(), window.focusable, window.touchable, window.focusOwnerWindowId)
-                ?.let { throw NativeTargetFailure(it) }
+            if (!window.touchable) throw NativeTargetFailure("native_window_not_touchable")
             return window
         }
 

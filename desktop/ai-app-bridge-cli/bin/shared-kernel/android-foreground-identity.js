@@ -43,72 +43,126 @@ function sameForegroundWindow(left, right) {
     && left.windowIdentity === right.windowIdentity);
 }
 
-// Resolve only the WindowState selected by focus token/user/display. Window
-// titles are client data and are never substituted for the OS owner or Activity.
-function parseForegroundWindowIdentity(raw, focus) {
-  if (!focus.ok) return focus;
-  const focused = focus.raw.match(/^mCurrentFocus(?:\[\d+\])?\s*[:=]\s*Window\{(\w+) u(\d+) (.+)\}$/);
-  if (!focused) return { ok: false, error: 'foreground_window_identity_missing', focus };
-  const [, windowToken, rawUserId, windowTitle] = focused;
-  const userId = Number(rawUserId);
-  const blocks = [];
-  let block = null;
-  for (const line of String(raw).split(/\r?\n/)) {
-    if (/^WINDOW MANAGER\b/.test(line)) block = null;
-    const heading = line.match(/^\s*Window #\d+ Window\{(\w+) u(\d+) (.+)\}:\s*$/);
-    if (heading) {
-      block = { token: heading[1], userId: Number(heading[2]), title: heading[3], lines: [] };
-      blocks.push(block);
-    } else if (block) block.lines.push(line);
+// Read assignments by field, skipping balanced objects so LayoutParams.taskId
+// cannot masquerade as WindowState.taskId. Class labels and line layout are not
+// part of the dumpsys contract. Keep every value for conflict diagnostics.
+function fields(text) {
+  const result = new Map();
+  const assignment = /\b([A-Za-z][A-Za-z0-9_]*)\s*=\s*/g;
+  let match;
+  while ((match = assignment.exec(text))) {
+    const start = assignment.lastIndex;
+    const object = /^(?:[A-Za-z_$][\w.$]*\s*)?\{/.exec(text.slice(start));
+    let end = start;
+    if (object) {
+      end += object[0].length;
+      let depth = 1;
+      while (end < text.length && depth) {
+        const char = text[end++];
+        if (char === '{') depth++;
+        if (char === '}') depth--;
+      }
+      if (depth) end = text.length;
+    } else {
+      while (end < text.length && !/[\s}]/.test(text[end])) end++;
+    }
+    const values = result.get(match[1]) || [];
+    values.push(text.slice(start, end));
+    result.set(match[1], values);
+    assignment.lastIndex = end;
   }
-  const reject = error => ({ ok: false, error, focus });
+  return result;
+}
+
+// Resolve only the WindowState selected by focus token/user/display. Window
+// titles are client data and never substitute for OS owner or Activity fields.
+function parseForegroundWindowIdentity(raw, focus) {
+  const evidence = { focus: focus.raw ?? null };
+  const facts = { source: 'mCurrentFocus', ownershipVerified: false, evidence };
+  const reject = (error, field, values) => ({ ...facts, ok: false, error, focus,
+    ...(field ? { diagnostic: { field, values: values ?? [] } } : {}) });
+  if (!focus.ok) return { ...focus, ownershipVerified: false, evidence: { dump: String(raw ?? '') } };
+  const focused = focus.raw.match(/^mCurrentFocus(?:\s*\[\s*\d+\s*\])?\s*[:=]\s*Window\s*\{\s*(\w+)\s+u(\d+)\s+([^}]+)\}\s*$/);
+  if (!focused) return reject('foreground_window_identity_missing');
+  const [, windowToken, rawUserId, title] = focused;
+  const windowTitle = title.trim(), userId = Number(rawUserId);
+  Object.assign(facts, { windowToken, userId, windowTitle });
+  const text = String(raw);
+  const headings = [...text.matchAll(/^[ \t]*Window\s*#\s*\d+\s+Window\s*\{\s*(\w+)\s+u(\d+)\s+([^}]+)\}\s*:/gm)];
+  const blocks = headings.map((heading, index) => {
+    const start = heading.index + heading[0].length;
+    const tail = text.slice(start, headings[index + 1]?.index ?? text.length);
+    const sectionEnd = tail.search(/^\s*WINDOW MANAGER\b/m);
+    const body = sectionEnd < 0 ? tail : tail.slice(0, sectionEnd);
+    return { token: heading[1], userId: Number(heading[2]), title: heading[3].replace(/\s+/g, ' ').trim(),
+      header: heading[0], lines: body.split(/\r?\n/) };
+  });
   const owners = blocks.filter(item => item.token === windowToken && item.userId === userId);
+  evidence.windows = owners.map(item => [item.header, ...item.lines].join('\n'));
   if (owners.length !== 1) return reject(owners.length ? 'foreground_window_identity_ambiguous' : 'foreground_window_identity_missing');
   const owner = owners[0];
-  // API 25 prints stackId, API 30 rootTaskId, and newer releases taskId.
-  // Only taskId denotes this Activity's task; the others are not interchangeable.
-  const metadata = owner.lines.map(line => line.match(/^\s*mDisplayId=(\d+)\b(.*?)\bmSession=Session\{\w+ (\d+):[^}]+\}/)).filter(Boolean);
-  const packages = owner.lines.map(line => line.match(/^\s*mOwnerUid=(\d+)\b.*\bpackage=([^\s]+)(?:\s|$)/)).filter(Boolean);
-  const attributes = owner.lines.map(line => line.match(/^\s*mAttrs=\{.*\bty=([A-Z_]+|\d+)(?:\s|\}|$)/)).filter(Boolean);
-  if (metadata.length !== 1 || packages.length !== 1) return reject('foreground_window_owner_missing');
-  if (attributes.length !== 1) return reject('foreground_window_type_missing');
-  const type = attributes[0][1];
-  const windowType = /^\d+$/.test(type) ? Number(type) : windowTypes[type];
-  if (!knownTypes.has(windowType)) return reject('foreground_window_type_unsupported');
-  const [, rawDisplayId, container, rawPid] = metadata[0];
-  const [, rawUid, packageName] = packages[0];
-  const displayId = Number(rawDisplayId), ownerPid = Number(rawPid), ownerUid = Number(rawUid);
-  if (!packagePattern.test(packageName) || owner.title !== windowTitle || ownerPid <= 0
-    || Math.floor(ownerUid / 100000) !== userId
-    || (focus.displayId !== null && focus.displayId !== displayId)
-    || (focus.focusedDisplayId !== null && focus.focusedDisplayId !== displayId)) return reject('foreground_window_owner_conflict');
-  // These are the two explicit Android WindowState Activity binding formats.
-  // mFocusedApp is not a binding and may describe an app behind a system window.
-  const activityLines = owner.lines.filter(line => /^\s*mActivityRecord=/.test(line) || /^\s*mAppToken=/.test(line));
-  let activity = null, component = null, taskId = null, activityToken = null;
+  evidence.window = evidence.windows[0];
+  delete evidence.windows;
+  const values = fields(owner.lines.join('\n'));
+  let failure;
+  function read(name, missing, conflict, pattern, source = values) {
+    const entries = source.get(name) || [];
+    const unique = [...new Set(entries.map(value => value.replace(/\s+/g, ' ').trim()))];
+    if (unique.length !== 1 || pattern && !pattern.test(unique[0])) {
+      failure ||= reject(unique.length > 1 ? conflict : missing, name, entries);
+      return undefined;
+    }
+    return unique[0];
+  }
+  for (const [field, output] of [['mDisplayId', 'displayId'], ['mOwnerUid', 'ownerUid']]) {
+    const value = read(field, 'foreground_window_owner_missing', 'foreground_window_owner_conflict', /^\d+$/);
+    if (value !== undefined) facts[output] = Number(value);
+  }
+  const packageName = read('package', 'foreground_window_owner_missing', 'foreground_window_owner_conflict', packagePattern);
+  if (packageName !== undefined) facts.packageName = packageName;
+  const session = read('mSession', 'foreground_window_owner_missing', 'foreground_window_owner_conflict', /^Session\s*\{\s*\w+\s+\d+\s*:[^}]+\}$/);
+  if (session !== undefined) facts.ownerPid = Number(session.match(/\s(\d+)\s*:/)[1]);
+  if (failure) return { ...failure, ...facts, ok: false };
+  const { displayId, ownerUid, ownerPid } = facts;
+  if (owner.title !== windowTitle || ownerPid <= 0 || Math.floor(ownerUid / 100000) !== userId
+    || (focus.displayId != null && focus.displayId !== displayId)
+    || (focus.focusedDisplayId != null && focus.focusedDisplayId !== displayId)) return reject('foreground_window_owner_conflict');
+  const attrs = read('mAttrs', 'foreground_window_type_missing', 'foreground_window_type_conflict');
+  if (failure) return failure;
+  if (!/^(?:[A-Za-z_$][\w.$]*\s*)?\{[\s\S]*\}$/.test(attrs)) return reject('foreground_window_attributes_invalid', 'mAttrs', [attrs]);
+  const attributes = fields(attrs.slice(attrs.indexOf('{') + 1, -1));
+  if (attributes.has('mAttrs')) return reject('foreground_window_attributes_invalid', 'mAttrs', [attrs]);
+  const type = read('ty', 'foreground_window_type_missing', 'foreground_window_type_conflict', null, attributes);
+  if (failure) return failure;
+  const symbolicType = type.replace(/^(?:android\.view\.)?(?:WindowManager\.)?LayoutParams\./, '').replace(/^TYPE_/, '');
+  const windowType = /^\d+$/.test(type) ? Number(type) : windowTypes[symbolicType];
+  if (!knownTypes.has(windowType)) return reject('foreground_window_type_unsupported', 'ty', [type]);
   const windowKind = windowType < 2000 ? 'activity' : 'non-activity';
+  Object.assign(facts, { windowKind, windowType });
+  const bindings = ['mActivityRecord', 'mAppToken'].flatMap(name => values.get(name) || []).filter(value => value !== 'null');
+  let activity = null, component = null, taskId = null, activityToken = null;
   if (windowKind === 'activity') {
-    if (activityLines.length !== 1) return reject(activityLines.length ? 'foreground_activity_ambiguous' : 'foreground_activity_missing');
-    const record = activityLines[0].match(/ActivityRecord\{(\w+) u(\d+) ([^\s}]+) t(\d+)(?:[^}]*)\}/);
-    if (!record) return reject('foreground_activity_missing');
+    const records = bindings.flatMap(value => [...value.matchAll(/ActivityRecord\s*\{\s*(\w+)\s+u(\d+)\s+([^\s}]+)\s+t(\d+)(?:[^}]*)\}/g)]);
+    const identities = [...new Map(records.map(record => [JSON.stringify(record.slice(1)), record])).values()];
+    if (identities.length !== 1) return reject(identities.length ? 'foreground_activity_ambiguous' : 'foreground_activity_missing', 'ActivityRecord', bindings);
+    const record = identities[0];
     const parsed = record[3].match(/^([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\/(\.?[A-Za-z0-9_.$]+)$/);
-    const declaredTask = container.match(/\btaskId=(-?\d+)\b/);
     taskId = Number(record[4]); activityToken = record[1];
+    // stackId/rootTaskId and LayoutParams.taskId do not denote this task.
+    const declaredTasks = values.get('taskId') || [];
     if (!parsed || parsed[1] !== packageName || Number(record[2]) !== userId
-      || (declaredTask && Number(declaredTask[1]) !== taskId)) return reject('foreground_activity_owner_conflict');
+      || declaredTasks.some(value => !/^-?\d+$/.test(value) || Number(value) !== taskId)) return reject('foreground_activity_owner_conflict', 'ActivityRecord', bindings);
     activity = parsed[2].startsWith('.') ? `${packageName}${parsed[2]}` : parsed[2];
     component = `${packageName}/${activity}`;
-  } else if (activityLines.length || /\btaskId=/.test(container)) {
-    return reject('foreground_window_type_conflict');
-  }
-  return { ok: true, source: 'mCurrentFocus', packageName, activity, component, windowKind, windowType,
-    windowTitle, projectedComponent: focus.component ?? null, raw: focus.raw,
-    windowToken, userId, displayId, taskId, activityToken, ownerPid, ownerUid,
+  } else if (bindings.length || values.has('taskId')) return reject('foreground_window_type_conflict');
+  return { ...facts, ok: true, activity, component, taskId, activityToken,
+    projectedComponent: focus.component ?? null, raw: focus.raw,
     windowIdentity: JSON.stringify([windowToken, userId, displayId, windowType, taskId, activityToken, ownerPid, ownerUid]),
   };
 }
 
 function verifyForegroundPackageUid(foreground, raw) {
+  foreground = { ...foreground, evidence: { ...foreground.evidence, package: String(raw) } };
   const reject = error => ({ ...foreground, ok: false, ownershipVerified: false, error });
   const dump = String(raw).split(/\r?\n/);
   // Updated system apps also appear under "Hidden system packages:" with their
@@ -125,6 +179,7 @@ function verifyForegroundPackageUid(foreground, raw) {
   let end = start + 1;
   while (end < lines.length && (!lines[end].trim() || lines[end].search(/\S/) > indent)) end++;
   const body = lines.slice(start + 1, end);
+  foreground.evidence.package = lines.slice(start, end).join('\n');
   // PackageManager's userId field was renamed appId; both denote the app ID,
   // never a full multi-user UID. This matches android-permissions' contract.
   const ids = body.map(line => /^\s+(?:appId|userId)=(\d+)\s*$/.exec(line)).filter(Boolean);
@@ -137,6 +192,7 @@ function verifyForegroundPackageUid(foreground, raw) {
 }
 
 function verifyForegroundProcessIdentity(foreground, raw) {
+  foreground = { ...foreground, evidence: { ...foreground.evidence, process: String(raw) } };
   const lines = String(raw).split(/\r?\n/), bootId = lines[0];
   const stat = (lines[1] || '').match(/^(\d+) \((.*)\) ([A-Za-z]) (.+)$/);
   const pids = lines.map(line => line.match(/^Pid:\s+(\d+)\s*$/)).filter(Boolean);

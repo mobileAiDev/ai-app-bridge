@@ -1,37 +1,27 @@
-# 0.4.4 统一补丁发行检查
+# 0.4.5 统一补丁发行检查
 
-WindowManager 的多行窗口属性可以把完整的 `ty=BASE_APPLICATION` 或数值类型
-放在行尾。Host 0.4.3 将这种格式误报为窗口类型缺失，阻断本可确认归属的观察与操作。
-本次接受完整类型标记后的行尾，统一 CLI/MCP、Android SDK/plugin/六个执行器、
-iOS Swift、Flutter SDK/helper、Web SDK 为 0.4.4。嵌入式 native store 保持 0.2.0。
-
-## 修复与验证范围
-
-- 复用已在真机验证的单行解析修正，不以窗口标题替代实际 owner。
-- 保留 owner/package/UID、Activity、进程生命周期、窗口切换和操作前目标守卫。
-- 回归 API 25/30/36 的多行属性；拒绝缺失或未知类型、重复属性行、其他应用
-  Activity 及验证过程中发生的进程变化。
-- 原始真机窗口 dump 在旧解析器失败、新解析器成功。相同候选源码已验证嘀嗒
-  分身地图首页及“消息”“我的”两个登录入口，未据此声明账号和完整业务流程通过。
-- SDK/Web 执行行为不变，仅同步版本和 Android 依赖；其他应用的初始化问题
-  仍由各自诊断与业务验收结果判断。
+Android WindowManager 按字段解析，支持裸 mAttrs 和 WM.LayoutParams 前缀、合法空白、
+跨行、字段顺序与附加属性。缺失、冲突和未知保留诊断及原始依据，不补窗口归属。
+CLI/MCP/Script/Intent 把前台不匹配、变化和探测失败作为观测与 warning，保持明确目标。
+Android SDK/UIA 根据原节点引用执行并核对回执，不因窗口失焦单独否决或隐式换目标。
 
 ## 放行检查
 
-1. 前台 owner 与操作守卫回归、Host 完整功能组和串行性能组通过。
-2. Android build/lint/test、Swift iPhoneOS 构建、Flutter 分析和测试、Web 测试通过。
-   无 test 目录的 Flutter helper 只记录分析和发布验证。
-3. 最终 npm tarball 在仓库外安装；CLI/MCP 发现、提取、Script、Runtime 合同
-   及四平台 native addon 归档字节检查通过，UIA bundle 与源码构建结果一致。
-4. 两个 Flutter 包在已提交源码上完成发布 dry-run；保留历史 changelog。
+1. 先失败后修复的解析和动作回归；缺字段、冲突、未匹配节点、失效引用、窗口变化与
+   原回执恢复回归。Host 完整功能及串行性能检查。
+2. Android build/lint/test；UIA bundle 由本次源码重建并核对 hash。
+3. 仓库外安装最终 tarball，核实 CLI/MCP/Script 实际加载版本与 warning/派发合同。
+4. SUNMI K2 Mini API 25 指定 SIT App 的真机 SDK、Host 与
+   Runtime 对应候选；Bridge 点击收银台，以原回执、刷新树和截图确认页面变化。
+5. Swift 构建、Flutter 分析/测试/发布 dry-run、Web 测试构建及配套版本检查。
+
+统一版本为 0.4.5，嵌入式 native store 保持 0.2.0。已派发未知结果遵守原执行合同。
+不得把静态测试、传输成功或 warning 当成真机业务验收。
 
 ## 发布与本机升级
 
-推送验收提交和新 0.4.4 tag，核实 JitPack SDK/plugin/六个执行器公开坐标后
-发布 Flutter SDK/helper。发布受检 CLI 与 Web npm tarball，latest/next 统一
-为 0.4.4，并核对公开下载内容与冻结提交、候选归档及 GitHub Release。
-源码版本和上传成功不代替公开下载验证；发布结果单独记录。
-
-全局 CLI/MCP 与活动 Runtime 升级后核实路径、版本及 compatible 状态，保留
-各 Runtime 的事实目录和配置。MCP 连接需重新加载客户端后实际调用验证。
-remote-smoke 在公开 Web SDK 0.4.4 可用后升级精确依赖和锁文件并验证安装内容。
+经明确发布授权且门禁通过后，冻结提交和新 tag，发布 GitHub/JitPack、npm CLI/Web、
+Flutter SDK/helper；核对公开版本、下载文件及归档与受检源码一致。保持旧 tag。
+全局包与实际使用的 Runtime/MCP 升级后核实路径、版本、compatible 和实际调用。
+保留各 Runtime 的事实目录与配置。公开可用后再更新 remote-smoke 的精确依赖。
+发布结果、真机证据和剩余限制记录在发行交付文档，不能只凭版本号声明完成。

@@ -28,6 +28,7 @@ function commandFailure(error, command) {
     ...(command ? { command } : {}),
     ...(error?.field !== undefined ? { field: error.field } : {}),
     ...(error?.details !== undefined ? { details: error.details } : {}),
+    ...(error?.foregroundObservations ? { foregroundObservations: error.foregroundObservations, warnings: error.warnings } : {}),
     dispatched: typeof error?.dispatched === 'boolean' ? error.dispatched : null,
     ambiguous: known ? error.ambiguous : error?.ambiguous !== false,
     ...executionFields(error),

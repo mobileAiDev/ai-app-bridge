@@ -155,7 +155,7 @@ function matchingBinding(binding, request) {
     || !isDeepStrictEqual(binding.selector, request.target.selector) || binding.clickPolicy !== request.clickPolicy
     || binding.identityStrength !== 'same_connection_node_and_reobserved_attributes'
     || !record(binding.window) || !Number.isSafeInteger(binding.window.id) || binding.window.id < 0
-    || binding.window.displayId !== 0 || binding.window.focused !== true) return false;
+    || binding.window.displayId !== 0 || typeof binding.window.focused !== 'boolean') return false;
   const { target, actionTarget } = binding;
   for (const node of [target, actionTarget]) {
     if (!record(node) || node.windowId !== binding.window.id || typeof node.sourceId !== 'string'

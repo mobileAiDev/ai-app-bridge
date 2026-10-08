@@ -74,10 +74,12 @@ internal object NativeTargetContract {
         val parent = ancestor?.let { if (it.has("parent")) objectAt(it, "parent", "selector.within.ancestor.parent") else null }
         val parentKey = parent?.let { identityKey(it, ancestorFields, emptySet(), "selector.within.ancestor.parent") }
 
-        val window = NativeWindowContract.foregroundWindow(tree)
+        val windows = tree.optJSONArray("windows") ?: fail("native_windows_unavailable")
+        val window = (0 until windows.length()).map { windows.getJSONObject(it) }
+            .singleOrNull { it.opt("windowId") == expected.opt("windowId") } ?: fail("native_window_changed")
         val root = window.optJSONObject("root") ?: fail("native_window_unavailable")
         if (!visible(root) || !boundsValid(window.optJSONObject("bounds"))) fail("native_window_unavailable")
-        NativeWindowContract.requirePointerWindow(window, editable)
+        NativeWindowContract.requirePointerWindow(window)
 
         data class Candidate(val node: JSONObject, val ancestors: List<JSONObject>, val x: Int, val y: Int)
         val eligible = mutableListOf<Candidate>()

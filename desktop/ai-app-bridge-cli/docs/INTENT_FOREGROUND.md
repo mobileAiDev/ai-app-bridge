@@ -1,78 +1,83 @@
-# Android Intent foreground routing
+# Android foreground observations and explicit targets
 
-An Intent can keep its original business target while navigating through explicitly listed Android system apps. Supply `target.foregroundPackages` to enable this mode. Without that field, the existing explicit provider contract is unchanged.
+Foreground detection reports facts; it does not authorize or veto actions. The same
+contract applies to CLI, MCP, Script and Android Intent. No force or confirmation
+flag is required to act when the foreground differs or cannot be probed.
+
+Results expose `foregroundObservations` and `warnings`, including:
+
+- `expected`: the explicitly requested serial and package.
+- `actual`: observed window owner, type, Activity, UID/process identity and raw
+  evidence where available. Missing fields remain missing. `ownershipVerified`
+  is true only after the WindowManager, PackageManager and process checks pass.
+- `status`: `match`, `mismatch`, `unknown`, or `observed` for a device-only request.
+- `reason`, `source`, `startedAtMs` and `observedAtMs`: the diagnosis and timing.
+
+A parsing failure is `unknown`, never proof of a mismatch. Specific causes such as
+`foreground_window_type_missing`, conflicting field values, unknown types and ADB
+stderr remain available. Window titles are client data, not owner identities.
+The parser reads fields independently of indentation, line order and optional
+LayoutParams class prefixes; it accepts platform numeric and symbolic types.
+Nested LayoutParams task fields cannot replace the actual Activity task identity.
+
+`execution.ok`, `dispatched` and `ambiguous` describe the actual action. Warnings
+cannot turn failure into success or success into failure. Public reply `control`
+retains foreground feedback even when the caller extracts only part of `value`.
+A failed screenshot probe does not negate a successfully captured image.
+
+## Intent target selection
+
+An observation keeps its explicit provider and app. `target.foregroundPackages`
+is accepted for existing callers but no longer triggers routing or admission.
+An external package or an app overlay never implicitly changes the provider.
+The agent reads the observation and explicitly changes targets when appropriate:
 
 ```json
 {
   "command": "intent",
   "extract": null,
   "arguments": {
-    "operation": "start",
-    "goal": "Export a backup, choose its file in the system picker, and return to the notes app",
-    "provider": "native",
-    "target": {
-      "serial": "DEVICE_SERIAL",
-      "packageName": "io.github.mobileaidev.notallyx.sample",
-      "foregroundPackages": [
-        "com.coloros.filemanager"
-      ]
-    }
+    "operation": "observe",
+    "operationId": "EXISTING_OPERATION_ID",
+    "provider": "uia",
+    "observationTarget": { "packageName": "com.coloros.filemanager" }
   }
 }
 ```
 
-Use packages actually resolved on the device for the requested flow. `foregroundPackages` is an explicit array of additional package names; an empty array restricts the operation to its original app. It does not discover or grant access to unrelated apps.
+Use a package actually observed on the device. Set `observationTarget` to `null`
+to return to the original app; provider selection remains explicit. Android H5
+can also select `webViewId`. The summary separates `foreground` from
+`executionTarget`; the immutable Intent target continues to identify the business
+operation and capture streams. System-app UIA access does not imply SDK capture.
+Installer UI uses this same explicit observation target. Permission workflows
+retain their independent requester and permission-state verification.
 
-Each observation checks the canonical OS window owner and window/process identity before and after acquiring a fresh tree. The owner comes from the focused WindowState and verified package UID/process lifetime. A client-supplied window title can describe a guest app; it does not change the actual owner or grant access to that guest package. A host-owned clone window therefore uses the host package, including when its title displays a guest component. The UIA root must identify that same canonical owner package.
+Actions inherit their committed observation's provider and selected app. An
+incompatible provider requires a new `observe`; the tool never retries an action
+through another provider. `tap-text` and `wait-text` default to `native`.
+Explicit `provider: "auto"` remains an opt-in discovery request before selection.
 
-An Activity window in the original app uses the selected primary provider (`native`, `flutter`, `h5`, or `uia`); a listed external package or a non-Activity window uses UIA. This includes an app-owned overlay whose owner matches the original target. Provider failures remain errors, and never trigger a substitute tree. Activity windows require a real Activity/component. An explicitly identified non-Activity window has `activity: null` and `component: null`, with its actual OS window type, owner, and verified window/process identity still required. Missing Activity metadata on an Activity window is an error; it does not turn the window into a system window.
+## References, failures and continuation
 
-`uia_tree_changed` means the tree changed during traversal; that read supplies no
-complete tree. A caller may make another explicit read within its observation
-budget, retaining the failed read. It must obtain a complete current tree before
-choosing any action. The Host does not retry the read or substitute a provider.
+Native and UIA actions revalidate their originally bound window/node even when
+focus changes. H5 references retain the original WebView and document. Missing,
+replaced, expired or ambiguous targets fail specifically, without rebinding to
+another target. Required action properties, such as touchability or a working
+editor input connection, still apply. A coordinate request with no uniquely
+resolvable window cannot invent one.
 
-The summary contains `provider` and `foreground` (`packageName`, `activity`, `component`, `windowKind`, `windowType`, `windowIdentity`, `ownershipVerified`, owner UID/PID, boot identity, process start ticks, probe source and timestamps). Observation, decision, dispatch marker and receipt records preserve that route. `windowIdentity` is an opaque identity supplied by the Host; callers cannot supply or override it through the public target. The original `target` continues to identify the business operation and its app capture streams. System UIA observations do not imply that system-app network/state/event capture is available.
+A definite action failure leaves Intent available for another observation or
+explicit decision. A foreground change during capture returns both observations
+and a warning with the captured tree. UIA `uia_tree_changed`, in contrast, means
+traversal did not produce a complete tree; explicitly observe again before choosing
+a node. Missing callbacks after dispatch retain the original settlement and
+device-ownership recovery contract; foreground warnings do not release ownership
+or justify replaying an unknown action.
 
-Actions inherit the provider of their committed observation. An explicit conflicting provider is rejected. The adapter compares the canonical identity at action admission and immediately before entering the action port, after any node revalidation. A changed window token, owner, boot identity, or process start time requires `reobserve_required` even when the component name is unchanged. A prior route without a window identity also requires a new observation; missing values never compare as a valid identity. These checks also apply to installer choices and to the snapshots used by `wait-text`.
-
-Exact UIA taps use the API 25+ phone node runtime. Its `uia-node` execution receipt binds the Intent action ID, original request hash, runtime epoch, node/window attributes and original callback. The selected node is revalidated on the same automation connection before dispatch. A callback still requires a fresh observation and business checks; it does not create system-app SDK events.
-
-Device-scoped physical taps remain managed Android shell input. Cancellation
-and recovery follow the selected executor's admission and completion contract.
-If a dispatched action's terminal receipt is unavailable, durable device
-ownership blocks later mutations until `device-ownership reconcile` verifies
-that original receipt.
-Intent records retain both the original unknown result and any separate recovery
-history. A completed tap still requires a fresh observation and business checks.
-
-For exact UIA taps, use one of these selectors:
-
-```json
-{ "action": "tap", "selector": { "text": "NotallyX Backup 2026-09-07 \n15-44.zip" } }
-{ "action": "tap", "selector": { "resourceName": "com.coloros.filemanager:id/action_file_operate" } }
-{ "action": "tap", "selector": { "contentDescription": "返回" } }
-```
-
-The selector must identify exactly one enabled node in the observed package. Duplicate matches, unsupported selector fields and unavailable bounds fail before input. UIA lookup, compact trees and Intent summaries share the same XML attribute decoder, including decimal/hexadecimal character references. Decoding happens once: `&amp;#10;` stays literal `&#10;`, while `&#10;` becomes a newline. Invalid XML character references fail explicitly.
-
-If the foreground changes during observation, the operation enters `waiting_for_observation`. Call `operation: "observe"` with the same `operationId`; the operation returns to `waiting_for_decision` only after a new observation commits. Acting or completing from `waiting_for_observation` is rejected. Existing evidence-store failures retain their separate blocked state.
-
-Flutter taps accept one exact selector: `{ "text": "Settings" }` or
-`{ "nodeId": "15" }`. Put the identity inside `action.selector`.
-Text must identify one actionable node. Repeated
-labels such as three settings rows displaying "System" return
-`flutter_selector_not_unique` without dispatch. Select the intended row's
-`nodeId` from the current committed observation instead. IDs are local to that
-observation; a new tree requires a new lookup. A node must supply valid
-`tap.bounds`; the Host does not invent tap bounds for text-only nodes. Flutter
-coordinates remain logical pixels. Material `NavigationDestination` nodes
-expose their public labels and individual destination bounds.
-
-The operable tree traverses live Elements, including framework-owned pages
-such as `LicensePage`. It is separate from the diagnostic inspector summary.
-Repeated text for the same action region is emitted once; distinct settings
-rows keep distinct targets. Each emitted label needs its own visible bounds.
-The traversal reports truncation when its 512-level depth limit is reached.
-
-This brackets foreground identity; it is not an atomic OS screenshot/action transaction. Animations and layout changes within the same Activity still require fresh stable observations and post-action verification. This change does not add arbitrary UIA Unicode input or attachment/backup business assertions.
+Exact UIA selectors match text, resourceName or contentDescription in the explicit
+package. Multiple matches fail without picking the first. XML numeric entities
+are decoded once: `&#10;` becomes a newline, while `&amp;#10;` remains literal.
+Flutter exact text or nodeId selectors retain current logical-pixel target bounds;
+repeated labels require a more precise target. Fresh UI and business checks are
+still needed after a successful execution receipt.

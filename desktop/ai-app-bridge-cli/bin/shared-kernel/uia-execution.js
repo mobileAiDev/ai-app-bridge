@@ -60,7 +60,7 @@ async function executeUiaAction({ adb, serial, binding, actionId, timeoutMs = 10
       }
       for (;;) {
         const receipt = protocol.originalReceipt(response, identity);
-        if (receipt) { terminal = response; return { ...receipt, request, executionReceipt: protocol.settlementProof(response, identity) }; }
+        if (receipt) { terminal = response; return { ...receipt, warnings: receipt.binding?.warnings || [], request, executionReceipt: protocol.settlementProof(response, identity) }; }
         if (!matchingPending(response, identity)) throw new CommandError('invalid_uia_execution_receipt', 'UIA did not return a matching original action state.');
         if (response.error !== 'uia_action_pending') throw new CommandError(response.error, 'The original UIA action has not completed.');
         checkExecution();

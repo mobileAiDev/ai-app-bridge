@@ -44,22 +44,16 @@ class NativeWindowContractTest {
     private fun popup() = JSONObject().put("focused", false).put("focusable", false)
         .put("touchable", true).put("focusOwnerWindowId", "current-owner")
 
-    @Test fun touchablePopupUsesItsFocusedOwnerWithoutClaimingKeyboardFocus() {
+    @Test fun focusIsObservationAndDoesNotVetoTouchableWindows() {
         NativeWindowContract.requirePointerWindow(popup())
-        val error = runCatching { NativeWindowContract.requirePointerWindow(popup(), editable = true) }.exceptionOrNull()
-        assertEquals("native_input_window_not_focused", (error as NativeTargetFailure).code)
+        NativeWindowContract.requirePointerWindow(popup().put("focusOwnerWindowId", JSONObject.NULL))
+        NativeWindowContract.requirePointerWindow(popup().put("focusable", true))
+        NativeWindowContract.requirePointerWindow(JSONObject().put("touchable", true))
     }
 
-    @Test fun inactiveWindowsAndNonTouchableOverlaysRemainClosed() {
-        for ((window, code) in listOf(
-            popup().put("focusOwnerWindowId", JSONObject.NULL) to "native_window_not_focused",
-            popup().put("focusable", true) to "native_window_not_focused",
-            popup().put("touchable", false) to "native_window_not_touchable",
-            popup().put("focused", true).put("touchable", false) to "native_window_not_touchable",
-        )) {
-            val error = runCatching { NativeWindowContract.requirePointerWindow(window) }.exceptionOrNull()
-            assertEquals(code, (error as NativeTargetFailure).code)
-        }
+    @Test fun nonTouchableWindowsRetainTheirActionFailure() {
+        val error = runCatching { NativeWindowContract.requirePointerWindow(popup().put("touchable", false)) }.exceptionOrNull()
+        assertEquals("native_window_not_touchable", (error as NativeTargetFailure).code)
     }
 
     @Test fun missingOrCoercedWindowMetadataIsNotAReadyWindow() {

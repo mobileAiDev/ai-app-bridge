@@ -66,7 +66,7 @@ for (const [name, mutate, error] of [
   ['missing type', s => s.replace('ty=BASE_APPLICATION', 'flags=0'), 'foreground_window_type_missing'],
   ['unknown symbolic type', s => s.replace('ty=BASE_APPLICATION', 'ty=FUTURE_TYPE'), 'foreground_window_type_unsupported'],
   ['unknown numeric type', s => s.replace('ty=BASE_APPLICATION', 'ty=9999'), 'foreground_window_type_unsupported'],
-  ['duplicate attributes', s => s.replace('      fl=', '    mAttrs={ty=BASE_APPLICATION\n      fl='), 'foreground_window_type_missing'],
+  ['duplicate attributes', s => s.replace('      fl=', '    mAttrs={ty=BASE_APPLICATION\n      fl='), 'foreground_window_attributes_invalid'],
   ['foreign Activity', s => s.replace(`mActivityRecord=ActivityRecord{ddeeff u0 ${host}/`, `mActivityRecord=ActivityRecord{ddeeff u0 ${guest}/`), 'foreground_activity_owner_conflict'],
 ]) test(`multiline attributes reject ${name}`, () => {
   const result = parsed(mutate(wrapAttributes(fixture().windowDump)));
@@ -172,11 +172,12 @@ test('window equality cannot accept absent identity and includes lifetime beyond
     assert.equal(sameForegroundWindow(original, verified(fixture(options))), false);
 });
 
-test('app-scoped tap rejects a foreign actual owner even when its title names the requested app', async () => {
+test('explicit device tap reports a foreign actual owner even when its title names the requested app', async () => {
   const value = androidForegroundFixture('example.foreign', { title: `${host}/.MainActivity` });
   const result = await tap({ explicitPackageName: true, packageName: host }, 10, 10, { scope: 'device' }, {
     foregroundWindow: () => foregroundWindow({}, transport(value)),
-    adb: async () => assert.fail('Foreign owner must not dispatch any input'),
+    adb: async () => ({ dispatched: true, ambiguous: false }),
   });
-  assert.equal(result.error, 'foreground_package_mismatch'); assert.equal(result.dispatched, false);
+  assert.equal(result.warnings[0].code, 'foreground_package_mismatch'); assert.equal(result.dispatched, true);
+  assert.equal(result.foregroundObservations[0].actual.packageName, 'example.foreign');
 });

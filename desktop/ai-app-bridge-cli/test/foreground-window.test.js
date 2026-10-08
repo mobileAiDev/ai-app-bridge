@@ -114,7 +114,7 @@ test('a sole focus cannot override conflicting or mismatched focused-display met
   }
 });
 
-test('tap retains package and ambiguity checks after parsing all focus records', async () => {
+test('tap reports package and ambiguity observations without overriding execution', async () => {
   for (const raw of [
     `${display(1, 'null')}\n${display(0, other)}`,
     `${display(0, main)}\n${display(1, other)}`,
@@ -122,11 +122,11 @@ test('tap retains package and ambiguity checks after parsing all focus records',
     const foreground = parseForegroundWindow(raw);
     const result = await tap({ explicitPackageName: true, packageName: 'com.example.main' }, 10, 10, { scope: 'device' }, {
       foregroundWindow: async () => foreground,
-      adb: async () => assert.fail('Rejected focus must not dispatch input'),
+      adb: async () => ({ dispatched: true, ambiguous: false }),
     });
-    assert.equal(result.ok, false);
-    assert.equal(result.dispatched, false);
-    assert.deepEqual(result.targetFeedback.foreground, foreground);
-    assert.equal(result.error, foreground.ok ? 'foreground_package_mismatch' : 'foreground_probe_failed');
+    assert.equal(result.ok, true);
+    assert.equal(result.dispatched, true);
+    assert.deepEqual(result.foregroundObservations[0].actual, foreground);
+    assert.equal(result.warnings[0].code, foreground.ok ? 'foreground_package_mismatch' : foreground.error);
   }
 });

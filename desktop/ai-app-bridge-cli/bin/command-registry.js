@@ -39,12 +39,12 @@ const commandDefinitions = [
   { command: 'permission-revoke', domain: 'app', summary: 'Revoke a runtime permission as a fixture and verify the resulting PackageManager state.', targetApp: true, options: ['serial', 'packageName', 'permission', 'userId', 'adb', 'adbTimeoutMs', 'timeoutMs'] },
   { command: 'permission-dialog', domain: 'app', summary: 'Start an Intent for an already visible runtime permission request. Agent selects observed UI; PackageManager state and Activity closure verify allow, allow-once, deny or dismiss. Cancel stops the operation without closing the dialog.', targetApp: true, options: ['serial', 'packageName', 'permission', 'outcome', 'userId', 'timeoutMs', 'adb', 'adbTimeoutMs', 'recordingDir'] },
   { command: 'appops-set', domain: 'app', summary: 'Set an Android app-op mode.', targetApp: true, options: ['serial', 'packageName', 'op', 'mode'] },
-  { command: 'tap', domain: 'action', summary: 'Tap physical coordinates. App scope uses the SDK; device scope uses ADB. An explicit package must match the foreground in either scope.', options: ['serial', 'tapX', 'tapY', 'scope'] },
-  { command: 'tap-text', domain: 'action', summary: 'Observe then tap one exact text match. provider:auto selects Native, Flutter, then UIAutomator before one dispatch; an explicit provider pins Script replay.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider'] },
-  { command: 'tap-uia-text', domain: 'action', summary: 'Revalidate one exact UIAutomator text match and foreground before device input.', options: ['serial', 'targetText', 'exact'] },
-  { command: 'tap-uia', domain: 'action', summary: 'Tap one UIAutomator node by an exact semantic selector or an observed targetRef. Revalidate the original node and foreground before dispatch.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetRef'] },
-  { command: 'tap-native', domain: 'action', summary: 'Tap one exact Native selector, optionally scoped to an observed row. Revalidate the View and foreground, then send a bound SDK action. Shared by CLI, MCP and Script.', targetApp: true, options: ['serial', 'packageName', 'selector'] },
-  { command: 'wait-text', domain: 'action', summary: 'Wait for exact visible labels from one fresh foreground provider. Pure absence requires an explicit provider. Uses milliseconds.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider', 'timeoutMs', 'intervalMs', 'requireText', 'absentText', 'requireActivity'] },
+  { command: 'tap', domain: 'action', summary: 'Tap physical coordinates. App scope uses the SDK; device scope uses ADB. Foreground identity is advisory; the explicit scope selects the executor.', options: ['serial', 'tapX', 'tapY', 'scope'] },
+  { command: 'tap-text', domain: 'action', summary: 'Observe then tap one exact text match. Native is the default. Explicit provider:auto opts into ordered provider discovery before one dispatch.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider'] },
+  { command: 'tap-uia-text', domain: 'action', summary: 'Revalidate one exact UIAutomator text match; report foreground observations separately from execution.', options: ['serial', 'targetText', 'exact'] },
+  { command: 'tap-uia', domain: 'action', summary: 'Tap one UIAutomator node by an exact semantic selector or an observed targetRef. Revalidate the original node before dispatch; foreground changes are warnings.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetRef'] },
+  { command: 'tap-native', domain: 'action', summary: 'Tap one exact Native selector, optionally scoped to an observed row. Revalidate the original View, then send a bound SDK action with foreground observations. Shared by CLI, MCP and Script.', targetApp: true, options: ['serial', 'packageName', 'selector'] },
+  { command: 'wait-text', domain: 'action', summary: 'Wait for exact visible labels from one fresh foreground provider. Defaults to native; explicit auto discovery requires positive text. Uses milliseconds.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider', 'timeoutMs', 'intervalMs', 'requireText', 'absentText', 'requireActivity'] },
   { command: 'input-text', domain: 'action', summary: 'Replace native Android text, including empty or Unicode text. An exact selector binds the original editor; coordinates or the SDK focused-editor contract are separate targeting modes.', targetApp: true, options: ['serial', 'packageName', 'text', 'selector', 'tapX', 'tapY', 'hideKeyboard'] },
   { command: 'keyboard-state', domain: 'action', summary: 'Read Android soft keyboard visibility.', options: ['serial'] },
   { command: 'hide-keyboard', domain: 'action', summary: 'Hide the Android soft keyboard.', options: ['serial', 'force', 'intervalMs'] },
@@ -141,7 +141,7 @@ const isolatedCommandDefinitions = [
   {
     command: 'intent',
     domain: 'execution',
-    summary: 'Run an Intent: start, status, observe, decide, pause, resume, cancel, or intervene. The total deadline includes observation and decision waits. Cancel drains owned work before persisting the terminal outcome; status recovers durable outcomes after restart without replay. target.foregroundPackages explicitly enables Android foreground provider routing.',
+    summary: 'Run an Intent: start, status, observe, decide, pause, resume, cancel, or intervene. The total deadline includes observation and decision waits. Cancel drains owned work before persisting the terminal outcome; status recovers durable outcomes after restart without replay. Android foreground facts are advisory. Change package explicitly with observationTarget.packageName and provider with observe.',
     options: ['operation', 'recordingDir'],
   },
   {
@@ -436,7 +436,7 @@ function commandSchema(command) {
     if (properties.expectedPage) properties.expectedPage = h5.pageSchema;
     if (command === 'flutter-h5-input') properties.text = { type: 'string', maxLength: 16384 };
   }
-  if (command === 'tap-text') properties.provider = { enum: ['auto', 'native', 'flutter', 'uia'], default: 'auto' };
+  if (command === 'tap-text') properties.provider = { enum: ['auto', 'native', 'flutter', 'uia'], default: 'native' };
   if (command === 'tap-uia-text') properties.exact = { type: 'boolean', enum: [true], default: true };
   if (command === 'tap-uia') properties.selector = require('./shared-kernel/uia-target').selectorSchema;
   if (command === 'tap-native' || command === 'input-text') properties.selector = nativeSelector;
@@ -461,7 +461,7 @@ function commandSchema(command) {
   if (isAndroidMutation(command)) required.push('serial');
   if (definition.targetKind === 'web-target') required.push('sessionId');
   if (command === 'wait-text') {
-    properties.provider = { type: 'string', enum: ['auto', 'native', 'flutter', 'uia'], default: 'auto' };
+    properties.provider = { type: 'string', enum: ['auto', 'native', 'flutter', 'uia'], default: 'native' };
     properties.timeoutMs = { ...properties.timeoutMs, default: 10000 };
     for (const name of ['requireText', 'absentText']) properties[name] = { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1 } };
   }

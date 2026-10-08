@@ -110,13 +110,14 @@ async function executeDecisionAction(context, decision) {
       timings.receiptCommitMs = (timings.receiptCommitMs || 0) + (context.now() - receiptStarted);
       context.lastAction = { actionId: context.actionId, receiptId: receipt.ok ? receipt.evidenceId : null,
         error: result.error || null, ambiguous: result.ambiguous === true || !receipt.ok,
+        warnings: result.warnings || [], foregroundObservations: result.foregroundObservations || [],
         dispatched: result.dispatched ?? (result.ok ? true : null), mechanicalStatus: result.ok ? 'ok' : 'failed' };
       if (!receipt.ok) {
         return intentError(receipt.error || 'receipt_not_persisted', { ambiguous: true });
       }
       context.latestEvidenceIds.receipt = receipt.evidenceId;
       if (result?.ambiguous) return intentError('ambiguous', { ambiguous: true });
-      if (result?.ok === false) return intentError(result.error || 'action_failed');
+      if (result?.ok === false) return intentError(result.error || 'action_failed', executionFields(result));
       return { ok: true, receiptId: receipt.evidenceId, decisionId: decision.decisionId };
     });
   } catch (error) { return intentError(error.code || error.message, executionFields(error)); }

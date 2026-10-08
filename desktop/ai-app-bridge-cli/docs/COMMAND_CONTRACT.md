@@ -514,7 +514,7 @@ and `start.spec` are removed aliases.
 
 Intent start requires `goal` and an explicit Android, iOS or Web target. Android uses
 `platform:"android"`, `serial`, and `packageName`; optional fields include `adb`,
-`port` and a `foregroundPackages` allowlist. iOS uses `platform:"ios"`, `deviceId`
+`port` and legacy `foregroundPackages` metadata (no automatic routing). iOS uses `platform:"ios"`, `deviceId`
 and `bundleId`, plus the SDK/WDA binding described above. Web uses `platform:"web"`,
 `sessionId`, `runtimeEpoch` and the observed `targetId`, with provider `h5`. Supervised
 mode is the default. Autonomous mode requires `mode:"autonomous"` and `agentModule`;
@@ -662,9 +662,11 @@ runtime schemas are still being tightened. The current contract does not claim
 that every advertised optional parameter is already equally meaningful on all
 platforms. Read `entrypoints.script` independently of direct MCP availability.
 
-`tap` uses physical pixels. An explicit package must match the foreground even
-with `feedback:"off"`. App scope uses the SDK; `scope:"device"` chooses physical
-ADB input. Unknown/mismatched foreground is a non-dispatched failure.
+`tap` uses physical pixels. App scope uses the SDK; `scope:"device"` chooses physical
+ADB input. Foreground mismatch, change and probe failure are independent observations
+and warnings, including with `feedback:"off"`; they do not veto an explicit action.
+`execution.ok`, `dispatched` and `ambiguous` retain the actual executor result.
+See [Android foreground observations](INTENT_FOREGROUND.md) for evidence and target selection.
 `tap-flutter` uses Flutter logical pixels, with no DPR multiplication.
 
 `tree` and `uia-tree` compact reads accept `maxDepth` from 0 to 200 and
@@ -930,12 +932,12 @@ accessibility descriptions. When this yields several candidates, use `tap-uia`
 or an Intent with a precise selector to state which attribute is intended.
 
 `tap-text`, `tap-uia-text` and `tap-flutter-text` share exact, unique selection,
-fresh revalidation and foreground checks. Auto discovery happens only before a
-provider is selected. Revalidation failure never dispatches through a different
-provider. Native selection is limited to the top non-hidden window; a dialog,
-unknown root or disabled foreground root cannot expose a background target.
-Flutter text targeting also checks that the native foreground is the activity.
-Coordinates returned by Flutter remain logical pixels.
+fresh node revalidation and independent foreground feedback. The default provider
+is native; explicitly requested auto discovery happens only before a provider is
+selected. Revalidation failure never dispatches through a different provider.
+Initial Native selection requires a resolvable observed window. Once bound, the
+original window/node is revalidated even when focus changes. Flutter operations
+stay with Flutter when a native dialog is observed. Coordinates remain logical pixels.
 
 Native Intent tap/input/longPress/swipe/scroll and Flutter tap/input/scrollBy re-read before input.
 UIA revalidates its saved node reference on the phone before Binder admission.
@@ -965,7 +967,7 @@ unbound targets fail without dispatch. Passive descendants inside a selected
 semantic container may receive its gesture; an interactive child or unrelated
 overlay still prevents that container tap.
 
-`input-text` with a `selector` uses the same foreground and View revalidation,
+`input-text` with a `selector` uses the same View revalidation and foreground feedback,
 requires `editable:true`, and sends the exact editor reference to the SDK.
 CLI, MCP and Script share this entry; missing, ambiguous, replaced or noneditable
 targets fail before input. For example:
@@ -1192,16 +1194,17 @@ not evidence of Activity ownership. A missing token, unresolved parent or unknow
 window type blocks selection with `native_window_metadata_unavailable`.
 Native tree snapshots publish this decision as `foregroundWindowId`, referring to
 exactly one entry in `windows`. Host summaries and semantic selection consume
-that identity, and SDK semantic, coordinate, gesture and H5 execution use the same
-window policy. Native window snapshots without this field require an updated SDK;
-Host does not reconstruct the decision from focus or array order.
+that identity for initial window selection. Missing or ambiguous metadata is reported
+by the SDK as nullable `foregroundWindowId` plus `foregroundWarning`. A bound semantic
+reference selects its exact original window; a changed foreground alone does not
+invalidate it. Host does not reconstruct missing identity from array order.
 
 A touchable, non-focusable
-popup can use its focused owner with the same application window token; the SDK
-does not select a background window when the popup blocks an action. Native/H5
-window selection shares this rule. Native window observation carries
+popup retains its application-window ownership. Bound Native/H5 requests keep the
+original window or WebView, require an attached operable target, and report lack of
+window focus as a warning. Native window observation carries
 `focused`, `focusable`, `touchable` and nullable
-`focusOwnerWindowId`. Native input requires actual focus in the selected window.
+`focusOwnerWindowId`. Native input requires the selected editor to accept focus and provide an input connection; window focus alone is not an admission veto.
 Native touch events keep screen-space `rawX/rawY` and window-local `x/y` distinct,
 so App outside-touch interceptors receive the same coordinate spaces as normal input.
 Script and direct callers use the shared `native-gesture` command, requiring

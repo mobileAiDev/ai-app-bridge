@@ -56,19 +56,18 @@ test('scoped Unicode input and clearing dispatch to the original editor with nat
   }
 });
 
-test('ambiguous, replaced, noneditable, wrong-foreground and unbound editors never receive input', async () => {
+test('ambiguous, replaced, noneditable, unbound editors never receive input', async () => {
   const errors = { ambiguous: 'native_selector_ambiguous', replaced: 'reobserve_required',
-    noneditable: 'native_target_not_editable', foreground: 'foreground_changed_during_observation',
+    noneditable: 'native_target_not_editable',
     unbound: 'native_atomic_target_unavailable' };
   for (const [scenario, error] of Object.entries(errors)) {
     const original = tree(), changed = structuredClone(original);
     if (scenario === 'replaced') changed.root.children[1].children[1].targetRef.viewId = 'replacement';
     if (scenario === 'noneditable') original.root.children[1].children[1].editable = false;
     if (scenario === 'unbound') delete original.root.children[1].children[1].targetRef;
-    let reads = 0, foregroundReads = 0;
+    let reads = 0;
     const result = await inputNativeText(ctx, 'must-not-write', { selector: scenario === 'ambiguous' ? { text: 'Previous' } : selector }, {
-      foregroundWindow: async () => scenario === 'foreground' && ++foregroundReads > 1
-        ? { ...foreground, component: 'example.native/.Other' } : foreground,
+      foregroundWindow: async () => foreground,
       bridgeTree: async () => scenario === 'replaced' && ++reads > 1 ? changed : original,
       bridgePost: async () => assert.fail('No mutation may be sent'),
     });

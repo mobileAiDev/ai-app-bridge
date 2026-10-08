@@ -5,9 +5,9 @@ const { foregroundNativeWindow, explicitlyHidden } = require('./native-target');
 const { parseXmlAttributes } = require('./xml-attributes');
 const { looksLikeAndroidUiHierarchyXml, visitAndroidUiHierarchyTags } = require('../android-uia-xml');
 const { runExecution, checkExecution, executionSleep } = require('./execution-scope');
-const { validForegroundIdentity, sameForegroundWindow } = require('./android-foreground-identity');
+const { readForegroundFeedback, withForeground } = require('./android-foreground-feedback');
 
-function validateTextConditions({ targetText, requireText = [], absentText = [], requireActivity, provider = 'auto' }) {
+function validateTextConditions({ targetText, requireText = [], absentText = [], requireActivity, provider = 'native' }) {
   const invalid = (field, message) => { throw new CommandError('invalid_argument', message, { field }); };
   if (!['auto', 'native', 'flutter', 'uia'].includes(provider)) invalid('provider', 'provider must be auto, native, flutter, or uia.');
   if (targetText !== undefined && (typeof targetText !== 'string' || !targetText)) invalid('targetText', 'targetText must be a non-empty exact label.');
@@ -70,45 +70,38 @@ async function waitForText({ options, readTree, readForeground }) {
   if (!Number.isSafeInteger(intervalMs) || intervalMs < 1) throw new CommandError('invalid_argument', 'intervalMs must be a positive integer.', { field: 'intervalMs' });
   const deadline = Date.now() + timeoutMs;
   let lastCheck = null;
+  let feedback;
   try {
     return await runExecution({ timeoutMs, mutation: false }, async () => {
       for (;;) {
-        const foreground = await readForeground();
+        feedback = await readForegroundFeedback(options, readForeground);
         checkExecution();
-        if (!foreground?.ok) throw new CommandError('foreground_probe_failed', 'The foreground app could not be verified.');
-        if (!validForegroundIdentity(foreground)) throw new CommandError('foreground_identity_required', 'The foreground window identity is required.');
-        if (options.packageName && foreground.packageName !== options.packageName) throw new CommandError('foreground_package_mismatch', 'The foreground app differs from packageName.');
-        let nativeTree;
         let successfulReads = 0;
         const failures = [];
         for (const provider of conditions.provider === 'auto' ? ['native', 'flutter', 'uia'] : [conditions.provider]) {
           try {
-            if (provider === 'flutter') {
-              nativeTree ??= await readTree('native');
-              if (foregroundNativeWindow(nativeTree)?.type !== 'activity') throw new CommandError('native_foreground_blocks_flutter', 'A native foreground window covers Flutter.');
-            }
-            const rawTree = provider === 'native' ? (nativeTree = await readTree(provider)) : await readTree(provider);
+            const rawTree = await readTree(provider);
             const labels = visibleLabels(provider, rawTree);
-            const after = await readForeground();
+            const after = await readForegroundFeedback(options, readForeground, feedback.foregroundObservations[0]);
+            feedback = withForeground(after, feedback);
             checkExecution();
-            if (!after?.ok || !validForegroundIdentity(after) || !sameForegroundWindow(after, foreground)) {
-              throw new CommandError('foreground_changed_during_observation', 'The foreground changed while reading text.');
-            }
+            const actual = after.foregroundObservations[0].actual;
+            const activity = actual?.ok && (!options.packageName || actual.packageName === options.packageName) ? actual.activity : null;
             successfulReads++;
-            lastCheck = { ...checkTextConditions(labels, after.activity, conditions), provider, observedAtMs: Date.now() };
-            if (lastCheck.ok) return { ok: true, conditions, matched: lastCheck };
+            lastCheck = { ...checkTextConditions(labels, activity, conditions), provider, observedAtMs: Date.now() };
+            if (lastCheck.ok) return withForeground({ ok: true, conditions, matched: lastCheck }, feedback);
           } catch (error) {
             checkExecution();
             failures.push({ provider, error: error.code || 'observation_unavailable', message: String(error.message).split('\n')[0] });
           }
         }
-        if (!successfulReads) return { ok: false, error: 'observation_unavailable', dispatched: false, ambiguous: false, failures };
+        if (!successfulReads) return withForeground({ ok: false, error: 'observation_unavailable', dispatched: false, ambiguous: false, failures }, feedback);
         await executionSleep(Math.min(intervalMs, Math.max(1, deadline - Date.now())));
       }
     });
   } catch (error) {
     if (error.code !== 'deadline_exceeded') throw error;
-    return { ok: false, error: 'deadline_exceeded', dispatched: false, ambiguous: false, timeoutMs, conditions, lastCheck };
+    return withForeground({ ok: false, error: 'deadline_exceeded', dispatched: false, ambiguous: false, timeoutMs, conditions, lastCheck }, feedback);
   }
 }
 

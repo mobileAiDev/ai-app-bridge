@@ -73,16 +73,16 @@ class NativeTargetContractTest {
         fails("native_target_not_editable") { resolve(tree(editor().put("editable", false)), ref(old)) }
     }
 
-    @Test fun nativeFocusIsRequiredAndAForegroundDialogBlocksTheActivity() {
+    @Test fun boundWindowRemainsTheTargetAcrossFocusAndForegroundChanges() {
         val old = editor(); val snapshot = tree(old)
         snapshot.getJSONArray("windows").getJSONObject(0).put("focused", false)
-        fails("native_window_not_focused") { resolve(snapshot, ref(old)) }
+        assertSame(old, resolve(snapshot, ref(old)).node)
         snapshot.getJSONArray("windows").put(tree(node("id/dialog"), windowId = "dialog").getJSONArray("windows").getJSONObject(0))
         snapshot.put("foregroundWindowId", "dialog")
-        fails("native_selector_not_found") { resolve(snapshot, ref(old)) }
+        assertSame(old, resolve(snapshot, ref(old)).node)
         snapshot.getJSONArray("windows").put(JSONObject().put("windowId", "unknown").put("root", JSONObject()))
         snapshot.put("foregroundWindowId", "unknown")
-        fails("native_window_unavailable") { resolve(snapshot, ref(old)) }
+        assertSame(old, resolve(snapshot, ref(old)).node)
     }
 
     @Test fun executionUsesTheSdkForegroundDecisionEvenWhileAnExitingWindowRemainsAttached() {
@@ -91,15 +91,15 @@ class NativeTargetContractTest {
         assertSame(current, resolve(snapshot, ref(current)).node)
     }
 
-    @Test fun missingOrInvalidForegroundDecisionNeverFallsBackToWindowOrder() {
+    @Test fun explicitReferenceSurvivesUnknownForegroundButNeverAmbiguousWindowIdentity() {
         val current = editor(); val snapshot = tree(current)
         snapshot.remove("foregroundWindowId")
-        fails("native_window_metadata_unavailable") { resolve(snapshot, ref(current)) }
+        assertSame(current, resolve(snapshot, ref(current)).node)
         snapshot.put("foregroundWindowId", "absent")
-        fails("native_window_metadata_unavailable") { resolve(snapshot, ref(current)) }
+        assertSame(current, resolve(snapshot, ref(current)).node)
         snapshot.put("foregroundWindowId", "window")
         snapshot.getJSONArray("windows").put(snapshot.getJSONArray("windows").getJSONObject(0))
-        fails("native_window_metadata_unavailable") { resolve(snapshot, ref(current)) }
+        fails("native_window_changed") { resolve(snapshot, ref(current)) }
     }
 
     @Test fun clippedOrDisabledAncestorsExcludeTheControl() {

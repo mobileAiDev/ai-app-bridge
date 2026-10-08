@@ -49,10 +49,11 @@ test('a precise text selector neither falls back to a description nor picks betw
   assert.deepEqual(peer.dispatches, []);
 });
 
-test('precise UIA selection preserves foreground binding and rejects mixed fields before dispatch', async t => {
+test('precise UIA selection preserves explicit package binding and rejects mixed fields before dispatch', async t => {
   const { peer, args } = await fixture(t);
   const foreground = await executeCommand('tap-uia', { ...args, packageName: 'another.app', selector: { text: '全部文件' } });
-  assert.equal(foreground.error, 'foreground_package_mismatch'); assert.equal(foreground.dispatched, false);
+  assert.equal(foreground.error, 'uia_selector_not_found');
+  assert.equal(foreground.warnings[0].code, 'foreground_package_mismatch'); assert.equal(foreground.dispatched, false);
   const invalid = await executeCommand('tap-uia', { ...args, selector: { text: '全部文件', contentDescription: '全部文件' } });
   assert.equal(invalid.ok, false); assert.equal(invalid.dispatched, false);
   assert.deepEqual(peer.dispatches, []);

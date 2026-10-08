@@ -35,8 +35,8 @@ function harness(extra = {}, { provider = 'native', foregroundPackages = [picker
     foregroundWindow: async () => ownedWindow(foregroundPackage, windowFields),
     bridgeTree: async ctx => { calls.push(['native', ctx.packageName]); return native; },
     uiaTreeOnce: async ctx => { calls.push(['uia', ctx.packageName]); return xml; },
-    tap: async (ctx, x, y, options) => { calls.push(['tap', ctx.packageName, x, y, options]); foregroundPackage = foregroundPackage === home ? picker : home; return { ok: true }; },
-    uiaTap: async (ctx, binding) => { calls.push(['uiaTap', ctx.packageName, binding, ctx.runtimeActionId]); foregroundPackage = home; return { ok: true }; },
+    tap: async (ctx, x, y, options) => { calls.push(['tap', ctx.packageName, x, y, options]); foregroundPackage = foregroundPackage === home ? picker : home; return { ok: true, dispatched: true, ambiguous: false }; },
+    uiaTap: async (ctx, binding) => { calls.push(['uiaTap', ctx.packageName, binding, ctx.runtimeActionId]); foregroundPackage = home; return { ok: true, dispatched: true, ambiguous: false }; },
     findUiaNodeByAny: bridge.findUiaNodeByAny,
     ...extra,
   };
@@ -56,271 +56,137 @@ test('UIA lookup, compact tree and Intent summary decode numeric XML entities ex
   assert.equal(bridge.findUiaNodeByAny(escaped, { texts: ['A📄\n&#10;"<'], exact: true })?.matched.text, 'A📄\n&#10;"<');
 });
 
-test('one supervised Intent observes native -> allowed system UIA -> native and attributes actions to the observed package', async () => {
+test('Intent keeps the explicit provider and package until the agent changes the observation target', async () => {
   const h = harness();
   let state = await h.worker.start();
-  assert.equal(state.ok, true);
   state = await h.worker.decide({ decisionId: 'open', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
   assert.equal(state.ok, true);
-  assert.equal(state.summary.provider, 'uia');
-  assert.equal(state.summary.foreground.packageName, picker);
-  assert.equal(state.summary.nodes.find(n => n.text)?.text, filename);
-  state = await h.worker.decide({ decisionId: 'file', basedOnRevision: state.revision, agentDecision: 'act',
-    action: { action: 'tap', selector: { text: filename } } });
-  assert.equal(state.ok, true);
   assert.equal(state.summary.provider, 'native');
-  assert.equal(state.summary.foreground.packageName, home);
+  assert.equal(state.summary.foreground.packageName, picker);
+  assert.equal(state.summary.executionTarget.packageName, home);
+  assert.equal(state.summary.warnings[0].code, 'foreground_package_mismatch');
+  assert.equal(h.calls.some(c => c[0] === 'uia'), false);
+  state = await h.worker.observe({ provider: 'uia', observationTarget: { packageName: picker } });
+  assert.equal(state.ok, true, JSON.stringify(state));
+  assert.equal(state.summary.provider, 'uia');
+  state = await h.worker.decide({ decisionId: 'file', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
+  assert.equal(state.ok, true, JSON.stringify(state));
   assert.deepEqual(h.calls.filter(c => c[0] === 'tap' || c[0] === 'uiaTap').map(c => c[1]), [home, picker]);
-  const uia = h.calls.find(c => c[0] === 'uiaTap');
-  assert.deepEqual(uia[2].target.selector, { kind: 'text', value: filename, exact: true, packageName: picker });
-  assert.match(uia[3], /:file$/, 'the original Intent action ID reaches the node runtime');
-  assert.equal(h.calls.filter(c => c[0] === 'tap').length, 1, 'only the native action uses the native tap port');
-  assert.equal(h.worker.context.target.packageName, home, 'the business/capture target stays the original app');
+  assert.equal(h.worker.context.target.packageName, home);
 });
 
-test('foreground changes after observation require reobserve and dispatch no tap', async () => {
+for (const [name, fields] of [
+  ['probe failure', { ok: false, error: 'foreground_window_type_missing', ownershipVerified: false, evidence: { window: 'mAttrs=unknown' } }],
+  ['window change', { windowIdentity: 'different-window' }],
+  ['missing identity', { ok: false, error: 'foreground_window_identity_missing', windowIdentity: undefined, ownershipVerified: false }],
+]) test(`Intent returns ${name} without blocking a bound action or later observation`, async () => {
   const h = harness();
-  const state = await h.worker.start();
-  h.setForeground(picker);
-  const result = await h.worker.decide({ decisionId: 'stale', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
-  assert.equal(result.ok, false); assert.equal(result.error, 'reobserve_required');
-  assert.equal(h.calls.filter(c => c[0] === 'tap').length, 0);
-  assert.equal((await h.worker.observe()).summary.provider, 'uia');
-});
-
-test('unlisted foreground package is explicit failure and no provider tree is read', async () => {
-  const h = harness(); h.setForeground('other.app');
-  const result = await h.worker.start();
-  assert.equal(result.ok, false); assert.equal(result.error, 'foreground_package_not_allowed');
-  assert.deepEqual(h.calls, []);
-});
-
-test('foreground transition during tree capture does not publish the old tree', async () => {
-  let h;
-  h = harness({ bridgeTree: async () => { h.setForeground(picker); return native; } });
-  const result = await h.worker.start();
-  assert.equal(result.ok, false); assert.equal(result.error, 'foreground_changed_during_observation');
-  assert.equal(result.summary, null);
-  assert.equal(result.status, 'waiting_for_observation');
-  assert.equal((await h.worker.decide({ decisionId: 'stale', agentDecision: 'complete' })).error, 'not_waiting_for_decision');
-  const refreshed = await h.worker.observe();
-  assert.equal(refreshed.ok, true); assert.equal(refreshed.summary.provider, 'uia'); assert.equal(refreshed.error, null);
-});
-
-test('a UIA dump from a different package cannot be published under the foreground identity', async () => {
-  const h = harness({ uiaTreeOnce: async () => xml.replaceAll(picker, 'other.app') }); h.setForeground(picker);
-  const result = await h.worker.start();
-  assert.equal(result.ok, false); assert.equal(result.error, 'observed_foreground_package_mismatch');
-  assert.equal(result.summary, null);
-});
-
-test('invalid XML character references fail before selection', () => {
-  for (const reference of ['&#0;', '&#xD800;', '&#1114112;']) {
-    assert.throws(() => bridge.findUiaNodeByAny(xml.replace('&#10;', reference), { texts: [filename], exact: true }), /invalid_xml_character_reference/);
+  let state = await h.worker.start();
+  h.setWindow(fields);
+  state = await h.worker.decide({ decisionId: name, basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
+  assert.equal(state.ok, true, JSON.stringify(state));
+  assert.equal(h.calls.filter(c => c[0] === 'tap').length, 1);
+  assert.ok(state.lastAction.warnings.length);
+  assert.equal(state.lastAction.dispatched, true);
+  const observed = await h.worker.observe();
+  assert.equal(observed.ok, true);
+  if (fields.ok === false) {
+    assert.equal(observed.summary.foreground.ok, false);
+    assert.equal(observed.summary.foreground.ownershipVerified, false);
+    assert.equal(observed.summary.warnings[0].code, fields.error);
   }
 });
 
-test('a provider override cannot apply native coordinates to a UIA observation', async () => {
-  const h = harness(); h.setForeground(picker);
+test('unlisted actual foreground remains a warning, with the original app tree and no guessed ownership', async () => {
+  const h = harness(); h.setForeground('other.app');
   const state = await h.worker.start();
-  const result = await h.worker.decide({ decisionId: 'wrong-provider', basedOnRevision: state.revision, agentDecision: 'act',
-    action: { action: 'tap', provider: 'native', selector: { text: filename } } });
-  assert.equal(result.ok, false); assert.equal(result.error, 'invalid_argument');
-  assert.equal(result.field, 'decision.action.provider');
-  assert.equal(h.calls.filter(c => c[0] === 'tap').length, 0);
+  assert.equal(state.ok, true);
+  assert.equal(state.summary.foreground.packageName, 'other.app');
+  assert.equal(state.summary.executionTarget.packageName, home);
+  assert.equal(state.summary.warnings[0].status, 'mismatch');
+  assert.deepEqual(h.calls, [['native', home]]);
 });
 
-test('duplicate exact UIA text cannot silently pick the first file', async () => {
-  const duplicate = uiaXml(`<hierarchy><node package="${picker}" class="android.widget.FrameLayout" bounds="[0,0][400,800]"><node package="${picker}" text="NotallyX Backup&#10;2026-09-07.zip" resource-id="${picker}:id/file_name" class="android.widget.TextView" enabled="true" clickable="true" bounds="[20,100][380,180]"/><node package="${picker}" text="NotallyX Backup&#10;2026-09-07.zip" resource-id="${picker}:id/file_name" class="android.widget.TextView" enabled="true" clickable="true" bounds="[20,200][380,280]"/></node></hierarchy>`);
-  const h = harness({ uiaTreeOnce: async () => duplicate }); h.setForeground(picker);
+test('a foreground change during capture returns the tree with both observations and a warning', async () => {
+  let h;
+  h = harness({ bridgeTree: async () => { h.setForeground(picker); return native; } });
+  const result = await h.worker.start();
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'waiting_for_decision');
+  assert.equal(result.summary.provider, 'native');
+  assert.ok(result.summary.warnings.some(w => w.code === 'foreground_changed'));
+  assert.equal(result.summary.foregroundObservations[0].actual.packageName, home);
+  assert.equal(result.summary.foregroundObservations[1].actual.packageName, picker);
+});
+
+test('a UIA tree belonging to another app is reported as observed; the explicit target selector does not migrate', async () => {
+  const h = harness({}, { provider: 'uia' });
+  const state = await h.worker.start();
+  const action = await h.worker.decide({ decisionId: 'foreign-tree', basedOnRevision: state.revision,
+    agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
+  assert.equal(action.ok, false);
+  assert.equal(action.error, 'uia_selector_not_found');
+  assert.equal(action.lastAction.dispatched, false);
+  assert.equal(h.calls.some(c => c[0] === 'uiaTap'), false);
+  assert.equal((await h.worker.observe()).ok, true);
+});
+
+test('node replacement is still an action failure; fresh observation can continue the same Intent', async () => {
+  let reads = 0;
+  const changed = structuredClone(native); changed.root.targetRef.viewId = 'replacement';
+  const h = harness({ bridgeTree: async () => ++reads === 1 ? native : changed });
+  const state = await h.worker.start();
+  const result = await h.worker.decide({ decisionId: 'replaced', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
+  assert.equal(result.error, 'reobserve_required');
+  assert.equal(result.lastAction.dispatched, false);
+  assert.equal(h.calls.some(c => c[0] === 'tap'), false);
+  assert.equal((await h.worker.observe()).ok, true);
+});
+
+test('a failed node action retains foreground warnings and leaves later commands available', async () => {
+  const h = harness({ tap: async () => ({ ok: false, error: 'native_target_not_operable', dispatched: false, ambiguous: false }) });
+  let state = await h.worker.start(); h.setForeground(picker);
+  state = await h.worker.decide({ decisionId: 'failed-node', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
+  assert.equal(state.error, 'native_target_not_operable');
+  assert.equal(state.lastAction.dispatched, false);
+  assert.equal(state.lastAction.ambiguous, false);
+  assert.equal(state.lastAction.warnings[0].code, 'foreground_package_mismatch');
+  assert.equal((await h.worker.observe()).ok, true);
+});
+
+test('provider override requires an explicit new observation', async () => {
+  const h = harness(); const state = await h.worker.start();
+  const result = await h.worker.decide({ decisionId: 'wrong-provider', basedOnRevision: state.revision,
+    agentDecision: 'act', action: { action: 'tap', provider: 'uia', selector: { text: filename } } });
+  assert.equal(result.error, 'invalid_argument'); assert.equal(result.field, 'decision.action.provider');
+  assert.equal(h.calls.some(c => c[0] === 'tap' || c[0] === 'uiaTap'), false);
+});
+
+test('duplicate exact UIA text never chooses the first match', async () => {
+  const duplicate = uiaXml(`<hierarchy><node package="${picker}" class="android.widget.FrameLayout" bounds="[0,0][400,800]">${[100, 200].map(top => `<node package="${picker}" class="android.widget.TextView" text="NotallyX Backup&#10;2026-09-07.zip" enabled="true" clickable="true" bounds="[20,${top}][380,${top + 80}]"/>`).join('')}</node></hierarchy>`);
+  const h = harness({ uiaTreeOnce: async () => duplicate }, { provider: 'uia' });
+  const started = await h.worker.start();
+  assert.equal(started.ok, true, JSON.stringify(started));
+  const state = await h.worker.observe({ provider: 'uia', observationTarget: { packageName: picker } });
+  assert.equal(state.ok, true, JSON.stringify(state));
+  const result = await h.worker.decide({ decisionId: 'duplicate', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
+  assert.equal(result.error, 'uia_selector_not_unique');
+  assert.equal(result.lastAction.dispatched, false);
+});
+
+test('the production parser and Intent adapter preserve actual owner independently of explicit target', async () => {
+  const fixture = androidForegroundFixture(picker, { apiLevel: 25, title: `${home}/.Projected` });
+  fixture.windowDump = fixture.windowDump.replace('mAttrs={', 'mAttrs=WM.LayoutParams{');
+  const h = harness({ foregroundWindow: ctx => bridge.foregroundWindow(ctx, { adb: async (_ctx, args) => {
+    if (args.join(' ') === 'shell dumpsys window -a') return { stdout: fixture.windowDump };
+    if (args.join(' ') === `shell dumpsys package ${picker}`) return { stdout: fixture.packageDump };
+    return { stdout: fixture.processDump };
+  } }) });
   const state = await h.worker.start();
   assert.equal(state.ok, true, JSON.stringify(state));
-  const result = await h.worker.decide({ decisionId: 'ambiguous-file', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
-  assert.equal(result.ok, false); assert.equal(result.error, 'uia_selector_not_unique');
-  assert.equal(h.calls.filter(c => c[0] === 'tap').length, 0);
-});
-
-for (const [name, changedIdentity] of [
-  ['window token', `window:${home}:token2:pid100:start1000`],
-  ['owner process', `window:${home}:token1:pid101:start1001`],
-  ['reused owner PID', `window:${home}:token1:pid100:start2000`],
-]) {
-  test(`same component with a different ${name} invalidates observation and dispatch`, async () => {
-    const h = harness();
-    const state = await h.worker.start();
-    assert.equal(state.ok, true);
-    h.setWindow({ windowIdentity: changedIdentity });
-    const result = await h.worker.decide({ decisionId: 'changed-identity', basedOnRevision: state.revision,
-      agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
-    assert.equal(result.error, 'reobserve_required');
-    assert.equal(h.calls.some(call => call[0] === 'tap' || call[0] === 'uiaTap'), false);
-  });
-}
-
-test('same component changing its window during tree capture is not committed', async () => {
-  let h;
-  h = harness({ bridgeTree: async () => {
-    h.setWindow({ windowIdentity: `window:${home}:token2:pid100:start1000` });
-    return native;
-  } });
-  const result = await h.worker.start();
-  assert.equal(result.error, 'foreground_changed_during_observation');
-  assert.equal(result.status, 'waiting_for_observation');
-  assert.equal(result.summary, null);
-});
-
-test('a window replaced during native node revalidation is rejected immediately before the action port', async () => {
-  let h, reads = 0;
-  h = harness({ bridgeTree: async () => {
-    if (++reads === 2) h.setWindow({ windowIdentity: `window:${home}:token2:pid100:start1000` });
-    return native;
-  } });
-  const state = await h.worker.start();
-  const result = await h.worker.decide({ decisionId: 'late-replacement', basedOnRevision: state.revision,
-    agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
-  assert.equal(result.error, 'reobserve_required');
-  assert.equal(h.calls.some(call => call[0] === 'tap'), false);
-});
-
-test('UIA dispatch rechecks the canonical identity after action admission', async () => {
-  let reads = 0;
-  const h = harness({
-    foregroundWindow: async () => ownedWindow(home, ++reads < 4 ? {} : {
-      windowIdentity: `window:${home}:token2:pid100:start1000`,
-    }),
-    uiaTreeOnce: async () => xml.replaceAll(picker, home),
-  }, { provider: 'uia', foregroundPackages: [] });
-  const observed = await h.worker.start();
-  assert.equal(observed.ok, true);
-  const result = await h.worker.decide({ decisionId: 'late-uia-replacement', basedOnRevision: observed.revision,
-    agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
-  assert.equal(result.error, 'reobserve_required');
-  assert.equal(h.calls.some(call => call[0] === 'uiaTap'), false);
-});
-
-test('missing canonical identity cannot pass through equal undefined fields', async () => {
-  const h = harness({ foregroundWindow: async () => ownedWindow(home, { windowIdentity: undefined }) });
-  const result = await h.worker.start();
-  assert.equal(result.error, 'foreground_identity_required');
-  assert.deepEqual(h.calls, []);
-});
-
-test('an old route without a window identity cannot dispatch against a fresh observation', async () => {
-  const h = harness();
-  const observation = await h.adapter.observe({ ...h.target, provider: 'native', rawTreeId: 'route-upgrade' });
-  const { windowIdentity, ...oldRoute } = observation.route;
-  const result = await h.adapter.action({ ...h.target, primaryProvider: 'native', rawTree: observation.rawTree,
-    actionId: 'old-route', route: oldRoute, spec: { provider: 'native', action: 'tap', selector: { text: '导入' } } });
-  assert.equal(result.error, 'reobserve_required');
-  assert.equal(result.dispatched, false);
-  assert.equal(h.calls.some(call => call[0] === 'tap'), false);
-});
-
-test('a verified non-Activity SystemUI window routes through UIA with a nullable component', async () => {
-  const system = 'com.android.systemui';
-  let h;
-  h = harness({
-    uiaTreeOnce: async () => xml.replaceAll(picker, system),
-    uiaTap: async (ctx, binding) => {
-      h.calls.push(['uiaTap', ctx.packageName, binding]);
-      h.setForeground(home); h.setWindow({});
-      return { ok: true };
-    },
-  }, { foregroundPackages: [system] });
-  h.setForeground(system);
-  h.setWindow({ windowKind: 'non-activity', windowType: 2014, component: null, activity: null,
-    windowIdentity: 'system-panel:token3:pid200:start3000' });
-  const observed = await h.worker.start();
-  assert.equal(observed.ok, true, JSON.stringify(observed));
-  assert.equal(observed.summary.provider, 'uia');
-  assert.equal(observed.summary.foreground.component, null);
-  assert.equal(observed.summary.foreground.windowIdentity, 'system-panel:token3:pid200:start3000');
-  const acted = await h.worker.decide({ decisionId: 'system-node', basedOnRevision: observed.revision,
-    agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
-  assert.equal(acted.ok, true, JSON.stringify(acted));
-  assert.equal(h.calls.filter(call => call[0] === 'uiaTap').length, 1);
-  assert.equal(acted.summary.foreground.packageName, home);
-});
-
-test('a guest title on a host-owned window observes and acts using the canonical host owner', async () => {
-  const guest = 'com.baidu.searchbox.tomas';
-  const h = harness({ uiaTreeOnce: async () => xml.replaceAll(picker, home) },
-    { provider: 'uia', foregroundPackages: [home, guest] });
-  h.setWindow({ projectedComponent: `${guest}/com.baidu.perf.safemode.SafeModeActivity` });
-  const observed = await h.worker.start();
-  assert.equal(observed.ok, true, JSON.stringify(observed));
-  assert.equal(observed.summary.foreground.packageName, home);
-  assert.equal(observed.summary.foreground.ownershipVerified, true);
-  assert.equal(observed.summary.foreground.ownerPid, 100);
-  const acted = await h.worker.decide({ decisionId: 'host-node', basedOnRevision: observed.revision,
-    agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
-  assert.equal(acted.ok, true, JSON.stringify(acted));
-  const call = h.calls.find(value => value[0] === 'uiaTap');
-  assert.equal(call[1], home);
-  assert.equal(call[2].target.selector.packageName, home);
-});
-
-test('a non-Activity overlay owned by the primary app uses UIA rather than its Activity SDK', async () => {
-  const h = harness({
-    bridgeTree: async () => assert.fail('An app-owned overlay must not query an Activity SDK tree'),
-    uiaTreeOnce: async () => xml.replaceAll(picker, home),
-  }, { foregroundPackages: [] });
-  h.setWindow({ windowKind: 'non-activity', windowType: 2038, component: null, activity: null,
-    windowIdentity: 'app-overlay:token3:pid100:start1000' });
-  const observed = await h.worker.start();
-  assert.equal(observed.ok, true, JSON.stringify(observed));
-  assert.equal(observed.summary.provider, 'uia');
-  const acted = await h.worker.decide({ decisionId: 'owned-overlay', basedOnRevision: observed.revision,
-    agentDecision: 'act', action: { action: 'tap', selector: { text: filename } } });
-  assert.equal(acted.ok, true, JSON.stringify(acted));
-  assert.equal(h.calls.filter(call => call[0] === 'uiaTap').length, 1);
-});
-
-// Retain the saved owner patch's integration boundary: replace only the OS read
-// transport, so the owner parser, process/PM checks, route and node binding all run.
-test('the production foreground query and Intent adapter agree on projected titles and actual owners', async t => {
-  const guest = 'com.baidu.searchbox.tomas';
-  for (const scenario of [
-    { name: 'host-owned guest projection', owner: home, title: `${guest}/.GuestActivity`, root: home, allowed: [home, guest] },
-    { name: 'original guest with a host title', owner: guest, title: `${home}/.MainActivity`, root: guest, allowed: [], error: 'foreground_package_not_allowed' },
-    { name: 'verified host with a genuinely different UIA root', owner: home, title: `${guest}/.GuestActivity`, root: guest, allowed: [guest], error: 'observed_foreground_package_mismatch' },
-  ]) await t.test(scenario.name, async () => {
-    const fixture = androidForegroundFixture(scenario.owner, { title: scenario.title });
-    const reads = [], trees = [], taps = [];
-    const ports = {
-      createBridgeContext: value => value,
-      foregroundWindow: ctx => bridge.foregroundWindow(ctx, { adb: async (_ctx, args) => {
-        reads.push(args);
-        if (args.join(' ') === 'shell dumpsys window -a') return { stdout: fixture.windowDump };
-        if (args.join(' ') === `shell dumpsys package ${scenario.owner}`) return { stdout: fixture.packageDump };
-        assert.deepEqual(args, ['shell', 'cat', '/proc/sys/kernel/random/boot_id', `/proc/${fixture.pid}/stat`, `/proc/${fixture.pid}/status`]);
-        return { stdout: fixture.processDump };
-      } }),
-      uiaTreeOnce: async ctx => { trees.push(ctx.packageName); return xml.replaceAll(picker, scenario.root); },
-      uiaTap: async (ctx, binding) => { taps.push({ packageName: ctx.packageName, binding }); return { ok: true }; },
-    };
-    const adapter = createProductionIntentDeviceAdapter({ ports,
-      lease: { acquire: () => ({ ok: true, release() {} }) } });
-    const target = { serial: 'recorded-owner-integration', packageName: home, foregroundPackages: scenario.allowed };
-    const observation = await adapter.observe({ ...target, provider: 'uia', rawTreeId: 'production-owner-tree' });
-    if (scenario.error) {
-      assert.equal(observation.error, scenario.error);
-      assert.deepEqual(taps, []);
-      if (scenario.error === 'foreground_package_not_allowed') assert.deepEqual(trees, []);
-    } else {
-      assert.equal(observation.ok, true, JSON.stringify(observation));
-      assert.equal(observation.route.packageName, home);
-      assert.equal(observation.route.ownerUid, fixture.uid);
-      assert.equal(observation.route.ownerPid, fixture.pid);
-      assert.equal(observation.route.ownershipVerified, true);
-      const acted = await adapter.action({ ...target, route: observation.route, rawTree: observation.rawTree,
-        primaryProvider: 'uia', actionId: 'production-owner-tap',
-        spec: { action: 'tap', provider: 'uia', selector: { text: filename } } });
-      assert.equal(acted.ok, true, JSON.stringify(acted));
-      assert.equal(taps.length, 1);
-      assert.equal(taps[0].packageName, home);
-      assert.equal(taps[0].binding.target.selector.packageName, home);
-    }
-    assert.equal(reads.some(args => args.includes('input')), false);
-  });
+  assert.equal(state.summary.foreground.packageName, picker);
+  assert.equal(state.summary.foreground.ownershipVerified, true);
+  assert.equal(state.summary.foreground.ownerUid, fixture.uid);
+  assert.equal(state.summary.executionTarget.packageName, home);
+  assert.equal(state.summary.warnings[0].code, 'foreground_package_mismatch');
 });

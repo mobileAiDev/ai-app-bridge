@@ -52,7 +52,7 @@ async function main(directory) {
   assert.equal(crypto.createHash('sha256').update(fs.readFileSync(nativeInfo.path)).digest('hex'), nativeInfo.sha256);
   const calls = path.join(out, 'controlled-adb.jsonl');
   const adb = path.join(out, 'controlled-adb');
-  const uia = await createUiaRuntimeFixture({ directory: path.join(out, 'controlled-uia'), serial: 'controlled-package-device',
+  const uia = await createUiaRuntimeFixture({ directory: path.join(out, 'controlled-uia'), serial: 'controlled-package-device', foregroundPackage: 'example.other',
     xml: '<hierarchy><node package="example.uia" class="android.widget.LinearLayout" text="Package UI probe" enabled="true" clickable="true" bounds="[0,0][100,100]"><node package="example.uia" class="android.widget.Button" text="Child" content-desc="Package UI probe" resource-id="example.uia:id/child" enabled="true" clickable="true" bounds="[0,0][10,10]"/></node></hierarchy>' });
   fs.writeFileSync(adb, `#!${process.execPath}
 if (require(${JSON.stringify(require.resolve('../../test-support/uia-runtime-fixture'))}).handleUiaRuntimeFixture(process.argv.slice(2), { directory: ${JSON.stringify(uia.directory)} })) process.exit(0);
@@ -112,7 +112,13 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     const preciseCli = await cli('tap-uia', { ...uiaArgs, selector: { contentDescription: 'Package UI probe' } });
     const preciseMcp = await run('tap-uia', { ...uiaArgs, selector: { resourceName: 'example.uia:id/child' } });
     assert.equal(preciseCli.ok, true); assert.equal(preciseMcp.ok, true);
-    report.preciseUia = { cli: preciseCli.executionReceipt, mcp: preciseMcp.executionReceipt };
+    for (const result of [preciseCli, preciseMcp]) {
+      assert.equal(result.dispatched, true); assert.equal(result.ambiguous, false);
+      assert.equal(result.warnings[0].code, 'foreground_package_mismatch');
+      assert.equal(result.foregroundObservations[0].expected.packageName, 'example.uia');
+      assert.equal(result.foregroundObservations[0].actual.packageName, 'example.other');
+    }
+    report.preciseUia = { cli: preciseCli.executionReceipt, mcp: preciseMcp.executionReceipt, foregroundWarning: 'foreground_package_mismatch' };
     report.executionContract = await require('./verify-execution-contract').verifyExecutionContract({ out, serverPath: path.join(installed, 'bin/mcp-server.js') });
     report.autonomousContract = await require('./verify-execution-contract').verifyAutonomousContract({ out, serverPath: path.join(installed, 'bin/mcp-server.js') });
     const runtime = await run('script', { operation: 'runtime-status' });
@@ -124,6 +130,7 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
       if (tree.result.nodes.length !== 1 || tree.result.nodes[0].text !== 'Package UI probe') throw new Error('UIA depth filter failed');
       const precise = await ctx.call('tap-uia', { adb: ${JSON.stringify(uia.adb)}, packageName: 'example.uia', selector: { text: 'Package UI probe' } });
       if (!precise.ok || precise.executionReceipt.actionId !== precise.execution.actionId) throw new Error('UIA original Script action identity missing');
+      if (precise.warnings[0].code !== 'foreground_package_mismatch' || !precise.dispatched || precise.ambiguous) throw new Error('Script lost foreground/execution facts');
       const action = await ctx.call('keyevent', { adb: ${JSON.stringify(adb)}, keyCode: 0 });
       if (!action.ok) throw new Error(action.error);
       const answer = await ctx.askAgent({ question: 'Return a structured result' });

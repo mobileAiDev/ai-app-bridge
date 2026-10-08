@@ -39,7 +39,7 @@ for (const [name, mutate] of [
   ['other selector', r => { r.binding.selector.value = 'Delete'; }],
   ['other policy', r => { r.binding.clickPolicy = 'exact_node'; }],
   ['other window', r => { r.binding.actionTarget.windowId++; }],
-  ['unfocused window', r => { r.binding.window.focused = false; }],
+  ['missing focus observation', r => { delete r.binding.window.focused; }],
   ['nondefault display', r => { r.binding.window.displayId = 1; }],
   ['other package', r => { r.binding.target.packageName = 'other.app'; }],
   ['other matched text', r => { r.binding.target.text = 'Delete'; }],
@@ -113,4 +113,13 @@ for (const [name, mutate] of [
   const { identity, receipt, wrap } = recoveryVector(); mutate(receipt, identity);
   assert.equal(protocol.originalReceipt(wrap(receipt), identity), null);
   assert.equal(protocol.settlementProof(wrap(receipt), identity), null);
+});
+
+
+test('a valid callback from the originally bound unfocused window remains settled, with its warning', () => {
+  const { identity, receipt, wrap } = vector();
+  receipt.binding.window.focused = false;
+  receipt.binding.warnings = [{ code: 'uia_window_not_focused', source: 'AccessibilityWindowInfo.isFocused', windowId: receipt.binding.window.id, observedAtMs: 123 }];
+  assert.deepEqual(protocol.originalReceipt(wrap(receipt), identity), receipt);
+  assert.equal(protocol.settlementProof(wrap(receipt), identity).dispatched, true);
 });

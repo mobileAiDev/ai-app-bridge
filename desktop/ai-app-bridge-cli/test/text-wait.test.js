@@ -24,7 +24,7 @@ test('wait-text validates units, exact arrays, conflicting conditions and explic
   for (const invalid of [
     { ...args, timeoutSec: 1 }, { ...args, requireText: 'Editor, v2' },
     { ...args, requireText: Array.from({ length: 65 }, (_, index) => `label-${index}`) },
-    { ...args, absentText: ['Save, draft'] }, { packageName: 'example.app', absentText: ['Loading'] },
+    { ...args, absentText: ['Save, draft'] }, { packageName: 'example.app', absentText: ['Loading'], provider: 'auto' },
   ]) assert.throws(() => validateCommandArguments('wait-text', invalid));
   assert.deepEqual(validateTextConditions({ absentText: ['Loading'], provider: 'uia' }).absent, ['Loading']);
 });
@@ -64,29 +64,32 @@ test('pure absence cannot pass when observation fails or returns invalid materia
   }
 });
 
-test('foreground changes invalidate the text snapshot instead of reporting success', async () => {
+test('foreground changes are warnings independent of the text predicate', async () => {
   let reads = 0;
   const result = await waitText(ctx, 'Save, draft', { provider: 'native', timeoutMs: 100 }, ports({
     foregroundWindow: async () => ++reads === 1 ? fg : { ...fg, component: 'example.app/.Other' },
   }));
-  assert.equal(result.ok, false); assert.equal(result.failures[0].error, 'foreground_changed_during_observation');
+  assert.equal(result.ok, true); assert.equal(result.warnings[0].code, 'foreground_changed');
 });
 
 for (const identity of ['window:token2:pid100:start1000', 'window:token1:pid101:start1001', 'window:token1:pid100:start2000']) {
-  test(`text cannot match across a changed canonical identity ${identity}`, async () => {
+  test(`text matches retain a warning for changed canonical identity ${identity}`, async () => {
     let reads = 0;
     const result = await waitText(ctx, 'Save, draft', { provider: 'native', timeoutMs: 100 }, ports({
       foregroundWindow: async () => ++reads === 1 ? fg : { ...fg, windowIdentity: identity },
     }));
-    assert.equal(result.ok, false);
-    assert.equal(result.failures[0].error, 'foreground_changed_during_observation');
+    assert.equal(result.ok, true);
+    assert.equal(result.warnings[0].code, 'foreground_changed');
   });
 }
 
-test('missing canonical identity cannot prove matching text', async () => {
-  await assert.rejects(waitText(ctx, 'Save, draft', { provider: 'native', timeoutMs: 100 }, ports({
-    foregroundWindow: async () => ({ ...fg, windowIdentity: undefined }),
-  })), { code: 'foreground_identity_required' });
+test('a failed foreground probe does not replace successful provider text evidence', async () => {
+  const result = await waitText(ctx, 'Save, draft', { provider: 'native', timeoutMs: 100 }, ports({
+    foregroundWindow: async () => ({ ok: false, error: 'foreground_window_identity_missing' }),
+  }));
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings[0].code, 'foreground_window_identity_missing');
+  assert.equal(result.matched.activity, null);
 });
 
 test('UIA text can match a verified non-Activity window without inventing an Activity', async () => {

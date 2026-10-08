@@ -44,6 +44,10 @@ function executionFacts(value, completed) {
 function controlFacts(command, value, history) {
   const control = {};
   if (isRecord(value)) {
+    for (const key of ['warnings', 'foregroundObservations']) {
+      if (value[key] !== undefined) control[key] = value[key];
+      else if (intentCommands.has(command) && value.summary?.[key] !== undefined) control[key] = value.summary[key];
+    }
     if (command === 'script') Object.assign(control, pick(value, scriptControlKeys));
     else if (intentCommands.has(command)) Object.assign(control, pick(value, intentControlKeys));
     else Object.assign(control, pick(value, commonControlKeys));

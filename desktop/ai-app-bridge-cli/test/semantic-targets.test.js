@@ -11,7 +11,11 @@ const bounds = { left: 0, top: 0, right: 200, bottom: 400 };
 const node = extra => ({ targetRef: nativeTargetRef(), visible: true, effectiveVisible: true, enabled: true, bounds, children: [], ...extra });
 // Explicit SDK decisions for these synthetic window layouts.
 const windowTree = (windows, foreground = windows.length - 1) => ({ foregroundWindowId: `window-${foreground}`,
-  windows: windows.map((window, index) => ({ ...window, windowId: `window-${index}` })) });
+  windows: windows.map((window, index) => {
+    function bind(node) { if (node?.targetRef) node.targetRef.windowId = `window-${index}`; for (const child of node?.children || []) bind(child); }
+    bind(window.root);
+    return { ...window, windowId: `window-${index}` };
+  }) });
 
 test('text selection cannot cross a foreground dialog or an unknown/disabled foreground root', () => {
   const background = node({ text: 'Delete account' });
@@ -32,7 +36,7 @@ test('a target clipped by or hidden below an ancestor is not actionable', () => 
   ]) assert.equal(findTappableNodeByText({ root: node({ children: [container] }) }, 'Delete account').node, null);
 });
 
-test('automatic discovery never targets the underlying Flutter page through a native dialog', async () => {
+test('default text targeting stays on the native provider when its selector is absent', async () => {
   let effects = 0;
   let flutterReads = 0;
   const background = node({ className: 'io.flutter.embedding.android.FlutterView' });
@@ -48,7 +52,7 @@ test('automatic discovery never targets the underlying Flutter page through a na
   assert.equal(result.dispatched, false);
   assert.equal(effects, 0);
   assert.equal(flutterReads, 0);
-  assert.ok(result.observations.some(item => item.error === 'native_foreground_blocks_flutter'));
+  assert.deepEqual(result.observations.map(item => item.provider), ['native']);
 });
 
 const target = { serial: 'semantic-device', packageName: 'example.app' };
@@ -73,11 +77,11 @@ test('all native Intent selectors preserve target identity after layout movement
       spec: { provider: 'native', selector: { resourceName: 'example.app:id/Name' }, ...spec } });
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(reads, 1); assert.equal(calls.length, 1);
-    if (spec.action === 'inputText') assert.deepEqual(calls[0].args[1].nativeTarget, { selector: { resourceName: 'example.app:id/Name' }, targetRef: nativeTargetRef() });
+    if (spec.action === 'inputText') assert.deepEqual(calls[0].args[1].nativeTarget, { selector: { resourceName: 'example.app:id/Name' }, targetRef: { ...nativeTargetRef(), windowId: 'window-0' } });
     else if (spec.action === 'tap') assert.deepEqual(calls[0].args.slice(0, 2), [70, 120]);
     else {
       assert.equal(calls[0].kind, 'gesture');
-      assert.deepEqual(calls[0].args[0].targetRef, nativeTargetRef());
+      assert.deepEqual(calls[0].args[0].targetRef, { ...nativeTargetRef(), windowId: 'window-0' });
       assert.equal(calls[0].args[0].startX, undefined); assert.equal(calls[0].args[0].startY, undefined);
     }
   }
@@ -91,7 +95,6 @@ test('changed native identity, editability, ambiguity or foreground window rejec
     [nativeTree([control({ text: 'Other account' })]), 'tap', 'reobserve_required'],
     [nativeTree([control({ editable: undefined })]), 'inputText', 'native_target_not_editable'],
     [nativeTree([control(), control()]), 'tap', 'native_selector_ambiguous'],
-    [dialog, 'tap', 'reobserve_required'],
   ]) {
     let effects = 0;
     const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,
@@ -146,7 +149,7 @@ test('the former text-only UIA Intent path now requires a unique exact match', a
   assert.equal(effects, 0);
 });
 
-test('a pinned Flutter text command also respects the native foreground window', async () => {
+test('a pinned Flutter text command reports its own observation failure', async () => {
   let effects = 0;
   const result = await tapText({ ...target, explicitPackageName: true }, 'Name', { provider: 'flutter' }, {
     foregroundWindow: async () => ({ ok: true, packageName: target.packageName, component: 'example.app/.Main' }),
@@ -154,5 +157,5 @@ test('a pinned Flutter text command also respects the native foreground window',
     flutterNodes: async () => { throw new Error('background Flutter cannot be read'); },
     flutterAction: async () => { effects++; return { ok: true }; },
   });
-  assert.equal(result.error, 'native_foreground_blocks_flutter'); assert.equal(result.dispatched, false); assert.equal(effects, 0);
+  assert.equal(result.error, 'observation_unavailable'); assert.equal(result.dispatched, false); assert.equal(effects, 0);
 });

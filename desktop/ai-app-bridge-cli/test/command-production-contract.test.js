@@ -104,18 +104,22 @@ test('CLI alone converts textual numbers and preserves keyCode zero', t => {
   assert.equal(fs.existsSync(log), false);
 });
 
-test('app-scoped and package-bound device taps refuse a mismatched or unknown foreground', async () => {
+test('foreground warnings do not replace device execution or SDK availability results', async () => {
   const ctx = { explicitPackageName: true, packageName: 'contract.expected' };
   for (const foreground of [{ ok: true, packageName: 'contract.other' }, { ok: false, error: 'unreadable' }]) {
     for (const options of [{ feedback: 'off', appLocalAction: true }, { scope: 'device' }]) {
       const calls = [];
       const result = await tap(ctx, 10, 20, options, {
         foregroundWindow: async () => foreground,
-        adb: async () => calls.push('adb'), bridgePost: async () => calls.push('sdk'),
+        bridgeStatus: async () => { calls.push('status'); return { ok: false, error: 'not_connected' }; },
+        adb: async () => { calls.push('adb'); return { dispatched: true, ambiguous: false }; },
+        bridgePost: async () => assert.fail('No SDK runtime was advertised'),
       });
-      assert.equal(result.ok, false);
-      assert.equal(result.dispatched, false);
-      assert.deepEqual(calls, []);
+      assert.equal(result.ok, options.scope === 'device');
+      assert.equal(result.dispatched, options.scope === 'device');
+      assert.deepEqual(calls, options.scope === 'device' ? ['adb'] : ['status']);
+      assert.equal(result.warnings[0].code, foreground.ok ? 'foreground_package_mismatch' : 'unreadable');
+      if (options.scope !== 'device') assert.equal(result.error, 'native_execution_unavailable');
     }
   }
 });
@@ -215,11 +219,11 @@ test('automatic text routing discovers providers before one action and never ret
     flutterAction: async (_ctx, action) => { calls.push(action); return { ok: false, error: 'action_result_unknown', ambiguous: true }; },
     tap: async () => { calls.push('wrong-dispatch'); return { ok: true }; },
   };
-  const result = await tapText(ctx, '设置', {}, deps);
+  const result = await tapText(ctx, '设置', { provider: 'auto' }, deps);
   assert.equal(result.provider, 'flutter');
   assert.equal(result.ambiguous, true);
   assert.equal(result.ok, false);
-  assert.deepEqual(calls, ['observe-native', 'observe-flutter', 'observe-native', 'observe-flutter', { action: 'tapTarget', selector: { text: '设置' }, targetRef: flutterRef('e1') }]);
+  assert.deepEqual(calls, ['observe-native', 'observe-flutter', 'observe-flutter', { action: 'tapTarget', selector: { text: '设置' }, targetRef: flutterRef('e1') }]);
   assert.deepEqual(result.observations.map(item => item.status), ['not-found', 'matched']);
   calls.length = 0;
   const nativeOnly = await tapText(ctx, '设置', { provider: 'native' }, deps);
@@ -245,15 +249,15 @@ test('automatic text routing permits read-only discovery failure but refuses amb
       return { ok: true };
     },
   };
-  const result = await tapText(ctx, '设置', {}, deps);
+  const result = await tapText(ctx, '设置', { provider: 'auto' }, deps);
   assert.equal(result.ok, true); assert.equal(result.provider, 'uia'); assert.equal(dispatches, 1);
-  const duplicate = await tapText(ctx, '设置', {}, { ...deps, uiaTree: async () => xml + xml });
+  const duplicate = await tapText(ctx, '设置', { provider: 'auto' }, { ...deps, uiaTree: async () => xml + xml });
   assert.equal(duplicate.error, 'target_ambiguous'); assert.equal(duplicate.dispatched, false); assert.equal(dispatches, 1);
   let reads = 0;
   const changed = await tapText(ctx, '设置', { provider: 'uia' }, { ...deps,
     foregroundWindow: async () => (++reads === 1 ? foreground : { ...foreground, component: 'contract.app/.Other' }),
   });
-  assert.equal(changed.error, 'foreground_changed_during_observation'); assert.equal(dispatches, 1);
+  assert.equal(changed.ok, true); assert.equal(changed.warnings[0].code, 'foreground_changed'); assert.equal(dispatches, 2);
 });
 
 test('Script discovery is first-class, and fixture permissions are opt-in with the same mutation lease', async () => {

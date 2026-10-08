@@ -52,20 +52,35 @@ test('a scoped repeated control sends one bound SDK tap and retains its original
   assert.equal(Object.hasOwn(calls[0].body, 'y'), false);
 });
 
-test('ambiguous, replaced, wrong-foreground and unbound selections never dispatch', async () => {
-  for (const scenario of ['ambiguous', 'replaced', 'foreground', 'unbound']) {
+test('ambiguous, replaced, unbound selections never dispatch', async () => {
+  for (const scenario of ['ambiguous', 'replaced', 'unbound']) {
     const original = tree(), changed = structuredClone(original);
     if (scenario === 'replaced') changed.root.children[1].children[1].targetRef.viewId = 'replaced-view';
     if (scenario === 'unbound') delete original.root.children[1].children[1].targetRef;
-    let reads = 0, foregroundReads = 0;
+    let reads = 0;
     const result = await tapNative(ctx, { selector: scenario === 'ambiguous' ? { text: 'Open' } : selector }, {
-      foregroundWindow: async () => scenario === 'foreground' && ++foregroundReads > 1
-        ? { ...foreground, component: 'example.native/.Other' } : foreground,
+      foregroundWindow: async () => foreground,
       bridgeTree: async () => scenario === 'replaced' && ++reads > 1 ? changed : original,
       bridgePost: async () => assert.fail('No mutation may be sent'),
     });
     assert.equal(result.ok, false, scenario); assert.equal(result.dispatched, false, scenario);
     assert.equal(result.error, { ambiguous: 'native_selector_ambiguous', replaced: 'reobserve_required',
-      foreground: 'foreground_changed_during_observation', unbound: 'native_atomic_target_unavailable' }[scenario]);
+      unbound: 'native_atomic_target_unavailable' }[scenario]);
   }
+});
+
+for (const actual of [
+  { ok: false, error: 'foreground_window_type_missing', ownershipVerified: false },
+  { ...foreground, packageName: 'another.app' },
+]) test(`a bound SDK tap executes despite ${actual.error || 'another foreground app'}`, async () => {
+  const snapshot = tree(); let dispatches = 0;
+  const result = await tapNative(ctx, { selector }, {
+    foregroundWindow: async () => actual, bridgeTree: async () => snapshot, bridgeStatus: nativeBridgeStatus,
+    bridgePost: async (_ctx, _path, body) => { dispatches++; return nativeExecutionReceipt(body); },
+  });
+  assert.equal(dispatches, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.dispatched, true);
+  assert.equal(result.ambiguous, false);
+  assert.equal(result.warnings[0].code, actual.error || 'foreground_package_mismatch');
 });

@@ -67,26 +67,26 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         return node;
     }
 
-    private Snapshot read() throws Exception {
+    private Snapshot read(Integer windowId) throws Exception {
         AccessibilityWindowInfo focused = null;
         for (AccessibilityWindowInfo window : connection.windows()) {
-            if (UiaConnection.displayId(window) != 0 || !window.isFocused()) continue;
+            if (windowId == null ? UiaConnection.displayId(window) != 0 || !window.isFocused() : window.getId() != windowId) continue;
             if (focused != null) throw new Wire.Failure("uia_focused_window_not_unique");
             focused = window;
         }
-        if (focused == null) throw new Wire.Failure("uia_focused_window_unavailable");
+        if (focused == null) throw new Wire.Failure(windowId == null ? "uia_focused_window_unavailable" : "uia_stale_reference");
         AccessibilityNodeInfo root = focused.getRoot();
         if (root == null) throw new Wire.Failure("uia_focused_root_unavailable");
         Snapshot snapshot = new Snapshot();
         snapshot.window = new JSONObject().put("id", focused.getId()).put("displayId", UiaConnection.displayId(focused))
-            .put("type", focused.getType()).put("focused", true).put("title", nullable(focused.getTitle()));
+            .put("type", focused.getType()).put("focused", focused.isFocused()).put("title", nullable(focused.getTitle()));
         snapshot.root = walk(root, null, snapshot, 0);
         return snapshot;
     }
 
     JSONObject observe() throws Exception {
         connection.waitForIdle(100, 3000);
-        Snapshot snapshot = read();
+        Snapshot snapshot = read(null);
         Iterator<Snapshot> existing = snapshots.values().iterator();
         while (existing.hasNext()) if (existing.next().expires <= snapshot.created) existing.remove();
         if (snapshots.size() == MAX_SNAPSHOTS) snapshots.remove(snapshots.keySet().iterator().next());
@@ -165,8 +165,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         if (original == null) throw new Wire.Failure("uia_stale_reference");
         JSONObject selector = Wire.object(target, "selector");
         if (!matches(original, selector)) throw new Wire.Failure("uia_reference_selector_mismatch");
-        Snapshot current = read();
-        if (current.window.getInt("id") != snapshot.window.getInt("id")) throw new Wire.Failure("uia_foreground_changed");
+        Snapshot current = read(snapshot.window.getInt("id"));
         Node selected = null;
         boolean byReference = selector.getString("kind").equals("nodeRef");
         for (Node node : current.nodes.values()) if (byReference
@@ -184,9 +183,15 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         if (!original.handle.refresh() || !identity(original.handle).toString().equals(original.identity.toString())
                 || !action.handle.refresh() || !identity(action.handle).toString().equals(action.identity.toString()))
             throw new Wire.Failure("uia_reobserve_required");
+        org.json.JSONArray warnings = new org.json.JSONArray();
+        if (!current.window.getBoolean("focused")) warnings.put(new JSONObject().put("code", "uia_window_not_focused")
+            .put("source", "AccessibilityWindowInfo.isFocused").put("observedAtMs", System.currentTimeMillis())
+            .put("windowId", current.window.getInt("id")));
         return new JSONObject().put("snapshotId", snapshot.id).put("ref", original.ref).put("selector", selector)
             .put("clickPolicy", policy).put("target", original.identity).put("actionTarget", action.identity)
-            .put("window", current.window).put("identityStrength", "same_connection_node_and_reobserved_attributes");
+            .put("window", current.window)
+            .put("warnings", warnings)
+            .put("identityStrength", "same_connection_node_and_reobserved_attributes");
     }
 
     @Override public boolean dispatch(JSONObject binding, int interactionId, UiaActionEngine.Callback callback) throws Exception {

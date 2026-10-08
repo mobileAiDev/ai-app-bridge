@@ -134,7 +134,7 @@ test('launch-app clearTask adds activity-clear-task before the component', async
   assert.deepEqual(startArgs.slice(0, 5), ['shell', 'am', 'start', '-W', '--activity-clear-task']);
 });
 
-test('launch-app fails when the launched package never becomes foreground', async () => {
+test('launch-app retains the launch result and warns when the package never becomes foreground', async () => {
   const result = await startActivity(
     { packageName: 'org.videolan.vlc' },
     'org.videolan.vlc/.StartActivity',
@@ -146,8 +146,8 @@ test('launch-app fails when the launched package never becomes foreground', asyn
       sleep: async () => {},
     },
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.error, 'foreground_package_mismatch');
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings[0].code, 'foreground_package_mismatch');
   assert.equal(result.foreground.packageName, 'org.wikipedia.dev');
 });
 

@@ -27,9 +27,8 @@ async function observeAndCommit(context, provider = context.provider, observatio
     context.latestEvidenceIds = { ...context.latestEvidenceIds, observationFailure: persisted.evidenceId };
     return intentError(observation?.error || 'provider_failed', { stage: 'provider' });
   }
-  const routed = context.target.foregroundPackages !== undefined;
-  if (routed && (!observation.route || !['native', 'uia', 'flutter', 'h5'].includes(observation.provider))) return intentError('foreground_observation_required');
-  const activeProvider = routed ? observation.provider : provider;
+  const routed = Boolean(observation.route);
+  const activeProvider = observation.provider || provider;
   const capture = await observeCapture(context);
   checkExecution();
   const persistStarted = context.now();
@@ -37,13 +36,14 @@ async function observeAndCommit(context, provider = context.provider, observatio
     operationId: context.operationId,
     revision: context.revision,
     target: context.target,
-    observedTarget: routed ? { ...context.target, packageName: observation.route.packageName } : context.target,
+    observedTarget: routed ? { ...context.target, packageName: observation.route.targetPackageName } : context.target,
     provider: activeProvider,
     observationTarget,
     capturedAtMs: context.now(),
     foregroundTarget: observation.foregroundTarget,
     rawTreeId: observation.rawTreeId,
     rawTree: observation.rawTree,
+    foregroundObservations: observation.foregroundObservations, warnings: observation.warnings,
     ...(routed ? { route: observation.route, requestedTarget: context.target } : {}),
   };
   if (capture) {
@@ -68,12 +68,18 @@ async function observeAndCommit(context, provider = context.provider, observatio
   const summary = summarizeTree({
     provider: activeProvider,
     rawTree: observation.rawTree,
+    foregroundObservations: observation.foregroundObservations, warnings: observation.warnings,
     rawTreeId: observation.rawTreeId,
     ...(routed ? { maxBytes: 64 * 1024 - Buffer.byteLength(JSON.stringify(observation.route), 'utf8') - 32 } : {}),
   });
   timings.summaryMs = (timings.summaryMs || 0) + (context.now() - summaryStarted);
   if (!summary.ok) return intentError(summary.error || 'summary_failed');
-  if (routed) summary.foreground = observation.route;
+  if (routed) {
+    summary.foreground = observation.route.foreground;
+    summary.executionTarget = { packageName: observation.route.targetPackageName, provider: activeProvider };
+  }
+  if (observation.foregroundObservations) summary.foregroundObservations = observation.foregroundObservations;
+  if (observation.warnings) summary.warnings = observation.warnings;
   const summaryPersist = await context.store.persist('summary', {
     operationId: context.operationId,
     revision: context.revision,

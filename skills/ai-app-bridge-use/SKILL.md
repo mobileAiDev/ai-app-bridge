@@ -34,8 +34,8 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 ## 目标与动作
 
 - Android：明确 `serial` 和 `packageName`。iOS：`deviceId`/`bundleId`；Native Intent 还需原 WDA Runner/session 绑定。Web：从当前连接取得 `sessionId`/`runtimeEpoch`/`targetId`。
-- Intent/Script 的目标带 `platform`。目标标识、当前前台和返回的观察必须对应；更多绑定按平台合同补齐。
-- selector、nodeRef、pageRef 和坐标来自当前观察。多重匹配、过期引用、前台变化或 `reobserve_required` 需要重新观察；Intent 切 provider 通过 `observe` 完成。
+- Intent/Script 的目标带 `platform`。执行目标保持明确指定的 App/provider；Android 前台匹配、不匹配、未知是独立观测事实，不代表动作成功或失败。更多绑定按平台合同补齐。
+- selector、nodeRef、pageRef 和坐标来自当前观察。多重匹配、过期引用或 `reobserve_required` 需要重新观察。Android 前台 warning 由 agent 决定继续、观察或调整目标；无需 force。Intent 切 provider 通过 `observe`，切 Android App 显式传 `observationTarget.packageName`。
 - 已派发但结果未知（`ambiguous`）时先观察，避免换 provider 或端点重放动作。保留原 `error`、`message`、`dispatched` 和操作状态。
 - 若使用 freeze，后续操作和结束交付前先 thaw。
 

@@ -292,9 +292,12 @@ function createIntentWorker({
     if (stopping) return snapshotResult(false);
     checkExecution();
     if (!acted.ok) {
-      if (acted.error === 'reobserve_required') {
+      if (!acted.ambiguous && (acted.error === 'reobserve_required' || acted.dispatched === false || acted.settled === true)) {
         runtime.state.status = 'waiting_for_decision';
-        runtime.emit('reobserve_required', { decisionId: decision.decisionId });
+        runtime.state.error = acted.error;
+        runtime.state.seenDecisionIds.add(decision.decisionId);
+        runtime.state.lastDecisionId = decision.decisionId;
+        runtime.emit('action_failed', { error: acted.error, decisionId: decision.decisionId });
         return { ...snapshotResult(false), error: acted.error, revision: runtime.state.revision };
       }
       runtime.state.seenDecisionIds.add(decision.decisionId);
@@ -305,6 +308,7 @@ function createIntentWorker({
     }
     runtime.state.seenDecisionIds.add(decision.decisionId);
     runtime.state.lastDecisionId = decision.decisionId;
+    runtime.state.error = null;
     context.revision += 1;
     runtime.state.revision = context.revision;
     runtime.state.status = 'observing';

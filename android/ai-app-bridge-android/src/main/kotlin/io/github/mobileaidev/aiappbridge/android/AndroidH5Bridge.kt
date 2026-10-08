@@ -17,6 +17,7 @@ internal class AndroidH5Bridge(
     private val runtimeEpoch: String,
     private val packageName: String,
     private val adapters: () -> List<AiAppBridge.WebViewAdapter>,
+    private val windows: () -> List<Window>,
     private val foreground: () -> Window,
 ) {
     data class Window(val root: View, val activity: String, val type: String)
@@ -44,15 +45,14 @@ internal class AndroidH5Bridge(
     }
 
     private fun select(id: String?): Target {
-        val window = foreground()
         val targets = mutableListOf<Target>()
-        fun visit(view: View) {
+        fun visit(window: Window, view: View) {
             if (!visible(view)) return
             val adapter = adapters().firstOrNull { it.matches(view) }
             if (adapter != null) { targets.add(Target(window, view, adapter)); return }
-            if (view is ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
+            if (view is ViewGroup) for (index in 0 until view.childCount) visit(window, view.getChildAt(index))
         }
-        visit(window.root)
+        for (window in if (id == null) listOf(foreground()) else windows()) visit(window, window.root)
         val matches = if (id == null) targets else targets.filter { identifier(it.view) == id }
         if (matches.size != 1) {
             val candidates = JSONArray(targets.map { it.adapter.metadata(it.view).put("webViewId", identifier(it.view)) })
@@ -129,8 +129,8 @@ internal class AndroidH5Bridge(
     }
 
     private fun ensureCurrent(target: Target) {
-        val current = foreground()
-        if (current.root !== target.window.root || current.activity != target.window.activity || !visible(target.view)
+        val current = windows().singleOrNull { it.root === target.window.root }
+        if (current == null || current.activity != target.window.activity || !visible(target.view)
             || target.view.rootView !== current.root) throw H5EvaluationFailure("reobserve_required")
     }
 
