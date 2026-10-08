@@ -74,10 +74,11 @@ Codex、Cursor、Antigravity 的配置入口均解析到全局 0.4.5。Codex 已
 Bridge skill 同步发行版，旧文件在外置证据目录备份。配置路径和磁盘版本
 不代表已经运行的 stdio 客户端重新加载。
 
-当前聊天实测仍加载 0.4.4 MCP 客户端，报告 runtime_code_mismatch 和
-outdatedSide=client，新 Runtime 已为 0.4.5。界面工具明确禁止访问 Codex，
-无法代为点击重连。已请用户在应用内重连 Bridge；当前连接恢复尚未验收。
-没有关闭其他聊天的客户端或重启整个应用来掩盖这一限制。
+当前聊天曾加载 0.4.4 MCP 客户端，报告 runtime_code_mismatch 和
+outdatedSide=client。用户重连后，2026-10-08 19:37（北京时间）直接通过
+当前 MCP 验证 Runtime 为 0.4.5、compatible=true；Script runtime-status
+实际调用成功，JavaScript/Python 执行环境可用。当前连接恢复已验收，
+原失败回执保留在 connected-mcp-before-reconnect.json。
 
 POS 工作区的小票改动、原 tracked diff 和未跟踪测试文件均保持原样。
 本次实机 APK 通过仓库外 Gradle init 脚本使用 SDK 0.4.5；POS 原版本目录
@@ -98,4 +99,4 @@ POS 工作区的小票改动、原 tracked diff 和未跟踪测试文件均保�
 
 真机验收限于指定 K2 的导航动作与失败后续命令，不包含支付、小票物理
 输出或所有 OEM。iOS 本轮是构建和发行源码核验，未做 iOS 真机回归。
-剩余操作为已有应用内 MCP 连接重载；无需再次发布或升级这些 Runtime。
+当前聊天的 MCP 连接重载已通过实测，本次修复、发布与本机升级验收完成。
