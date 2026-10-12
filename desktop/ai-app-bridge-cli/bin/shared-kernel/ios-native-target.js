@@ -2,6 +2,7 @@
 
 const { isDeepStrictEqual } = require('node:util');
 const { object, text, integer } = require('./argument-schema');
+const { selectionFailure } = require('./action-guidance');
 
 const schema = 'aab.ios-native-target/v1';
 const sessionSchema = 'aab.ios-native-session/v1';
@@ -53,7 +54,9 @@ function selectNativeNode(tree, selector) {
     && (selector.accessibilityId === undefined || node.rawIdentifier === selector.accessibilityId)
     && (selector.label === undefined || node.label === selector.label)
     && (selector.elementId === undefined || node.elementId === selector.elementId));
-  if (nodes.length !== 1) return { ...reject(nodes.length ? 'ios_native_selector_ambiguous' : 'ios_native_selector_not_found'), matched: nodes.length };
+  if (nodes.length !== 1) return selectionFailure(nodes.length ? 'ios_native_selector_ambiguous' : 'ios_native_selector_not_found',
+    nodes.map(node => ({ label: node.label, type: node.type, bounds: node.rect, enabled: node.isEnabled,
+      selector: { elementId: node.elementId }, action: { command: 'ios-tap-native', arguments: { selector: { elementId: node.elementId } } } })));
   const node = nodes[0];
   if (typeof node.elementId !== 'string' || !node.elementId) return reject('ios_native_element_identity_required');
   if (node.isEnabled !== '1') return reject('ios_native_target_disabled');

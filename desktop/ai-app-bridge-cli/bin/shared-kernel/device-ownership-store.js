@@ -89,7 +89,40 @@ function createOwnershipStore(directory = defaultDirectory()) {
     }
   }
   const controlLock = serial => createOwnershipStore(path.join(directory, 'reset-controls')).lock(serial);
-  return { directory, read, lock, write, paths, controlLock };
+  // Archive original bytes before a new explicit operation supersedes orphaned
+  // history. This is not a completion receipt, reset, cancellation or replay.
+  function archive(serial, outcome = 'unknown') {
+    const archiveDir = path.join(directory, 'unresolved', createHash('sha256').update(serial).digest('hex'));
+    fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+    const archiveId = randomUUID();
+    const archivePath = path.join(archiveDir, `${archiveId}.json`);
+    const fd = fs.openSync(archivePath, 'wx', 0o600);
+    try { fs.writeFileSync(fd, fs.readFileSync(paths(serial).journal)); fs.fsyncSync(fd); }
+    finally { fs.closeSync(fd); }
+    const parent = fs.openSync(archiveDir, 'r');
+    try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+    return { archiveId: `unresolved:${archiveId}`, archivePath, outcome, archivedAtMs: Date.now() };
+  }
+  function archives(serial) {
+    const archiveDir = path.join(directory, 'unresolved', createHash('sha256').update(serial).digest('hex'));
+    let files;
+    try { files = fs.readdirSync(archiveDir); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    return files.filter(file => file.endsWith('.json')).sort().map(file => {
+      const archivePath = path.join(archiveDir, file);
+      try {
+        if (fs.statSync(archivePath).size > maxJournalBytes) throw new Error('Archive exceeds 4 MiB.');
+        const state = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+        if (state.serial !== serial) throw new Error('Archive serial mismatch.');
+        return { archivePath, state };
+      } catch (error) { return { archivePath, error: 'device_ownership_corrupt', message: error.message }; }
+    });
+  }
+  function findPending(serial, predicate) {
+    const states = [read(serial), ...archives(serial).map(item => item.state)].filter(Boolean);
+    return states.flatMap(state => [state.pending, ...(state.reservations || []), ...(state.resetPending || [])])
+      .find(item => item && predicate(item));
+  }
+  return { directory, read, lock, write, paths, controlLock, archive, archives, findPending };
 }
 
 module.exports = { createOwnershipStore, defaultDirectory, schemaVersion };

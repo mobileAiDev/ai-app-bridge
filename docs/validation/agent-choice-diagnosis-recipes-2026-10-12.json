@@ -1,0 +1,148 @@
+{
+  "date": "2026-10-12",
+  "overallGoal": "active",
+  "published": false,
+  "scope": [
+    "on-demand local doctor for Host, Android, iOS and Web",
+    "editable Script recipes with independent Android settings restoration",
+    "Script target/source metadata for JS and Python",
+    "small task-specific flow results retaining execution and condition facts"
+  ],
+  "checks": {
+    "nodeFunctional": {
+      "passed": 1472,
+      "failed": 0,
+      "concurrency": 4,
+      "log": "/tmp/aab-doctor-recipes-functional2.log",
+      "note": "Full suite before final Web diagnostic read-only/target attribution fixes; those fixes covered by 84 focused tests, then 28 metadata/contract tests."
+    },
+    "finalFocused": {
+      "passed": 84,
+      "failed": 0,
+      "log": "/tmp/aab-doctor-recipes-final-focused.log"
+    },
+    "finalContract": {
+      "passed": 28,
+      "failed": 0,
+      "log": "/tmp/aab-doctor-final-contract.log"
+    },
+    "documentationContracts": {
+      "passed": 18,
+      "failed": 0,
+      "log": "/tmp/aab-doctor-recipes-documentation.log"
+    },
+    "nodePerformance": {
+      "initialPassed": 49,
+      "initialFailed": 1,
+      "initialLog": "/tmp/aab-doctor-recipes-performance.log",
+      "failedCheck": "JS spawn and handshake p95 <= 150 ms",
+      "initialP95Ms": 199.28225,
+      "recheckPassed": 3,
+      "recheckFailed": 0,
+      "recheckP95Ms": 82.077625,
+      "recheckLog": "/tmp/aab-doctor-recipes-handshake-recheck.log",
+      "note": "Same source and threshold. Recheck only the failed handshake file, without other validation workloads. First failure retained, not reported as a clean 50-test run."
+    },
+    "freshPackage": {
+      "ok": true,
+      "sha256": "90652ee4d69d7ef5a855c91fcccfd293feb5e79e6dec09027d75151dd74488a6",
+      "report": "/tmp/aab-doctor-recipes-package-20261012/report.json",
+      "diagnosisAndRecipes": {
+        "installedDoctor": true,
+        "mcpRead": true,
+        "cliRead": true,
+        "installedSource": true,
+        "startsRuntime": false
+      },
+      "installedFilesCompared": [
+        "bin/doctor.js",
+        "bin/runtime-client.js",
+        "bin/runtime-directory.js",
+        "bin/execution-host.js",
+        "bin/execution-runtime.js",
+        "bin/command-registry.js",
+        "bin/command-discovery.js",
+        "bin/ios-provider.js",
+        "bin/shared-kernel/action-guidance.js",
+        "bin/shared-kernel/execution-target.js",
+        "bin/shared-kernel/execution-contracts.js",
+        "bin/web-provider.js",
+        "bin/script/recipes.js",
+        "bin/script/script-entry-route.js",
+        "bin/script/script-catalog.js",
+        "bin/script/node-runtime-adapter.js",
+        "bin/script/script-sdk.js",
+        "bin/script/script-sdk.py",
+        "recipes/android-test-session.js",
+        "recipes/android-launch-and-wait.js",
+        "docs/SCRIPT_AUTHORING.md",
+        "docs/COMMAND_CONTRACT.md",
+        "skills/ai-app-bridge-use/SKILL.md"
+      ]
+    },
+    "androidEmulator": {
+      "report": "/tmp/aab-doctor-recipes-device-20261012/validation3/report.json",
+      "ok": true,
+      "serial": "emulator-5572",
+      "physicalDevicesTouched": false,
+      "launchResultBytes": 11689,
+      "checks": {
+        "doctorWithoutRuntime": true,
+        "deviceOnlyPreparation": true,
+        "actualSettingsReadback": true,
+        "launchOnceAndConditionWait": true,
+        "uiaAvailableWithoutAppSdk": true,
+        "explicitRestore": true,
+        "independentlyVerifiedOriginalValues": 7,
+        "webReadOnlyRuntimeDiagnostics": true
+      },
+      "operations": [
+        "script-1791782758239-1",
+        "script-1791782759897-2",
+        "script-1791782761876-3"
+      ],
+      "temporaryAvdRemoved": true
+    },
+    "generatedH5Copies": 4,
+    "skillCopiesEqual": true
+  },
+  "firstReturnEvidence": {
+    "oldLaunchResultBytes": 177258,
+    "oldPublicAuto": {
+      "exit": 0,
+      "status": "overview",
+      "partial": true,
+      "bytes": 61496,
+      "originalValueBytes": 177686
+    },
+    "projectedLaunchResultBytes": 11689,
+    "projection": "Explicit editable recipe; original command values and extract:null contract unchanged; fullResult:true retains raw diagnostic dumps.",
+    "doctorBytes": {
+      "doctor-before.json": 3806,
+      "doctor-after.json": 6617,
+      "doctor-web.json": 2705
+    }
+  },
+  "retainedFailures": [
+    {
+      "log": "/tmp/aab-doctor-recipes-live.log",
+      "finding": "Raw launch/wait result exceeded 96 KiB; auto replay was also partial. Fixed in editable recipe, with fullResult option."
+    },
+    {
+      "log": "/tmp/aab-doctor-recipes-live2.log",
+      "finding": "Doctor did not pass default adb into UIA runtime status. Fixed and tested against actual emulator."
+    },
+    {
+      "log": "/tmp/aab-doctor-recipes-functional.log",
+      "finding": "First run overlapped emulator work and source edits, with timeouts, a follow-on FactStore writer error and a runtime_code_mismatch. Not accepted as passing; fixed-source rerun after emulator cleanup passed all 1472 tests."
+    }
+  ],
+  "limits": [
+    "Local changes only; existing user installation was not upgraded or restarted.",
+    "No physical Android device was mutated. The disposable API 36 AVD was removed.",
+    "The emulator changed stay-awake/rotation/hardware-keyboard settings; it did not switch between multiple installed IMEs. IME component/subtype/history restoration covered by controlled tests.",
+    "iOS doctor path independence is protocol-tested; no iPhone acceptance in this batch.",
+    "Final Web snapshot changes validated by controlled and protocol tests; no new Chrome/OEM/native-WebView acceptance in this batch.",
+    "Native/UIA richer queries and observation scope/incremental tradeoffs remain in the overall audit."
+  ]
+}

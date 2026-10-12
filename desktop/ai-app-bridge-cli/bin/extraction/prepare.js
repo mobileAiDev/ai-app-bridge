@@ -12,6 +12,12 @@ const { executablePath } = require('../shared-kernel/executable-path');
 
 function prepareExtraction(extract) {
   if (extract === null) return null;
+  if (extract.mode === 'auto') return extract;
+  if (extract.mode === 'select') {
+    if (extract.path !== '' && (!extract.path.startsWith('/') || /~(?![01])/u.test(extract.path)))
+      throw new CommandError('invalid_argument', 'path must be a JSON Pointer; use /items, escape ~ as ~0 and / as ~1.', { field: 'extract.path' });
+    return extract;
+  }
   const timeoutMs = extract.timeoutMs ?? 2000;
   const reject = (message, field, code = 'invalid_argument') => { throw new CommandError(code, message, { field }); };
   if (extract.mode === 'regex') {

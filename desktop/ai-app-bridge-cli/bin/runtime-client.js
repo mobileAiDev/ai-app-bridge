@@ -8,7 +8,7 @@ const { CommandError } = require('./command-errors');
 const { validateRunRequest, publicOutputLimit } = require('./command-request');
 const { publicReply, publicFailure, isPublicReply, finishReply } = require('./public-reply');
 const { protocol, maxMessageBytes, readJson, decodeReply } = require('./runtime-protocol');
-const { runtimeLocation, runtimeIdentity, requireCompatible, acquireRuntimeLock, readEndpoint, prepareDirectory } = require('./runtime-directory');
+const { runtimeLocation, runtimeIdentity, requireCompatible, acquireRuntimeLock, readEndpoint, readRuntimeOwner, prepareDirectory } = require('./runtime-directory');
 const { executablePath } = require('./shared-kernel/executable-path');
 const starting = new Map();
 
@@ -50,21 +50,45 @@ function exchange(endpoint, method, args, { identity, signal, timeoutMs, cwd = p
   });
 }
 
-async function probe(location, signal) {
-  const endpoint = readEndpoint(location);
-  let cause;
+async function probe(location, signal, diagnostics = false) {
+  let endpoint, cause;
+  try { endpoint = readEndpoint(location); }
+  catch (error) { if (error.code !== 'runtime_endpoint_invalid') throw error; cause = error; }
   if (endpoint) {
     try {
-      const reply = await exchange(endpoint, 'status', {}, { signal, timeoutMs: 1500 });
+      const reply = await exchange(endpoint, 'status', diagnostics ? { diagnostics: true } : {}, { signal, timeoutMs: 1500 });
       if (reply.value.ok !== true) throw new CommandError(reply.value.error, reply.value.message);
       return { state: 'running', endpoint, status: reply.value };
     } catch (error) { cause = error; if (signal?.aborted) throw error; }
   }
   const lock = acquireRuntimeLock(location);
-  if (lock) { lock.close(); return { state: 'stopped' }; }
+  if (lock) { lock.close(); return { state: 'stopped', cause }; }
   // A busy OS lock is authoritative even when health or startup publication
   // times out. Never replace this owner based on elapsed time or its PID file.
-  return { state: endpoint ? 'unresponsive' : 'starting', cause };
+  return { state: endpoint || cause ? 'unresponsive' : 'starting', cause };
+}
+
+async function inspect({ signal } = {}) {
+  const client = { version: require('../package.json').version, node: process.version, executable: process.execPath };
+  try {
+    const location = runtimeLocation();
+    try { client.identity = runtimeIdentity(location); }
+    catch (error) { client.error = error.code; client.message = error.message; client.details = error.details; }
+    const observed = await probe(location, signal, true);
+    let ownerRecord;
+    try { ownerRecord = readRuntimeOwner(location); }
+    catch (error) { ownerRecord = { error: error.code, message: error.message }; }
+    const result = { ok: true, client, runtime: { state: observed.state, ...(observed.status || {}),
+      ownerRecord,
+      ...(observed.cause ? { error: observed.cause.code, message: observed.cause.message } : {}) },
+      paths: { directory: location.directory, logFile: location.logFile, facts: location.facts, ownerFile: location.ownerFile,
+        endpointFile: location.endpointFile, lockFile: location.lockFile } };
+    if (observed.status && client.identity) {
+      try { requireCompatible(observed.status, client.identity); result.compatible = true; }
+      catch (error) { result.compatible = false; result.mismatch = { error: error.code, message: error.message, details: error.details }; }
+    }
+    return result;
+  } catch (error) { return { ok: false, client, error: error.code || 'runtime_inspection_failed', message: error.message }; }
 }
 
 function launch(location) {
@@ -128,6 +152,27 @@ async function ensureRuntime(location, identity, signal) {
   return starting.get(location.directory);
 }
 
+// Shared raw command contract for CLI/MCP and in-Host Script/Intent calls.
+// Inspection remains a separate diagnostic view, used by doctor.
+async function runtimeCommand(args, { signal } = {}) {
+  const location = runtimeLocation();
+  if (args.operation === 'force-stop') return require('./runtime-force-stop').forceStopRuntime(location, args);
+  if (args.operation === 'start') {
+    const endpoint = await ensureRuntime(location, runtimeIdentity(location), signal);
+    return (await exchange(endpoint, 'status', {}, { signal })).value;
+  }
+  const state = await probe(location, signal);
+  if (state.state === 'stopped') return { ok: true, command: 'runtime', status: 'stopped', facts: location.facts,
+    ...(state.cause ? { warnings: [{ code: state.cause.code, message: state.cause.message, blocking: false,
+      recovery: 'The OS lock is free. The next explicit start archives old records and creates a fresh runtime.' }] } : {}) };
+  if (state.state !== 'running') throw new CommandError('runtime_unresponsive', 'A runtime owns the OS lock but has not answered. It was not restarted.');
+  if (args.operation === 'stop') return (await exchange(state.endpoint, 'stop', {}, { signal, timeoutMs: args.timeoutMs ?? 5000 })).value;
+  let compatible = false, clientError;
+  try { requireCompatible(state.status, runtimeIdentity(location)); compatible = true; }
+  catch (error) { clientError = { error: error.code, message: error.message }; }
+  return { ...state.status, compatible, ...(clientError ? { clientError } : {}) };
+}
+
 // The reply is always the public reply of the request. Executed commands
 // arrive assembled by the Runtime; local paths and client failures are
 // assembled here with the same module.
@@ -137,8 +182,9 @@ async function run(request, { signal } = {}) {
   let extract;
   try {
     request = validateRunRequest(request);
-    if (request.command === 'runtime' || (request.command === 'evidence' && request.arguments.operation === 'verify')
-      || (request.command === 'device-ownership' && request.arguments.operation === 'force-stop')) {
+    if (request.command === 'doctor' || request.command === 'runtime' || (request.command === 'script' && request.arguments.operation === 'recipes') || (request.command === 'evidence' && request.arguments.operation === 'verify')
+      || (request.command === 'device-ownership' && (request.arguments.operation === 'force-stop'
+        || require('./shared-kernel/ownership-archives').operations.has(request.arguments.operation)))) {
       extract = require('./extraction/prepare').prepareExtraction(request.extract);
     }
   }
@@ -146,25 +192,23 @@ async function run(request, { signal } = {}) {
   const local = async reply => ({ value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true }),
     extract, output: request.output }) });
   try {
+    if (request.command === 'doctor') return local({ value: await require('./doctor').doctor(request.arguments, { signal, inspectRuntime: inspect }) });
+    if (request.command === 'script' && request.arguments.operation === 'recipes') return local({ value: require('./script/recipes').read(request.arguments) });
     if (request.command === 'device-ownership' && request.arguments.operation === 'force-stop') {
       return local({ value: await require('./shared-kernel/device-force-stop').forceStopDevice(request.arguments) });
+    }
+    if (request.command === 'device-ownership' && require('./shared-kernel/ownership-archives').operations.has(request.arguments.operation)) {
+      return local({ value: await require('./shared-kernel/device-ownership-recovery').deviceOwnership(request.arguments) });
     }
     // Verification is an offline command in both transports; it neither
     // opens FactStore nor depends on a running owner or valid store profile.
     if (request.command === 'evidence' && request.arguments.operation === 'verify') {
       return local({ value: await require('./shared-kernel/evidence-archive').handle(request.arguments) });
     }
+    if (request.command === 'runtime') return local({ value: await runtimeCommand(request.arguments, { signal }) });
     const location = runtimeLocation();
     const identity = runtimeIdentity(location);
-    if (request.command === 'runtime' && request.arguments.operation !== 'start') {
-      const state = await probe(location, signal);
-      if (state.state === 'stopped') return local({ value: { ok: true, command: 'runtime', status: 'stopped', facts: location.facts } });
-      if (state.state !== 'running') throw new CommandError('runtime_unresponsive', 'A runtime owns the OS lock but has not answered. It was not restarted.');
-      if (request.arguments.operation === 'stop') return local(await exchange(state.endpoint, 'stop', {}, { signal }));
-      return local({ value: { ...state.status, compatible: state.status.identity.code === identity.code && state.status.identity.config === identity.config } });
-    }
     const endpoint = await ensureRuntime(location, identity, signal);
-    if (request.command === 'runtime') return local(await exchange(endpoint, 'status', {}, { signal }));
     const reply = await exchange(endpoint, 'execute', request, { identity, signal });
     if (isPublicReply(reply.value)) return reply;
     // Authentication and request-decoding failures precede execute dispatch,
@@ -173,7 +217,7 @@ async function run(request, { signal } = {}) {
       && ['runtime_access_denied', 'runtime_protocol_error', 'runtime_message_too_large'].includes(reply.value.error)) return { value: publicFailure({
         command: request.command, stage: 'execution', error: new CommandError(reply.value.error, reply.value.message), maxBytes: request.output?.maxBytes }) };
     throw new CommandError('runtime_protocol_error', 'Execute returned no public reply.', { dispatched: null, ambiguous: true });
-  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error, maxBytes: request.output?.maxBytes }) }; }
+  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error, args: request.arguments, maxBytes: request.output?.maxBytes }) }; }
 }
 
-module.exports = { run, exchange };
+module.exports = { run, exchange, inspect, runtimeCommand };

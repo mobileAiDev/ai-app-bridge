@@ -59,4 +59,4 @@ async function stopHosts(owner, endpoint) {
   return stopped;
 }
 
-module.exports = { processStart, stopHosts };
+module.exports = { processStart, processInfo, stopHosts };

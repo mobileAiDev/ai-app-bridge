@@ -42,11 +42,14 @@ test('the public CLI sends a bound node action with its exact composite ID and c
   assert.doesNotMatch(fs.readFileSync(path.join(peer.directory, 'adb.jsonl'), 'utf8'), /uiautomator|"input"|window.xml/);
 });
 
-test('full unacknowledged capacity rejects before action preparation and leaves shared ownership idle', async t => {
+test('an already bound reference does not rotate a full epoch or prepare another action', async t => {
   const { peer, target } = await fixture(t, { capacity: 1, onRequest: body => body.op === 'acknowledge'
     ? { httpStatus: 503, ok: false, error: 'uia_journal_write_failed' } : undefined });
-  assert.equal((await executeCommand('tap-uia-text', { ...target, requestId: 'first' })).ok, true);
-  const result = await executeCommand('tap-uia-text', { ...target, requestId: 'full' });
+  const { targetText, ...identity } = target;
+  const tree = await executeCommand('uia-tree', { ...identity, compact: true });
+  const targetRef = tree.nodes.find(node => node.text === targetText).targetRef;
+  assert.equal((await executeCommand('tap-uia', { ...identity, targetRef, requestId: 'first' })).ok, true);
+  const result = await executeCommand('tap-uia', { ...identity, targetRef, requestId: 'full' });
   assert.equal(result.error, 'uia_action_capacity_exhausted'); assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false);
   assert.equal(peer.requests.filter(r => r.op === 'prepare').length, 1);
   assert.equal((await executeCommand('device-ownership', { operation: 'status', serial: peer.serial })).active, 0);
@@ -71,8 +74,8 @@ test('a killed Host retains occupancy until another process reads the original d
   const closed = once(child, 'close');
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
   await admission; await killRuntime(); await closed;
-  const blocked = await executeCommand('tap-uia-text', { ...target, requestId: 'must-not-dispatch' });
-  assert.equal(blocked.error, 'device_ownership_unresolved'); assert.deepEqual(peer.dispatches, ['killed-host']);
+  const blocked = await executeCommand('device-ownership', { serial: peer.serial, operation: 'status' });
+  assert.equal(blocked.unresolved, true); assert.deepEqual(peer.dispatches, ['killed-host']);
   const unknown = await executeCommand('device-ownership', { operation: 'reconcile', serial: peer.serial });
   assert.equal(unknown.error, 'device_ownership_unresolved');
   peer.complete('killed-host');

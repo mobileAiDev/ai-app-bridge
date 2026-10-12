@@ -8,6 +8,8 @@ const { executionCommandSchema, nativeGestureSchema, nativeSelector, flutterSele
 const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provider-command-contracts');
 
 const commandDefinitions = [
+  { command: 'doctor', domain: 'diagnostics', summary: 'Collect client/Runtime identity, device and provider status, ownership and recovery choices without starting the shared Runtime or gating actions. Android is the default; platform host/ios/web selects another view. Device-only diagnosis does not require an app. Normal actions do not run this diagnostic bundle.', targetKind: 'diagnostic-target', options: ['platform', 'serial', 'packageName', 'adb', 'port', 'deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort', 'wdaUrl', 'wdaRunnerBundleId', 'devicectl', 'xcodebuild', 'sessionId', 'runtimeEpoch', 'targetId', 'timeoutMs', 'full'] },
+  { command: 'adb-exec', domain: 'advanced', summary: 'Execute explicit ADB argv without a Host shell or command allowlist. Optional serial adds -s. Returns stdout, stderr and the ADB process exit code; this is not verification of application behavior. Use outFile for binary stdout. readOnly opts out of the device mutation lease for diagnostic calls.', targetKind: 'android-device', options: ['argv', 'serial', 'adb', 'timeoutMs', 'readOnly', 'outFile'] },
   { command: 'response', domain: 'evidence', summary: 'Read and re-extract one saved response using its unchanged control.source.ref. This never repeats the original action or refreshes an observation.', targetKind: 'host', options: ['operation', 'ref'] },
   { command: 'executor-prepare', domain: 'advanced', summary: 'Prepare optional test executors from the existing project: generate Android androidTest entry/dependencies and matching APKs, add Flutter dev dependency and build the generated entrypoint, prepare managed iOS WDA, or install pinned Playwright/browser. Host preparation does not install or launch a mobile application. No application ID is changed. Requires app.test in Script.', targetKind: 'host', options: ['platform'] },
   { command: 'ui-observation', domain: 'core', summary: 'Start a bounded UI observation window (100–5000 ms), inspect it, or stop its lease. Off by default; provider selects native or Flutter. New windows establish a fresh baseline.', targetApp: true, options: ['operation', 'provider', 'durationMs', 'leaseId', 'packageName', 'serial'] },
@@ -16,9 +18,9 @@ const commandDefinitions = [
   { command: 'android-executor', domain: 'advanced', summary: 'Optional AndroidX UI Automator, Espresso and registered WebView/Compose test adapters. Open an installed androidTest build, observe, act on observed nodes, query original receipts and close. Opening instrumentation restarts the target application. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
   { command: 'flutter-executor', domain: 'advanced', summary: 'Optional Flutter integration_test executor on Android. Open the installed application test entrypoint, observe widgets, run WidgetTester actions, query receipts and close the test process. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
   { command: 'web-executor', domain: 'web', summary: 'Optional Playwright executor: inspect readiness, prepare pinned browser dependencies, open a browser, observe bound frames, act, wait, query original receipts, or close. Browser input and test operations retain their actual mechanisms. Script requires app.test.', targetKind: 'web-target', options: ['operation'] },
-  { command: 'runtime', domain: 'execution', summary: 'Inspect, start or orderly stop the shared local execution runtime. CLI exit and MCP disconnect leave operations running; stop cancels and drains them.', targetKind: 'host-runtime', options: ['operation'] },
-  { command: 'device-ownership', domain: 'execution', summary: 'Read ownership, reconcile completion, or force-stop stuck tasks and reset device occupancy without requiring old receipts. Force-stop terminates the owning and shared Host runtimes, resets phone UIA history, and stops recorded SDK apps; dispatched effects keep an unknown outcome. Also cancel-install or read a retained UIA receipt.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId'] },
-  { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start or orderly stop the Android API 25+ UIA node runtime. Start checks the phone process lock; unacknowledged original receipts are retained.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
+  { command: 'runtime', domain: 'execution', summary: 'Inspect, start, stop or force-stop the shared local runtime. force-stop uses an independent owner identity even when endpoint.json is broken; ownerPid explicitly selects a Bridge Host if both records are lost. Evidence is retained and device effects remain unknown. From Script/Intent, stop requests use an independent controller and return acceptance plus resultPath.', targetKind: 'host-runtime', options: ['operation', 'timeoutMs', 'ownerPid'] },
+  { command: 'device-ownership', domain: 'execution', summary: 'Inspect ownership, reconcile current work, cancel-install, read a receipt, or force-stop stuck work. Browse archives by actionId and cursor; archive reads original bytes, reconcile-archive queries one original entry without cancellation, delete-archive explicitly removes one local archive. Archive controls and force-stop work without a shared Runtime. Unknown effects stay unknown.', targetKind: 'android-device', options: ['operation', 'serial', 'timeoutMs', 'runtimeEpoch', 'actionId', 'archiveId', 'entryId', 'cursor', 'limit'] },
+  { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start, stop or force-reset the Android API 25+ UIA node runtime. Start checks the process lock; force-reset archives UIA sessions with unknown outcomes without stopping the Bridge Host or SDK apps.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
   { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator XML for the current foreground window.', options: ['serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
@@ -27,7 +29,7 @@ const commandDefinitions = [
   { command: 'network', domain: 'core', summary: 'Read in-app network records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'urlFilter', 'method', 'statusCode', 'noBodies', 'bodyMaxBytes', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'state', domain: 'core', summary: 'Read in-app state records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'events', domain: 'core', summary: 'Read in-app event records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit', 'includeActions'] },
-  { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat with optional app pid, tag, level, and grep filters.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
+  { command: 'logcat', domain: 'diagnostics', summary: 'Read Android logcat. grep is literal by default; grepMode: regex enables a bounded regular expression filter.', options: ['serial', 'packageName', 'pid', 'appPid', 'tag', 'level', 'grep', 'grepMode', 'lines', 'since', 'follow', 'durationSec', 'clear'] },
   { command: 'install-apk', domain: 'app', summary: 'Start a supervised Intent installation. Use intent observe/decide for actual system UI; completion binds the original phone job/session and independently verifies installed APK bytes. Requires Android SDK aapt/apksigner.', options: ['serial', 'packageName', 'apkPath', 'allowDowngrade', 'timeoutMs', 'adb', 'adbTimeoutMs', 'aaptPath', 'apksignerPath', 'recordingDir'] },
   { command: 'clear-app-data', domain: 'app', summary: 'Clear app data once through explicit method: pm-clear (default) or runtime. No fallback on failure.', targetApp: true, options: ['serial', 'packageName', 'method'] },
   { command: 'freeze-app', domain: 'app', summary: 'Stop target App processes with SIGSTOP, including the SDK socket. Capture first; thaw before SDK reads or actions.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
@@ -44,7 +46,7 @@ const commandDefinitions = [
   { command: 'tap-uia-text', domain: 'action', summary: 'Revalidate one exact UIAutomator text match; report foreground observations separately from execution.', options: ['serial', 'targetText', 'exact'] },
   { command: 'tap-uia', domain: 'action', summary: 'Tap one UIAutomator node by an exact semantic selector or an observed targetRef. Revalidate the original node before dispatch; foreground changes are warnings.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetRef'] },
   { command: 'tap-native', domain: 'action', summary: 'Tap one exact Native selector, optionally scoped to an observed row. Revalidate the original View, then send a bound SDK action with foreground observations. Shared by CLI, MCP and Script.', targetApp: true, options: ['serial', 'packageName', 'selector'] },
-  { command: 'wait-text', domain: 'action', summary: 'Wait for exact visible labels from one fresh foreground provider. Defaults to native; explicit auto discovery requires positive text. Uses milliseconds.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider', 'timeoutMs', 'intervalMs', 'requireText', 'absentText', 'requireActivity'] },
+  { command: 'wait-text', domain: 'action', summary: 'Wait for exact visible labels, retrying read failures within one deadline. Absence requires complete coverage by default; absenceScope:observed checks only the returned portion. Defaults to native. Uses milliseconds.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider', 'timeoutMs', 'intervalMs', 'requireText', 'absentText', 'requireActivity', 'absenceScope'] },
   { command: 'input-text', domain: 'action', summary: 'Replace native Android text, including empty or Unicode text. An exact selector binds the original editor; coordinates or the SDK focused-editor contract are separate targeting modes.', targetApp: true, options: ['serial', 'packageName', 'text', 'selector', 'tapX', 'tapY', 'hideKeyboard'] },
   { command: 'keyboard-state', domain: 'action', summary: 'Read Android soft keyboard visibility.', options: ['serial'] },
   { command: 'hide-keyboard', domain: 'action', summary: 'Hide the Android soft keyboard.', options: ['serial', 'force', 'intervalMs'] },
@@ -115,7 +117,7 @@ const commandDefinitions = [
   { command: 'web-connect-info', domain: 'web', summary: 'Read the Web Bridge endpoint and token for SDK clients.', options: [] },
   { command: 'web-sessions', domain: 'web', summary: 'List connected Web Bridge SDK sessions.', options: [] },
   { command: 'web-status', domain: 'web', summary: 'Read status and capture counts for a Web Bridge session.', targetKind: 'web-target', options: ['sessionId'] },
-  { command: 'web-dom', domain: 'web', summary: 'Read the current bound document DOM, or explicit committed DOM history.', targetKind: 'web-target', options: ['sessionId', 'runtimeEpoch', 'targetId', 'selector', 'maxControls', 'timeoutMs', 'history', 'cursor', 'throughCursor', 'sinceMs', 'limit'] },
+  { command: 'web-dom', domain: 'web', summary: 'Read the current DOM, optionally narrowed by a typed query and paged by offset/maxControls, or explicit committed DOM history.', targetKind: 'web-target', options: ['sessionId', 'runtimeEpoch', 'targetId', 'selector', 'query', 'offset', 'maxControls', 'timeoutMs', 'history', 'cursor', 'throughCursor', 'sinceMs', 'limit'] },
   { command: 'web-logs', domain: 'web', summary: 'Read committed Web log windows or explicit history.', targetKind: 'web-target', options: ['sessionId', 'runtimeEpoch', 'targetId', 'view', 'factCursor', 'afterActionId', 'history', 'cursor', 'throughCursor', 'sinceMs', 'limit'] },
   { command: 'web-network', domain: 'web', summary: 'Read committed Web network windows or explicit history.', targetKind: 'web-target', options: ['sessionId', 'runtimeEpoch', 'targetId', 'view', 'factCursor', 'afterActionId', 'history', 'cursor', 'throughCursor', 'sinceMs', 'limit'] },
   { command: 'web-state', domain: 'web', summary: 'Read committed Web state windows or explicit history.', targetKind: 'web-target', options: ['sessionId', 'runtimeEpoch', 'targetId', 'view', 'factCursor', 'afterActionId', 'history', 'cursor', 'throughCursor', 'sinceMs', 'limit'] },
@@ -134,7 +136,7 @@ const isolatedCommandDefinitions = [
   {
     command: 'script',
     domain: 'execution',
-    summary: 'Run a trusted-local-code JavaScript or Python Script. Operations: start, status, wait, result, pause, resume, decide, cancel, runtime-status. Commands and assertions return results for Script code to handle; uncaught errors fail execution. Script source is not an OS sandbox.',
+    summary: 'Run a trusted-local-code JavaScript or Python Script. Operations: start, status, wait, result, pause, resume, decide, cancel, runtime-status, recipes. Read editable recipes locally before running or customizing them. Commands and assertions return results for Script code to handle; uncaught errors fail execution. Script source is not an OS sandbox.',
     options: ['operation', 'waitMs', 'afterSequence', 'recordingDir'],
     runtime: 'trusted-local-code',
   },
@@ -165,7 +167,7 @@ const mutationCommands = new Set([
   'ios-tap', 'ios-input', 'ios-swipe', 'ios-set-orientation',
   'ios-tap-native', 'ios-input-native-text',
   'ios-tap-flutter', 'ios-input-flutter-text', 'ios-scroll-flutter', 'ios-flutter-back', 'ios-flutter-hide-keyboard',
-  'web-session-start', 'web-session-stop', 'web-command', 'web-click', 'web-input', 'web-key', 'web-scroll', 'web-wait',
+  'web-session-start', 'web-session-stop', 'web-command', 'web-click', 'web-input', 'web-key', 'web-scroll',
 ]);
 const historyCommands = new Set([
   'tree', 'uia-tree', 'flutter-tree', 'flutter-nodes', 'screenshot', 'h5-dom', 'logcat',
@@ -220,6 +222,7 @@ define('delta deltaX deltaY', { type: 'number', minimum: -2147483647, maximum: 2
 define('port iosPort webviewPort webPort', { type: 'integer', minimum: 1, maximum: 65535 });
 define('webPort', { type: 'integer', minimum: 0, maximum: 65535, description: '0 asks the OS to assign an available local port.' });
 define('adbTimeoutMs httpTimeoutMs timeoutMs installTimeoutMs installerTimeoutMs intervalMs durationMs', { type: 'integer', minimum: 1, maximum: 2147483647, description: 'Milliseconds.' });
+define('absenceScope', { type: 'string', enum: ['complete', 'observed'] });
 define('waitMs', { type: 'integer', minimum: 0, maximum: 60000, description: 'Milliseconds; 0 polls immediately.' });
 define('timeoutSec durationSec', { type: 'number', exclusiveMinimum: 0, maximum: 2147483, description: 'Seconds. Retained explicit legacy unit.' });
 define('sinceId sinceMs afterSequence revision', { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
@@ -236,6 +239,7 @@ define('outcome', { enum: ['allow', 'allow-once', 'deny', 'dismiss'] });
 define('operation', { type: 'string', minLength: 1 });
 define('scope', { enum: ['app', 'device'], description: 'Defaults to app with packageName, otherwise device. App scope requires the SDK and does not fall back to ADB.' });
 define('deviceLogScope', { enum: ['device'] });
+define('grepMode', { enum: ['literal', 'regex'], default: 'literal', description: 'Literal substring or regular expression. Regex runs in a worker with a 2-second limit; a filter failure retains the collected text.' });
 define('history', { type: 'boolean', description: 'Mobile streams read the phone FactStore while connected; disconnected targets never use Host-copied payload. UI/Web history reads retained Host facts.' });
 
 const extraOptions = {
@@ -245,6 +249,9 @@ const commandByName = new Map(commandDefinitions.map(d => [d.command, d]));
 const isolatedByName = new Map(isolatedCommandDefinitions.map(d => [d.command, d]));
 
 function isMutationCommand(command, args = {}) {
+  if (command === 'script' || command === 'intent') return ['start', 'decide', 'pause', 'resume', 'cancel', 'intervene'].includes(args.operation);
+  if (command === 'runtime') return args.operation !== 'status';
+  if (command === 'adb-exec') return args.readOnly !== true;
   // iOS observation controls only a bounded SDK capture lease, not a UI action.
   if (command === 'ios-ui-observation') return false;
   if (require('./ui-observation').commands.has(command)) return args.operation !== 'status';
@@ -252,15 +259,22 @@ function isMutationCommand(command, args = {}) {
   if (command === 'web-executor') return ['prepare', 'open', 'act', 'navigate', 'close'].includes(args.operation);
   if (command === 'web-command' && args.name === 'domSnapshot') return false;
   return mutationCommands.has(command) || (command === 'logcat' && args.clear === true)
-    || (command === 'device-ownership' && ['cancel-install', 'force-stop'].includes(args.operation))
+    || (command === 'device-ownership' && ['reconcile', 'cancel-install', 'force-stop', 'delete-archive'].includes(args.operation))
     || (command === 'ios-wda-session' && args.operation !== 'status')
     || (command === 'uia-runtime' && args.operation !== 'status')
     || ((command === 'webview-network' || command === 'webview-console') && args.script !== undefined);
 }
 
 function isAndroidMutation(command, args = {}) {
-  return isMutationCommand(command, args) && !['runtime', 'device-ownership', 'executor-prepare'].includes(command)
+  if (command === 'adb-exec') return Boolean(args.serial) && args.readOnly !== true;
+  return isMutationCommand(command, args) && !ownsCommandLifecycle(command)
     && !command.startsWith('ios-') && !command.startsWith('web-');
+}
+
+// Workflow/control commands manage their own operations and device admission.
+// Holding a caller's device lock across start/wait/cancel can deadlock the child.
+function ownsCommandLifecycle(command) {
+  return ['script', 'intent', 'install-apk', 'permission-dialog', 'runtime', 'device-ownership', 'executor-prepare'].includes(command);
 }
 
 function executionTimeoutMs(command, args = {}) {
@@ -280,13 +294,16 @@ function executionTimeoutMs(command, args = {}) {
 // permissions gate Bridge calls; trusted local code is not a process sandbox.
 const scriptPermissions = Object.freeze({
   'app.test': ['web-executor', 'android-executor', 'flutter-executor', 'executor-prepare'],
-  'app.read': ['status', 'tree', 'uia-tree', 'screenshot', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'flutter-h5-dom', 'keyboard-state', 'permission-state',
+  'app.read': ['doctor', 'ios-doctor', 'ios-devices', 'webview-pages', 'web-provider-status', 'web-connect-info', 'web-sessions', 'wait-text', 'h5-wait', 'flutter-h5-wait', 'web-wait', 'status', 'tree', 'uia-tree', 'screenshot', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'flutter-h5-dom', 'keyboard-state', 'permission-state',
     'ios-status', 'ios-tree', 'ios-uia-tree', 'ios-screenshot', 'ios-flutter-tree', 'ios-flutter-nodes', 'ios-h5-dom', 'ios-wda-status', 'web-status', 'web-dom'],
   'capture.read': ['ui-observation', 'ios-ui-observation', 'web-ui-observation', 'logs', 'network', 'state', 'events', 'logcat', 'webview-console', 'webview-network', 'ios-logs', 'ios-network', 'ios-state', 'ios-events', 'web-logs', 'web-network', 'web-state', 'web-events'],
-  'app.interact': ['launch-app', 'launch-activity', 'tap', 'tap-text', 'tap-uia-text', 'tap-uia', 'tap-native', 'input-text', 'swipe', 'native-gesture', 'keyevent', 'wait-text', 'hide-keyboard', 'tap-flutter', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter', 'h5-click', 'h5-input', 'h5-wait', 'h5-scroll', 'flutter-h5-click', 'flutter-h5-input', 'flutter-h5-wait', 'flutter-h5-scroll',
-    'ios-h5-click', 'ios-h5-input', 'ios-h5-scroll', 'ios-launch-app', 'ios-wda-session', 'ios-tap', 'ios-input', 'ios-swipe', 'ios-set-orientation', 'ios-tap-native', 'ios-input-native-text', 'ios-tap-flutter', 'ios-input-flutter-text', 'ios-scroll-flutter', 'ios-flutter-back', 'ios-flutter-hide-keyboard', 'web-click', 'web-input', 'web-key', 'web-scroll', 'web-wait'],
-  'app.lifecycle': ['clear-app-data'],
+  'app.interact': ['launch-app', 'launch-activity', 'tap', 'tap-text', 'tap-uia-text', 'tap-uia', 'tap-native', 'input-text', 'swipe', 'native-gesture', 'keyevent', 'hide-keyboard', 'tap-flutter', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter', 'h5-click', 'h5-input', 'h5-scroll', 'flutter-h5-click', 'flutter-h5-input', 'flutter-h5-scroll',
+    'ios-h5-click', 'ios-h5-input', 'ios-h5-scroll', 'ios-launch-app', 'ios-wda-session', 'ios-tap', 'ios-input', 'ios-swipe', 'ios-set-orientation', 'ios-tap-native', 'ios-input-native-text', 'ios-tap-flutter', 'ios-input-flutter-text', 'ios-scroll-flutter', 'ios-flutter-back', 'ios-flutter-hide-keyboard', 'web-click', 'web-input', 'web-key', 'web-scroll'],
+  'app.expert': ['adb-exec', 'uia-runtime', 'h5-eval', 'flutter-h5-eval', 'ios-h5-eval', 'web-command', 'flutter-action', 'ios-flutter-action', 'forward', 'remove-forward'],
+  'app.lifecycle': ['clear-app-data', 'freeze-app', 'thaw-app', 'ios-install-app', 'ios-setup'],
   'app.permissions': ['permission-grant', 'permission-revoke', 'appops-set'],
+  'app.workflow': ['intent', 'script', 'install-apk', 'permission-dialog', 'runtime', 'device-ownership', 'ios-execution', 'web-execution', 'web-session-start', 'web-session-stop'],
+  'evidence.read': ['evidence', 'response'],
 });
 const scriptPermissionByCommand = new Map(Object.entries(scriptPermissions).flatMap(([permission, commands]) => commands.map(command => [command, permission])));
 const workflowCommands = new Set(['install-apk', 'permission-dialog']);
@@ -306,7 +323,7 @@ function commandContract(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw unknownCommand(command);
   const isolated = isolatedByName.has(command);
-  const platform = ['runtime', 'executor-prepare', 'response'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
+  const platform = command === 'doctor' ? 'multi' : ['runtime', 'executor-prepare', 'response'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
     : definition.domain === 'ios' ? 'ios' : definition.domain === 'web' ? 'web' : 'android';
   const role = command === 'runtime' || command === 'intent' || command === 'script' || workflowCommands.has(command) ? 'execution'
     : ['evidence', 'response'].includes(command) ? 'evidence' : expertCommands.has(command) ? 'expert' : 'capability';
@@ -321,7 +338,7 @@ function commandContract(command) {
       providersByPlatform: { android: ['native', 'uia', 'flutter', 'h5'], ios: ['native', 'h5', 'flutter'], web: ['h5'] } } : {}),
     execution: { kind: role === 'execution' ? 'operation' : isMutationCommand(command) ? 'mutation' : 'query',
       mutation: isMutationCommand(command),
-      conditionalMutation: command === 'device-ownership' ? 'operation in reconcile,cancel-install,force-stop' : command === 'web-executor' ? 'operation in prepare,open,act,navigate,close' : ['android-executor', 'flutter-executor'].includes(command) ? 'operation in open,act,close' : command === 'uia-runtime' ? 'operation != status' : command === 'logcat' ? 'clear=true' : ['webview-network', 'webview-console'].includes(command) ? 'script is supplied' : null,
+      conditionalMutation: command === 'device-ownership' ? 'operation in reconcile,cancel-install,force-stop,delete-archive; reconcile-archive writes only local query evidence' : command === 'web-executor' ? 'operation in prepare,open,act,navigate,close' : ['android-executor', 'flutter-executor'].includes(command) ? 'operation in open,act,close' : command === 'uia-runtime' ? 'operation != status' : command === 'logcat' ? 'clear=true' : ['webview-network', 'webview-console'].includes(command) ? 'script is supplied' : null,
       arbitration: command === 'script' || command === 'intent' ? 'target-platform-physical-device'
         : isAndroidMutation(command) ? 'cross-process-physical-android-device'
         : platform === 'ios' && isMutationCommand(command) ? 'cross-process-physical-ios-device'
@@ -333,23 +350,17 @@ function commandSchema(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw unknownCommand(command);
   if (command === 'response') return require('./response-store').responseSchema();
+  if (command === 'doctor') return require('./doctor').schema();
   if (command === 'executor-prepare') return require('./executors/preparation').preparationSchema();
   if (require('./ui-observation').commands.has(command)) return require('./ui-observation').schema(command, optionTypes);
   if (command === 'web-executor') return require('./executors/command-schema').webExecutorSchema();
   if (command === 'android-executor') return require('./executors/command-schema').androidExecutorSchema();
   if (command === 'flutter-executor') return require('./executors/command-schema').flutterExecutorSchema();
   if (command === 'runtime') return { type: 'object', additionalProperties: false, required: ['operation'],
-    properties: { operation: { enum: ['start', 'status', 'stop'] } } };
+    properties: { operation: { enum: ['start', 'status', 'stop', 'force-stop'] }, timeoutMs: { ...optionTypes.timeoutMs, default: 5000 },
+      ownerPid: { type: 'integer', minimum: 1, description: 'For force-stop only: explicitly select a live Bridge Host PID when its owner records are missing or invalid. Verify the namespace using doctor and the OS process list.' } } };
   if (definition.domain === 'web') return require('./web/command-schema').webSchema(command);
-  if (command === 'device-ownership') return { type: 'object', additionalProperties: false,
-    properties: { operation: { enum: ['status', 'reconcile', 'receipt', 'cancel-install', 'force-stop'] }, serial: { type: 'string', minLength: 1 },
-      runtimeEpoch: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' },
-      actionId: { type: 'string', minLength: 1, maxLength: 1024 }, timeoutMs: { type: 'integer', minimum: 1, maximum: 30000 } },
-    required: ['operation', 'serial'], oneOf: [
-      { properties: { operation: { enum: ['status', 'reconcile', 'force-stop'] }, runtimeEpoch: false, actionId: false } },
-      { properties: { operation: { const: 'receipt' }, timeoutMs: false }, required: ['runtimeEpoch', 'actionId'] },
-      { properties: { operation: { const: 'cancel-install' }, runtimeEpoch: false }, required: ['actionId'] },
-    ] };
+  if (command === 'device-ownership') return require('./shared-kernel/ownership-archives').schema();
   if (require('./ios-wda-port').commands.has(command)) {
     const names = ['deviceId', 'wdaRunnerBundleId', 'wdaUrl', 'devicectl', 'timeoutMs', ...executionOptions];
     if (command !== 'ios-wda-status') names.push('bundleId', 'wdaSessionId');
@@ -403,8 +414,15 @@ function commandSchema(command) {
         ] },
     ] };
   if (command === 'uia-runtime') return { type: 'object', additionalProperties: false,
-    properties: { operation: { enum: ['status', 'start', 'stop'] }, serial: { type: 'string', minLength: 1 },
+    properties: { operation: { enum: ['status', 'start', 'stop', 'force-reset'] }, serial: { type: 'string', minLength: 1 },
       adb: { type: 'string', minLength: 1 }, timeoutMs: { type: 'integer', minimum: 1, maximum: 30000 } }, required: ['operation', 'serial'] };
+  if (command === 'adb-exec') return { type: 'object', additionalProperties: false, required: ['argv'], properties: {
+    argv: { type: 'array', minItems: 1, items: { type: 'string', pattern: '^[^\\u0000]*$' }, description: 'Exact ADB arguments. For a remote shell expression, use ["shell", "sh", "-c", "..."]; no Host shell is invoked.' },
+    serial: { type: 'string', minLength: 1 }, adb: { type: 'string', minLength: 1 },
+    timeoutMs: { type: 'integer', minimum: 1, maximum: 2147483647 },
+    readOnly: { type: 'boolean', default: false }, outFile: { type: 'string', minLength: 1 },
+    requestId: { type: 'string', minLength: 1 },
+  } };
   if (isolatedByName.has(command)) return executionCommandSchema(command, Object.keys(scriptPermissions));
   const common = isolatedByName.has(command) || workflowCommands.has(command) || permissionCommands.has(command) ? [] : definition.domain === 'ios' ? iosCommon
     : definition.domain === 'web' ? [] : androidCommon;
@@ -437,7 +455,8 @@ function commandSchema(command) {
     if (command === 'flutter-h5-input') properties.text = { type: 'string', maxLength: 16384 };
   }
   if (command === 'tap-text') properties.provider = { enum: ['auto', 'native', 'flutter', 'uia'], default: 'native' };
-  if (command === 'tap-uia-text') properties.exact = { type: 'boolean', enum: [true], default: true };
+  if (command === 'tap-uia-text') properties.exact = { type: 'boolean', default: true,
+    description: 'Exact text by default. Set false for substring matching. Multiple matches return candidates for agent selection.' };
   if (command === 'tap-uia') properties.selector = require('./shared-kernel/uia-target').selectorSchema;
   if (command === 'tap-native' || command === 'input-text') properties.selector = nativeSelector;
   if (command === 'input-text') properties.text = { type: 'string', maxLength: 16384 };
@@ -462,6 +481,7 @@ function commandSchema(command) {
   if (definition.targetKind === 'web-target') required.push('sessionId');
   if (command === 'wait-text') {
     properties.provider = { type: 'string', enum: ['auto', 'native', 'flutter', 'uia'], default: 'native' };
+    properties.absenceScope = { type: 'string', enum: ['complete', 'observed'], default: 'complete', description: 'complete requires provider coverage; observed tests only the returned labels and retains partial/unknown coverage.' };
     properties.timeoutMs = { ...properties.timeoutMs, default: 10000 };
     for (const name of ['requireText', 'absentText']) properties[name] = { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1 } };
   }
@@ -494,6 +514,7 @@ function validateCommandArguments(command, args = {}) {
   validateValue(args, schema);
   const normalized = { ...args };
   const definition = commandByName.get(command);
+  if (command === 'logcat') require('./shared-kernel/logcat-query').validateLogcatQuery(normalized);
   if (command === 'wait-text') require('./shared-kernel/text-wait').validateTextConditions(normalized);
   if (command === 'tap' && normalized.scope === 'app' && !normalized.packageName) throw new CommandError('target_required', 'App-scoped tap requires packageName.', { field: 'packageName' });
   if (['input-text', 'input-flutter-text', 'ios-input'].includes(command)
@@ -538,4 +559,4 @@ function jsonCliValue(schema) {
 }
 
 module.exports = { commandDefinitions, isolatedCommandDefinitions, commandByName, isolatedByName,
-  commandSchema, commandContract, scriptPermissions, scriptPermissionByCommand, validateCommandArguments, parseCliOptions, isMutationCommand, isAndroidMutation, executionTimeoutMs };
+  commandSchema, commandContract, scriptPermissions, scriptPermissionByCommand, validateCommandArguments, parseCliOptions, isMutationCommand, isAndroidMutation, ownsCommandLifecycle, executionTimeoutMs };

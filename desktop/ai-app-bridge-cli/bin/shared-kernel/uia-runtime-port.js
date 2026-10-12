@@ -204,6 +204,18 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
     throw failure('uia_runtime_stop_unconfirmed', 'The original UIA runtime has not published its stopped state.');
   }
 
+  async function inspectOwner(asset) {
+    const destination = await installAsset(asset);
+    const raw = await shell(`CLASSPATH=${quote(destination)} app_process /system/bin ${mainClass} ${quote(root)} ${asset.manifest.sha256} owner-status`);
+    let owner;
+    try { owner = JSON.parse(raw); }
+    catch { throw failure('uia_runtime_owner_unverified', 'The phone did not return its UIA process-lock observation.'); }
+    if (owner?.ok !== true || owner.schemaVersion !== 'aab.uia.owner.v1' || owner.root !== root
+      || owner.dexSha256 !== asset.manifest.sha256 || typeof owner.owned !== 'boolean')
+      throw failure('uia_runtime_owner_unverified', 'The phone did not return a valid UIA process-lock observation.');
+    return { ...owner, destination };
+  }
+
   async function ensureLocked(rotate) {
     await require('../executors/automation-owner').assertAvailable(serial);
     const asset = bundle();
@@ -211,11 +223,21 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
     let peer = previous === null ? null : descriptor(previous);
     if (peer === null || peer.running === false) peer = await startRuntime(peer, asset);
     if (peer.dexSha256 !== asset.manifest.sha256) throw failure('uia_runtime_version_mismatch', 'Stop the existing UIA runtime before starting this installed bundle.');
-    let connection = await connect(peer), status = await statusOf(connection);
+    let connection = await connect(peer), status;
+    try { status = await statusOf(connection); }
+    catch (error) {
+      if (!rotate || error.code !== 'uia_runtime_unreachable') throw error;
+      const owner = await inspectOwner(asset);
+      if (owner.owned) throw error;
+      // Only a fresh observation may reopen a proven-dead owner. Bound actions
+      // continue to refer to their original epoch and are never replayed here.
+      peer = await startRuntime(peer, asset, owner.destination);
+      connection = await connect(peer); status = await statusOf(connection);
+    }
     if (status.closing) throw failure('uia_runtime_closing', 'The original UIA runtime is closing. Observe again after it exits.');
     // Rotation belongs to NEW observation, before binding a node. A full epoch
     // cannot admit another new action; acknowledgements are monotonic.
-    if (rotate && status.count === status.capacity && status.pending === 0 && status.acknowledged === status.count) {
+    if (rotate && status.count === status.capacity && status.pending === 0) {
       await stopRuntime(connection);
       peer = await startRuntime(peer, asset);
       connection = await connect(peer); status = await statusOf(connection);
@@ -392,27 +414,19 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
       });
     },
     async control(operation) {
-      if (!['status', 'start', 'stop'].includes(operation)) throw failure('invalid_uia_runtime_operation', 'UIA runtime operation must be status, start or stop.');
+      if (operation === 'force-reset') return withConnectionLock(() => this.forceStop());
+      if (!['status', 'start', 'stop'].includes(operation)) throw failure('invalid_uia_runtime_operation', 'UIA runtime operation must be status, start, stop or force-reset.');
       return withConnectionLock(async () => {
         const value = await readJson(`${root}/runtime.json`);
         if (operation === 'start') {
           await require('../executors/automation-owner').assertAvailable(serial);
-          const asset = bundle(), destination = await installAsset(asset);
-          const ownerRaw = await shell(`CLASSPATH=${quote(destination)} app_process /system/bin ${mainClass} ${quote(root)} ${asset.manifest.sha256} owner-status`);
-          let owner;
-          try { owner = JSON.parse(ownerRaw); }
-          catch { throw failure('uia_runtime_owner_unverified', 'The phone did not return valid JSON for its exclusive UIA process lock.'); }
-          if (owner?.ok !== true || owner.schemaVersion !== 'aab.uia.owner.v1' || owner.root !== root
-            || owner.dexSha256 !== asset.manifest.sha256 || typeof owner.owned !== 'boolean')
-            throw failure('uia_runtime_owner_unverified', 'The phone did not return a valid UIA process-lock observation.');
+          const asset = bundle(), owner = await inspectOwner(asset);
           let peer = value === null ? null : descriptor(value);
           if (owner.owned) {
             if (peer === null || !peer.running) throw failure('uia_runtime_already_running', 'The original runtime still owns its process lock. Wait for it to finish starting or stopping.');
             if (peer.dexSha256 !== asset.manifest.sha256) throw failure('uia_runtime_version_mismatch', 'Stop the existing UIA runtime before starting this installed bundle.');
           } else {
-            // Explicit start may reopen a dead owner. The new process reacquires
-            // the OS lock and audits every original record BEFORE UiAutomation.
-            peer = await startRuntime(peer, asset, destination);
+            peer = await startRuntime(peer, asset, owner.destination);
           }
           const state = await statusOf(await connect(peer));
           if (state.closing) throw failure('uia_runtime_closing', 'The original runtime is still stopping.');

@@ -1,0 +1,3129 @@
+{
+  "schemaVersion": "aab.response-delivery-audit/v1",
+  "date": "2026-10-12",
+  "status": "auto_implemented_overall_optimization_in_progress",
+  "method": {
+    "kind": "offline_replay_of_retained_real_responses",
+    "deviceActionsRepeated": 0,
+    "indexFiles": 1215,
+    "pairedOuterCallsScanned": 13958,
+    "conversationSessionsWithCompleteBodies": 133,
+    "artifactJsonPathsScanned": 140471,
+    "metrics": "Compact UTF-8 JSON; whole reply budget 98304 bytes; raw baseline includes the same limitBytes field; datasets reported separately because overlap exists.",
+    "exclusions": [
+      "Model-side projections without recoverable originals",
+      "Truncated JSON tool outputs",
+      "Explicitly extracted values when original unavailable",
+      "Binary replies",
+      "Current task synthetic examples"
+    ],
+    "biases": [
+      "Retained artifacts are dominated by Duo compatibility runs",
+      "The 77 saved POS trees mainly cover two workflows",
+      "Conversation complete-body subset is biased toward small outputs",
+      "Cursor transcripts without tool_result are not byte samples",
+      "Historical original capture limits remain; full delivery is not complete business coverage"
+    ]
+  },
+  "delivery": {
+    "defaultBodyBytes": 98304,
+    "losslessFormattingThresholdBytes": 32768,
+    "minimumSavingWithinBudget": 0.3,
+    "partialPreviewContentBytes": 65536
+  },
+  "counts": {
+    "artifacts": {
+      "n": 25845,
+      "compact": 3825,
+      "overOld8KiB": 9231,
+      "next_inline": 3854,
+      "inline": 21991,
+      "overview": 29,
+      "previewWithData": 29
+    },
+    "artifacts/uia-tree": {
+      "n": 4526,
+      "compact": 1978,
+      "overOld8KiB": 3761,
+      "next_inline": 2001,
+      "inline": 2525,
+      "overview": 23,
+      "previewWithData": 23
+    },
+    "artifacts/launch-activity": {
+      "n": 531,
+      "inline": 531,
+      "overOld8KiB": 4
+    },
+    "artifacts/device-ownership": {
+      "n": 2426,
+      "inline": 2426,
+      "overOld8KiB": 0
+    },
+    "artifacts/install-apk": {
+      "n": 352,
+      "inline": 352,
+      "overOld8KiB": 0
+    },
+    "artifacts/intent": {
+      "n": 5222,
+      "inline": 3447,
+      "overOld8KiB": 4493,
+      "compact": 1775,
+      "next_inline": 1775
+    },
+    "artifacts/tap-uia-text": {
+      "n": 189,
+      "inline": 189,
+      "overOld8KiB": 114
+    },
+    "artifacts/uia-runtime": {
+      "n": 61,
+      "inline": 61,
+      "overOld8KiB": 0
+    },
+    "artifacts/screenshot": {
+      "n": 5337,
+      "inline": 5336,
+      "overOld8KiB": 113,
+      "overview": 1,
+      "previewWithData": 1,
+      "next_inline": 1
+    },
+    "artifacts/tap": {
+      "n": 1259,
+      "inline": 1259,
+      "overOld8KiB": 25
+    },
+    "artifacts/keyevent": {
+      "n": 443,
+      "inline": 443,
+      "overOld8KiB": 0
+    },
+    "artifacts/swipe": {
+      "n": 1997,
+      "inline": 1997,
+      "overOld8KiB": 0
+    },
+    "artifacts/runtime": {
+      "n": 552,
+      "inline": 552,
+      "overOld8KiB": 0
+    },
+    "artifacts/launch-app": {
+      "n": 754,
+      "inline": 753,
+      "overOld8KiB": 13,
+      "overview": 1,
+      "previewWithData": 1,
+      "next_inline": 1
+    },
+    "artifacts/tap-uia": {
+      "n": 742,
+      "inline": 742,
+      "overOld8KiB": 600
+    },
+    "artifacts/input-text": {
+      "n": 8,
+      "inline": 8,
+      "overOld8KiB": 0
+    },
+    "artifacts/help": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "artifacts/evidence": {
+      "n": 51,
+      "inline": 51,
+      "overOld8KiB": 0
+    },
+    "artifacts/tree": {
+      "n": 77,
+      "compact": 71,
+      "overOld8KiB": 71,
+      "next_inline": 71,
+      "inline": 6
+    },
+    "artifacts/script": {
+      "n": 1163,
+      "inline": 1163,
+      "overOld8KiB": 10
+    },
+    "artifacts/unknown": {
+      "n": 28,
+      "inline": 28,
+      "overOld8KiB": 0
+    },
+    "artifacts/logcat": {
+      "n": 51,
+      "inline": 49,
+      "overOld8KiB": 18,
+      "overview": 2,
+      "previewWithData": 2,
+      "next_inline": 2
+    },
+    "artifacts/intent-observe": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/current": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/run": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/stage-current": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/response": {
+      "n": 16,
+      "overview": 2,
+      "overOld8KiB": 3,
+      "previewWithData": 2,
+      "next_inline": 3,
+      "inline": 13,
+      "compact": 1
+    },
+    "artifacts/ownership": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "artifacts/uia": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "artifacts/ui-observation": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/capabilities": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/permission-revoke": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/status": {
+      "n": 10,
+      "inline": 10,
+      "overOld8KiB": 0
+    },
+    "artifacts/native-gesture": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/scroll-uia": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/install": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "artifacts/foreground": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "artifacts/list-apps": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "artifacts/adb-shell": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "artifacts/permission-state": {
+      "n": 5,
+      "inline": 5,
+      "overOld8KiB": 0
+    },
+    "artifacts/tap-native": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/stop-app": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/h5-dom": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "artifacts/observe": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/permission-dialog": {
+      "n": 6,
+      "inline": 6,
+      "overOld8KiB": 6
+    },
+    "artifacts/runtime-status": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/app-info": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/keyboard-state": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "artifacts/devices": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "artifacts/android-shell": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "conversations": {
+      "n": 2915,
+      "inline": 2914,
+      "overOld8KiB": 122,
+      "compact": 1,
+      "next_inline": 1
+    },
+    "conversations/runtime": {
+      "n": 70,
+      "inline": 70,
+      "overOld8KiB": 0
+    },
+    "conversations/device-ownership": {
+      "n": 100,
+      "inline": 100,
+      "overOld8KiB": 0
+    },
+    "conversations/launch-activity": {
+      "n": 79,
+      "inline": 79,
+      "overOld8KiB": 0
+    },
+    "conversations/uia-runtime": {
+      "n": 16,
+      "inline": 16,
+      "overOld8KiB": 0
+    },
+    "conversations/intent": {
+      "n": 69,
+      "inline": 69,
+      "overOld8KiB": 33
+    },
+    "conversations/capabilities": {
+      "n": 4,
+      "inline": 4,
+      "overOld8KiB": 0
+    },
+    "conversations/status": {
+      "n": 252,
+      "inline": 252,
+      "overOld8KiB": 0
+    },
+    "conversations/screenshot": {
+      "n": 268,
+      "inline": 268,
+      "overOld8KiB": 1
+    },
+    "conversations/install-apk": {
+      "n": 216,
+      "inline": 216,
+      "overOld8KiB": 0
+    },
+    "conversations/launch-app": {
+      "n": 187,
+      "inline": 187,
+      "overOld8KiB": 1
+    },
+    "conversations/uia-tree": {
+      "n": 127,
+      "inline": 126,
+      "overOld8KiB": 29,
+      "compact": 1,
+      "next_inline": 1
+    },
+    "conversations/tap-uia": {
+      "n": 8,
+      "inline": 8,
+      "overOld8KiB": 2
+    },
+    "conversations/web-sessions": {
+      "n": 5,
+      "inline": 5,
+      "overOld8KiB": 0
+    },
+    "conversations/swipe": {
+      "n": 66,
+      "inline": 66,
+      "overOld8KiB": 0
+    },
+    "conversations/script": {
+      "n": 129,
+      "inline": 129,
+      "overOld8KiB": 3
+    },
+    "conversations/uia-set-text": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/keyboard-state": {
+      "n": 10,
+      "inline": 10,
+      "overOld8KiB": 0
+    },
+    "conversations/install-app": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/tree": {
+      "n": 193,
+      "inline": 193,
+      "overOld8KiB": 21
+    },
+    "conversations/logcat": {
+      "n": 16,
+      "inline": 16,
+      "overOld8KiB": 0
+    },
+    "conversations/wait-text": {
+      "n": 179,
+      "inline": 179,
+      "overOld8KiB": 1
+    },
+    "conversations/keyevent": {
+      "n": 69,
+      "inline": 69,
+      "overOld8KiB": 0
+    },
+    "conversations/tap-native": {
+      "n": 8,
+      "inline": 8,
+      "overOld8KiB": 0
+    },
+    "conversations/network": {
+      "n": 88,
+      "inline": 88,
+      "overOld8KiB": 26
+    },
+    "conversations/tap-text": {
+      "n": 334,
+      "inline": 334,
+      "overOld8KiB": 0
+    },
+    "conversations/input-text": {
+      "n": 61,
+      "inline": 61,
+      "overOld8KiB": 0
+    },
+    "conversations/tap": {
+      "n": 151,
+      "inline": 151,
+      "overOld8KiB": 0
+    },
+    "conversations/tap-uia-text": {
+      "n": 121,
+      "inline": 121,
+      "overOld8KiB": 2
+    },
+    "conversations/events": {
+      "n": 4,
+      "inline": 4,
+      "overOld8KiB": 0
+    },
+    "conversations/logs": {
+      "n": 7,
+      "inline": 7,
+      "overOld8KiB": 1
+    },
+    "conversations/response": {
+      "n": 4,
+      "inline": 4,
+      "overOld8KiB": 1
+    },
+    "conversations/android-executor": {
+      "n": 4,
+      "inline": 4,
+      "overOld8KiB": 0
+    },
+    "conversations/executor-prepare": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/intent-status": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/tap-flutter-text": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "conversations/ios-devices": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "conversations/permission-revoke": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/clear-app-data": {
+      "n": 6,
+      "inline": 6,
+      "overOld8KiB": 0
+    },
+    "conversations/remove-forward": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "conversations/forward": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "conversations/h5-eval": {
+      "n": 14,
+      "inline": 14,
+      "overOld8KiB": 0
+    },
+    "conversations/hide-keyboard": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "conversations/h5-wait": {
+      "n": 3,
+      "inline": 3,
+      "overOld8KiB": 0
+    },
+    "conversations/webview-pages": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/h5-dom": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/h5-click": {
+      "n": 4,
+      "inline": 4,
+      "overOld8KiB": 0
+    },
+    "conversations/web-provider-status": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/web-session-start": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "conversations/web-dom": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 1
+    },
+    "conversations/web-click": {
+      "n": 10,
+      "inline": 10,
+      "overOld8KiB": 0
+    },
+    "conversations/web-wait": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "conversations/web-input": {
+      "n": 2,
+      "inline": 2,
+      "overOld8KiB": 0
+    },
+    "conversations/state": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/permission-dialog": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/freeze-app": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    },
+    "conversations/thaw-app": {
+      "n": 1,
+      "inline": 1,
+      "overOld8KiB": 0
+    }
+  },
+  "byteStatistics": {
+    "artifacts": {
+      "originalValueBytes": {
+        "p50": 3237,
+        "p90": 40470,
+        "p95": 50118,
+        "max": 248303,
+        "sum": 352614699
+      },
+      "originalBodyBytes": {
+        "p50": 3642,
+        "p90": 41456,
+        "p95": 53375,
+        "max": 248668,
+        "sum": 375394152
+      },
+      "deliveredBodyBytes": {
+        "p50": 3642,
+        "p90": 25482,
+        "p95": 31792,
+        "max": 97068,
+        "sum": 244866491
+      },
+      "previewReturned": {
+        "p50": 60017,
+        "p90": 60370,
+        "p95": 64860,
+        "max": 65061,
+        "sum": 1330617
+      }
+    },
+    "artifacts/uia-tree": {
+      "originalValueBytes": {
+        "p50": 33856,
+        "p90": 60315,
+        "p95": 81770,
+        "max": 248303,
+        "sum": 148828216
+      },
+      "originalBodyBytes": {
+        "p50": 34175,
+        "p90": 60680,
+        "p95": 82135,
+        "max": 248668,
+        "sum": 150473420
+      },
+      "deliveredBodyBytes": {
+        "p50": 13141,
+        "p90": 30993,
+        "p95": 34191,
+        "max": 95658,
+        "sum": 73291512
+      },
+      "previewReturned": {
+        "p50": 60040,
+        "p90": 60281,
+        "p95": 60288,
+        "max": 60370,
+        "sum": 1200591
+      }
+    },
+    "artifacts/launch-activity": {
+      "originalValueBytes": {
+        "p50": 2987,
+        "p90": 3377,
+        "p95": 3922,
+        "max": 65016,
+        "sum": 1383561
+      },
+      "originalBodyBytes": {
+        "p50": 3533,
+        "p90": 4231,
+        "p95": 4763,
+        "max": 97068,
+        "sum": 1913930
+      },
+      "deliveredBodyBytes": {
+        "p50": 3533,
+        "p90": 4231,
+        "p95": 4763,
+        "max": 97068,
+        "sum": 1913930
+      }
+    },
+    "artifacts/device-ownership": {
+      "originalValueBytes": {
+        "p50": 2415,
+        "p90": 4171,
+        "p95": 4243,
+        "max": 7975,
+        "sum": 5748578
+      },
+      "originalBodyBytes": {
+        "p50": 2741,
+        "p90": 4497,
+        "p95": 4569,
+        "max": 10483,
+        "sum": 6585040
+      },
+      "deliveredBodyBytes": {
+        "p50": 2741,
+        "p90": 4497,
+        "p95": 4569,
+        "max": 10483,
+        "sum": 6585040
+      }
+    },
+    "artifacts/install-apk": {
+      "originalValueBytes": {
+        "p50": 4189,
+        "p90": 4793,
+        "p95": 4841,
+        "max": 5119,
+        "sum": 1476486
+      },
+      "originalBodyBytes": {
+        "p50": 4954,
+        "p90": 5557,
+        "p95": 5606,
+        "max": 5883,
+        "sum": 1741327
+      },
+      "deliveredBodyBytes": {
+        "p50": 4954,
+        "p90": 5557,
+        "p95": 5606,
+        "max": 5883,
+        "sum": 1741327
+      }
+    },
+    "artifacts/intent": {
+      "originalValueBytes": {
+        "p50": 27216,
+        "p90": 50224,
+        "p95": 68098,
+        "max": 202859,
+        "sum": 146820554
+      },
+      "originalBodyBytes": {
+        "p50": 28547,
+        "p90": 51906,
+        "p95": 69450,
+        "max": 203992,
+        "sum": 153346786
+      },
+      "deliveredBodyBytes": {
+        "p50": 19443,
+        "p90": 32098,
+        "p95": 33532,
+        "max": 87777,
+        "sum": 105603371
+      }
+    },
+    "artifacts/tap-uia-text": {
+      "originalValueBytes": {
+        "p50": 8470,
+        "p90": 8966,
+        "p95": 8982,
+        "max": 9303,
+        "sum": 1128520
+      },
+      "originalBodyBytes": {
+        "p50": 11016,
+        "p90": 11651,
+        "p95": 11673,
+        "max": 12076,
+        "sum": 1461427
+      },
+      "deliveredBodyBytes": {
+        "p50": 11016,
+        "p90": 11651,
+        "p95": 11673,
+        "max": 12076,
+        "sum": 1461427
+      }
+    },
+    "artifacts/uia-runtime": {
+      "originalValueBytes": {
+        "p50": 1177,
+        "p90": 1246,
+        "p95": 1254,
+        "max": 1276,
+        "sum": 72237
+      },
+      "originalBodyBytes": {
+        "p50": 1498,
+        "p90": 1576,
+        "p95": 1942,
+        "max": 2022,
+        "sum": 94320
+      },
+      "deliveredBodyBytes": {
+        "p50": 1498,
+        "p90": 1576,
+        "p95": 1942,
+        "max": 2022,
+        "sum": 94320
+      }
+    },
+    "artifacts/screenshot": {
+      "originalValueBytes": {
+        "p50": 1956,
+        "p90": 3332,
+        "p95": 3468,
+        "max": 77186,
+        "sum": 14578598
+      },
+      "originalBodyBytes": {
+        "p50": 2277,
+        "p90": 3652,
+        "p95": 3788,
+        "max": 127606,
+        "sum": 18227363
+      },
+      "deliveredBodyBytes": {
+        "p50": 2277,
+        "p90": 3652,
+        "p95": 3788,
+        "max": 90735,
+        "sum": 18177964
+      },
+      "previewReturned": {
+        "p50": 1,
+        "p90": 1,
+        "p95": 1,
+        "max": 1,
+        "sum": 1
+      }
+    },
+    "artifacts/tap": {
+      "originalValueBytes": {
+        "p50": 2573,
+        "p90": 2639,
+        "p95": 2663,
+        "max": 32154,
+        "sum": 3167615
+      },
+      "originalBodyBytes": {
+        "p50": 3448,
+        "p90": 3523,
+        "p95": 3556,
+        "max": 62601,
+        "sum": 4808409
+      },
+      "deliveredBodyBytes": {
+        "p50": 3448,
+        "p90": 3523,
+        "p95": 3556,
+        "max": 62601,
+        "sum": 4808409
+      }
+    },
+    "artifacts/keyevent": {
+      "originalValueBytes": {
+        "p50": 2404,
+        "p90": 2473,
+        "p95": 2484,
+        "max": 2512,
+        "sum": 816180
+      },
+      "originalBodyBytes": {
+        "p50": 3240,
+        "p90": 3309,
+        "p95": 3313,
+        "max": 3349,
+        "sum": 1184880
+      },
+      "deliveredBodyBytes": {
+        "p50": 3240,
+        "p90": 3309,
+        "p95": 3313,
+        "max": 3349,
+        "sum": 1184880
+      }
+    },
+    "artifacts/swipe": {
+      "originalValueBytes": {
+        "p50": 2512,
+        "p90": 2552,
+        "p95": 2552,
+        "max": 2624,
+        "sum": 4715047
+      },
+      "originalBodyBytes": {
+        "p50": 3345,
+        "p90": 3385,
+        "p95": 3385,
+        "max": 3463,
+        "sum": 6376792
+      },
+      "deliveredBodyBytes": {
+        "p50": 3345,
+        "p90": 3385,
+        "p95": 3385,
+        "max": 3463,
+        "sum": 6376792
+      }
+    },
+    "artifacts/runtime": {
+      "originalValueBytes": {
+        "p50": 705,
+        "p90": 705,
+        "p95": 705,
+        "max": 706,
+        "sum": 367404
+      },
+      "originalBodyBytes": {
+        "p50": 1021,
+        "p90": 1021,
+        "p95": 1021,
+        "max": 1022,
+        "sum": 543468
+      },
+      "deliveredBodyBytes": {
+        "p50": 1021,
+        "p90": 1021,
+        "p95": 1021,
+        "max": 1022,
+        "sum": 543468
+      }
+    },
+    "artifacts/launch-app": {
+      "originalValueBytes": {
+        "p50": 3376,
+        "p90": 4006,
+        "p95": 4081,
+        "max": 82702,
+        "sum": 3070062
+      },
+      "originalBodyBytes": {
+        "p50": 4225,
+        "p90": 4844,
+        "p95": 4921,
+        "max": 123508,
+        "sum": 3944999
+      },
+      "deliveredBodyBytes": {
+        "p50": 4225,
+        "p90": 4844,
+        "p95": 4921,
+        "max": 83551,
+        "sum": 3905042
+      },
+      "previewReturned": {
+        "p50": 1,
+        "p90": 1,
+        "p95": 1,
+        "max": 1,
+        "sum": 1
+      }
+    },
+    "artifacts/tap-uia": {
+      "originalValueBytes": {
+        "p50": 8492,
+        "p90": 8822,
+        "p95": 35991,
+        "max": 49140,
+        "sum": 7513271
+      },
+      "originalBodyBytes": {
+        "p50": 11071,
+        "p90": 11477,
+        "p95": 65903,
+        "max": 92248,
+        "sum": 10937719
+      },
+      "deliveredBodyBytes": {
+        "p50": 11071,
+        "p90": 11477,
+        "p95": 65903,
+        "max": 92248,
+        "sum": 10937719
+      }
+    },
+    "artifacts/input-text": {
+      "originalValueBytes": {
+        "p50": 1788,
+        "p90": 1844,
+        "p95": 1844,
+        "max": 1844,
+        "sum": 12940
+      },
+      "originalBodyBytes": {
+        "p50": 2537,
+        "p90": 2622,
+        "p95": 2622,
+        "max": 2622,
+        "sum": 18434
+      },
+      "deliveredBodyBytes": {
+        "p50": 2537,
+        "p90": 2622,
+        "p95": 2622,
+        "max": 2622,
+        "sum": 18434
+      }
+    },
+    "artifacts/help": {
+      "originalValueBytes": {
+        "p50": 170,
+        "p90": 170,
+        "p95": 170,
+        "max": 170,
+        "sum": 509
+      },
+      "originalBodyBytes": {
+        "p50": 652,
+        "p90": 652,
+        "p95": 652,
+        "max": 652,
+        "sum": 1954
+      },
+      "deliveredBodyBytes": {
+        "p50": 652,
+        "p90": 652,
+        "p95": 652,
+        "max": 652,
+        "sum": 1954
+      }
+    },
+    "artifacts/evidence": {
+      "originalValueBytes": {
+        "p50": 1608,
+        "p90": 2250,
+        "p95": 2573,
+        "max": 2596,
+        "sum": 86170
+      },
+      "originalBodyBytes": {
+        "p50": 1926,
+        "p90": 2568,
+        "p95": 2891,
+        "max": 2914,
+        "sum": 102388
+      },
+      "deliveredBodyBytes": {
+        "p50": 1926,
+        "p90": 2568,
+        "p95": 2891,
+        "max": 2914,
+        "sum": 102388
+      }
+    },
+    "artifacts/tree": {
+      "originalValueBytes": {
+        "p50": 107693,
+        "p90": 170627,
+        "p95": 176115,
+        "max": 176135,
+        "sum": 8750882
+      },
+      "originalBodyBytes": {
+        "p50": 108055,
+        "p90": 170989,
+        "p95": 176477,
+        "max": 176497,
+        "sum": 8778722
+      },
+      "deliveredBodyBytes": {
+        "p50": 46178,
+        "p90": 71271,
+        "p95": 73771,
+        "max": 73791,
+        "sum": 3729149
+      }
+    },
+    "artifacts/script": {
+      "originalValueBytes": {
+        "p50": 1724,
+        "p90": 2675,
+        "p95": 3600,
+        "max": 81249,
+        "sum": 2523787
+      },
+      "originalBodyBytes": {
+        "p50": 2255,
+        "p90": 3270,
+        "p95": 4207,
+        "max": 82075,
+        "sum": 3171452
+      },
+      "deliveredBodyBytes": {
+        "p50": 2255,
+        "p90": 3270,
+        "p95": 4207,
+        "max": 82075,
+        "sum": 3171452
+      }
+    },
+    "artifacts/unknown": {
+      "originalValueBytes": {
+        "p50": 2547,
+        "p90": 2689,
+        "p95": 2707,
+        "max": 2711,
+        "sum": 54264
+      },
+      "originalBodyBytes": {
+        "p50": 3755,
+        "p90": 3912,
+        "p95": 3933,
+        "max": 3937,
+        "sum": 81517
+      },
+      "deliveredBodyBytes": {
+        "p50": 3755,
+        "p90": 3912,
+        "p95": 3933,
+        "max": 3937,
+        "sum": 81517
+      }
+    },
+    "artifacts/logcat": {
+      "originalValueBytes": {
+        "p50": 1166,
+        "p90": 49906,
+        "p95": 75580,
+        "max": 245716,
+        "sum": 1053058
+      },
+      "originalBodyBytes": {
+        "p50": 1482,
+        "p90": 50223,
+        "p95": 75897,
+        "max": 246034,
+        "sum": 1070698
+      },
+      "deliveredBodyBytes": {
+        "p50": 1482,
+        "p90": 50223,
+        "p95": 66919,
+        "max": 75897,
+        "sum": 772824
+      },
+      "previewReturned": {
+        "p50": 64860,
+        "p90": 65061,
+        "p95": 65061,
+        "max": 65061,
+        "sum": 129921
+      }
+    },
+    "artifacts/intent-observe": {
+      "originalValueBytes": {
+        "p50": 238,
+        "p90": 238,
+        "p95": 238,
+        "max": 238,
+        "sum": 238
+      },
+      "originalBodyBytes": {
+        "p50": 788,
+        "p90": 788,
+        "p95": 788,
+        "max": 788,
+        "sum": 788
+      },
+      "deliveredBodyBytes": {
+        "p50": 788,
+        "p90": 788,
+        "p95": 788,
+        "max": 788,
+        "sum": 788
+      }
+    },
+    "artifacts/current": {
+      "originalValueBytes": {
+        "p50": 224,
+        "p90": 224,
+        "p95": 224,
+        "max": 224,
+        "sum": 224
+      },
+      "originalBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 760
+      },
+      "deliveredBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 760
+      }
+    },
+    "artifacts/run": {
+      "originalValueBytes": {
+        "p50": 216,
+        "p90": 216,
+        "p95": 216,
+        "max": 216,
+        "sum": 216
+      },
+      "originalBodyBytes": {
+        "p50": 744,
+        "p90": 744,
+        "p95": 744,
+        "max": 744,
+        "sum": 744
+      },
+      "deliveredBodyBytes": {
+        "p50": 744,
+        "p90": 744,
+        "p95": 744,
+        "max": 744,
+        "sum": 744
+      }
+    },
+    "artifacts/stage-current": {
+      "originalValueBytes": {
+        "p50": 210,
+        "p90": 210,
+        "p95": 210,
+        "max": 210,
+        "sum": 210
+      },
+      "originalBodyBytes": {
+        "p50": 732,
+        "p90": 732,
+        "p95": 732,
+        "max": 732,
+        "sum": 732
+      },
+      "deliveredBodyBytes": {
+        "p50": 732,
+        "p90": 732,
+        "p95": 732,
+        "max": 732,
+        "sum": 732
+      }
+    },
+    "artifacts/response": {
+      "originalValueBytes": {
+        "p50": 190,
+        "p90": 102471,
+        "p95": 116975,
+        "max": 116975,
+        "sum": 304348
+      },
+      "originalBodyBytes": {
+        "p50": 692,
+        "p90": 117341,
+        "p95": 123169,
+        "max": 123169,
+        "sum": 352291
+      },
+      "deliveredBodyBytes": {
+        "p50": 692,
+        "p90": 68575,
+        "p95": 83313,
+        "max": 83313,
+        "sum": 186756
+      },
+      "previewReturned": {
+        "p50": 1,
+        "p90": 102,
+        "p95": 102,
+        "max": 102,
+        "sum": 103
+      }
+    },
+    "artifacts/ownership": {
+      "originalValueBytes": {
+        "p50": 228,
+        "p90": 228,
+        "p95": 228,
+        "max": 228,
+        "sum": 684
+      },
+      "originalBodyBytes": {
+        "p50": 768,
+        "p90": 768,
+        "p95": 768,
+        "max": 768,
+        "sum": 2304
+      },
+      "deliveredBodyBytes": {
+        "p50": 768,
+        "p90": 768,
+        "p95": 768,
+        "max": 768,
+        "sum": 2304
+      }
+    },
+    "artifacts/uia": {
+      "originalValueBytes": {
+        "p50": 216,
+        "p90": 216,
+        "p95": 216,
+        "max": 216,
+        "sum": 648
+      },
+      "originalBodyBytes": {
+        "p50": 744,
+        "p90": 744,
+        "p95": 744,
+        "max": 744,
+        "sum": 2232
+      },
+      "deliveredBodyBytes": {
+        "p50": 744,
+        "p90": 744,
+        "p95": 744,
+        "max": 744,
+        "sum": 2232
+      }
+    },
+    "artifacts/ui-observation": {
+      "originalValueBytes": {
+        "p50": 1831,
+        "p90": 1831,
+        "p95": 1831,
+        "max": 1831,
+        "sum": 1831
+      },
+      "originalBodyBytes": {
+        "p50": 2613,
+        "p90": 2613,
+        "p95": 2613,
+        "max": 2613,
+        "sum": 2613
+      },
+      "deliveredBodyBytes": {
+        "p50": 2613,
+        "p90": 2613,
+        "p95": 2613,
+        "max": 2613,
+        "sum": 2613
+      }
+    },
+    "artifacts/capabilities": {
+      "originalValueBytes": {
+        "p50": 321,
+        "p90": 321,
+        "p95": 321,
+        "max": 321,
+        "sum": 321
+      },
+      "originalBodyBytes": {
+        "p50": 954,
+        "p90": 954,
+        "p95": 954,
+        "max": 954,
+        "sum": 954
+      },
+      "deliveredBodyBytes": {
+        "p50": 954,
+        "p90": 954,
+        "p95": 954,
+        "max": 954,
+        "sum": 954
+      }
+    },
+    "artifacts/permission-revoke": {
+      "originalValueBytes": {
+        "p50": 2968,
+        "p90": 2968,
+        "p95": 2968,
+        "max": 2968,
+        "sum": 2968
+      },
+      "originalBodyBytes": {
+        "p50": 4883,
+        "p90": 4883,
+        "p95": 4883,
+        "max": 4883,
+        "sum": 4883
+      },
+      "deliveredBodyBytes": {
+        "p50": 4883,
+        "p90": 4883,
+        "p95": 4883,
+        "max": 4883,
+        "sum": 4883
+      }
+    },
+    "artifacts/status": {
+      "originalValueBytes": {
+        "p50": 1875,
+        "p90": 1877,
+        "p95": 1943,
+        "max": 1943,
+        "sum": 17101
+      },
+      "originalBodyBytes": {
+        "p50": 2451,
+        "p90": 2453,
+        "p95": 2519,
+        "max": 2519,
+        "sum": 22751
+      },
+      "deliveredBodyBytes": {
+        "p50": 2451,
+        "p90": 2453,
+        "p95": 2519,
+        "max": 2519,
+        "sum": 22751
+      }
+    },
+    "artifacts/native-gesture": {
+      "originalValueBytes": {
+        "p50": 1767,
+        "p90": 1767,
+        "p95": 1767,
+        "max": 1767,
+        "sum": 1767
+      },
+      "originalBodyBytes": {
+        "p50": 2556,
+        "p90": 2556,
+        "p95": 2556,
+        "max": 2556,
+        "sum": 2556
+      },
+      "deliveredBodyBytes": {
+        "p50": 2556,
+        "p90": 2556,
+        "p95": 2556,
+        "max": 2556,
+        "sum": 2556
+      }
+    },
+    "artifacts/scroll-uia": {
+      "originalValueBytes": {
+        "p50": 230,
+        "p90": 230,
+        "p95": 230,
+        "max": 230,
+        "sum": 230
+      },
+      "originalBodyBytes": {
+        "p50": 772,
+        "p90": 772,
+        "p95": 772,
+        "max": 772,
+        "sum": 772
+      },
+      "deliveredBodyBytes": {
+        "p50": 772,
+        "p90": 772,
+        "p95": 772,
+        "max": 772,
+        "sum": 772
+      }
+    },
+    "artifacts/install": {
+      "originalValueBytes": {
+        "p50": 224,
+        "p90": 224,
+        "p95": 224,
+        "max": 224,
+        "sum": 448
+      },
+      "originalBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 1520
+      },
+      "deliveredBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 1520
+      }
+    },
+    "artifacts/foreground": {
+      "originalValueBytes": {
+        "p50": 230,
+        "p90": 230,
+        "p95": 230,
+        "max": 230,
+        "sum": 625
+      },
+      "originalBodyBytes": {
+        "p50": 772,
+        "p90": 772,
+        "p95": 772,
+        "max": 772,
+        "sum": 2186
+      },
+      "deliveredBodyBytes": {
+        "p50": 772,
+        "p90": 772,
+        "p95": 772,
+        "max": 772,
+        "sum": 2186
+      }
+    },
+    "artifacts/list-apps": {
+      "originalValueBytes": {
+        "p50": 164,
+        "p90": 228,
+        "p95": 228,
+        "max": 228,
+        "sum": 392
+      },
+      "originalBodyBytes": {
+        "p50": 640,
+        "p90": 768,
+        "p95": 768,
+        "max": 768,
+        "sum": 1408
+      },
+      "deliveredBodyBytes": {
+        "p50": 640,
+        "p90": 768,
+        "p95": 768,
+        "max": 768,
+        "sum": 1408
+      }
+    },
+    "artifacts/adb-shell": {
+      "originalValueBytes": {
+        "p50": 164,
+        "p90": 228,
+        "p95": 228,
+        "max": 228,
+        "sum": 392
+      },
+      "originalBodyBytes": {
+        "p50": 640,
+        "p90": 768,
+        "p95": 768,
+        "max": 768,
+        "sum": 1408
+      },
+      "deliveredBodyBytes": {
+        "p50": 640,
+        "p90": 768,
+        "p95": 768,
+        "max": 768,
+        "sum": 1408
+      }
+    },
+    "artifacts/permission-state": {
+      "originalValueBytes": {
+        "p50": 1668,
+        "p90": 1731,
+        "p95": 1731,
+        "max": 1731,
+        "sum": 8273
+      },
+      "originalBodyBytes": {
+        "p50": 2023,
+        "p90": 2086,
+        "p95": 2086,
+        "max": 2086,
+        "sum": 10207
+      },
+      "deliveredBodyBytes": {
+        "p50": 2023,
+        "p90": 2086,
+        "p95": 2086,
+        "max": 2086,
+        "sum": 10207
+      }
+    },
+    "artifacts/tap-native": {
+      "originalValueBytes": {
+        "p50": 1823,
+        "p90": 1823,
+        "p95": 1823,
+        "max": 1823,
+        "sum": 1823
+      },
+      "originalBodyBytes": {
+        "p50": 2601,
+        "p90": 2601,
+        "p95": 2601,
+        "max": 2601,
+        "sum": 2601
+      },
+      "deliveredBodyBytes": {
+        "p50": 2601,
+        "p90": 2601,
+        "p95": 2601,
+        "max": 2601,
+        "sum": 2601
+      }
+    },
+    "artifacts/stop-app": {
+      "originalValueBytes": {
+        "p50": 226,
+        "p90": 226,
+        "p95": 226,
+        "max": 226,
+        "sum": 226
+      },
+      "originalBodyBytes": {
+        "p50": 764,
+        "p90": 764,
+        "p95": 764,
+        "max": 764,
+        "sum": 764
+      },
+      "deliveredBodyBytes": {
+        "p50": 764,
+        "p90": 764,
+        "p95": 764,
+        "max": 764,
+        "sum": 764
+      }
+    },
+    "artifacts/h5-dom": {
+      "originalValueBytes": {
+        "p50": 1707,
+        "p90": 1722,
+        "p95": 1722,
+        "max": 1722,
+        "sum": 3429
+      },
+      "originalBodyBytes": {
+        "p50": 2475,
+        "p90": 2496,
+        "p95": 2496,
+        "max": 2496,
+        "sum": 4971
+      },
+      "deliveredBodyBytes": {
+        "p50": 2475,
+        "p90": 2496,
+        "p95": 2496,
+        "max": 2496,
+        "sum": 4971
+      }
+    },
+    "artifacts/observe": {
+      "originalValueBytes": {
+        "p50": 224,
+        "p90": 224,
+        "p95": 224,
+        "max": 224,
+        "sum": 224
+      },
+      "originalBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 760
+      },
+      "deliveredBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 760
+      }
+    },
+    "artifacts/permission-dialog": {
+      "originalValueBytes": {
+        "p50": 14996,
+        "p90": 17851,
+        "p95": 17851,
+        "max": 17851,
+        "sum": 96062
+      },
+      "originalBodyBytes": {
+        "p50": 15908,
+        "p90": 18763,
+        "p95": 18763,
+        "max": 18763,
+        "sum": 101522
+      },
+      "deliveredBodyBytes": {
+        "p50": 15908,
+        "p90": 18763,
+        "p95": 18763,
+        "max": 18763,
+        "sum": 101522
+      }
+    },
+    "artifacts/runtime-status": {
+      "originalValueBytes": {
+        "p50": 238,
+        "p90": 238,
+        "p95": 238,
+        "max": 238,
+        "sum": 238
+      },
+      "originalBodyBytes": {
+        "p50": 788,
+        "p90": 788,
+        "p95": 788,
+        "max": 788,
+        "sum": 788
+      },
+      "deliveredBodyBytes": {
+        "p50": 788,
+        "p90": 788,
+        "p95": 788,
+        "max": 788,
+        "sum": 788
+      }
+    },
+    "artifacts/app-info": {
+      "originalValueBytes": {
+        "p50": 226,
+        "p90": 226,
+        "p95": 226,
+        "max": 226,
+        "sum": 226
+      },
+      "originalBodyBytes": {
+        "p50": 764,
+        "p90": 764,
+        "p95": 764,
+        "max": 764,
+        "sum": 764
+      },
+      "deliveredBodyBytes": {
+        "p50": 764,
+        "p90": 764,
+        "p95": 764,
+        "max": 764,
+        "sum": 764
+      }
+    },
+    "artifacts/keyboard-state": {
+      "originalValueBytes": {
+        "p50": 1487,
+        "p90": 1501,
+        "p95": 1501,
+        "max": 1501,
+        "sum": 2988
+      },
+      "originalBodyBytes": {
+        "p50": 1811,
+        "p90": 1825,
+        "p95": 1825,
+        "max": 1825,
+        "sum": 3636
+      },
+      "deliveredBodyBytes": {
+        "p50": 1811,
+        "p90": 1825,
+        "p95": 1825,
+        "max": 1825,
+        "sum": 3636
+      }
+    },
+    "artifacts/devices": {
+      "originalValueBytes": {
+        "p50": 224,
+        "p90": 224,
+        "p95": 224,
+        "max": 224,
+        "sum": 224
+      },
+      "originalBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 760
+      },
+      "deliveredBodyBytes": {
+        "p50": 760,
+        "p90": 760,
+        "p95": 760,
+        "max": 760,
+        "sum": 760
+      }
+    },
+    "artifacts/android-shell": {
+      "originalValueBytes": {
+        "p50": 168,
+        "p90": 236,
+        "p95": 236,
+        "max": 236,
+        "sum": 404
+      },
+      "originalBodyBytes": {
+        "p50": 648,
+        "p90": 784,
+        "p95": 784,
+        "max": 784,
+        "sum": 1432
+      },
+      "deliveredBodyBytes": {
+        "p50": 648,
+        "p90": 784,
+        "p95": 784,
+        "max": 784,
+        "sum": 1432
+      }
+    },
+    "conversations": {
+      "originalValueBytes": {
+        "p50": 560,
+        "p90": 3943,
+        "p95": 6406,
+        "max": 40028,
+        "sum": 5075801
+      },
+      "originalBodyBytes": {
+        "p50": 929,
+        "p90": 4486,
+        "p95": 6843,
+        "max": 40388,
+        "sum": 6342784
+      },
+      "deliveredBodyBytes": {
+        "p50": 929,
+        "p90": 4486,
+        "p95": 6843,
+        "max": 40388,
+        "sum": 6315936
+      }
+    },
+    "conversations/runtime": {
+      "originalValueBytes": {
+        "p50": 595,
+        "p90": 596,
+        "p95": 658,
+        "max": 3009,
+        "sum": 39603
+      },
+      "originalBodyBytes": {
+        "p50": 911,
+        "p90": 912,
+        "p95": 974,
+        "max": 3326,
+        "sum": 62616
+      },
+      "deliveredBodyBytes": {
+        "p50": 911,
+        "p90": 912,
+        "p95": 974,
+        "max": 3326,
+        "sum": 62616
+      }
+    },
+    "conversations/device-ownership": {
+      "originalValueBytes": {
+        "p50": 2355,
+        "p90": 4075,
+        "p95": 4730,
+        "max": 6665,
+        "sum": 251253
+      },
+      "originalBodyBytes": {
+        "p50": 2681,
+        "p90": 4401,
+        "p95": 5056,
+        "max": 8862,
+        "sum": 293925
+      },
+      "deliveredBodyBytes": {
+        "p50": 2681,
+        "p90": 4401,
+        "p95": 5056,
+        "max": 8862,
+        "sum": 293925
+      }
+    },
+    "conversations/launch-activity": {
+      "originalValueBytes": {
+        "p50": 271,
+        "p90": 3212,
+        "p95": 3266,
+        "max": 3403,
+        "sum": 79515
+      },
+      "originalBodyBytes": {
+        "p50": 595,
+        "p90": 4093,
+        "p95": 4305,
+        "max": 4504,
+        "sum": 122305
+      },
+      "deliveredBodyBytes": {
+        "p50": 595,
+        "p90": 4093,
+        "p95": 4305,
+        "max": 4504,
+        "sum": 122305
+      }
+    },
+    "conversations/uia-runtime": {
+      "originalValueBytes": {
+        "p50": 1246,
+        "p90": 1406,
+        "p95": 1553,
+        "max": 1553,
+        "sum": 20337
+      },
+      "originalBodyBytes": {
+        "p50": 1567,
+        "p90": 1835,
+        "p95": 2299,
+        "max": 2299,
+        "sum": 26227
+      },
+      "deliveredBodyBytes": {
+        "p50": 1567,
+        "p90": 1835,
+        "p95": 2299,
+        "max": 2299,
+        "sum": 26227
+      }
+    },
+    "conversations/intent": {
+      "originalValueBytes": {
+        "p50": 6527,
+        "p90": 17015,
+        "p95": 19684,
+        "max": 22254,
+        "sum": 569729
+      },
+      "originalBodyBytes": {
+        "p50": 7179,
+        "p90": 17929,
+        "p95": 20644,
+        "max": 23184,
+        "sum": 610907
+      },
+      "deliveredBodyBytes": {
+        "p50": 7179,
+        "p90": 17929,
+        "p95": 20644,
+        "max": 23184,
+        "sum": 610907
+      }
+    },
+    "conversations/capabilities": {
+      "originalValueBytes": {
+        "p50": 321,
+        "p90": 321,
+        "p95": 321,
+        "max": 321,
+        "sum": 1284
+      },
+      "originalBodyBytes": {
+        "p50": 954,
+        "p90": 954,
+        "p95": 954,
+        "max": 954,
+        "sum": 3816
+      },
+      "deliveredBodyBytes": {
+        "p50": 954,
+        "p90": 954,
+        "p95": 954,
+        "max": 954,
+        "sum": 3816
+      }
+    },
+    "conversations/status": {
+      "originalValueBytes": {
+        "p50": 462,
+        "p90": 2928,
+        "p95": 2949,
+        "max": 4261,
+        "sum": 254510
+      },
+      "originalBodyBytes": {
+        "p50": 805,
+        "p90": 3272,
+        "p95": 3293,
+        "max": 4577,
+        "sum": 353234
+      },
+      "deliveredBodyBytes": {
+        "p50": 805,
+        "p90": 3272,
+        "p95": 3293,
+        "max": 4577,
+        "sum": 353234
+      }
+    },
+    "conversations/screenshot": {
+      "originalValueBytes": {
+        "p50": 1002,
+        "p90": 2239,
+        "p95": 2499,
+        "max": 18472,
+        "sum": 339531
+      },
+      "originalBodyBytes": {
+        "p50": 1322,
+        "p90": 2559,
+        "p95": 2839,
+        "max": 27075,
+        "sum": 435669
+      },
+      "deliveredBodyBytes": {
+        "p50": 1322,
+        "p90": 2559,
+        "p95": 2839,
+        "max": 27075,
+        "sum": 435669
+      }
+    },
+    "conversations/install-apk": {
+      "originalValueBytes": {
+        "p50": 993,
+        "p90": 4632,
+        "p95": 4731,
+        "max": 4877,
+        "sum": 502928
+      },
+      "originalBodyBytes": {
+        "p50": 1326,
+        "p90": 5397,
+        "p95": 5496,
+        "max": 5642,
+        "sum": 611785
+      },
+      "deliveredBodyBytes": {
+        "p50": 1326,
+        "p90": 5397,
+        "p95": 5496,
+        "max": 5642,
+        "sum": 611785
+      }
+    },
+    "conversations/launch-app": {
+      "originalValueBytes": {
+        "p50": 351,
+        "p90": 1764,
+        "p95": 3375,
+        "max": 14934,
+        "sum": 142085
+      },
+      "originalBodyBytes": {
+        "p50": 670,
+        "p90": 2469,
+        "p95": 4214,
+        "max": 19588,
+        "sum": 221627
+      },
+      "deliveredBodyBytes": {
+        "p50": 670,
+        "p90": 2469,
+        "p95": 4214,
+        "max": 19588,
+        "sum": 221627
+      }
+    },
+    "conversations/uia-tree": {
+      "originalValueBytes": {
+        "p50": 1750,
+        "p90": 15664,
+        "p95": 21557,
+        "max": 39199,
+        "sum": 689473
+      },
+      "originalBodyBytes": {
+        "p50": 2114,
+        "p90": 16029,
+        "p95": 21922,
+        "max": 39563,
+        "sum": 741095
+      },
+      "deliveredBodyBytes": {
+        "p50": 2114,
+        "p90": 15659,
+        "p95": 20915,
+        "max": 32874,
+        "sum": 714247
+      }
+    },
+    "conversations/tap-uia": {
+      "originalValueBytes": {
+        "p50": 4793,
+        "p90": 8508,
+        "p95": 8508,
+        "max": 8508,
+        "sum": 39121
+      },
+      "originalBodyBytes": {
+        "p50": 7425,
+        "p90": 11133,
+        "p95": 11133,
+        "max": 11133,
+        "sum": 53459
+      },
+      "deliveredBodyBytes": {
+        "p50": 7425,
+        "p90": 11133,
+        "p95": 11133,
+        "max": 11133,
+        "sum": 53459
+      }
+    },
+    "conversations/web-sessions": {
+      "originalValueBytes": {
+        "p50": 696,
+        "p90": 919,
+        "p95": 919,
+        "max": 919,
+        "sum": 3503
+      },
+      "originalBodyBytes": {
+        "p50": 1045,
+        "p90": 1240,
+        "p95": 1240,
+        "max": 1240,
+        "sum": 5220
+      },
+      "deliveredBodyBytes": {
+        "p50": 1045,
+        "p90": 1240,
+        "p95": 1240,
+        "max": 1240,
+        "sum": 5220
+      }
+    },
+    "conversations/swipe": {
+      "originalValueBytes": {
+        "p50": 96,
+        "p90": 2016,
+        "p95": 2016,
+        "max": 2527,
+        "sum": 23402
+      },
+      "originalBodyBytes": {
+        "p50": 409,
+        "p90": 2510,
+        "p95": 2849,
+        "max": 3359,
+        "sum": 48392
+      },
+      "deliveredBodyBytes": {
+        "p50": 409,
+        "p90": 2510,
+        "p95": 2849,
+        "max": 3359,
+        "sum": 48392
+      }
+    },
+    "conversations/script": {
+      "originalValueBytes": {
+        "p50": 1342,
+        "p90": 4399,
+        "p95": 4795,
+        "max": 22752,
+        "sum": 280137
+      },
+      "originalBodyBytes": {
+        "p50": 1885,
+        "p90": 5224,
+        "p95": 5622,
+        "max": 23452,
+        "sum": 359922
+      },
+      "deliveredBodyBytes": {
+        "p50": 1885,
+        "p90": 5224,
+        "p95": 5622,
+        "max": 23452,
+        "sum": 359922
+      }
+    },
+    "conversations/uia-set-text": {
+      "originalValueBytes": {
+        "p50": 169,
+        "p90": 169,
+        "p95": 169,
+        "max": 169,
+        "sum": 169
+      },
+      "originalBodyBytes": {
+        "p50": 650,
+        "p90": 650,
+        "p95": 650,
+        "max": 650,
+        "sum": 650
+      },
+      "deliveredBodyBytes": {
+        "p50": 650,
+        "p90": 650,
+        "p95": 650,
+        "max": 650,
+        "sum": 650
+      }
+    },
+    "conversations/keyboard-state": {
+      "originalValueBytes": {
+        "p50": 157,
+        "p90": 1573,
+        "p95": 1601,
+        "max": 1601,
+        "sum": 5858
+      },
+      "originalBodyBytes": {
+        "p50": 480,
+        "p90": 1897,
+        "p95": 1925,
+        "max": 1925,
+        "sum": 9091
+      },
+      "deliveredBodyBytes": {
+        "p50": 480,
+        "p90": 1897,
+        "p95": 1925,
+        "max": 1925,
+        "sum": 9091
+      }
+    },
+    "conversations/install-app": {
+      "originalValueBytes": {
+        "p50": 232,
+        "p90": 232,
+        "p95": 232,
+        "max": 232,
+        "sum": 232
+      },
+      "originalBodyBytes": {
+        "p50": 776,
+        "p90": 776,
+        "p95": 776,
+        "max": 776,
+        "sum": 776
+      },
+      "deliveredBodyBytes": {
+        "p50": 776,
+        "p90": 776,
+        "p95": 776,
+        "max": 776,
+        "sum": 776
+      }
+    },
+    "conversations/tree": {
+      "originalValueBytes": {
+        "p50": 1228,
+        "p90": 9387,
+        "p95": 15962,
+        "max": 40028,
+        "sum": 672681
+      },
+      "originalBodyBytes": {
+        "p50": 1588,
+        "p90": 9747,
+        "p95": 16323,
+        "max": 40388,
+        "sum": 743372
+      },
+      "deliveredBodyBytes": {
+        "p50": 1588,
+        "p90": 9747,
+        "p95": 16323,
+        "max": 40388,
+        "sum": 743372
+      }
+    },
+    "conversations/logcat": {
+      "originalValueBytes": {
+        "p50": 2,
+        "p90": 67,
+        "p95": 373,
+        "max": 373,
+        "sum": 468
+      },
+      "originalBodyBytes": {
+        "p50": 315,
+        "p90": 381,
+        "p95": 688,
+        "max": 688,
+        "sum": 5479
+      },
+      "deliveredBodyBytes": {
+        "p50": 315,
+        "p90": 381,
+        "p95": 688,
+        "max": 688,
+        "sum": 5479
+      }
+    },
+    "conversations/wait-text": {
+      "originalValueBytes": {
+        "p50": 237,
+        "p90": 306,
+        "p95": 316,
+        "max": 17022,
+        "sum": 61639
+      },
+      "originalBodyBytes": {
+        "p50": 657,
+        "p90": 706,
+        "p95": 743,
+        "max": 34174,
+        "sum": 152733
+      },
+      "deliveredBodyBytes": {
+        "p50": 657,
+        "p90": 706,
+        "p95": 743,
+        "max": 34174,
+        "sum": 152733
+      }
+    },
+    "conversations/keyevent": {
+      "originalValueBytes": {
+        "p50": 42,
+        "p90": 1964,
+        "p95": 1967,
+        "max": 2476,
+        "sum": 22913
+      },
+      "originalBodyBytes": {
+        "p50": 358,
+        "p90": 2799,
+        "p95": 2803,
+        "max": 3311,
+        "sum": 51986
+      },
+      "deliveredBodyBytes": {
+        "p50": 358,
+        "p90": 2799,
+        "p95": 2803,
+        "max": 3311,
+        "sum": 51986
+      }
+    },
+    "conversations/tap-native": {
+      "originalValueBytes": {
+        "p50": 419,
+        "p90": 2797,
+        "p95": 2797,
+        "max": 2797,
+        "sum": 8846
+      },
+      "originalBodyBytes": {
+        "p50": 873,
+        "p90": 3985,
+        "p95": 3985,
+        "max": 3985,
+        "sum": 13297
+      },
+      "deliveredBodyBytes": {
+        "p50": 873,
+        "p90": 3985,
+        "p95": 3985,
+        "max": 3985,
+        "sum": 13297
+      }
+    },
+    "conversations/network": {
+      "originalValueBytes": {
+        "p50": 2282,
+        "p90": 25777,
+        "p95": 31173,
+        "max": 39099,
+        "sum": 651235
+      },
+      "originalBodyBytes": {
+        "p50": 2627,
+        "p90": 26123,
+        "p95": 31519,
+        "max": 39445,
+        "sum": 681565
+      },
+      "deliveredBodyBytes": {
+        "p50": 2627,
+        "p90": 26123,
+        "p95": 31519,
+        "max": 39445,
+        "sum": 681565
+      }
+    },
+    "conversations/tap-text": {
+      "originalValueBytes": {
+        "p50": 377,
+        "p90": 390,
+        "p95": 405,
+        "max": 905,
+        "sum": 124174
+      },
+      "originalBodyBytes": {
+        "p50": 694,
+        "p90": 708,
+        "p95": 722,
+        "max": 1222,
+        "sum": 231344
+      },
+      "deliveredBodyBytes": {
+        "p50": 694,
+        "p90": 708,
+        "p95": 722,
+        "max": 1222,
+        "sum": 231344
+      }
+    },
+    "conversations/input-text": {
+      "originalValueBytes": {
+        "p50": 1000,
+        "p90": 1028,
+        "p95": 1034,
+        "max": 1885,
+        "sum": 57540
+      },
+      "originalBodyBytes": {
+        "p50": 1684,
+        "p90": 1716,
+        "p95": 1718,
+        "max": 2687,
+        "sum": 98804
+      },
+      "deliveredBodyBytes": {
+        "p50": 1684,
+        "p90": 1716,
+        "p95": 1718,
+        "max": 2687,
+        "sum": 98804
+      }
+    },
+    "conversations/tap": {
+      "originalValueBytes": {
+        "p50": 46,
+        "p90": 613,
+        "p95": 2556,
+        "max": 3212,
+        "sum": 49671
+      },
+      "originalBodyBytes": {
+        "p50": 357,
+        "p90": 1492,
+        "p95": 3429,
+        "max": 3746,
+        "sum": 114418
+      },
+      "deliveredBodyBytes": {
+        "p50": 357,
+        "p90": 1492,
+        "p95": 3429,
+        "max": 3746,
+        "sum": 114418
+      }
+    },
+    "conversations/tap-uia-text": {
+      "originalValueBytes": {
+        "p50": 282,
+        "p90": 317,
+        "p95": 325,
+        "max": 8989,
+        "sum": 55769
+      },
+      "originalBodyBytes": {
+        "p50": 794,
+        "p90": 839,
+        "p95": 869,
+        "max": 11663,
+        "sum": 123458
+      },
+      "deliveredBodyBytes": {
+        "p50": 794,
+        "p90": 839,
+        "p95": 869,
+        "max": 11663,
+        "sum": 123458
+      }
+    },
+    "conversations/events": {
+      "originalValueBytes": {
+        "p50": 876,
+        "p90": 5630,
+        "p95": 5630,
+        "max": 5630,
+        "sum": 10091
+      },
+      "originalBodyBytes": {
+        "p50": 1219,
+        "p90": 5974,
+        "p95": 5974,
+        "max": 5974,
+        "sum": 11465
+      },
+      "deliveredBodyBytes": {
+        "p50": 1219,
+        "p90": 5974,
+        "p95": 5974,
+        "max": 5974,
+        "sum": 11465
+      }
+    },
+    "conversations/logs": {
+      "originalValueBytes": {
+        "p50": 116,
+        "p90": 18895,
+        "p95": 18895,
+        "max": 18895,
+        "sum": 19600
+      },
+      "originalBodyBytes": {
+        "p50": 457,
+        "p90": 19210,
+        "p95": 19210,
+        "max": 19210,
+        "sum": 21961
+      },
+      "deliveredBodyBytes": {
+        "p50": 457,
+        "p90": 19210,
+        "p95": 19210,
+        "max": 19210,
+        "sum": 21961
+      }
+    },
+    "conversations/response": {
+      "originalValueBytes": {
+        "p50": 1765,
+        "p90": 18591,
+        "p95": 18591,
+        "max": 18591,
+        "sum": 25259
+      },
+      "originalBodyBytes": {
+        "p50": 2083,
+        "p90": 18923,
+        "p95": 18923,
+        "max": 18923,
+        "sum": 26724
+      },
+      "deliveredBodyBytes": {
+        "p50": 2083,
+        "p90": 18923,
+        "p95": 18923,
+        "max": 18923,
+        "sum": 26724
+      }
+    },
+    "conversations/android-executor": {
+      "originalValueBytes": {
+        "p50": 905,
+        "p90": 1745,
+        "p95": 1745,
+        "max": 1745,
+        "sum": 5013
+      },
+      "originalBodyBytes": {
+        "p50": 1230,
+        "p90": 3095,
+        "p95": 3095,
+        "max": 3095,
+        "sum": 8361
+      },
+      "deliveredBodyBytes": {
+        "p50": 1230,
+        "p90": 3095,
+        "p95": 3095,
+        "max": 3095,
+        "sum": 8361
+      }
+    },
+    "conversations/executor-prepare": {
+      "originalValueBytes": {
+        "p50": 854,
+        "p90": 854,
+        "p95": 854,
+        "max": 854,
+        "sum": 854
+      },
+      "originalBodyBytes": {
+        "p50": 1743,
+        "p90": 1743,
+        "p95": 1743,
+        "max": 1743,
+        "sum": 1743
+      },
+      "deliveredBodyBytes": {
+        "p50": 1743,
+        "p90": 1743,
+        "p95": 1743,
+        "max": 1743,
+        "sum": 1743
+      }
+    },
+    "conversations/intent-status": {
+      "originalValueBytes": {
+        "p50": 236,
+        "p90": 236,
+        "p95": 236,
+        "max": 236,
+        "sum": 236
+      },
+      "originalBodyBytes": {
+        "p50": 784,
+        "p90": 784,
+        "p95": 784,
+        "max": 784,
+        "sum": 784
+      },
+      "deliveredBodyBytes": {
+        "p50": 784,
+        "p90": 784,
+        "p95": 784,
+        "max": 784,
+        "sum": 784
+      }
+    },
+    "conversations/tap-flutter-text": {
+      "originalValueBytes": {
+        "p50": 427,
+        "p90": 496,
+        "p95": 496,
+        "max": 496,
+        "sum": 923
+      },
+      "originalBodyBytes": {
+        "p50": 752,
+        "p90": 821,
+        "p95": 821,
+        "max": 821,
+        "sum": 1573
+      },
+      "deliveredBodyBytes": {
+        "p50": 752,
+        "p90": 821,
+        "p95": 821,
+        "max": 821,
+        "sum": 1573
+      }
+    },
+    "conversations/ios-devices": {
+      "originalValueBytes": {
+        "p50": 1222,
+        "p90": 1266,
+        "p95": 1266,
+        "max": 1266,
+        "sum": 3710
+      },
+      "originalBodyBytes": {
+        "p50": 1571,
+        "p90": 1615,
+        "p95": 1615,
+        "max": 1615,
+        "sum": 4757
+      },
+      "deliveredBodyBytes": {
+        "p50": 1571,
+        "p90": 1615,
+        "p95": 1615,
+        "max": 1615,
+        "sum": 4757
+      }
+    },
+    "conversations/permission-revoke": {
+      "originalValueBytes": {
+        "p50": 2968,
+        "p90": 2968,
+        "p95": 2968,
+        "max": 2968,
+        "sum": 2968
+      },
+      "originalBodyBytes": {
+        "p50": 4883,
+        "p90": 4883,
+        "p95": 4883,
+        "max": 4883,
+        "sum": 4883
+      },
+      "deliveredBodyBytes": {
+        "p50": 4883,
+        "p90": 4883,
+        "p95": 4883,
+        "max": 4883,
+        "sum": 4883
+      }
+    },
+    "conversations/clear-app-data": {
+      "originalValueBytes": {
+        "p50": 562,
+        "p90": 3240,
+        "p95": 3240,
+        "max": 3240,
+        "sum": 6076
+      },
+      "originalBodyBytes": {
+        "p50": 941,
+        "p90": 6597,
+        "p95": 6597,
+        "max": 6597,
+        "sum": 11216
+      },
+      "deliveredBodyBytes": {
+        "p50": 941,
+        "p90": 6597,
+        "p95": 6597,
+        "max": 6597,
+        "sum": 11216
+      }
+    },
+    "conversations/remove-forward": {
+      "originalValueBytes": {
+        "p50": 33,
+        "p90": 33,
+        "p95": 33,
+        "max": 33,
+        "sum": 66
+      },
+      "originalBodyBytes": {
+        "p50": 355,
+        "p90": 355,
+        "p95": 355,
+        "max": 355,
+        "sum": 710
+      },
+      "deliveredBodyBytes": {
+        "p50": 355,
+        "p90": 355,
+        "p95": 355,
+        "max": 355,
+        "sum": 710
+      }
+    },
+    "conversations/forward": {
+      "originalValueBytes": {
+        "p50": 124,
+        "p90": 128,
+        "p95": 128,
+        "max": 128,
+        "sum": 376
+      },
+      "originalBodyBytes": {
+        "p50": 440,
+        "p90": 444,
+        "p95": 444,
+        "max": 444,
+        "sum": 1324
+      },
+      "deliveredBodyBytes": {
+        "p50": 440,
+        "p90": 444,
+        "p95": 444,
+        "max": 444,
+        "sum": 1324
+      }
+    },
+    "conversations/h5-eval": {
+      "originalValueBytes": {
+        "p50": 392,
+        "p90": 1720,
+        "p95": 2018,
+        "max": 2018,
+        "sum": 8945
+      },
+      "originalBodyBytes": {
+        "p50": 736,
+        "p90": 2065,
+        "p95": 2363,
+        "max": 2363,
+        "sum": 13763
+      },
+      "deliveredBodyBytes": {
+        "p50": 736,
+        "p90": 2065,
+        "p95": 2363,
+        "max": 2363,
+        "sum": 13763
+      }
+    },
+    "conversations/hide-keyboard": {
+      "originalValueBytes": {
+        "p50": 439,
+        "p90": 510,
+        "p95": 510,
+        "max": 510,
+        "sum": 1388
+      },
+      "originalBodyBytes": {
+        "p50": 761,
+        "p90": 893,
+        "p95": 893,
+        "max": 893,
+        "sum": 2415
+      },
+      "deliveredBodyBytes": {
+        "p50": 761,
+        "p90": 893,
+        "p95": 893,
+        "max": 893,
+        "sum": 2415
+      }
+    },
+    "conversations/h5-wait": {
+      "originalValueBytes": {
+        "p50": 4357,
+        "p90": 4376,
+        "p95": 4376,
+        "max": 4376,
+        "sum": 12805
+      },
+      "originalBodyBytes": {
+        "p50": 4702,
+        "p90": 4721,
+        "p95": 4721,
+        "max": 4721,
+        "sum": 13840
+      },
+      "deliveredBodyBytes": {
+        "p50": 4702,
+        "p90": 4721,
+        "p95": 4721,
+        "max": 4721,
+        "sum": 13840
+      }
+    },
+    "conversations/webview-pages": {
+      "originalValueBytes": {
+        "p50": 1288,
+        "p90": 1288,
+        "p95": 1288,
+        "max": 1288,
+        "sum": 1288
+      },
+      "originalBodyBytes": {
+        "p50": 1611,
+        "p90": 1611,
+        "p95": 1611,
+        "max": 1611,
+        "sum": 1611
+      },
+      "deliveredBodyBytes": {
+        "p50": 1611,
+        "p90": 1611,
+        "p95": 1611,
+        "max": 1611,
+        "sum": 1611
+      }
+    },
+    "conversations/h5-dom": {
+      "originalValueBytes": {
+        "p50": 539,
+        "p90": 539,
+        "p95": 539,
+        "max": 539,
+        "sum": 539
+      },
+      "originalBodyBytes": {
+        "p50": 882,
+        "p90": 882,
+        "p95": 882,
+        "max": 882,
+        "sum": 882
+      },
+      "deliveredBodyBytes": {
+        "p50": 882,
+        "p90": 882,
+        "p95": 882,
+        "max": 882,
+        "sum": 882
+      }
+    },
+    "conversations/h5-click": {
+      "originalValueBytes": {
+        "p50": 1701,
+        "p90": 4809,
+        "p95": 4809,
+        "max": 4809,
+        "sum": 9938
+      },
+      "originalBodyBytes": {
+        "p50": 2047,
+        "p90": 5155,
+        "p95": 5155,
+        "max": 5155,
+        "sum": 11322
+      },
+      "deliveredBodyBytes": {
+        "p50": 2047,
+        "p90": 5155,
+        "p95": 5155,
+        "max": 5155,
+        "sum": 11322
+      }
+    },
+    "conversations/web-provider-status": {
+      "originalValueBytes": {
+        "p50": 131,
+        "p90": 131,
+        "p95": 131,
+        "max": 131,
+        "sum": 131
+      },
+      "originalBodyBytes": {
+        "p50": 487,
+        "p90": 487,
+        "p95": 487,
+        "max": 487,
+        "sum": 487
+      },
+      "deliveredBodyBytes": {
+        "p50": 487,
+        "p90": 487,
+        "p95": 487,
+        "max": 487,
+        "sum": 487
+      }
+    },
+    "conversations/web-session-start": {
+      "originalValueBytes": {
+        "p50": 212,
+        "p90": 212,
+        "p95": 212,
+        "max": 212,
+        "sum": 424
+      },
+      "originalBodyBytes": {
+        "p50": 566,
+        "p90": 566,
+        "p95": 566,
+        "max": 566,
+        "sum": 1132
+      },
+      "deliveredBodyBytes": {
+        "p50": 566,
+        "p90": 566,
+        "p95": 566,
+        "max": 566,
+        "sum": 1132
+      }
+    },
+    "conversations/web-dom": {
+      "originalValueBytes": {
+        "p50": 2425,
+        "p90": 9737,
+        "p95": 9737,
+        "max": 9737,
+        "sum": 12162
+      },
+      "originalBodyBytes": {
+        "p50": 2770,
+        "p90": 10082,
+        "p95": 10082,
+        "max": 10082,
+        "sum": 12852
+      },
+      "deliveredBodyBytes": {
+        "p50": 2770,
+        "p90": 10082,
+        "p95": 10082,
+        "max": 10082,
+        "sum": 12852
+      }
+    },
+    "conversations/web-click": {
+      "originalValueBytes": {
+        "p50": 357,
+        "p90": 499,
+        "p95": 499,
+        "max": 499,
+        "sum": 3979
+      },
+      "originalBodyBytes": {
+        "p50": 703,
+        "p90": 845,
+        "p95": 845,
+        "max": 845,
+        "sum": 7467
+      },
+      "deliveredBodyBytes": {
+        "p50": 703,
+        "p90": 845,
+        "p95": 845,
+        "max": 845,
+        "sum": 7467
+      }
+    },
+    "conversations/web-wait": {
+      "originalValueBytes": {
+        "p50": 137,
+        "p90": 159,
+        "p95": 159,
+        "max": 159,
+        "sum": 296
+      },
+      "originalBodyBytes": {
+        "p50": 504,
+        "p90": 543,
+        "p95": 543,
+        "max": 543,
+        "sum": 1047
+      },
+      "deliveredBodyBytes": {
+        "p50": 504,
+        "p90": 543,
+        "p95": 543,
+        "max": 543,
+        "sum": 1047
+      }
+    },
+    "conversations/web-input": {
+      "originalValueBytes": {
+        "p50": 192,
+        "p90": 192,
+        "p95": 192,
+        "max": 192,
+        "sum": 384
+      },
+      "originalBodyBytes": {
+        "p50": 538,
+        "p90": 538,
+        "p95": 538,
+        "max": 538,
+        "sum": 1076
+      },
+      "deliveredBodyBytes": {
+        "p50": 538,
+        "p90": 538,
+        "p95": 538,
+        "max": 538,
+        "sum": 1076
+      }
+    },
+    "conversations/state": {
+      "originalValueBytes": {
+        "p50": 129,
+        "p90": 129,
+        "p95": 129,
+        "max": 129,
+        "sum": 129
+      },
+      "originalBodyBytes": {
+        "p50": 471,
+        "p90": 471,
+        "p95": 471,
+        "max": 471,
+        "sum": 471
+      },
+      "deliveredBodyBytes": {
+        "p50": 471,
+        "p90": 471,
+        "p95": 471,
+        "max": 471,
+        "sum": 471
+      }
+    },
+    "conversations/permission-dialog": {
+      "originalValueBytes": {
+        "p50": 279,
+        "p90": 279,
+        "p95": 279,
+        "max": 279,
+        "sum": 279
+      },
+      "originalBodyBytes": {
+        "p50": 774,
+        "p90": 774,
+        "p95": 774,
+        "max": 774,
+        "sum": 774
+      },
+      "deliveredBodyBytes": {
+        "p50": 774,
+        "p90": 774,
+        "p95": 774,
+        "max": 774,
+        "sum": 774
+      }
+    },
+    "conversations/freeze-app": {
+      "originalValueBytes": {
+        "p50": 169,
+        "p90": 169,
+        "p95": 169,
+        "max": 169,
+        "sum": 169
+      },
+      "originalBodyBytes": {
+        "p50": 488,
+        "p90": 488,
+        "p95": 488,
+        "max": 488,
+        "sum": 488
+      },
+      "deliveredBodyBytes": {
+        "p50": 488,
+        "p90": 488,
+        "p95": 488,
+        "max": 488,
+        "sum": 488
+      }
+    },
+    "conversations/thaw-app": {
+      "originalValueBytes": {
+        "p50": 167,
+        "p90": 167,
+        "p95": 167,
+        "max": 167,
+        "sum": 167
+      },
+      "originalBodyBytes": {
+        "p50": 484,
+        "p90": 484,
+        "p95": 484,
+        "max": 484,
+        "sum": 484
+      },
+      "deliveredBodyBytes": {
+        "p50": 484,
+        "p90": 484,
+        "p95": 484,
+        "max": 484,
+        "sum": 484
+      }
+    }
+  },
+  "assertions": {
+    "losslessTablesReconstructedAndDeepEqual": true,
+    "previewRangesEqualOriginalSlices": true,
+    "allRepliesWithinBudget": true,
+    "allGeneratedReadHintsDeliveredInline": true,
+    "totalReplayRepresentations": 28760
+  },
+  "plainLogcatSupplement": {
+    "completeSamples": 186,
+    "nonemptySamples": 89,
+    "nonemptyMedianBytes": 637,
+    "nonemptyP90Bytes": 10614,
+    "nonemptyP95Bytes": 18875,
+    "nonemptyMaxBytes": 38962
+  },
+  "validation": {
+    "focusedTestsPassed": 35,
+    "package": {
+      "ok": true,
+      "report": "/tmp/aab-auto-package-20261012/report.json"
+    },
+    "performanceTestsPassed": 50,
+    "functionalTestsPassed": 1431
+  }
+}

@@ -6,6 +6,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
   maxInputFrameBytes = maxFrameBytes, maxOutputFrameBytes = maxFrameBytes, maxDiagnosticBytes = 8192 } = {}) {
   let buffer = '';
   let closed = false;
+  let ended = false;
   let failure = null;
   let killTimer;
   child.once('exit', () => clearTimeout(killTimer));
@@ -29,8 +30,15 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
   child.stdout.on('data', (chunk) => {
     if (closed) return;
     buffer += chunk;
+    drain();
+  });
+  child.stdout.on('end', () => { ended = true; drain(); });
+  child.on('error', (error) => fail(error));
+
+  function drain() {
+    if (closed) return;
     let index = buffer.indexOf('\n');
-    while (index >= 0) {
+    while (index >= 0 && (waiters.length > 0 || pending.length < maxPending)) {
       const line = buffer.slice(0, index);
       buffer = buffer.slice(index + 1);
       index = buffer.indexOf('\n');
@@ -60,37 +68,44 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
         waiters.shift()(message);
         continue;
       }
-      if (pending.length >= maxPending) {
-        fail(new Error('channel_backlog'));
-        return;
-      }
       pending.push(message);
     }
-    if (Buffer.byteLength(buffer, 'utf8') > maxOutputFrameBytes) {
-      fail(new Error('frame_too_large'));
-    }
-  });
-  child.stdout.on('end', () => fail(new Error('channel_closed')));
-  child.on('error', (error) => fail(error));
-
-  function send(message) {
-    if (closed || !child.stdin.writable) return;
-    const line = `${JSON.stringify(message)}\n`;
-    if (Buffer.byteLength(line, 'utf8') > maxInputFrameBytes) {
+    if (index < 0 && Buffer.byteLength(buffer, 'utf8') >= maxOutputFrameBytes) {
       fail(new Error('frame_too_large'));
       return;
     }
+    // Stop reading from the pipe instead of failing an ordinary burst. Leave
+    // complete frames in this chunk for the next consumer to drain.
+    if (pending.length >= maxPending) child.stdout.pause();
+    else child.stdout.resume();
+    if (ended && index < 0) {
+      if (buffer.length) fail(new Error('malformed_frame'));
+      else fail(new Error('channel_closed'), true);
+    }
+  }
+
+  function send(message) {
+    if (closed || !child.stdin.writable) return false;
+    const line = `${JSON.stringify(message)}\n`;
+    if (Buffer.byteLength(line, 'utf8') > maxInputFrameBytes) {
+      fail(new Error('frame_too_large'));
+      return false;
+    }
     child.stdin.write(line);
+    return true;
   }
 
   function nextMessage() {
     return new Promise((resolve) => {
       if (pending.length > 0) {
-        resolve(pending.shift());
+        const message = pending.shift();
+        drain();
+        resolve(message);
         return;
       }
       if (closed) { resolve(failure); return; }
       waiters.push(resolve);
+      drain();
     });
   }
 
@@ -100,23 +115,16 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
         resolve(failure);
         return;
       }
-      if (replies.size >= maxPending) {
-        fail(new Error('channel_backlog'));
-        resolve({ type: 'fail', error: 'channel_backlog' });
-        return;
-      }
       replies.set(id, resolve);
     });
   }
 
-  function fail(error) {
+  function fail(error, preservePending = false) {
     if (closed) return;
     closed = true;
     const frame = { type: 'fail', error: error.message || String(error) };
     failure = frame;
-    const terminal = error.message === 'channel_closed' ? pending.find(message => ['return', 'fail'].includes(message.type)) : null;
-    pending.length = 0;
-    if (terminal) pending.push(terminal);
+    if (!preservePending) pending.length = 0;
     buffer = '';
     while (waiters.length > 0) waiters.shift()(frame);
     for (const resolve of replies.values()) resolve(frame);
@@ -138,7 +146,7 @@ function createScriptSessionChannel(child, { maxFrameBytes = MAX_FRAME_BYTES,
     while (start < text.length && (text[start] & 0xc0) === 0x80) start++;
     return { stderr: text.subarray(start).toString('utf8'), stderrTruncated: stderrTotalBytes > stderr.length || start > 0 };
   }
-  return { send, nextMessage, waitReply, stop, diagnostics };
+  return { send, nextMessage, waitReply, stop, diagnostics, get failure() { return failure; } };
 }
 
 module.exports = { createScriptSessionChannel };

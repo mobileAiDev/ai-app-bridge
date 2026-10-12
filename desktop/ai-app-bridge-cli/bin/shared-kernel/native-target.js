@@ -1,6 +1,15 @@
 'use strict';
 
-const { checkExecution } = require('./execution-scope');
+const { validateValue } = require('./argument-schema');
+const query = require('./android-node-query');
+const selectorSchema = query.selectorSchema({ viewId: { type: 'string', minLength: 1 }, editable: { type: 'boolean' } });
+const matches = (node, selector) => query.matches(node, selector, (node, key) => key === 'viewId' ? node.targetRef?.viewId : node[key]);
+const { selectionFailure } = require('./action-guidance');
+
+const nativeCandidates = nodes => nodes.map(node => ({ text: node.text, contentDescription: node.contentDescription,
+  resourceName: node.resourceName, className: node.className, bounds: node.bounds, clickable: node.clickable, enabled: node.enabled,
+  ...(node.targetRef?.viewId ? { selector: { viewId: node.targetRef.viewId },
+    action: { command: 'tap-native', arguments: { selector: { viewId: node.targetRef.viewId } } } } : {}) }));
 
 // The SDK owns Android window topology and publishes its foreground decision.
 // Explicit references bind their original window regardless of focus.
@@ -45,6 +54,11 @@ function explicitlyHidden(node) {
 
 function selectNativeNode(rawTree, spec, editable, selectedWindowId) {
   const reject = (error) => ({ ok: false, error, dispatched: false });
+  if (spec.selector?.viewId && !selectedWindowId) {
+    const contains = node => node?.targetRef?.viewId === spec.selector.viewId || node?.children?.some(contains);
+    const windows = (rawTree?.windows || []).filter(window => contains(window.root));
+    if (windows.length === 1) selectedWindowId = windows[0].windowId;
+  }
   if (!selectedWindowId && rawTree?.windows?.length && (typeof rawTree.foregroundWindowId !== 'string' || !rawTree.foregroundWindowId.trim())) {
     return reject('native_window_metadata_unavailable');
   }
@@ -52,33 +66,10 @@ function selectNativeNode(rawTree, spec, editable, selectedWindowId) {
   if (!window) return reject('visible_observed_window_required');
   const selector = spec.selector || (typeof spec.text === 'string' ? { text: spec.text } : null);
   if (spec.exact === false || (spec.selector && spec.text != null)) return reject('explicit_native_selector_required');
-  const keys = Object.keys(selector || {}).filter(key => key !== 'within');
-  if (keys.length !== 1 || !['resourceName', 'text', 'contentDescription'].includes(keys[0]) || typeof selector[keys[0]] !== 'string' || !selector[keys[0]]) return reject('explicit_native_selector_required');
-  const hasScope = Object.hasOwn(selector, 'within');
-  const scope = selector.within;
-  let anchorKey;
-  let ancestorKey;
-  let ancestorParentKey;
-  if (hasScope) {
-    if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return reject('invalid_native_scope');
-    const anchorKeys = Object.keys(scope).filter(key => key !== 'ancestor');
-    if (anchorKeys.length !== 1 || !['resourceName', 'text', 'contentDescription'].includes(anchorKeys[0])
-      || typeof scope[anchorKeys[0]] !== 'string' || !scope[anchorKeys[0]]) return reject('invalid_native_scope');
-    const ancestor = scope.ancestor;
-    if (!ancestor || typeof ancestor !== 'object' || Array.isArray(ancestor)) return reject('invalid_native_scope');
-    const ancestorKeys = Object.keys(ancestor).filter(key => key !== 'parent');
-    if (ancestorKeys.length !== 1 || !['className', 'resourceName'].includes(ancestorKeys[0])
-      || typeof ancestor[ancestorKeys[0]] !== 'string' || !ancestor[ancestorKeys[0]]) return reject('invalid_native_scope');
-    if (Object.hasOwn(ancestor, 'parent')) {
-      const parent = ancestor.parent;
-      if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return reject('invalid_native_scope');
-      const parentKeys = Object.keys(parent);
-      if (parentKeys.length !== 1 || !['className', 'resourceName'].includes(parentKeys[0])
-        || typeof parent[parentKeys[0]] !== 'string' || !parent[parentKeys[0]]) return reject('invalid_native_scope');
-      [ancestorParentKey] = parentKeys;
-    }
-    [anchorKey] = anchorKeys;
-    [ancestorKey] = ancestorKeys;
+  try { validateValue(selector, selectorSchema, 'selector'); }
+  catch (error) {
+    return { ...reject(error.field?.startsWith('selector.within') ? 'invalid_native_scope' : 'explicit_native_selector_required'),
+      message: error.message, field: error.field };
   }
   const eligible = [];
   const visit = (node, ancestors = []) => {
@@ -96,34 +87,18 @@ function selectNativeNode(rawTree, spec, editable, selectedWindowId) {
     for (const child of node.children || []) visit(child, [...ancestors, node]);
   };
   visit(window.root);
-  let scopeRoot;
-  if (hasScope) {
-    const anchors = eligible.filter(item => item.node[anchorKey] === scope[anchorKey]);
-    if (anchors.length !== 1) return reject(anchors.length ? 'native_scope_anchor_ambiguous' : 'native_scope_anchor_not_found');
-    const anchor = anchors[0];
-    const ancestors = anchor.ancestors.filter((node, index) => visible(node) && validBounds(node.bounds)
-      && node[ancestorKey] === scope.ancestor[ancestorKey]
-      && (!ancestorParentKey || anchor.ancestors[index - 1]?.[ancestorParentKey] === scope.ancestor.parent[ancestorParentKey]));
-    // A named row type/resource must resolve once. Never choose a nearest arbitrary ancestor.
-    if (ancestors.length !== 1) return reject(ancestors.length ? 'native_scope_ancestor_ambiguous' : 'native_scope_ancestor_not_found');
-    [scopeRoot] = ancestors;
-    if (!pointInsideBounds(anchor, scopeRoot.bounds)) return reject('native_scope_anchor_out_of_bounds');
+  let roots;
+  if (selector.within) {
+    const scope = query.scopeRoots(eligible, selector.within, matches);
+    if (scope.error) return reject(`native_${scope.error}`);
+    roots = scope.roots;
   }
-  const matches = eligible.filter(item => item.node[keys[0]] === selector[keys[0]]
-    && (!scopeRoot || ((item.node === scopeRoot || item.ancestors.includes(scopeRoot)) && pointInsideBounds(item, scopeRoot.bounds))));
-  if (matches.length !== 1) return reject(matches.length ? 'native_selector_ambiguous' : 'native_selector_not_found');
-  const selected = matches[0];
+  const selectedMatches = eligible.filter(item => matches(item.node, selector)
+    && (!roots || roots.some(root => item.node === root || item.ancestors.includes(root))));
+  if (selectedMatches.length !== 1) return selectionFailure(selectedMatches.length ? 'native_selector_ambiguous' : 'native_selector_not_found', nativeCandidates(selectedMatches.map(item => item.node)));
+  const selected = selectedMatches[0];
   if (editable && selected.node.editable !== true) return reject('native_target_not_editable');
   return { ok: true, ...selected, windowBounds: window.bounds, window };
-}
-
-function nativeNodeIdentity(node) {
-  return Object.fromEntries(['className', 'resourceName', 'id', 'text', 'contentDescription', 'editable', 'targetRef']
-    .map(key => [key, node?.[key] ?? null]));
-}
-
-function nativeWindowIdentity(window) {
-  return { type: window?.type ?? null, windowId: window?.windowId ?? null, root: nativeNodeIdentity(window?.root) };
 }
 
 function nativeTargetRequest(node, selector) {
@@ -137,27 +112,9 @@ function nativeTargetRequest(node, selector) {
   return { ok: true, request: { selector: structuredClone(selector), targetRef: { ...ref } } };
 }
 
-function nativeSelectionIdentity(selection) {
-  return { window: nativeWindowIdentity(selection.window), node: nativeNodeIdentity(selection.node),
-    ancestors: selection.ancestors.map(nativeNodeIdentity) };
-}
-
-async function revalidateNativeNode(readTree, rawTree, spec, editable = false) {
-  const observed = selectNativeNode(rawTree, spec, editable);
-  if (!observed.ok) return observed;
-  checkExecution();
-  const current = selectNativeNode(await readTree(), spec, editable, observed.window.windowId);
-  checkExecution();
-  if (!current.ok) return current;
-  if (JSON.stringify(nativeSelectionIdentity(observed)) !== JSON.stringify(nativeSelectionIdentity(current))) {
-    return { ok: false, error: 'reobserve_required', dispatched: false };
-  }
-  return current;
-}
-
 function pointInsideBounds(point, bounds) {
   return point.x >= bounds.left && point.x < bounds.right && point.y >= bounds.top && point.y < bounds.bottom;
 }
 
 module.exports = { foregroundNativeWindow, nativeWindow, visible, explicitlyHidden, validBounds, selectNativeNode,
-  pointInsideBounds, nativeNodeIdentity, nativeWindowIdentity, revalidateNativeNode, nativeTargetRequest };
+  pointInsideBounds, nativeTargetRequest, nativeCandidates, selectorSchema };

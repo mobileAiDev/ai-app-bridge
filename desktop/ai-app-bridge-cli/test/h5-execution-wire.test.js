@@ -77,7 +77,7 @@ test('unknown H5 execution stays occupied across recovery until its original ter
   });
   const result = await executeCommand('h5-eval', { ...target, script: 'oneMutation()', expectedPage: pageRef, requestId: 'h5-original' });
   assert.equal(result.settled, false); assert.equal(result.dispatched, null); assert.equal(result.executionReceipt, null);
-  assert.equal((await executeCommand('keyevent', { ...target, keyCode: 4 })).error, 'device_ownership_unresolved');
+  assert.equal((await executeCommand('device-ownership', { serial: target.serial, operation: 'status' })).unresolved, true);
   assert.equal((await executeCommand('device-ownership', { serial: target.serial, operation: 'reconcile' })).error, 'device_ownership_unresolved');
   complete = true;
   const recovery = await executeCommand('device-ownership', { serial: target.serial, operation: 'reconcile' });

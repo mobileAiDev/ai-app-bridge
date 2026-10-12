@@ -5,7 +5,7 @@ const { summarizeTree } = require('../shared-kernel/summary-transformer');
 const { createDeviceMutationLease } = require('../shared-kernel/device-mutation-lease');
 const { admitExecutionMutation } = require('../shared-kernel/execution-admission');
 const { authorizeCommand } = require('./script-catalog');
-const { isMutationCommand } = require('../command-registry');
+const { isMutationCommand, ownsCommandLifecycle, commandSchema } = require('../command-registry');
 const { normalizeExecutionTarget, bindCommandTarget, targetFingerprint } = require('../shared-kernel/execution-target');
 const { createScriptCapturePort, isCaptureReadCommand } = require('./script-capture-port');
 const { judgeAssertion, issueObservation, createObservationRegistry } = require('./script-assert');
@@ -39,12 +39,9 @@ function createScriptHostPort({
   async function call(command, args = {}, options = {}) {
     calls += 1;
     const callId = `call-${calls}`;
-    const gate = authorizeCommand(command, permissions);
+    const gate = authorizeCommand(command, permissions, args);
     if (!gate.ok) {
-      return unavailableEnvelope({ command, error: gate.error, executionId, callId });
-    }
-    if ((command === 'logcat' && args.clear === true) || (['webview-network', 'webview-console'].includes(command) && args.script !== undefined)) {
-      return unavailableEnvelope({ command, error: 'capture_mutation_not_allowed', executionId, callId });
+      return { ...unavailableEnvelope({ command, error: gate.error, executionId, callId }), message: gate.message };
     }
     if (command === 'page-summary') {
       return pageSummaryResult(args, { executionId, callId });
@@ -59,7 +56,7 @@ function createScriptHostPort({
     const boundTarget = binding.target;
     const stamp = result => { result.execution.target = structuredClone(boundTarget); return result; };
     const observed = { afterActionId, mutationRevision, pendingMutation: pendingMutations > 0 };
-    if (isCaptureReadCommand(command)) {
+    if (isCaptureReadCommand(command) && !isMutationCommand(command, args)) {
       const result = await captureResult(command, args, options, { executionId, callId, capture, target: boundTarget });
       const queryTarget = targetFingerprint(boundTarget);
       const boundaryKey = `${command}:${queryTarget}`;
@@ -227,7 +224,7 @@ async function captureResult(command, args, options, { executionId, callId, capt
 
 async function mutationResult(command, args, options, ctx) {
   const actionId = options.dispatchActionId || mutationActionId(ctx.executionId, ctx.callId);
-  const bound = dispatchArgs(args, actionId);
+  const bound = dispatchArgs(args, actionId, command);
   try {
     const execute = async () => {
       try { return await actionOnce(command, bound, options, {
@@ -239,7 +236,8 @@ async function mutationResult(command, args, options, ctx) {
       onAction: ctx.onAction,
       }); } finally { ctx.onSettled(); }
     };
-    return command === 'executor-prepare' ? await execute() : await admitExecutionMutation(ctx.target, ctx.mutationLease, execute);
+    return ownsCommandLifecycle(command) || ctx.target === null
+      ? await execute() : await admitExecutionMutation(ctx.target, ctx.mutationLease, execute);
   } catch (error) {
     return unavailableEnvelope({ command, error: error.code || error.message, executionId: ctx.executionId, callId: ctx.callId });
   }
@@ -249,7 +247,8 @@ async function actionOnce(command, args, options, { actions, target, executionId
   onAction(actionId);
   let raw;
   try {
-    raw = await actions(command, dispatchArgs(args, actionId), options);
+    raw = await actions(command, dispatchArgs(args, actionId, command), { ...options,
+      caller: { command: 'script', operationId: executionId } });
   } catch (error) {
     return envelope({
       ok: false,
@@ -289,7 +288,7 @@ async function actionOnce(command, args, options, { actions, target, executionId
   return envelope({
     ok: raw != null && raw.ok !== false && !raw.error,
     command,
-    result: raw && raw.result !== undefined ? raw.result : raw,
+    result: !['script', 'intent', 'install-apk', 'permission-dialog', 'response'].includes(command) && raw && raw.result !== undefined ? raw.result : raw,
     error: raw && raw.error ? raw.error : null,
     dispatched: raw?.dispatched,
     executionReceipt: raw?.executionReceipt ?? null,
@@ -303,6 +302,7 @@ async function actionOnce(command, args, options, { actions, target, executionId
       : { status: 'complete', gap: false, committed: true },
     refs: actionRefs(command, raw),
     timings: raw?.timings || {},
+    guidance: raw?.guidance, candidates: raw?.candidates,
   });
 }
 
@@ -334,6 +334,7 @@ function envelope({
   executionReceipt = null,
   executionReceipts,
   warnings, foregroundObservations,
+  guidance, candidates,
   coverage,
   refs,
   afterActionId,
@@ -350,6 +351,8 @@ function envelope({
     ...(executionReceipts === undefined ? {} : { executionReceipts }),
     ...(warnings === undefined ? {} : { warnings }),
     ...(foregroundObservations === undefined ? {} : { foregroundObservations }),
+    ...(guidance === undefined ? {} : { guidance }),
+    ...(candidates === undefined ? {} : { candidates }),
     execution: { executionId, callId, actionId },
     evidence: {
       window: { afterActionId: afterActionId === undefined ? actionId : afterActionId, closedAtMs: 0 },
@@ -381,8 +384,8 @@ function mutationActionId(executionId, callId) {
   return `${executionId}:${suffix}`;
 }
 
-function dispatchArgs(args, actionId) {
-  return { ...args, ...(actionId == null ? {} : { requestId: actionId }) };
+function dispatchArgs(args, actionId, command) {
+  return { ...args, ...(actionId == null || ownsCommandLifecycle(command) || !commandSchema(command).properties?.requestId ? {} : { requestId: actionId }) };
 }
 
 function afterActionIdOf(args, options) {

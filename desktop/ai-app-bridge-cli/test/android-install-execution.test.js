@@ -108,7 +108,7 @@ test('recovery rejects missing and mismatched completion, and fsyncs the origina
   for (const value of [{ shellReceipt: { ok: true, settled: false }, installResult: null },
     { ...resultFor(f.identity), shellReceipt: { ...resultFor(f.identity).shellReceipt, actionId: 'wrong' } }]) {
     f.setResponse(value); assert.equal((await recover()).error, 'device_ownership_unresolved');
-    assert.equal(newLease.acquire('phone').error, 'device_ownership_unresolved'); assert.equal(f.counts.acks, 0);
+    assert.equal(newLease.status('phone').unresolved, true); assert.equal(f.counts.acks, 0);
   }
   const original = resultFor(f.identity); f.setResponse(original);
   f.port.acknowledge = async () => {

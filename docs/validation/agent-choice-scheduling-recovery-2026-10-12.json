@@ -1,0 +1,643 @@
+{
+  "date": "2026-10-12",
+  "baseline": "a76302e",
+  "status": "local-implementation-validated; overall-audit-complete",
+  "scope": [
+    "Script request backpressure and concurrent reads",
+    "write/checkpoint ordering and cancellation",
+    "one normal Python RPC per SDK call",
+    "independent Runtime owner identity and explicit PID recovery",
+    "shared Runtime command contract across CLI/MCP/Script/Intent",
+    "complete shared-text delivery",
+    "tooling adoption decisions"
+  ],
+  "verification": {
+    "functional": {
+      "tests": 1534,
+      "pass": 1534,
+      "fail": 0,
+      "durationMs": 205235.456167,
+      "log": "/tmp/aab-scheduling-recovery-functional-final.log"
+    },
+    "performance": {
+      "tests": 50,
+      "pass": 50,
+      "fail": 0,
+      "durationMs": 21661.816291,
+      "log": "/tmp/aab-scheduling-recovery-performance-final.log"
+    },
+    "runtimeCommandParity": {
+      "tests": 54,
+      "pass": 54,
+      "fail": 0,
+      "durationMs": 19081.008916,
+      "log": "/tmp/aab-runtime-command-parity.log"
+    },
+    "earlierFocused": {
+      "tests": 109,
+      "pass": 108,
+      "fail": 1,
+      "log": "/tmp/aab-scheduling-recovery-focused.log",
+      "failure": "A mixed functional/performance invocation measured one JavaScript startup at 152 ms against the unchanged 150 ms gate. The serial performance suite passed without a budget change."
+    },
+    "firstPackageExtras": {
+      "log": "/tmp/aab-scheduling-package-extras.log",
+      "outcome": "Caught a real result-shape inconsistency: in-Host runtime status returned doctor inspection data. Shared runtimeCommand routing and a public 64-call regression fixed it; the final package was rebuilt and retested."
+    }
+  },
+  "benchmark": {
+    "ok": true,
+    "at": "2026-10-12T09:17:35.093Z",
+    "scope": "Production language adapter, controlled read-only Host with 20 ms per-call latency; not a physical-device speed claim.",
+    "trials": [
+      {
+        "mode": "sequential",
+        "calls": 64,
+        "maximumInFlight": 1,
+        "elapsedMs": 1475.086792
+      },
+      {
+        "mode": "parallel",
+        "calls": 64,
+        "maximumInFlight": 32,
+        "elapsedMs": 125.47612499999991
+      },
+      {
+        "mode": "sequential",
+        "calls": 64,
+        "maximumInFlight": 1,
+        "elapsedMs": 1489.149583
+      },
+      {
+        "mode": "parallel",
+        "calls": 64,
+        "maximumInFlight": 32,
+        "elapsedMs": 127.35345800000005
+      },
+      {
+        "mode": "sequential",
+        "calls": 64,
+        "maximumInFlight": 1,
+        "elapsedMs": 1498.9242920000002
+      },
+      {
+        "mode": "parallel",
+        "calls": 64,
+        "maximumInFlight": 32,
+        "elapsedMs": 123.84245900000042
+      }
+    ],
+    "sequentialMedianMs": 1489.149583,
+    "parallelMedianMs": 125.47612499999991,
+    "speedup": 11.867991484435791,
+    "pythonFrames": {
+      "ready": 1,
+      "call": 50,
+      "progress": 1,
+      "return": 1
+    }
+  },
+  "historicalDelivery": {
+    "source": "/tmp/aab-response-delivery-shared-replay.json",
+    "populations": {
+      "archives": {
+        "n": 25845,
+        "compact": 3931,
+        "overOld8KiB": 9231,
+        "next_inline": 3957,
+        "inline": 21888,
+        "overview": 26,
+        "previewWithData": 26
+      },
+      "conversations": {
+        "n": 2915,
+        "inline": 2914,
+        "overOld8KiB": 122,
+        "compact": 1,
+        "next_inline": 1
+      }
+    },
+    "archiveBytes": {
+      "originalValueBytes": {
+        "p50": 3237,
+        "p90": 40470,
+        "p95": 50118,
+        "max": 248303,
+        "sum": 352614699
+      },
+      "originalBodyBytes": {
+        "p50": 3642,
+        "p90": 41456,
+        "p95": 53375,
+        "max": 248668,
+        "sum": 375394152
+      },
+      "deliveredBodyBytes": {
+        "p50": 3642,
+        "p90": 25482,
+        "p95": 31792,
+        "max": 95658,
+        "sum": 243264638
+      },
+      "previewReturned": {
+        "p50": 60040,
+        "p90": 60370,
+        "p95": 64860,
+        "max": 65061,
+        "sum": 1330614
+      }
+    },
+    "checks": "Independent decoder deep-equality; preview slices and generated read requests verified against saved originals; no device action replayed.",
+    "limitation": "Historical retained sample population, not an unbiased future task success rate."
+  },
+  "flowDelivery": {
+    "composition": {
+      "sampleCount": 45,
+      "counts": {
+        "inline": 31,
+        "compact": 14
+      },
+      "verifiedCompleteValues": 45,
+      "samples": [
+        {
+          "command": "script",
+          "inputBytes": 1638,
+          "deliveredBytes": 1637,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1399,
+          "deliveredBytes": 1398,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2274,
+          "deliveredBytes": 2273,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1332,
+          "deliveredBytes": 1331,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 4101,
+          "deliveredBytes": 4100,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1875,
+          "deliveredBytes": 1874,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1939,
+          "deliveredBytes": 1938,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1875,
+          "deliveredBytes": 1874,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1939,
+          "deliveredBytes": 1938,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3757,
+          "deliveredBytes": 3756,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1944,
+          "deliveredBytes": 1943,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2207,
+          "deliveredBytes": 2206,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1823,
+          "deliveredBytes": 1822,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3669,
+          "deliveredBytes": 3668,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1334,
+          "deliveredBytes": 1333,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1732,
+          "deliveredBytes": 1731,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1532,
+          "deliveredBytes": 1531,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2415,
+          "deliveredBytes": 2414,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 5960,
+          "deliveredBytes": 5959,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2971,
+          "deliveredBytes": 2970,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 6614,
+          "deliveredBytes": 6613,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 2801,
+          "deliveredBytes": 2800,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 90485,
+          "deliveredBytes": 48850,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57004,
+          "deliveredBytes": 41302,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57174,
+          "deliveredBytes": 41472,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57374,
+          "deliveredBytes": 41672,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57539,
+          "deliveredBytes": 41837,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57731,
+          "deliveredBytes": 42029,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57895,
+          "deliveredBytes": 42193,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59075,
+          "deliveredBytes": 43373,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1399,
+          "deliveredBytes": 1398,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2479,
+          "deliveredBytes": 2478,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1955,
+          "deliveredBytes": 1954,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3963,
+          "deliveredBytes": 3962,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2225,
+          "deliveredBytes": 2224,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2059,
+          "deliveredBytes": 2058,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2034,
+          "deliveredBytes": 2033,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3036,
+          "deliveredBytes": 3035,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 104411,
+          "deliveredBytes": 35042,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 161711,
+          "deliveredBytes": 72198,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59541,
+          "deliveredBytes": 43839,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 58641,
+          "deliveredBytes": 42939,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59007,
+          "deliveredBytes": 43305,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59499,
+          "deliveredBytes": 43797,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "runtime",
+          "inputBytes": 898,
+          "deliveredBytes": 898,
+          "status": "inline",
+          "partial": false
+        }
+      ]
+    },
+    "observation": {
+      "sampleCount": 13,
+      "counts": {
+        "inline": 12,
+        "compact": 1
+      },
+      "verifiedCompleteValues": 13,
+      "samples": [
+        {
+          "command": "adb-exec",
+          "inputBytes": 1725,
+          "deliveredBytes": 1456,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "adb-exec",
+          "inputBytes": 1790,
+          "deliveredBytes": 1521,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 24415,
+          "deliveredBytes": 24146,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "tree",
+          "inputBytes": 48083,
+          "deliveredBytes": 47768,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42562,
+          "deliveredBytes": 42293,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 23731,
+          "deliveredBytes": 23462,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42646,
+          "deliveredBytes": 42377,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42193,
+          "deliveredBytes": 41924,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 52796,
+          "deliveredBytes": 52795,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 53460,
+          "deliveredBytes": 40677,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "tap-native",
+          "inputBytes": 62464,
+          "deliveredBytes": 62194,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42585,
+          "deliveredBytes": 42313,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "runtime",
+          "inputBytes": 898,
+          "deliveredBytes": 898,
+          "status": "inline",
+          "partial": false
+        }
+      ]
+    }
+  },
+  "package": {
+    "ok": true,
+    "sourceFilesCompared": 194,
+    "allScriptCommands": 125,
+    "installedPublicScriptBatch": {
+      "allOk": true,
+      "count": 64
+    },
+    "installedBrokenEndpointRecovery": {
+      "ownerSource": "owner-record",
+      "stoppedHostPids": [
+        26811
+      ],
+      "archives": {
+        "endpoint": "/tmp/aab-scheduling-package-final-20261012/extras-runtimes/433972fa6358c12404beccbd7fe2ddb68828a277a89bcbf5966727f4078c6575/recovery/force-stop-ef45cc06-6a6a-4292-a975-499f4df7b8e1/endpoint.json",
+        "owner": "/tmp/aab-scheduling-package-final-20261012/extras-runtimes/433972fa6358c12404beccbd7fe2ddb68828a277a89bcbf5966727f4078c6575/recovery/force-stop-ef45cc06-6a6a-4292-a975-499f4df7b8e1/owner.json"
+      }
+    },
+    "installedRestart": true,
+    "installedCompleteSharedText": {
+      "format": "aab.response-tables/v2",
+      "bytes": 72198
+    },
+    "sha256": "50d09fc871062d57914033ba63e9e3723d3df9ff7c4548714e820e4cb9ef749e",
+    "report": "/tmp/aab-scheduling-package-final-20261012/report.json",
+    "extras": "/tmp/aab-scheduling-package-final-20261012/scheduling-recovery-extras.json",
+    "sourceFilesByteIdentical": true,
+    "uiaBundle": {
+      "sha256": "755b1a509f97b961bb67e89657a90d1afeba96d1c236973a8f82028c5414ef3d",
+      "minApi": 25
+    },
+    "physicalDevice": false
+  },
+  "correctness": [
+    "Queued SDK requests are not replayed",
+    "Writes and checkpoint boundaries remain ordered",
+    "Paused/cancelled work cannot dispatch a later queued write",
+    "Malformed recovery bytes are archived unchanged",
+    "PID selection validates a Bridge Host process; the caller chooses its namespace",
+    "Original JSON and evidence references remain intact"
+  ],
+  "remainingBoundaries": [
+    "No npm/SDK publication, global installation change, Git commit or push in this task",
+    "OEM and iPhone acceptance, and original-receipt queries in real native WebView/Flutter apps remain unverified",
+    "Region screenshots, cross-provider incremental trees and geometric-neighbor selectors are later design options, not delivered capabilities",
+    "Earlier Android emulator, Chrome, Android/Flutter unit and UIA bundle evidence remains in the preceding validation reports; this Host-only batch did not operate physical devices"
+  ]
+}

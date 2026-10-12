@@ -37,10 +37,11 @@ function webSchema(command) {
         { properties: { view: { const: 'connected-history' } }, required: ['view'] },
       ] }, then: { properties: { factCursor: false, afterActionId: false } } },
     ] };
-  if (command === 'web-dom') return { ...object({ ...target, ...query, ...control, selector: text, maxControls: integer(1, 1000) }, ['sessionId', 'runtimeEpoch']),
-    allOf: [cursorPair], oneOf: [
+  if (command === 'web-dom') return { ...object({ ...target, ...query, ...control, selector: text, query: selectorSchema,
+    offset: integer(0, Number.MAX_SAFE_INTEGER), maxControls: integer(1, 1000) }, ['sessionId', 'runtimeEpoch']),
+    allOf: [cursorPair, { not: { required: ['selector', 'query'] } }], oneOf: [
       { properties: { history: { const: false }, cursor: false, throughCursor: false, sinceMs: false, limit: false } },
-      { properties: { history: { const: true }, selector: false, maxControls: false }, required: ['history'] },
+      { properties: { history: { const: true }, selector: false, query: false, offset: false, maxControls: false }, required: ['history'] },
     ] };
   if (command === 'web-scroll') return { ...object({ ...target, ...control, selector: selectorSchema, expectedTarget: expectedTargetSchema,
     mode: { enum: ['into-view', 'by'] }, deltaX: { type: 'number' }, deltaY: { type: 'number' } }, ['sessionId', 'runtimeEpoch', 'mode']), oneOf: [

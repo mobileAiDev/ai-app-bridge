@@ -4,26 +4,7 @@ const { scriptPermissions } = require('../command-registry');
 const PERMISSIONS = Object.freeze(Object.fromEntries(Object.entries(scriptPermissions).map(([name, commands]) =>
   [name, Object.freeze(name === 'app.read' ? [...commands, 'page-summary'] : [...commands])])));
 
-const DENY_DEFAULT = Object.freeze([
-  'clear-app-data',
-  'install-apk',
-  'ios-install-app',
-  'ios-setup',
-  'permission-grant',
-  'permission-revoke',
-  'appops-set',
-]);
-
-const DENY_PERMANENT = Object.freeze([
-  'h5-eval',
-  'flutter-h5-eval',
-  'ios-h5-eval',
-  'web-command',
-  'forward',
-  'remove-forward',
-]);
-
-const DEFAULT_PERMISSIONS = Object.freeze(['app.read', 'app.interact', 'capture.read']);
+const DEFAULT_PERMISSIONS = Object.freeze(Object.keys(PERMISSIONS));
 
 function allowedCommands(permissions = DEFAULT_PERMISSIONS) {
   const names = new Set();
@@ -40,19 +21,17 @@ function commandPermission(command) {
   return null;
 }
 
-function authorizeCommand(command, permissions = DEFAULT_PERMISSIONS) {
-  if (DENY_PERMANENT.includes(command)) {
-    return { ok: false, error: 'command_permanently_denied', command };
-  }
-  if (DENY_DEFAULT.includes(command) && !permissions.includes(commandPermission(command))) {
-    return { ok: false, error: 'command_not_in_default_allowlist', command };
-  }
-  const permission = commandPermission(command);
+function authorizeCommand(command, permissions = DEFAULT_PERMISSIONS, args = {}) {
+  const permission = command === 'logcat' && args.clear === true
+    || ['webview-network', 'webview-console'].includes(command) && args.script !== undefined
+    ? 'app.expert' : commandPermission(command);
   if (!permission) {
-    return { ok: false, error: 'command_not_in_catalog', command };
+    return { ok: false, error: 'command_not_in_catalog', command,
+      message: `${command} has no Script adapter. Use the run tool for this command; capabilities lists its arguments.` };
   }
   if (!permissions.includes(permission)) {
-    return { ok: false, error: 'permission_not_granted', command, permission };
+    return { ok: false, error: 'permission_not_granted', command, permission,
+      message: `This script's explicit permissions exclude ${permission}. Add it to permissions, or omit permissions to enable all supported commands.` };
   }
   return { ok: true, command, permission };
 }
@@ -60,7 +39,7 @@ function authorizeCommand(command, permissions = DEFAULT_PERMISSIONS) {
 function catalogPayload() {
   return {
     runtime: 'trusted-local-code',
-    warning: 'Script source is trusted-local-code, not an OS sandbox. permissions gate Bridge SDK calls only.',
+    warning: 'Script source is trusted-local-code, not an OS sandbox. All supported commands are enabled by default; an explicit permissions list restricts Bridge SDK calls.',
     schemaVersion: 'aab.code-script/v1',
     languages: ['javascript', 'python'],
     executablePlatforms: ['android', 'ios', 'web'],
@@ -68,16 +47,13 @@ function catalogPayload() {
     entrypoint: 'main',
     permissions: PERMISSIONS,
     defaultPermissions: DEFAULT_PERMISSIONS,
-    denyDefault: DENY_DEFAULT,
-    denyPermanent: DENY_PERMANENT,
     internalOnly: ['page-summary'],
+    recipes: require('./recipes').catalog(),
   };
 }
 
 module.exports = {
   PERMISSIONS,
-  DENY_DEFAULT,
-  DENY_PERMANENT,
   DEFAULT_PERMISSIONS,
   allowedCommands,
   authorizeCommand,

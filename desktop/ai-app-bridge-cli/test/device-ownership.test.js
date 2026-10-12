@@ -68,8 +68,8 @@ test('SIGKILL during dispatch keeps a durable unresolved action across fresh man
   const writer = child(directory, 'in-flight', 'effect'); t.after(() => writer.stop());
   assert((await writer.ready).ok); await writer.stop();
   const reader = createDeviceMutationLease({ directory });
-  const busy = reader.acquire('in-flight');
-  assert.equal(busy.error, 'device_ownership_unresolved');
+  const busy = reader.status('in-flight');
+  assert.equal(busy.unresolved, true);
   assert.equal(busy.ownership.pending.actionId, 'child-action');
   assert.equal(reader.status('in-flight').phase, 'unresolved');
   const unknown = await reader.reconcile('in-flight', async () => ({ settled: false, error: 'response_lost' }));
@@ -79,18 +79,18 @@ test('SIGKILL during dispatch keeps a durable unresolved action across fresh man
   const next = createDeviceMutationLease({ directory }).acquire('in-flight'); assert.equal(next.ok, true); next.release();
 });
 
-test('unknown managed settlement prevents both nested and later mutations', async t => {
+test('unknown managed settlement is preserved while later explicit mutations run', async t => {
   const { directory, lease } = fixture(t);
   let effects = 0;
   const result = await lease.run('pending', async () => {
     const outcome = await runDeviceEffect({ kind: 'flutter', actionId: 'action', runtimeEpoch: 'epoch' }, async () => ({ ok: false, settled: false, ambiguous: true, dispatched: null }));
-    const nested = await lease.run('pending', () => { effects++; });
-    assert.equal(nested.error, 'device_ownership_unresolved');
+    await lease.run('pending', () => { effects++; return { ok: true }; });
     return outcome;
   });
   assert.equal(result.settled, false);
-  assert.equal((await createDeviceMutationLease({ directory }).run('pending', () => { effects++; })).error, 'device_ownership_unresolved');
-  assert.equal(effects, 0);
+  assert.equal((await createDeviceMutationLease({ directory }).run('pending', () => { effects++; return { ok: true }; })).ok, true);
+  assert.equal(effects, 2);
+  assert.equal(JSON.parse(fs.readFileSync(result.warnings[0].archivePath)).pending.actionId, 'action');
 });
 
 test('verified settlement survives wrappers and cancel transport retains original identity', async t => {
@@ -115,7 +115,8 @@ test('an untyped SDK error cannot release a possibly queued remote mutation', as
   assert.equal(fresh.status('h5-phone').ownership.pending.path, '/v1/h5/eval');
   let dispatched = false;
   const blocked = await fresh.run('h5-phone', () => { dispatched = true; return { ok: true }; });
-  assert.equal(blocked.error, 'device_ownership_unresolved'); assert.equal(dispatched, false);
+  assert.equal(blocked.ok, true); assert.equal(dispatched, true);
+  assert.equal(JSON.parse(fs.readFileSync(blocked.warnings[0].archivePath)).pending.path, '/v1/h5/eval');
 });
 
 test('an active owner cannot be reconciled and stale tokens cannot remove a new owner', async t => {
@@ -130,16 +131,17 @@ test('an active owner cannot be reconciled and stale tokens cannot remove a new 
   next.release();
 });
 
-test('corrupt journals reject before action', async t => {
+test('corrupt journal bytes are archived, but inaccessible files still fail before action', async t => {
   const { directory, lease } = fixture(t);
   let actions = 0;
   const held = lease.acquire('phone'); held.release();
   const journal = path.join(directory, fs.readdirSync(directory).find(n => n.endsWith('.json')));
   fs.writeFileSync(journal, '{broken');
-  await assert.rejects(lease.run('phone', () => { actions++; }), { code: 'device_ownership_corrupt' });
+  const continued = await lease.run('phone', () => { actions++; return { ok: true }; });
+  assert.equal(fs.readFileSync(continued.warnings[0].archivePath, 'utf8'), '{broken');
   fs.rmSync(journal); fs.mkdirSync(journal);
-  await assert.rejects(lease.run('phone', () => { actions++; }), { code: 'device_ownership_corrupt' });
-  assert.equal(actions, 0);
+  await assert.rejects(lease.run('phone', () => { actions++; }));
+  assert.equal(actions, 1);
 });
 
 test('unwritable ownership metadata prevents dispatch', async t => {
@@ -192,6 +194,6 @@ test('a long-lived install reservation survives nested UI calls and owner releas
   assert.equal(lease.status('installer').ownership.reservations.length, 1);
   installation.settle({ settled: false });
   owner.release();
-  assert.equal(createDeviceMutationLease({ directory }).acquire('installer').error, 'device_ownership_unresolved');
+  assert.equal(createDeviceMutationLease({ directory }).status('installer').unresolved, true);
   await assert.rejects(Promise.resolve().then(() => installation.settle({ settled: true })), { code: 'device_ownership_lost' });
 });

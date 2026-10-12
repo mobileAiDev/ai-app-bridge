@@ -94,7 +94,7 @@ const { capabilityPayload } = require('../bin/mcp-server');
   assert.match(capability.summary, /logical coordinates/);
   assert.equal(authorizeCommand('tap-flutter', ['app.interact']).ok, true);
   assert.equal(authorizeCommand('tap-flutter', ['app.read']).error, 'permission_not_granted');
-  assert.equal(authorizeCommand('flutter-action').error, 'command_not_in_catalog');
+  assert.equal(authorizeCommand('flutter-action').ok, true);
   let dispatched = 0;
   for (const coordinates of [{}, { tapX: 1 }, { tapX: null, tapY: 1 }, { tapX: '', tapY: 1 },
     { tapX: false, tapY: 1 }, { tapX: -1, tapY: 2 }, { tapX: Infinity, tapY: 2 }]) {
@@ -137,7 +137,7 @@ test('public recovery uses the actual exported provider and HTTP receipt after a
   const adb = createAdbHttpFixture({ directory, serial, port, foregroundPackage: packageName });
   const first = await executeCommand('tap-flutter', { serial, packageName, adb, port, tapX: 1, tapY: 1 });
   assert.equal(first.settled, false);
-  assert.equal((await executeCommand('device-ownership', { serial, operation: 'status' })).active, 1);
+  assert.equal((await executeCommand('device-ownership', { serial, operation: 'status' })).unresolved, true);
   assert.equal((await executeCommand('device-ownership', { serial, operation: 'reconcile' })).error, 'device_ownership_unresolved');
   finished = true;
   const recovered = await executeCommand('device-ownership', { serial, operation: 'reconcile' });

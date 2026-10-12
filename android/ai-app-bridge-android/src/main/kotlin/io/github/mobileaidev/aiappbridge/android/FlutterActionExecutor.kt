@@ -72,11 +72,22 @@ internal class FlutterActionExecutor(
         }
     }
 
+    fun query(body: JSONObject, reply: (JSONObject) -> Unit) {
+        if (!validIdentity(body)) { reply(failure("invalid_flutter_execution_identity")); return }
+        synchronized(lock) {
+            lastResult?.takeIf { it.opt("actionId") == body.opt("actionId") && it.opt("runtimeEpoch") == body.opt("runtimeEpoch") }
+                ?.let { reply(completionReceipt(it)); return }
+            val current = active
+            if (current == null || !matches(current, body)) { reply(failure("flutter_action_not_active")); return }
+            reply(pending(current, "flutter_action_pending"))
+        }
+    }
+
     fun cancel(body: JSONObject, reply: (JSONObject) -> Unit) {
         if (!validIdentity(body)) { reply(failure("invalid_flutter_execution_identity")); return }
         val op = synchronized(lock) {
             lastResult?.takeIf { it.opt("actionId") == body.opt("actionId") && it.opt("runtimeEpoch") == body.opt("runtimeEpoch") }
-                ?.let { reply(cancelReceipt(it)); return }
+                ?.let { reply(completionReceipt(it)); return }
             val current = active
             if (current == null || !matches(current, body)) { reply(failure("flutter_action_not_active")); return }
             if (current.cancelReply != null || current.cleanupExpired) { reply(pending(current, "flutter_action_cancel_pending")); return }
@@ -137,13 +148,13 @@ internal class FlutterActionExecutor(
         op.timeout?.cancel(false); op.cleanup?.cancel(false)
         active = null; lastResult = JSONObject(result.toString())
         op.reply?.invoke(result); op.reply = null
-        op.cancelReply?.invoke(cancelReceipt(result)); op.cancelReply = null
+        op.cancelReply?.invoke(completionReceipt(result)); op.cancelReply = null
     }
 
     private fun identity(op: Operation) = JSONObject().put("schemaVersion", SCHEMA).put("actionId", op.actionId).put("runtimeEpoch", op.epoch)
     private fun pending(op: Operation, error: String) = identity(op).put("ok", false).put("error", error)
         .put("dispatched", JSONObject.NULL).put("ambiguous", true).put("settled", false)
-    private fun cancelReceipt(result: JSONObject) = JSONObject().put("ok", true)
+    private fun completionReceipt(result: JSONObject) = JSONObject().put("ok", true)
         .put("actionId", result.getString("actionId")).put("runtimeEpoch", result.getString("runtimeEpoch"))
         .put("executionResult", JSONObject(result.toString()))
     private fun matches(op: Operation, body: JSONObject) = body.opt("actionId") == op.actionId && body.opt("runtimeEpoch") == op.epoch

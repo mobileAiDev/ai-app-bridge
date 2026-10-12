@@ -41,7 +41,9 @@ function calculateCodeFingerprint() {
 
 // Pin the running client's code when this entrypoint loads, before the first
 // request. Replacing installed files cannot make this process claim new code.
-const fingerprint = calculateCodeFingerprint();
+let fingerprint, fingerprintError;
+try { fingerprint = calculateCodeFingerprint(); }
+catch (error) { fingerprintError = error; }
 const packageVersion = require('../package.json').version;
 
 function runtimeLocation() {
@@ -51,10 +53,12 @@ function runtimeLocation() {
   const home = path.resolve(process.env.AI_APP_BRIDGE_RUNTIME_HOME || path.join(os.homedir(), '.ai-app-bridge', 'runtimes', 'v1'));
   const directory = path.join(home, key);
   return { directory, facts, profile: target.profile, endpointFile: path.join(directory, 'endpoint.json'),
-    lockFile: path.join(directory, 'owner.sqlite'), logFile: path.join(directory, 'runtime.log') };
+    ownerFile: path.join(directory, 'owner.json'), lockFile: path.join(directory, 'owner.sqlite'), logFile: path.join(directory, 'runtime.log') };
 }
 
 function runtimeIdentity(location = runtimeLocation()) {
+  if (fingerprintError) throw new CommandError('client_installation_invalid', 'The client cannot verify its installed runtime dependencies. Use doctor to inspect the installation.',
+    { details: { cause: fingerprintError.message } });
   const names = ['AI_APP_BRIDGE_ADB_TIMEOUT_MS', 'AI_APP_BRIDGE_DEVICECTL', 'AI_APP_BRIDGE_FACT_CACHE',
     'AI_APP_BRIDGE_IOS_TEAM_ID', 'AI_APP_BRIDGE_PYTHON', 'AI_APP_BRIDGE_EXECUTOR_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPMENT_TEAM', 'DEVELOPER_DIR', 'XCODEBUILD'];
   const config = { facts: location.facts, profile: location.profile, ownership: canonicalPath(ownershipDirectory()),
@@ -122,7 +126,7 @@ function readEndpoint(location) {
   let value;
   try { if (bytes.length > 16384) throw new Error(); value = JSON.parse(bytes); }
   catch { throw new CommandError('runtime_endpoint_invalid', 'The runtime endpoint record is invalid.'); }
-  if (value.protocol !== protocol || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.protocol !== protocol || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535
     || typeof value.token !== 'string' || !/^[a-f0-9]{64}$/.test(value.token)
     || typeof value.runtimeId !== 'string' || !Number.isSafeInteger(value.pid)
     || value.facts !== location.facts) throw new CommandError('runtime_endpoint_invalid', 'The runtime endpoint identity is invalid.');
@@ -130,9 +134,41 @@ function readEndpoint(location) {
 }
 
 function publishEndpoint(location, endpoint) {
-  const temporary = `${location.endpointFile}.${randomUUID()}.tmp`;
-  fs.writeFileSync(temporary, JSON.stringify(endpoint), { mode: 0o600, flag: 'wx' });
-  fs.renameSync(temporary, location.endpointFile);
+  publishRecord(location.endpointFile, endpoint);
 }
 
-module.exports = { runtimeLocation, runtimeIdentity, requireCompatible, prepareDirectory, acquireRuntimeLock, readEndpoint, publishEndpoint };
+function readRuntimeOwner(location) {
+  let bytes;
+  try { bytes = fs.readFileSync(location.ownerFile); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  let value;
+  try { if (bytes.length > 16384) throw new Error(); value = JSON.parse(bytes); }
+  catch { throw new CommandError('runtime_owner_invalid', 'The independent runtime owner record is invalid.'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.protocol !== protocol || typeof value.runtimeId !== 'string' || !value.runtimeId
+    || !Number.isSafeInteger(value.pid) || value.pid < 1 || typeof value.processStart !== 'string' || !value.processStart
+    || value.facts !== location.facts) throw new CommandError('runtime_owner_invalid', 'The independent runtime owner identity is invalid.');
+  return value;
+}
+
+function publishRecord(file, value) {
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(value), { mode: 0o600, flag: 'wx' });
+  fs.renameSync(temporary, file);
+}
+
+function publishRuntimeOwner(location, value) { publishRecord(location.ownerFile, value); }
+
+// Called only while owning the namespace lock. Preserve malformed bytes too;
+// recovery must not depend on parsing the broken record or unlink the lock inode.
+function archiveRuntimeRecords(location, reason) {
+  const records = [['endpoint', location.endpointFile], ['owner', location.ownerFile]].filter(([, file]) => fs.existsSync(file));
+  const archives = {};
+  if (!records.length) return archives;
+  const directory = path.join(location.directory, 'recovery', `${reason}-${randomUUID()}`);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  for (const [name, file] of records) { archives[name] = path.join(directory, path.basename(file)); fs.renameSync(file, archives[name]); }
+  return archives;
+}
+
+module.exports = { runtimeLocation, runtimeIdentity, requireCompatible, prepareDirectory, acquireRuntimeLock, readEndpoint, publishEndpoint,
+  readRuntimeOwner, publishRuntimeOwner, archiveRuntimeRecords };

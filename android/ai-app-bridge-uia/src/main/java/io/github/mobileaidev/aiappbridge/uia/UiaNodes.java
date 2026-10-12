@@ -5,6 +5,7 @@ import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -18,6 +19,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
     private static final long SNAPSHOT_TTL_MS = 60000;
     private final UiaConnection connection;
     private final String bootId, epoch;
+    private final JSONArray startupWarnings;
     private final Map<String, Snapshot> snapshots = new LinkedHashMap<>();
 
     private static final class Node {
@@ -35,12 +37,15 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         final String id = UUID.randomUUID().toString();
         final long created = SystemClock.elapsedRealtime(), expires = created + SNAPSHOT_TTL_MS;
         final Map<String, Node> nodes = new LinkedHashMap<>();
+        final List<Node> roots = new ArrayList<>();
+        final JSONArray windows = new JSONArray(), warnings = new JSONArray();
         JSONObject window;
-        Node root;
+        boolean truncated;
     }
 
-    UiaNodes(UiaConnection connection, String bootId, String epoch) {
+    UiaNodes(UiaConnection connection, String bootId, String epoch, JSONArray startupWarnings) {
         this.connection = connection; this.bootId = bootId; this.epoch = epoch;
+        this.startupWarnings = startupWarnings;
     }
 
     private static Object nullable(CharSequence value) { return value == null ? JSONObject.NULL : value.toString(); }
@@ -57,48 +62,68 @@ final class UiaNodes implements UiaActionEngine.Gateway {
     }
 
     private Node walk(AccessibilityNodeInfo handle, Node parent, Snapshot snapshot, int depth) throws Exception {
-        if (depth > MAX_DEPTH || snapshot.nodes.size() >= MAX_NODES) throw new Wire.Failure("uia_tree_capacity_exhausted");
+        if (depth > MAX_DEPTH || snapshot.nodes.size() >= MAX_NODES) { snapshot.truncated = true; return null; }
         Node node = new Node(handle, identity(handle), parent); snapshot.nodes.put(node.ref, node);
         for (int index = 0; index < handle.getChildCount(); index++) {
             AccessibilityNodeInfo child = handle.getChild(index);
-            if (child == null) throw new Wire.Failure("uia_tree_changed");
-            node.children.add(walk(child, node, snapshot, depth + 1));
+            if (child == null) { snapshot.truncated = true; continue; }
+            Node observed = walk(child, node, snapshot, depth + 1);
+            if (observed != null) node.children.add(observed);
         }
         return node;
     }
 
     private Snapshot read(Integer windowId) throws Exception {
-        AccessibilityWindowInfo focused = null;
-        for (AccessibilityWindowInfo window : connection.windows()) {
-            if (windowId == null ? UiaConnection.displayId(window) != 0 || !window.isFocused() : window.getId() != windowId) continue;
-            if (focused != null) throw new Wire.Failure("uia_focused_window_not_unique");
-            focused = window;
-        }
-        if (focused == null) throw new Wire.Failure(windowId == null ? "uia_focused_window_unavailable" : "uia_stale_reference");
-        AccessibilityNodeInfo root = focused.getRoot();
-        if (root == null) throw new Wire.Failure("uia_focused_root_unavailable");
         Snapshot snapshot = new Snapshot();
-        snapshot.window = new JSONObject().put("id", focused.getId()).put("displayId", UiaConnection.displayId(focused))
-            .put("type", focused.getType()).put("focused", focused.isFocused()).put("title", nullable(focused.getTitle()));
-        snapshot.root = walk(root, null, snapshot, 0);
+        for (AccessibilityWindowInfo window : connection.windows()) {
+            if (UiaConnection.displayId(window) != 0 || windowId != null && window.getId() != windowId) continue;
+            JSONObject info = new JSONObject().put("id", window.getId()).put("displayId", UiaConnection.displayId(window))
+                .put("type", window.getType()).put("focused", window.isFocused()).put("title", nullable(window.getTitle()));
+            snapshot.windows.put(info);
+            if (windowId != null || window.isFocused()) snapshot.window = info;
+            AccessibilityNodeInfo root = window.getRoot();
+            if (root == null) {
+                snapshot.truncated = true;
+                snapshot.warnings.put(new JSONObject().put("code", "uia_window_root_unavailable").put("windowId", window.getId()).put("blocking", false));
+                continue;
+            }
+            Node observed = walk(root, null, snapshot, 0);
+            if (observed != null) snapshot.roots.add(observed);
+        }
+        if (snapshot.windows.length() == 0) {
+            snapshot.truncated = true;
+            snapshot.warnings.put(new JSONObject().put("code", "uia_windows_unavailable").put("blocking", false));
+        }
+        if (windowId != null && snapshot.window == null) throw new Wire.Failure("uia_stale_reference");
+        if (snapshot.window == null) snapshot.warnings.put(new JSONObject().put("code", "uia_focused_window_unavailable").put("blocking", false));
         return snapshot;
     }
 
     JSONObject observe() throws Exception {
-        connection.waitForIdle(100, 3000);
+        boolean idle = true;
+        try { connection.waitForIdle(100, 1000); }
+        catch (java.util.concurrent.TimeoutException error) { idle = false; }
         Snapshot snapshot = read(null);
+        for (int i = 0; i < startupWarnings.length(); i++) snapshot.warnings.put(startupWarnings.get(i));
+        if (!idle) snapshot.warnings.put(new JSONObject().put("code", "uia_idle_timeout").put("blocking", false));
         Iterator<Snapshot> existing = snapshots.values().iterator();
         while (existing.hasNext()) if (existing.next().expires <= snapshot.created) existing.remove();
         if (snapshots.size() == MAX_SNAPSHOTS) snapshots.remove(snapshots.keySet().iterator().next());
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i < snapshot.roots.size(); i++) xml(snapshot.roots.get(i), body, i, snapshot);
+        if (snapshot.truncated) snapshot.warnings.put(new JSONObject().put("code", "uia_tree_incomplete")
+            .put("message", "Some nodes were unavailable or exceeded the observation budget. Returned references remain selectable.").put("blocking", false));
         StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?><hierarchy");
         attr(xml, "aab-schema", Wire.SNAPSHOT); attr(xml, "aab-boot-id", bootId);
         attr(xml, "aab-runtime-epoch", epoch); attr(xml, "aab-snapshot-id", snapshot.id);
-        xml.append('>'); xml(snapshot.root, xml, 0); xml.append("</hierarchy>");
-        if (xml.length() > 524288) throw new Wire.Failure("uia_snapshot_capacity_exhausted");
+        attr(xml, "aab-truncated", Boolean.toString(snapshot.truncated));
+        attr(xml, "aab-warnings", snapshot.warnings.toString());
+        xml.append('>').append(body).append("</hierarchy>");
         snapshots.put(snapshot.id, snapshot);
         return new JSONObject().put("ok", true).put("schemaVersion", Wire.SNAPSHOT).put("bootId", bootId)
             .put("runtimeEpoch", epoch).put("snapshotId", snapshot.id).put("createdAtElapsedMs", snapshot.created)
-            .put("expiresAtElapsedMs", snapshot.expires).put("window", snapshot.window)
+            .put("expiresAtElapsedMs", snapshot.expires).put("window", snapshot.window == null ? JSONObject.NULL : snapshot.window)
+            .put("windows", snapshot.windows).put("warnings", snapshot.warnings).put("truncated", snapshot.truncated)
             .put("nodeCount", snapshot.nodes.size()).put("xml", xml.toString());
     }
 
@@ -107,16 +132,24 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         return value.isNull(key) ? "" : value.get(key).toString();
     }
 
-    private static void xml(Node node, StringBuilder output, int index) throws Exception {
+    private static void xml(Node node, StringBuilder output, int index, Snapshot snapshot) throws Exception {
+        StringBuilder tag = new StringBuilder();
+        xmlTag(node, tag, index);
+        if (output.length() + tag.length() > 480000) { snapshot.truncated = true; return; }
+        output.append(tag);
+        for (int i = 0; i < node.children.size(); i++) xml(node.children.get(i), output, i, snapshot);
+        output.append("</node>");
+    }
+
+    private static void xmlTag(Node node, StringBuilder output, int index) throws Exception {
         output.append("<node"); attr(output, "index", Integer.toString(index)); attr(output, "aab-ref", node.ref);
+        attr(output, "aab-window-id", node.identity.get("windowId").toString());
         String[][] names = {{"package", "packageName"}, {"class", "className"}, {"text", "text"},
             {"content-desc", "contentDescription"}, {"resource-id", "resourceName"}, {"bounds", "bounds"},
             {"enabled", "enabled"}, {"visible-to-user", "visible"}, {"clickable", "clickable"},
             {"checkable", "checkable"}, {"checked", "checked"}, {"scrollable", "scrollable"}};
         for (String[] name : names) attr(output, name[0], xmlValue(node.identity, name[1]));
         output.append('>');
-        for (int i = 0; i < node.children.size(); i++) xml(node.children.get(i), output, i);
-        output.append("</node>");
     }
 
     private static void attr(StringBuilder output, String key, String value) throws Exception {
@@ -165,33 +198,36 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         if (original == null) throw new Wire.Failure("uia_stale_reference");
         JSONObject selector = Wire.object(target, "selector");
         if (!matches(original, selector)) throw new Wire.Failure("uia_reference_selector_mismatch");
-        Snapshot current = read(snapshot.window.getInt("id"));
+        Snapshot current = read(original.identity.getInt("windowId"));
         Node selected = null;
         boolean byReference = selector.getString("kind").equals("nodeRef");
-        for (Node node : current.nodes.values()) if (byReference
-                ? node.identity.getString("sourceId").equals(original.identity.getString("sourceId"))
-                : matches(node, selector)) {
+        for (Node node : current.nodes.values()) if (node.identity.getString("sourceId").equals(original.identity.getString("sourceId"))) {
             if (selected != null) throw new Wire.Failure("uia_target_ambiguous");
             selected = node;
         }
         if (selected == null) throw new Wire.Failure("uia_target_not_found");
-        if (!selected.identity.toString().equals(original.identity.toString())) throw new Wire.Failure("uia_reobserve_required");
+        if (!byReference && !matches(selected, selector)) throw new Wire.Failure("uia_reference_selector_mismatch");
+        if (!UiaNodeIdentity.sameNode(original.identity, selected.identity)) throw new Wire.Failure("uia_reobserve_required");
         if (!selected.identity.getBoolean("enabled")) throw new Wire.Failure("uia_target_not_operable");
         String policy = Wire.string(request, "clickPolicy");
-        Node originalAction = clickNode(original, policy), action = clickNode(selected, policy);
-        if (!action.identity.toString().equals(originalAction.identity.toString())) throw new Wire.Failure("uia_reobserve_required");
-        if (!original.handle.refresh() || !identity(original.handle).toString().equals(original.identity.toString())
-                || !action.handle.refresh() || !identity(action.handle).toString().equals(action.identity.toString()))
+        Node originalAction = original, action = clickNode(selected, policy);
+        if (policy.equals("nearest_clickable_ancestor")) while (!originalAction.identity.getBoolean("clickable") && originalAction.parent != null) originalAction = originalAction.parent;
+        if (!UiaNodeIdentity.sameNode(originalAction.identity, action.identity)) throw new Wire.Failure("uia_reobserve_required");
+        if (!original.handle.refresh() || !UiaNodeIdentity.sameNode(identity(original.handle), original.identity)
+                || !action.handle.refresh() || !UiaNodeIdentity.sameNode(identity(action.handle), action.identity))
             throw new Wire.Failure("uia_reobserve_required");
         org.json.JSONArray warnings = new org.json.JSONArray();
+        if (!selected.identity.toString().equals(original.identity.toString())) warnings.put(new JSONObject()
+            .put("code", "uia_target_attributes_changed").put("blocking", false)
+            .put("before", original.identity).put("current", selected.identity));
         if (!current.window.getBoolean("focused")) warnings.put(new JSONObject().put("code", "uia_window_not_focused")
             .put("source", "AccessibilityWindowInfo.isFocused").put("observedAtMs", System.currentTimeMillis())
             .put("windowId", current.window.getInt("id")));
         return new JSONObject().put("snapshotId", snapshot.id).put("ref", original.ref).put("selector", selector)
-            .put("clickPolicy", policy).put("target", original.identity).put("actionTarget", action.identity)
+            .put("clickPolicy", policy).put("target", selected.identity).put("actionTarget", action.identity)
             .put("window", current.window)
             .put("warnings", warnings)
-            .put("identityStrength", "same_connection_node_and_reobserved_attributes");
+            .put("identityStrength", "same_connection_node");
     }
 
     @Override public boolean dispatch(JSONObject binding, int interactionId, UiaActionEngine.Callback callback) throws Exception {

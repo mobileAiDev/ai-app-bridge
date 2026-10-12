@@ -20,10 +20,10 @@ const cli = path.resolve(__dirname, '../bin/ai-app-bridge.js');
 const target = { serial: 'public-return-device', packageName: 'example.app', feedback: 'off' };
 test.after(async () => { await host.close(); fs.rmSync(directory, { recursive: true, force: true }); });
 
-test('public validation rejects missing and invalid extract before touching a provider or storage', async () => {
+test('public validation rejects invalid extract before touching a provider or storage', async () => {
   let calls = 0;
   const dependencies = { rawRunner: async () => { calls++; return { ok: true }; }, factRecorder: null, observationCollector: null };
-  for (const fields of [{}, { extract: 'null' }, { extract: true }, { extract: {} },
+  for (const fields of [{ extract: 'null' }, { extract: true }, { extract: {} },
     { extract: { mode: 'regex', pattern: '[', inputPath: '' } }, { extract: null, output: { maxBytes: 1 } }]) {
     const { value: reply } = await host.run({ command: 'tree', arguments: target, ...fields }, dependencies);
     assert.equal(reply.failureStage, 'validation');
@@ -36,7 +36,7 @@ test('public validation rejects missing and invalid extract before touching a pr
 });
 
 test('CLI parses envelope flags first and reports their validation failures in one public reply', () => {
-  for (const [flags, field] of [[[], 'extract'], [['--extract'], 'extract'],
+  for (const [flags, field] of [[['--extract'], 'extract'],
     [['--extract', '--feedback', 'off'], 'extract'], [['--extract', '"null"'], 'extract'],
     [['--extract', '{'], 'extract'], [['--extract', 'null', '--output'], 'output']]) {
     const result = spawnSync(process.execPath, [cli, 'status', ...flags], { env, encoding: 'utf8' });
@@ -146,7 +146,25 @@ test('Script and both Intent facades protect continuation without copying full h
   assert.equal(reply.control.eventSequence, 20);
 });
 
-test('actual MCP tools/list exposes nullable required extract without starting a Runtime', async () => {
+test('Intent command results are delivered once while child continuation remains extraction-proof', async () => {
+  const value = { ok: true, operationId: 'intent-parent', revision: 1, status: 'waiting_for_decision',
+    uiObservation: { revision: 1, available: true, stale: true },
+    lastAction: { command: 'script', actionId: 'command-1', receiptId: 'receipt-1', dispatched: true, ambiguous: false,
+      result: { ok: true, command: 'script', operationId: 'script-child', status: 'completed',
+        resultRef: { evidenceId: 'child-result' }, result: { text: 'z'.repeat(75 * 1024) } } } };
+  const body = publicReply({ command: 'intent', reply: { value } });
+  assert.equal(body.control.lastAction.result, undefined);
+  assert.equal(body.control.lastAction.resultPath, '/lastAction/result');
+  assert.equal(body.control.lastAction.resultControl.operationId, 'script-child');
+  assert.equal(body.control.lastAction.ambiguous, false);
+  assert.deepEqual(body.control.uiObservation, value.uiObservation);
+  const result = await require('../bin/public-reply').finishReply({ body, extract: { mode: 'auto' } });
+  assert.equal(result.delivery.status, 'inline');
+  assert.deepEqual(result.value, value);
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) < 96 * 1024);
+});
+
+test('actual MCP tools/list exposes nullable optional extract without starting a Runtime', async () => {
   const client = createMcpClient({ serverPath: path.resolve(__dirname, '../bin/mcp-server.js'), env,
     transcriptPath: path.join(directory, 'mcp.jsonl'), stderrPath: path.join(directory, 'mcp.stderr') });
   try {
@@ -154,13 +172,13 @@ test('actual MCP tools/list exposes nullable required extract without starting a
     const { result: { tools } } = await client.request('tools/list', {});
     assert.deepEqual(tools.map(tool => tool.name), ['capabilities', 'run']);
     const schema = tools.find(tool => tool.name === 'run').inputSchema;
-    assert.deepEqual(schema.required, ['command', 'extract']);
+    assert.deepEqual(schema.required, ['command']);
     assert.equal(schema.properties.extract.oneOf[0].type, 'null');
     assert.match(schema.properties.extract.description, /do not repeat the action/);
     const result = await client.request('tools/call', { name: 'run', arguments: { command: 'status' } });
     const reply = JSON.parse(result.result.content[0].text);
     assert.equal(result.result.isError, true);
-    assert.equal(reply.execution.field, 'extract');
+    assert.equal(reply.execution.field, 'packageName');
     assert.equal(result.result._meta, undefined);
     assert.equal(result.result.structuredContent, undefined);
     assert.equal(fs.existsSync(env.AI_APP_BRIDGE_RUNTIME_HOME), false);

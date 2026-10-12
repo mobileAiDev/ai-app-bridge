@@ -1,0 +1,121 @@
+{
+  "date": "2026-10-12",
+  "overallGoal": "active",
+  "published": false,
+  "scope": [
+    "permission-dialog action choices and visible guidance",
+    "H5/Web large-page selection and dynamic attribute diagnostics",
+    "combined H5/Web selectors",
+    "literal/regex logcat filtering and useful empty-result guidance"
+  ],
+  "checks": {
+    "nodeFunctional": {
+      "passed": 1440,
+      "failed": 0,
+      "concurrency": 4,
+      "log": "/tmp/aab-agent-choice-followup-functional.log",
+      "note": "Full suite before the final H5/Web recovery-hint change. The final change is covered by the targeted group below."
+    },
+    "finalGuidanceAndLogcat": {
+      "passed": 23,
+      "failed": 0,
+      "log": "/tmp/aab-agent-choice-followup-guidance.log"
+    },
+    "nodePerformance": {
+      "passed": 50,
+      "failed": 0,
+      "concurrency": 1,
+      "log": "/tmp/aab-agent-choice-followup-performance.log"
+    },
+    "webSdk": {
+      "passed": 26,
+      "failed": 0
+    },
+    "androidSdk": {
+      "debug": 194,
+      "release": 194,
+      "failed": 0,
+      "log": "/tmp/aab-agent-choice-followup-android.log"
+    },
+    "generatedH5Copies": 4,
+    "skillCopiesEqual": true,
+    "realBrowser": {
+      "browser": "installed Google Chrome, isolated headless contexts",
+      "report": "/tmp/aab-agent-choice-followup-browser-20261012/result.json",
+      "ok": true,
+      "checks": [
+        {
+          "name": "native value setter dispatches actual browser input",
+          "passed": true
+        },
+        {
+          "name": "contenteditable browser insertion reaches the editor",
+          "passed": true
+        },
+        {
+          "name": "duplicate visible text does not dispatch",
+          "passed": true
+        },
+        {
+          "name": "6000-control page keeps an observed element actionable after a label update",
+          "passed": true
+        },
+        {
+          "name": "combined text, role and CSS select the intended Agree control",
+          "passed": true
+        },
+        {
+          "name": "replacement with the same selector rejects old identity",
+          "passed": true
+        },
+        {
+          "name": "returning to the same URL rejects an old page observation",
+          "passed": true
+        },
+        {
+          "name": "focus replacement cannot write to the new input",
+          "passed": true
+        },
+        {
+          "name": "an overlay prevents clicking the covered target",
+          "passed": true
+        },
+        {
+          "name": "explicit scrolling makes the observed off-screen target reachable",
+          "passed": true
+        },
+        {
+          "name": "Enter delivers one keydown even when the handler navigates",
+          "passed": true
+        }
+      ]
+    },
+    "freshPackage": {
+      "ok": true,
+      "sha256": "b5e20ad10c4ea8695bb7a54b6aad919845d834927fb823ae02720ac4a9876838",
+      "report": "/tmp/aab-agent-choice-followup-final-package-20261012/report.json",
+      "logcatQuery": {
+        "installedWorker": true,
+        "literalHint": true,
+        "regexMatched": true,
+        "invalidRegexNeverClears": true
+      },
+      "verifiedCurrentFiles": [
+        "bin/shared-kernel/logcat-query.js",
+        "bin/shared-kernel/action-guidance.js",
+        "bin/shared-kernel/h5-target.js",
+        "bin/shared-kernel/web-dom-target.js",
+        "bin/intent/permission-intent.js",
+        "bin/public-reply.js",
+        "bin/command-registry.js",
+        "skills/ai-app-bridge-use/SKILL.md"
+      ]
+    }
+  },
+  "verificationLimits": [
+    "No physical Android device was used in this follow-up.",
+    "Chrome checks do not prove OEM permission-dialog or native Android/iOS WebView behavior.",
+    "iPhone and OEM dialog acceptance remain outstanding.",
+    "Candidate pagination, unified diagnosis, archive browsing and workflow recipes remain separate active work."
+  ]
+}

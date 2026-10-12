@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-12",
+  "status": "local-implementation-validated; overall-goal-active",
+  "baseline": "a76302e",
+  "scope": [
+    "Script calls all registered Bridge commands",
+    "Intent command action and background composition",
+    "device-only targets",
+    "event-driven intent wait",
+    "independent stop controller",
+    "recoverable command and permission steps",
+    "single-copy command output"
+  ],
+  "verification": {
+    "functional": {
+      "initialCompletedRun": {
+        "tests": 1504,
+        "pass": 1504,
+        "log": "/tmp/aab-composition-functional-final.log"
+      },
+      "permissionWrapperFollowup": {
+        "tests": 117,
+        "pass": 117,
+        "log": "/tmp/aab-composition-last-contract.log"
+      },
+      "combinedFinal": {
+        "tests": 1517,
+        "pass": 1517,
+        "fail": 0,
+        "concurrency": 2,
+        "log": "/tmp/aab-composition-observation-functional-final.log"
+      }
+    },
+    "performance": {
+      "tests": 50,
+      "pass": 50,
+      "fail": 0,
+      "log": "/tmp/aab-composition-observation-performance.log"
+    },
+    "device": {
+      "ok": true,
+      "serial": "emulator-5574",
+      "physicalDevicesTouched": false,
+      "checks": {
+        "scriptManagedInstall": true,
+        "scriptToIntent": true,
+        "intentToScriptToBridgeAndAdb": true,
+        "failureContinuesWithoutReplay": true
+      },
+      "efficiency": {
+        "samples": [
+          {
+            "observeAfter": false,
+            "wallMs": 48.54137499999979,
+            "revisionBefore": 1,
+            "revisionAfter": 1
+          },
+          {
+            "observeAfter": true,
+            "wallMs": 490.5067090000002,
+            "revisionBefore": 1,
+            "revisionAfter": 2
+          },
+          {
+            "observeAfter": false,
+            "wallMs": 49.54420800000025,
+            "revisionBefore": 2,
+            "revisionAfter": 2
+          },
+          {
+            "observeAfter": true,
+            "wallMs": 481.46629200000007,
+            "revisionBefore": 2,
+            "revisionAfter": 3
+          },
+          {
+            "observeAfter": false,
+            "wallMs": 51.29229200000009,
+            "revisionBefore": 3,
+            "revisionAfter": 3
+          },
+          {
+            "observeAfter": true,
+            "wallMs": 481.4462089999997,
+            "revisionBefore": 3,
+            "revisionAfter": 4
+          }
+        ],
+        "commandCount": 6,
+        "explicitExtraObservations": 3,
+        "implicitExtraObservations": 0,
+        "revisionBefore": 1,
+        "revisionAfter": 4
+      }
+    },
+    "package": {
+      "ok": true,
+      "sha256": "7da6706a1de766da27dfaa436c69de4e9c18dacbbac0393caec10fd1ffc461ad",
+      "source": "/tmp/aab-composition-package-20261012/report.json",
+      "includesIndependentControllerEntrypoints": true,
+      "scope": "Composition build, before subsequent observation coverage changes"
+    },
+    "finalPackage": {
+      "ok": true,
+      "sourceFilesCompared": 194,
+      "allScriptCommands": 125,
+      "schemas": [
+        "Intent command action",
+        "Intent wait",
+        "observed absenceScope"
+      ],
+      "offlineInstalledForceStop": true,
+      "installedMultiwindowVisibility": true,
+      "sha256": "b12f2861fe4dc9c77e5b804021dd97f7b92b13e852dee61519abbbc6f5bff52a",
+      "report": "/tmp/aab-observation-package-final-20261012/report.json",
+      "details": "/tmp/aab-observation-package-final-20261012/composition-observation-extras.json",
+      "scope": "Final package after compact visibility followup; controlled ADB only"
+    }
+  },
+  "autoReplay": {
+    "source": "/tmp/aab-composition-device-20261012/response-replay.json",
+    "total": 45,
+    "inline": 43,
+    "completeCompact": 1,
+    "overview": 1,
+    "completeOnFirstReply": 44,
+    "independentRoundTripVerified": true,
+    "originalsMissing": 0,
+    "deviceActionsReplayed": false,
+    "partialCase": {
+      "command": "intent",
+      "operation": "decide",
+      "description": "Read full child Script diagnostics",
+      "sourceBytes": 161711,
+      "deliveredBytes": 43723
+    },
+    "population": "One emulator regression flow; separate from historical census"
+  },
+  "limits": [
+    "Per-command timing samples are one emulator flow, not a general speed guarantee.",
+    "Command start acceptance does not prove child task completion.",
+    "Unknown device effects are preserved and never replayed automatically.",
+    "Held runtime lock with corrupt/unavailable endpoint still needs owner identification.",
+    "Physical OEM devices, iPhone and H5/Flutter original-query acceptance are not covered by this batch.",
+    "No publication, push or global installation."
+  ],
+  "retainedIntermediateFailures": [
+    {
+      "source": "/tmp/aab-composition-integration-initial.log",
+      "resolution": "Child decision requestId injection and nullable host mutation target fixed; malformed Agent reply remains explicitly correctable."
+    },
+    {
+      "source": "/tmp/aab-composition-device-20261012/validation/report.json",
+      "resolution": "Duplicate large command output removed from control; original result retained in value."
+    },
+    {
+      "source": "/tmp/aab-composition-device-20261012/validation2/report.json",
+      "resolution": "Harness ADB shell argv corrected to actually exit 7; product ADB path unchanged."
+    }
+  ]
+}

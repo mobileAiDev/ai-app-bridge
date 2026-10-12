@@ -154,7 +154,8 @@ test('public provider releases known rejected launches and retains genuinely unk
   const missing=await provider.run('ios-launch-app',{deviceId:'phone',bundleId:'sample.app'});
   assert.equal(missing.ambiguous,true); assert.equal(lease.status('ios:udid').phase,'unresolved');
   const blocked=await provider.run('ios-launch-app',{deviceId:'phone',bundleId:'another.app'});
-  assert.equal(blocked.error,'device_ownership_unresolved'); assert.equal(launches,4);
+  assert.equal(blocked.error,'provider_timeout'); assert.equal(launches,5);
+  assert.equal(blocked.warnings[0].code,'previous_execution_unknown');
 });
 
 for (const [name, response, expectedError] of [

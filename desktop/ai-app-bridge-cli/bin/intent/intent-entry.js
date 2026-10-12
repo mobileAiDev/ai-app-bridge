@@ -31,6 +31,10 @@ function handle(args = {}) {
   }
   if (operation === 'decide') return read(args, (worker) => worker.decide(args.decision || args));
   if (operation === 'status') return status(args);
+  if (operation === 'wait') {
+    const worker = operations.get(args.operationId);
+    return worker ? require('./intent-wait').wait(worker, args) : { ...status(args), timedOut: false, waitMs: args.waitMs ?? 30000 };
+  }
   if (operation === 'observe') return read(args, (worker) => {
     if (worker.isManagedWorkflow && args.observationTarget !== undefined) return intentError('managed_intent_observation_target_fixed', {
       operationId: args.operationId, field: 'observationTarget', dispatched: false, ambiguous: false,
@@ -87,9 +91,9 @@ async function start(args) {
   reservedIds.add(operationId);
   let worker;
   try { worker = args.install
-    ? await require('./install-intent').createInstallIntent({ args: args.install, operationId, store, recording })
+    ? await require('./install-intent').createInstallIntent({ args: args.install, operationId, store, recording, commands: args.commands })
     : args.permissionDialog
-    ? await require('./permission-intent').createPermissionIntent({ args: args.permissionDialog, operationId, store, recording })
+    ? await require('./permission-intent').createPermissionIntent({ args: args.permissionDialog, operationId, store, recording, commands: args.commands })
     : createIntentWorker({
     operationId,
     goal: args.goal || null,
@@ -98,6 +102,7 @@ async function start(args) {
     observationTarget,
     store,
     adapter: resolveAdapter(args),
+    commands: args.commands,
     mode: args.mode || 'supervised',
     agent: resolveAgent(args),
     budget: resolveBudget(args),
@@ -109,7 +114,11 @@ async function start(args) {
   }); } finally { reservedIds.delete(operationId); }
   operations.set(operationId, worker);
   ledgers.set(operationId, { store, status: 'created' });
-  return closing ? worker.cancel() : worker.start();
+  if (closing) return worker.cancel();
+  const starting = worker.start();
+  if (!args.background) return starting;
+  starting.catch(error => process.stderr.write(`Intent ${operationId}: ${error.stack || error.message}\n`));
+  return { ...worker.status(), ok: true, background: true, accepted: true };
 }
 
 function status(args) {

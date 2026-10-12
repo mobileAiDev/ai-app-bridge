@@ -8,18 +8,24 @@ const { randomBytes, randomUUID } = require('node:crypto');
 const { CommandError, commandFailure } = require('./command-errors');
 const { publicFailure } = require('./public-reply');
 const { protocol, maxMessageBytes, encodeReply, readJson } = require('./runtime-protocol');
-const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, publishEndpoint } = require('./runtime-directory');
+const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, publishEndpoint, publishRuntimeOwner, archiveRuntimeRecords } = require('./runtime-directory');
 const { inRequestDirectory } = require('./shared-kernel/request-context');
 
 async function start() {
   const location = runtimeLocation();
+  const runtimeId = randomUUID(), startedAtMs = Date.now();
+  const processStart = require('./shared-kernel/host-process-stop').processStart();
   const owner = acquireRuntimeLock(location);
   if (!owner) { notify({ status: 'owned' }); return; }
-  const runtimeId = randomUUID();
-  const identity = runtimeIdentity(location);
+  process.once('exit', () => owner.close());
+  let identity, host;
+  try {
+    archiveRuntimeRecords(location, 'restart');
+    publishRuntimeOwner(location, { protocol, runtimeId, pid: process.pid, processStart, startedAtMs, facts: location.facts });
+    identity = runtimeIdentity(location);
+    host = require('./execution-host');
+  } catch (error) { owner.close(); throw error; }
   const token = randomBytes(32).toString('hex');
-  const startedAtMs = Date.now();
-  const host = require('./execution-host');
   let stopping;
   let phase = 'running';
   const status = () => ({ ok: true, command: 'runtime', status: phase, runtimeId, pid: process.pid, identity,
@@ -50,7 +56,8 @@ async function start() {
       if (!message || typeof message !== 'object' || Array.isArray(message)
         || Object.keys(message).some(key => !['protocol', 'runtimeId', 'method', 'identity', 'arguments', 'cwd'].includes(key))
         || message.protocol !== protocol || message.runtimeId !== runtimeId) throw new CommandError('runtime_protocol_error', 'Runtime request identity or fields are invalid.');
-      if (message.method === 'status') { send({ value: status() }); return; }
+      if (message.method === 'status') { send({ value: { ...status(),
+        ...(message.arguments?.diagnostics === true ? { diagnostics: host.diagnosticState() } : {}) } }); return; }
       if (message.method === 'stop') { await stop(); send({ value: status() }); return; }
       if (message.method !== 'execute') throw new CommandError('runtime_protocol_error', 'Unknown runtime method.');
       if (phase !== 'running') throw new CommandError('runtime_stopping', 'The runtime is stopping.');
@@ -76,19 +83,19 @@ async function start() {
     server.close();
     stopping = (async () => {
       await host.close();
-      fs.unlinkSync(location.endpointFile);
-      owner.close();
-      phase = 'stopped';
+      try {
+        fs.rmSync(location.endpointFile, { force: true });
+        fs.rmSync(location.ownerFile, { force: true });
+      } finally { owner.close(); phase = 'stopped'; }
     })();
     return stopping;
   }
   try {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    publishEndpoint(location, { protocol, runtimeId, pid: process.pid, token, port: server.address().port, facts: location.facts });
+    publishEndpoint(location, { protocol, runtimeId, pid: process.pid, processStart, token, port: server.address().port, facts: location.facts });
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => {
       void stop().then(() => server.closeAllConnections()).catch(error => { process.stderr.write(`${error.stack || error}\n`); process.exitCode = 1; });
     });
-    process.once('exit', () => owner.close());
     notify({ status: 'ready', runtimeId, pid: process.pid });
   } catch (error) {
     server.close(); owner.close(); throw error;

@@ -1,0 +1,188 @@
+{
+  "date": "2026-10-12",
+  "overallGoal": "active",
+  "published": false,
+  "scope": [
+    "Native/UIA compound and explicit contains selectors",
+    "container sets and neighboring-label ancestry scopes",
+    "Native same-View attribute warnings and SDK atomic current-condition checks",
+    "remove redundant Host Native capture",
+    "retain all candidates from convenience text commands",
+    "Native original completion query on emulator"
+  ],
+  "checks": {
+    "nodeFunctional": {
+      "passed": 1488,
+      "failed": 0,
+      "concurrency": 4,
+      "log": "/tmp/aab-compound-functional-final.log"
+    },
+    "nodePerformance": {
+      "passed": 50,
+      "failed": 0,
+      "concurrency": 1,
+      "log": "/tmp/aab-compound-performance.log"
+    },
+    "documentationContracts": {
+      "passed": 29,
+      "failed": 0,
+      "log": "/tmp/aab-compound-doc-contract.log"
+    },
+    "androidSdk": {
+      "debug": 198,
+      "release": 198,
+      "failed": 0,
+      "log": "/tmp/aab-compound-android-initial.log"
+    },
+    "sampleBuild": {
+      "ok": true,
+      "log": "/tmp/aab-compound-sample-build.log"
+    },
+    "emulator": {
+      "report": "/tmp/aab-compound-device-20261012/validation2/report.json",
+      "ok": true,
+      "serial": "emulator-5574",
+      "physicalDevicesTouched": false,
+      "checks": {
+        "nativeCompoundAndNeighborScope": true,
+        "nativeMultipleScopesUniqueTarget": true,
+        "uiaCompoundAndNeighborScope": true,
+        "uiaMultipleScopesUniqueTarget": true,
+        "sameViewChangingLabel": true,
+        "replacementNeverReceivesOldAction": true,
+        "originalNativeCompletionQuery": {
+          "deviceReceipt": true,
+          "localArchiveWrapper": "controlled fixture",
+          "originalBytesPreserved": true,
+          "cachedSecondQuery": true,
+          "originalReceiptHashMatches": true
+        }
+      },
+      "apkSha256": "1fa8407481cbac328c80628489ed5c6eb12109463b34b1d384472519d4fb1388",
+      "installedApkHashMatches": true,
+      "temporaryAvdRemoved": true
+    },
+    "freshPackage": {
+      "report": "/tmp/aab-compound-package-20261012/report.json",
+      "ok": true,
+      "sha256": "02dbd02ac5220c539db6894e27e93fa8d73ed0f7f74cbf29b497fda1fcfe1523",
+      "installedPublicDiscovery": {
+        "tap-native": {
+          "bytes": 4862,
+          "compoundAccepted": true
+        },
+        "tap-uia": {
+          "bytes": 5322,
+          "compoundAccepted": true
+        }
+      },
+      "startsRuntime": false,
+      "sourceFilesCompared": 175,
+      "sourceFilesEqual": true
+    },
+    "newFlowAutoReplay": {
+      "report": "/tmp/aab-compound-device-20261012/response-replay.json",
+      "scope": "New emulator selector/query flow only; full saved public envelopes replayed at default auto budget, no device actions replayed",
+      "responses": 29,
+      "counts": {
+        "adb-exec": {
+          "n": 2,
+          "inline": 2,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 1782,
+          "maxDeliveredBytes": 1781
+        },
+        "wait-text": {
+          "n": 1,
+          "inline": 1,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 25932,
+          "maxDeliveredBytes": 25931
+        },
+        "tree": {
+          "n": 8,
+          "inline": 8,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 29055,
+          "maxDeliveredBytes": 29054
+        },
+        "tap-native": {
+          "n": 5,
+          "inline": 5,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 62347,
+          "maxDeliveredBytes": 62346
+        },
+        "tap-uia": {
+          "n": 3,
+          "inline": 3,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 46587,
+          "maxDeliveredBytes": 46586
+        },
+        "intent": {
+          "n": 6,
+          "inline": 2,
+          "compact": 4,
+          "overview": 0,
+          "maxOriginalBytes": 115774,
+          "maxDeliveredBytes": 97859
+        },
+        "runtime": {
+          "n": 2,
+          "inline": 2,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 895,
+          "maxDeliveredBytes": 895
+        },
+        "device-ownership": {
+          "n": 2,
+          "inline": 2,
+          "compact": 0,
+          "overview": 0,
+          "maxOriginalBytes": 1317,
+          "maxDeliveredBytes": 1316
+        }
+      }
+    },
+    "generatedH5Copies": 4,
+    "skillCopiesEqual": true,
+    "diffWhitespaceCheck": true
+  },
+  "initialFailures": [
+    {
+      "scope": "first focused Node run",
+      "passed": 82,
+      "failed": 1,
+      "cause": "A longPress contract test still rejected now-valid combined fields. Updated invalid-type test and separately exercised valid combinations.",
+      "log": "/tmp/aab-compound-focused-initial.log"
+    },
+    {
+      "scope": "first full Node run",
+      "passed": 1480,
+      "failed": 6,
+      "cause": "Tests still required a single selector field or a second Host capture. Updated to the new public contract and preserved tests of atomic SDK rejection, action cancellation and deadlines.",
+      "log": "/tmp/aab-compound-functional.log"
+    },
+    {
+      "scope": "first emulator validation",
+      "cause": "Validation archive fixture directory was not created. All selection/identity assertions had passed; created the isolated local directory and reran the complete fixture.",
+      "log": "/tmp/aab-compound-device.log"
+    }
+  ],
+  "limits": [
+    "Physical Android/OEM, iPhone and native WebView acceptance were not part of this batch.",
+    "The real Native SDK completion was queried through a controlled local unknown archive wrapper; no process was crashed to create an actual uncertain native effect.",
+    "Native compound selectors and same-View attribute warnings require the updated app SDK; old SDK rejection now includes guidance.",
+    "UIA compound/scoped queries select within the observation and bind its nodeRef; current attribute changes are warnings. Native selector conditions are rechecked on the SDK UI thread.",
+    "Selector ordinal choice uses actual references from the current candidate array, not a new persistent index field. Geometric relative selectors are not implemented.",
+    "Source observation coverage/efficiency and bounded read retries in wait-text are still under review.",
+    "The 29 new replies belong to one regression flow and do not establish a new population-wide auto success rate."
+  ]
+}

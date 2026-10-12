@@ -59,6 +59,7 @@ if (require(${JSON.stringify(require.resolve('../../test-support/uia-runtime-fix
 const call=require(${JSON.stringify(require.resolve('../../test-support/android-shell-fixture'))}).handleAndroidShellFixture(process.argv.slice(2));
 if(call.handled)process.exit(0);
 require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.args)+'\\n');
+if (call.args.includes('logcat')) process.stdout.write('10-12 09:00:00.001  123  123 I Fixture: Receipt rendered\\n10-12 09:00:00.002  123  123 I Fixture: Upload complete\\n');
 `, { mode: 0o755 });
   const cli = async (command, args) => {
     const result = await runCli(command, args, { cliPath: path.join(installed, 'bin/ai-app-bridge.js'), cwd: install, env });
@@ -78,6 +79,15 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     assert.equal(bundle.sha256, crypto.createHash('sha256').update(fs.readFileSync(path.join(installed, 'runtime/uia/ai-app-bridge-uia.jar'))).digest('hex'));
     assert.equal(bundle.sha256, uia.peer.dexSha256); report.uiaBundle = { sha256: bundle.sha256, minApi: bundle.minApi };
     await client.initialize();
+    const diagnostic = await run('doctor', { platform: 'host' });
+    assert.equal(diagnostic.ok, true); assert.equal(diagnostic.checks[0].facts.runtime.state, 'stopped');
+    const localRecipe = await run('script', { operation: 'recipes', name: 'android-test-session' });
+    assert.equal(localRecipe.ok, true);
+    assert.equal(localRecipe.recipe.source, fs.readFileSync(path.join(installed, 'recipes/android-test-session.js'), 'utf8'));
+    const cliRecipe = await cli('script', { operation: 'recipes', name: 'android-test-session' });
+    assert.deepEqual(cliRecipe, localRecipe);
+    assert.equal(fs.existsSync(env.AI_APP_BRIDGE_FACT_STORE_DIR), false);
+    report.diagnosisAndRecipes = { installedDoctor: true, mcpRead: true, cliRead: true, installedSource: true, startsRuntime: false };
     const tools = (await client.request('tools/list', {})).result.tools.map(item => item.name);
     assert.deepEqual(tools, ['capabilities', 'run']); report.tools = tools;
     const directory = payloadOf(await client.request('tools/call', { name: 'capabilities', arguments: {} }));
@@ -108,6 +118,33 @@ require('node:fs').appendFileSync(${JSON.stringify(calls)},JSON.stringify(call.a
     assert.equal(commands.find(item => item.command === 'intent').role, 'execution');
     assert.equal(commands.find(item => item.command === 'tap-uia').entrypoints.script, true);
     write('capabilities.json', commands);
+    const ownership = require(path.join(installed, 'bin/shared-kernel/device-ownership-store'));
+    const archiveStore = ownership.createOwnershipStore(env.AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR);
+    fs.mkdirSync(archiveStore.directory, { recursive: true });
+    archiveStore.write('package-archive-only', { schemaVersion: ownership.schemaVersion, serial: 'package-archive-only', phase: 'unresolved',
+      owner: null, pending: { id: 'original-entry', kind: 'native', actionId: 'original-action', runtimeEpoch: 'old-epoch' },
+      reservations: [], pendingAcknowledgements: [] });
+    const archived = archiveStore.archive('package-archive-only');
+    const archives = await run('device-ownership', { operation: 'archives', serial: 'package-archive-only', actionId: 'original-action' });
+    assert.equal(archives.items[0].archiveId, archived.archiveId);
+    const original = await cli('device-ownership', { operation: 'archive', serial: 'package-archive-only', archiveId: archived.archiveId });
+    assert.equal(original.journal.pending.actionId, 'original-action');
+    assert.equal((await run('device-ownership', { operation: 'delete-archive', serial: 'package-archive-only', archiveId: archived.archiveId })).deleted, true);
+    assert.equal(archiveStore.read('package-archive-only').pending.actionId, 'original-action');
+    report.ownershipArchives = { installedModule: true, mcpFilteredList: true, cliOriginalRead: true, explicitDeletePreservesCurrentJournal: true };
+    const logcatArgs = { serial: 'controlled-package-device', adb, grep: 'Receipt|Upload' };
+    const literal = replyOf(await client.request('tools/call', { name: 'run', arguments: { command: 'logcat', arguments: logcatArgs } }));
+    assert.equal(literal.value, '');
+    assert.equal(literal.control.guidance.nextActions[0].arguments.grepMode, 'regex');
+    assert.equal(literal.control.guidance.nextActions[0].arguments.clear, false);
+    const regex = await run('logcat', { ...logcatArgs, grepMode: 'regex' });
+    assert.match(regex, /Receipt rendered/); assert.match(regex, /Upload complete/);
+    const beforeInvalid = fs.readFileSync(calls, 'utf8');
+    const invalidRegex = replyOf(await client.request('tools/call', { name: 'run', arguments: { command: 'logcat',
+      arguments: { ...logcatArgs, grepMode: 'regex', grep: '[', clear: true } } }));
+    assert.equal(invalidRegex.failureStage, 'validation'); assert.equal(invalidRegex.execution.dispatched, false);
+    assert.equal(fs.readFileSync(calls, 'utf8'), beforeInvalid);
+    report.logcatQuery = { installedWorker: true, literalHint: true, regexMatched: true, invalidRegexNeverClears: true };
     const uiaArgs = { serial: 'controlled-package-device', packageName: 'example.uia', adb: uia.adb, feedback: 'off' };
     const preciseCli = await cli('tap-uia', { ...uiaArgs, selector: { contentDescription: 'Package UI probe' } });
     const preciseMcp = await run('tap-uia', { ...uiaArgs, selector: { resourceName: 'example.uia:id/child' } });
@@ -229,7 +266,9 @@ async function verifyNpx({ out, tarball, env }) {
     try {
       await client.initialize();
       const listed = await client.request('tools/list', {});
-      assert.ok(listed.result.tools.find(tool => tool.name === 'run').inputSchema.required.includes('extract'));
+      const runSchema = listed.result.tools.find(tool => tool.name === 'run').inputSchema;
+      assert.deepEqual(runSchema.required, ['command']);
+      assert.ok(runSchema.properties.extract.oneOf.some(option => option.properties?.mode?.const === 'auto'));
       if (phase === 'first') {
         const started = await run('script', { operation: 'start', script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', permissions: [],
           source: 'module.exports.main = () => ({ text: "value=7", count: 7 });' } });

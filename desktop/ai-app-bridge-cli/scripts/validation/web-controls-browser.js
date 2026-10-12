@@ -80,6 +80,54 @@ async function main() {
     const result = await call('web-click', { selector: { text: 'Save', tag: 'button' } });
     assert.equal(result.error, 'web_element_ambiguous'); assert.equal(result.dispatched, false);
     assert.equal(await page.evaluate(() => window.clicks), 0);
+    assert.equal(result.details.matched, 2);
+    assert.ok(result.details.candidates.every(node => node.selector.elementId));
+  });
+  await check('6000-control page keeps an observed element actionable after a label update', async ({ page, call, observed }) => {
+    const original = observed('save');
+    await page.evaluate(() => {
+      const list = document.createElement('section'); list.style = 'position:absolute;left:2000px;top:0';
+      for (let i = 0; i < 6000; i++) { const item = document.createElement('button'); item.textContent = `Other ${i}`; list.append(item); }
+      document.body.append(list); document.querySelector('#save').textContent = 'Save (1)';
+    });
+    const partial = await call('web-dom', { maxControls: 10 });
+    assert.equal(partial.dom.truncated, true);
+    const result = await call('web-click', original);
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.resolved.element.text, 'Save (1)');
+    assert.deepEqual(result.warnings[0].fields, ['text']);
+    assert.equal(await page.evaluate(() => window.clicks), 1);
+  });
+  await check('combined text, role and CSS select the intended Agree control', async ({ page, call }) => {
+    await page.evaluate(() => {
+      const button = document.querySelector('#save'); button.textContent = 'Agree'; button.setAttribute('role', 'button');
+      const note = document.createElement('span'); note.textContent = 'Agree'; note.setAttribute('role', 'note'); document.body.append(note);
+    });
+    const result = await call('web-click', { selector: { text: 'Agree', role: 'button', css: '#save' } });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(await page.evaluate(() => window.clicks), 1);
+  });
+  await check('duplicate candidates beyond the first 20 can be queried, paged and selected', async ({ page, call }) => {
+    await page.evaluate(() => {
+      for (let i = 0; i < 65; i++) {
+        const button = document.createElement('button'); button.id = `agree-${i}`; button.textContent = 'Agree';
+        button.addEventListener('click', () => { window.chosen = i; }); document.body.append(button);
+      }
+      const note = document.createElement('p'); note.textContent = 'Please Agree to the terms'; document.body.append(note);
+    });
+    const failed = await call('web-click', { selector: { text: 'Agree' } });
+    assert.equal(failed.details.matched, 65); assert.equal(failed.details.candidates.length, 20);
+    const later = await call('web-dom', { ...failed.details.candidateQuery, maxControls: 25 });
+    assert.equal(later.dom.offset, 20); assert.equal(later.dom.totalControls, 65); assert.equal(later.dom.nextOffset, 45);
+    assert.equal(later.dom.controls[24].id, 'agree-44');
+    const selected = selectWebNode(later, { elementId: later.dom.controls[24].elementId });
+    assert.equal(selected.ok, true);
+    const clicked = await call('web-click', { selector: { elementId: selected.targetRef.element.elementId }, expectedTarget: selected.targetRef });
+    assert.equal(clicked.ok, true, JSON.stringify(clicked)); assert.equal(await page.evaluate(() => window.chosen), 44);
+    const last = await call('web-dom', { query: { text: 'Agree' }, offset: later.dom.nextOffset, maxControls: 25 });
+    assert.equal(last.dom.controls.length, 20); assert.equal(last.dom.nextOffset, null);
+    const invalid = await call('web-dom', { query: { css: '[' } });
+    assert.equal(invalid.error, 'web_dom_query_failed');
   });
   await check('replacement with the same selector rejects old identity', async ({ page, call, observed }) => {
     const original = observed('save');

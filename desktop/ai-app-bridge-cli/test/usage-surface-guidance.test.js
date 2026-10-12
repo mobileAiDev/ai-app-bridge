@@ -17,6 +17,21 @@ const { helpText } = require('../bin/ai-app-bridge');
 const cli = path.resolve(__dirname, '../bin/ai-app-bridge.js');
 const runCli = argv => spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8', env: { ...process.env, ADB: '/missing-usage-surface-adb' } });
 const compact = text => text === JSON.stringify(JSON.parse(text));
+
+test('H5 and Web stale targets get valid provider-specific observation hints without replaying actions', () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  for (const [command, args, observe] of [
+    ['h5-click', { serial: 'd', packageName: 'a.b', selector: { elementId: 'e1' } }, 'h5-dom'],
+    ['ios-h5-click', { deviceId: 'd', bundleId: 'a.b', selector: { elementId: 'e1' } }, 'ios-h5-dom'],
+    ['flutter-h5-click', { serial: 'd', packageName: 'a.b', adapterId: 'web', selector: { elementId: 'e1' } }, 'flutter-h5-dom'],
+    ['web-click', { sessionId: 's', runtimeEpoch: 'r', selector: { elementId: 'e1' } }, 'web-dom'],
+  ]) {
+    const result = withActionGuidance(command, args, { ok: false, error: 'reobserve_required', dispatched: false });
+    assert.equal(result.guidance.nextActions[0].command, observe);
+    for (const call of result.guidance.nextActions) validateCommandArguments(call.command, call.arguments);
+    assert.equal(result.dispatched, false);
+  }
+});
 const scriptSpec = target => ({ schemaVersion: 'aab.code-script/v1', name: 't', language: 'javascript', source: 'exports.main = async () => {};', target, permissions: ['app.read'] });
 const rejection = (command, args) => {
   try { validateCommandArguments(command, args); }
@@ -72,7 +87,7 @@ test('a Script target without or with an unsupported platform is rejected at the
   assert.deepEqual(rejection('intent', { operation: 'start', goal: 'g', target: { serial: 'd', packageName: 'a.b' } }),
     { code: 'missing_argument', field: 'target.platform', message: 'target.platform is required.' });
   // Precise errors of a selected branch are unchanged.
-  assert.equal(rejection('script', { operation: 'start', script: scriptSpec({ platform: 'android', serial: 'd' }) }).field, 'script.target.packageName');
+  validateCommandArguments('script', { operation: 'start', script: scriptSpec({ platform: 'android', serial: 'd' }) });
   assert.equal(rejection('script', { operation: 'start', script: scriptSpec({ platform: 'ios', deviceId: 'd', bundleId: 'b', serial: 'x' }) }).code, 'unsupported_argument');
   validateCommandArguments('script', { operation: 'start', script: scriptSpec(null) });
   validateCommandArguments('script', { operation: 'start', script: scriptSpec({ platform: 'android', serial: 'd', packageName: 'a.b' }) });
@@ -100,7 +115,7 @@ test('range violations quote the documented meaning, including how to keep waiti
   assert.match(wait.message, /^waitMs must be <= 60000\. .*afterSequence set to the last eventSequence\.$/);
   assert.match(rejection('intent', { operation: 'status', operationId: 'op', limit: 0 }).message, /^limit must be >= 1\. .*not response bytes\.$/);
   assert.deepEqual(rejection('script', { operation: 'foo', operationId: 'op' }),
-    { code: 'invalid_argument', field: 'operation', message: 'operation must be one of: start, result, status, wait, pause, resume, cancel, decide, runtime-status.' });
+    { code: 'invalid_argument', field: 'operation', message: 'operation must be one of: start, result, status, wait, pause, resume, cancel, decide, runtime-status, recipes.' });
 });
 
 test('the two continuation cursors are documented in the exposed schemas', () => {

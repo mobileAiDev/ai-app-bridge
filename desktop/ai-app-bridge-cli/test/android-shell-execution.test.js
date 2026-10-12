@@ -81,7 +81,7 @@ test('an unknown response keeps its original durable identity; recovery cannot r
   f.port.cancel = async () => completion;
   await assert.rejects(f.execute(), error => error.settled === false && error.ambiguous && error.dispatched === null);
   const fresh = createDeviceMutationLease({ directory: f.directory });
-  assert.equal(fresh.acquire('phone').error, 'device_ownership_unresolved');
+  assert.equal(fresh.status('phone').unresolved, true);
   const reconcile = () => deviceOwnership({ operation: 'reconcile', serial: 'phone' }, {
     lease: fresh, shellPortFactory: target => { assert.equal(target.serial, 'phone'); return f.port; },
   });

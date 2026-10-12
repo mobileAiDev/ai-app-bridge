@@ -11,16 +11,16 @@ internal class NativeTargetFailure(val code: String, val field: String? = null, 
         .apply { if (field != null) put("field", field) }
 }
 
-internal data class NativeSelection(val node: JSONObject, val window: JSONObject, val x: Int, val y: Int)
+internal data class NativeSelection(val node: JSONObject, val window: JSONObject, val x: Int, val y: Int, val warnings: JSONArray)
 
-// A target reference binds a View instance and its semantic ancestry to a live
-// window/runtime. Geometry is deliberately excluded: layout may move the same
-// target, whose current bounds are resolved inside the UI-thread action.
+// A reference binds a View instance to its live window/runtime. The guard
+// records attribute/ancestry observations for warnings, not another identity.
+// Current selector conditions and geometry are resolved on the UI thread.
 internal object NativeTargetContract {
     const val SCHEMA = "aab.native-target/v1"
     private val refFields = setOf("schemaVersion", "runtimeEpoch", "windowId", "viewId", "guard")
-    private val labelFields = setOf("text", "resourceName", "contentDescription")
-    private val ancestorFields = setOf("className", "resourceName")
+    private val textFields = setOf("text", "textContains", "resourceName", "contentDescription", "contentDescriptionContains", "className", "viewId")
+    private val booleanFields = setOf("enabled", "clickable", "checked", "editable")
 
     fun reference(epoch: String, windowId: String, viewId: String, parentGuard: String, node: JSONObject): JSONObject {
         val identity = JSONArray().put(epoch).put(windowId).put(viewId).put(parentGuard)
@@ -66,13 +66,10 @@ internal object NativeTargetContract {
     }
 
     fun resolve(tree: JSONObject, selector: JSONObject, expected: JSONObject, editable: Boolean): NativeSelection {
-        val key = identityKey(selector, labelFields, setOf("within"), "selector")
-        val scope = if (selector.has("within")) objectAt(selector, "within", "selector.within") else null
-        val anchorKey = scope?.let { identityKey(it, labelFields, setOf("ancestor"), "selector.within") }
-        val ancestor = scope?.let { objectAt(it, "ancestor", "selector.within.ancestor") }
-        val ancestorKey = ancestor?.let { identityKey(it, ancestorFields, setOf("parent"), "selector.within.ancestor") }
-        val parent = ancestor?.let { if (it.has("parent")) objectAt(it, "parent", "selector.within.ancestor.parent") else null }
-        val parentKey = parent?.let { identityKey(it, ancestorFields, emptySet(), "selector.within.ancestor.parent") }
+        validateSelector(selector)
+        val scope = selector.optJSONObject("within")
+        val ancestor = scope?.optJSONObject("ancestor")
+        val parent = ancestor?.optJSONObject("parent")
 
         val windows = tree.optJSONArray("windows") ?: fail("native_windows_unavailable")
         val window = (0 until windows.length()).map { windows.getJSONObject(it) }
@@ -97,34 +94,58 @@ internal object NativeTargetContract {
             for (index in 0 until children.length()) visit(children.getJSONObject(index), ancestors + node)
         }
         visit(root, emptyList())
-        val scopeRoot = if (scope != null) {
-            val anchors = eligible.filter { it.node.opt(anchorKey!!) == scope.getString(anchorKey) }
-            if (anchors.size != 1) fail(if (anchors.isEmpty()) "native_scope_anchor_not_found" else "native_scope_anchor_ambiguous")
-            val chain = anchors.single().ancestors
-            val roots = chain.filterIndexed { index, node -> node.opt(ancestorKey!!) == ancestor!!.getString(ancestorKey)
-                && (parentKey == null || index > 0 && chain[index - 1].opt(parentKey) == parent!!.getString(parentKey)) }
-            if (roots.size != 1) fail(if (roots.isEmpty()) "native_scope_ancestor_not_found" else "native_scope_ancestor_ambiguous")
-            roots.single()
-        } else null
-        val matches = eligible.filter { it.node.opt(key) == selector.getString(key)
-            && (scopeRoot == null || it.node === scopeRoot || it.ancestors.any { node -> node === scopeRoot }) }
+        val scopeRoots = if (scope == null) null else if (ancestor == null) {
+            eligible.flatMap { it.ancestors + it.node }.distinct().filter { matches(it, scope) }
+                .also { if (it.isEmpty()) fail("native_scope_not_found") }
+        } else {
+            val anchors = eligible.filter { matches(it.node, scope) }
+            if (anchors.isEmpty()) fail("native_scope_anchor_not_found")
+            anchors.flatMap { anchor -> anchor.ancestors.filterIndexed { index, node -> matches(node, ancestor)
+                && (parent == null || index > 0 && matches(anchor.ancestors[index - 1], parent)) } }.distinct()
+                .also { if (it.isEmpty()) fail("native_scope_ancestor_not_found") }
+        }
+        val matches = eligible.filter { matches(it.node, selector)
+            && (scopeRoots == null || scopeRoots.any { root -> it.node === root || it.ancestors.any { node -> node === root } }) }
         if (matches.size != 1) fail(if (matches.isEmpty()) "native_selector_not_found" else "native_selector_ambiguous")
         val selected = matches.single()
         if (editable && selected.node.opt("editable") != true) fail("native_target_not_editable")
         val current = selected.node.optJSONObject("targetRef") ?: fail("native_target_reference_unavailable")
         for ((field, code) in listOf("runtimeEpoch" to "native_runtime_changed", "windowId" to "native_window_changed",
-            "viewId" to "native_target_replaced", "guard" to "native_target_changed")) {
+            "viewId" to "native_target_replaced")) {
             if (current.opt(field) != expected.opt(field)) fail(code, "targetRef.$field")
         }
-        return NativeSelection(selected.node, window, selected.x, selected.y)
+        val warnings = JSONArray()
+        if (current.opt("guard") != expected.opt("guard")) warnings.put(JSONObject()
+            .put("code", "native_target_attributes_changed").put("blocking", false)
+            .put("message", "The same View is still selected; its attributes or ancestry changed since observation.")
+            .put("previousGuard", expected.getString("guard")).put("currentGuard", current.getString("guard"))
+            .put("viewId", current.getString("viewId")).put("current", JSONObject().apply {
+                for (key in listOf("className", "resourceName", "text", "contentDescription", "enabled", "clickable", "editable", "checked"))
+                    put(key, selected.node.opt(key) ?: JSONObject.NULL)
+            }))
+        return NativeSelection(selected.node, window, selected.x, selected.y, warnings)
     }
 
-    private fun identityKey(value: JSONObject, identities: Set<String>, extra: Set<String>, field: String): String {
-        closed(value, identities + extra, field)
-        val keys = identities.filter { value.has(it) }
-        if (keys.size != 1) fail("invalid_argument", field)
-        textAt(value, keys.single(), "$field.${keys.single()}")
-        return keys.single()
+    private fun validateSelector(value: JSONObject, field: String = "selector", nested: String? = "within") {
+        closed(value, textFields + booleanFields + listOfNotNull(nested), field)
+        val keys = (textFields + booleanFields).filter { value.has(it) }
+        if (keys.isEmpty()) fail("invalid_argument", field)
+        for (key in keys) {
+            if (key in textFields) textAt(value, key, "$field.$key")
+            else if (value.opt(key) !is Boolean) fail("invalid_argument", "$field.$key")
+        }
+        if (nested != null && value.has(nested)) validateSelector(objectAt(value, nested, "$field.$nested"), "$field.$nested",
+            when (nested) { "within" -> "ancestor"; "ancestor" -> "parent"; else -> null })
+    }
+
+    private fun matches(node: JSONObject, query: JSONObject): Boolean = (textFields + booleanFields).all { key ->
+        if (!query.has(key)) true else {
+            val contains = key == "textContains" || key == "contentDescriptionContains"
+            val actual = if (key == "viewId") node.optJSONObject("targetRef")?.opt("viewId")
+                else node.opt(if (contains) key.removeSuffix("Contains") else key)
+            if (contains) actual is String && actual.contains(query.getString(key))
+            else !node.optBoolean("${key}Truncated", false) && actual == query.opt(key)
+        }
     }
 
     private fun closed(value: JSONObject, fields: Set<String>, prefix: String) {

@@ -381,3 +381,14 @@ async function waitForTerminal(supervisor, operationId, afterSequence) {
   }
   return supervisor.handle({ operation: 'status', operationId });
 }
+
+test('an explicit checkpoint can move past a retained unknown action without rewriting its receipt', async () => {
+  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
+  await store.persist('checkpoint', { operationId: 'continued', revision: 1, stepId: 'start', status: 'running', hash: 'abc' });
+  await store.persist('dispatch-marker', { operationId: 'continued', revision: 1, actionId: 'old', actionSequence: 1, state: 'prepared', planStepId: 'one', actionSpecHash: 'tap', target: { platform: 'android', serial: 'continued' } });
+  await store.persist('action-receipt', { operationId: 'continued', revision: 1, actionId: 'old', actionSequence: 1, ambiguous: true, startedAtMs: 1, completedAtMs: 2, mechanicalStatus: 'failed' });
+  assert.equal(loadDurableCheckpoint(store, 'continued').error, 'ambiguous');
+  await store.persist('checkpoint', { operationId: 'continued', revision: 2, stepId: 'decided', status: 'running', hash: 'abc', checkpointActionSequence: 1 });
+  const loaded = loadDurableCheckpoint(store, 'continued');
+  assert.equal(loaded.ok, true); assert.equal(loaded.records.find(r => r.kind === 'action-receipt').ambiguous, true);
+});

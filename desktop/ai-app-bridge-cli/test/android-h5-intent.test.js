@@ -42,6 +42,34 @@ test('Android renderer rejects changed route, original-node replacement, and nat
   }
 });
 
+test('an observed H5 element stays actionable on a large page and reports changed attributes', () => {
+  const { p, button, snapshot } = fixture(); p.hit = button;
+  const observed = h5.selectH5Node(snapshot(), { text: 'Save', tag: 'button' });
+  for (let i = 0; i < 6000; i++) new p.Element('extra-' + i, 'Other');
+  button.innerText = 'Save (1)';
+  const selected = h5.selectH5Node(snapshot(), { elementId: observed.node.elementId }, observed.targetRef);
+  assert.equal(selected.ok, true);
+  const action = { operation: 'action', action: 'click', ...selected.targetRef };
+  const prepared = p.run({ ...action, operation: 'prepare' });
+  assert.equal(prepared.ok, true, JSON.stringify(prepared));
+  action.geometry = prepared.geometry;
+  const result = p.run(action);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.element.text, 'Save (1)');
+  assert.deepEqual(result.warnings[0].fields, ['text']);
+  assert.deepEqual(p.events, ['click:save']);
+  assert.equal(h5.selectH5Node(snapshot(), { elementId: observed.node.elementId, text: 'Save' }).error, 'android_h5_selector_not_found',
+    'explicit caller constraints remain exact');
+});
+
+test('H5 combined attributes narrow duplicate text without choosing an arbitrary control', () => {
+  const { p, snapshot } = fixture(); const other = new p.Element('other', 'Save', 'A');
+  other['aria-label'] = 'Other';
+  assert.equal(h5.selectH5Node(snapshot(), { text: 'Save' }).matched, 2);
+  const selected = h5.selectH5Node(snapshot(), { text: 'Save', tag: 'a', ariaLabel: 'Other' });
+  assert.equal(selected.node.id, 'other');
+});
+
 test('Android H5 Intent forwards the observed WebView and original action identity through the typed port', async () => {
   const { snapshot } = fixture(), tree = snapshot(), calls = [];
   const adapter = createProductionIntentDeviceAdapter({ ports: {

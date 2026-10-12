@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicReference
 internal data class NativeGestureTarget(
     val root: View, val rootBounds: Rect, val windowType: String, val targetRef: JSONObject,
     val startX: Float, val startY: Float, val endX: Float, val endY: Float,
+    val warnings: JSONArray = JSONArray(),
     val isCurrent: () -> Boolean,
 )
 
@@ -113,7 +115,7 @@ internal class NativeGestureExecutor(
         private fun details(completion: String): JSONObject = JSONObject()
             .put("action", request.action).put("type", request.action).put("actionId", request.actionId).put("completion", completion)
             .put("dispatched", eventsSent > 0).put("ambiguous", false).put("targetValidation", NativeTargetContract.SCHEMA)
-            .put("targetRef", target!!.targetRef).put("windowType", target!!.windowType).put("durationMs", request.durationMs)
+            .put("targetRef", target!!.targetRef).put("warnings", target!!.warnings).put("windowType", target!!.windowType).put("durationMs", request.durationMs)
             .put("elapsedMs", SystemClock.uptimeMillis() - downTime).put("eventsSent", eventsSent).put("handledDown", handledDown)
             .put("startX", target?.startX).put("startY", target?.startY).put("endX", target?.endX).put("endY", target?.endY)
 

@@ -62,11 +62,22 @@ internal class ManagedActionExecutor(
         catch (_: Throwable) { stop(op, "${protocol.prefix}_task_start_failed") }
     }
 
+    fun query(body: JSONObject, reply: (JSONObject) -> Unit) {
+        if (!validIdentity(body)) { reply(failure("invalid_${protocol.prefix}_execution_identity")); return }
+        synchronized(lock) {
+            lastResult?.takeIf { it.opt("actionId") == body.opt("actionId") && it.opt("runtimeEpoch") == body.opt("runtimeEpoch") }
+                ?.let { reply(completionReceipt(it)); return }
+            val current = active
+            if (current == null || current.actionId != body.opt("actionId") || body.opt("runtimeEpoch") != runtimeEpoch) { reply(failure("${protocol.prefix}_action_not_active")); return }
+            reply(pending(current, "${protocol.prefix}_action_pending"))
+        }
+    }
+
     fun cancel(body: JSONObject, reply: (JSONObject) -> Unit) {
         if (!validIdentity(body)) { reply(failure("invalid_${protocol.prefix}_execution_identity")); return }
         val op = synchronized(lock) {
             lastResult?.takeIf { it.opt("actionId") == body.opt("actionId") && it.opt("runtimeEpoch") == body.opt("runtimeEpoch") }
-                ?.let { reply(cancelReceipt(it)); return }
+                ?.let { reply(completionReceipt(it)); return }
             val current = active
             if (current == null || current.actionId != body.opt("actionId") || body.opt("runtimeEpoch") != runtimeEpoch) {
                 reply(failure("${protocol.prefix}_action_not_active")); return
@@ -109,13 +120,13 @@ internal class ManagedActionExecutor(
         op.timeout?.cancel(false); op.cleanup?.cancel(false)
         lastResult = JSONObject(result.toString()); active = null
         op.reply?.invoke(result); op.reply = null
-        op.cancelReply?.invoke(cancelReceipt(result)); op.cancelReply = null
+        op.cancelReply?.invoke(completionReceipt(result)); op.cancelReply = null
     }
 
     private fun identity(op: Operation) = JSONObject().put("schemaVersion", protocol.schema).put("actionId", op.actionId).put("runtimeEpoch", runtimeEpoch)
     private fun pending(op: Operation, error: String) = identity(op).put("ok", false).put("error", error)
         .put("dispatched", JSONObject.NULL).put("ambiguous", true).put("settled", false)
-    private fun cancelReceipt(result: JSONObject) = JSONObject().put("ok", true)
+    private fun completionReceipt(result: JSONObject) = JSONObject().put("ok", true)
         .put("actionId", result.getString("actionId")).put("runtimeEpoch", runtimeEpoch).put("executionResult", JSONObject(result.toString()))
     private fun validIdentity(body: JSONObject) = body.keys().asSequence().toSet() == setOf("actionId", "runtimeEpoch") &&
         nonempty(body.opt("actionId")) && nonempty(body.opt("runtimeEpoch"))

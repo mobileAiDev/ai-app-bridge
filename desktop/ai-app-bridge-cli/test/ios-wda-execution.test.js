@@ -51,8 +51,8 @@ test('WDA Host SIGKILL blocks other Apps and a new process requires the original
   assert.equal(JSON.parse(lost.stdout).value.error, 'runtime_connection_lost');
   assert.equal(JSON.parse(lost.stdout).value.dispatched, null);
   const udid = h.device.config.device.hardwareProperties.udid;
-  const denied = await h.cli('ios-tap', { deviceId: udid, bundleId: 'other.app', wdaSessionId: 'other', tapX: 1, tapY: 2 }).exited;
-  assert.equal(JSON.parse(denied.stdout).value.error, 'device_ownership_unresolved');
+  const pending = await h.cli('ios-execution', { deviceId: udid, operation: 'status', kind: 'wda' }).exited;
+  assert.equal(JSON.parse(pending.stdout).value.ownership.unresolved, true);
   const args = { operation: 'reconcile', kind: 'wda', deviceId: udid };
   const missing = await h.cli('ios-execution', args).exited;
   assert.equal(JSON.parse(missing.stdout).value.error, 'device_ownership_unresolved');

@@ -36,7 +36,7 @@ function invalidCases({ adb = '/unusable-adb', source = 'module.exports.main = (
   add('terminal-decision-forbids-action', 'intent', decide({ ...decision, agentDecision: 'complete' }), 'decision.action', 'unsupported_argument');
   add('action-rejects-text-alias', 'intent', decide({ ...decision, action: { action: 'tap', selector: { text: 'Save' }, text: 'Other' } }), 'decision.action.text', 'unsupported_argument');
   add('selector-rejects-unknown', 'intent', decide({ ...decision, action: { action: 'tap', provider: 'native', selector: { text: 'Save', fuzzy: true } } }), 'decision.action.selector.fuzzy', 'unsupported_argument');
-  add('selector-one-identity', 'intent', decide({ ...decision, action: { action: 'tap', provider: 'native', selector: { text: 'Save', resourceName: 'save' } } }), 'decision.action.selector');
+  add('selector-needs-a-condition', 'intent', decide({ ...decision, action: { action: 'tap', provider: 'native', selector: {} } }), 'decision.action.selector');
   add('script-explicit-operation', 'script', {}, 'operation', 'missing_argument');
   for (const operation of ['progress', 'intervene']) add(`script-removed-${operation}`, 'script', { operation, operationId: 'x' }, 'operation');
   add('script-no-outer-target', 'script', { ...scriptStart, target }, 'target', 'unsupported_argument');

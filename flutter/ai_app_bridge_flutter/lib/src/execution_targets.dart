@@ -36,7 +36,14 @@ class _FlutterExecutionTargets {
       'h5Adapters': [],
       'h5Dom': ['adapterId'],
       'h5Eval': ['script', 'expectedPage'],
-      'h5Control': ['operation', 'expectedTarget', 'expectedPage', 'text', 'deltaX', 'deltaY'],
+      'h5Control': [
+        'operation',
+        'expectedTarget',
+        'expectedPage',
+        'text',
+        'deltaX',
+        'deltaY'
+      ],
     };
     final action = request['action'];
     if (action is! String || !fields.containsKey(action)) {
@@ -187,10 +194,12 @@ class _FlutterExecutionTargets {
 
   _BoundFlutterTarget resolve(Map<String, Object?> request, String action) {
     final tree = bridge._operableTree();
-    if (tree['ok'] != true || tree['truncated'] == true) {
+    final selector = request['selector'];
+    if (tree['ok'] != true ||
+        (tree['truncated'] == true &&
+            !(selector is Map && selector.containsKey('nodeId')))) {
       throw _FlutterTargetFailure('flutter_observation_incomplete');
     }
-    final selector = request['selector'];
     List<_BoundFlutterTarget> candidates = _current.values
         .where((t) => (t.node['actions'] as List).contains(action))
         .toList();
@@ -205,8 +214,10 @@ class _FlutterExecutionTargets {
       candidates = candidates
           .where((t) => selector.containsKey('nodeId')
               ? t.node['id'] == selector['nodeId']
-              : t.node['text'] == selector['text'] ||
-                  t.node['value'] == selector['text'])
+              : t.node['textTruncated'] != true &&
+                      t.node['text'] == selector['text'] ||
+                  t.node['valueTruncated'] != true &&
+                      t.node['value'] == selector['text'])
           .toList();
     } else if (action == 'input' &&
         (request.containsKey('x') || request.containsKey('y'))) {
@@ -268,7 +279,7 @@ class _FlutterExecutionTargets {
           dispatched: dispatched);
     }
     final tree = bridge._operableTree();
-    if (tree['ok'] != true || tree['truncated'] == true) {
+    if (tree['ok'] != true) {
       throw _FlutterTargetFailure('flutter_observation_incomplete',
           dispatched: dispatched);
     }
@@ -283,7 +294,7 @@ class _FlutterExecutionTargets {
     }
   }
 
-  // Admission already resolved a unique target against a complete observation.
+  // Admission already resolved a unique target or an explicitly observed nodeId.
   // While DOWN is held, recheck only that exact Element and its live action
   // ancestors; traversing the whole App here changes the gesture's duration.
   void validatePointer(_BoundFlutterTarget target, Offset point) {

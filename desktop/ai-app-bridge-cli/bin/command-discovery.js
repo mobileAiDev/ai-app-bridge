@@ -22,12 +22,12 @@ const commandDomains = {
   webview: 'h5-*, flutter-h5-*, webview-pages, webview-network, webview-console',
   ios: 'ios-devices, ios-doctor, ios-setup, ios runtime evidence, ios-uia-tree, ios-tap/ios-input/ios-swipe, ios-h5-*, ios-flutter-*',
   web: 'web-session-start, web-sessions, web-status, web-dom, web-logs, web-network, web-state, web-events, web-command, web-click, web-input, web-wait, web-scroll',
-  diagnostics: 'logcat',
+  diagnostics: 'doctor for independent Host/device/SDK/UIA/WDA/Web observations and recovery commands; logcat',
   advanced: 'uia-runtime maintenance, forward, remove-forward',
 };
 const supportedTargetsText = `AI App Bridge supports ${supportedTargets.join('; ')}.`;
 const commandDomainsText = `Command domains: ${Object.entries(commandDomains).map(([domain, summary]) => `${domain}(${summary})`).join('; ')}.`;
-const discoveryText = 'Use capabilities with a domain for a command directory, then request one command and operation when applicable. For intent decide, narrow by the actual platform, provider and action. Discovery output is limited to 96 KiB; narrow the query if a full schema or includeOptions:true exceeds this budget. Execute with run, command-specific arguments and explicit extract.';
+const discoveryText = 'Use capabilities with a domain for a command directory, then request one command and operation when applicable. For intent decide, narrow by the actual platform, provider and action. Discovery output is limited to 96 KiB; narrow the query if a full schema or includeOptions:true exceeds this budget. Execute with run and command-specific arguments. Omit extract for auto delivery, or select the fields you need.';
 
 function discoveryBudget(value) {
   const limitBytes = require('./public-reply').DEFAULT_OUTPUT_BYTES;

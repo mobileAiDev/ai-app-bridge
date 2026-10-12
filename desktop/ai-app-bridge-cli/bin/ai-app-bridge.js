@@ -26,7 +26,8 @@ Intent decide also accepts --platform, --provider and --action schema filters.
 CLI flags use kebab-case, for example --package-name, --tap-x, --timeout-ms.
 Objects, arrays, nullable objects and Script decisions use JSON flag values.
 Only --category and --extra repeat as individual strings.
-Every command requires --extract: null delivers the command's own result.
+Omit --extract for small results or a large-result overview with a saved ref.
+Use --extract null for the full result, or select/regex/script for specific data.
 Results are one line of compact JSON: {command, execution, control, extraction,
 delivery, kind: "json"|"text"|"bytes", value, failureStage?}. Bytes are base64.
 Exit 0: delivered as requested. 1: rejected, failed or unknown execution.

@@ -1,11 +1,15 @@
 'use strict';
 
 const { validBounds } = require('./native-target');
+const { selectionFailure } = require('./action-guidance');
+const flutterCandidates = nodes => nodes.map(node => ({ text: node.text, value: node.value, role: node.role,
+  ...(node.textTruncated ? { textTruncated: true } : {}), ...(node.valueTruncated ? { valueTruncated: true } : {}),
+  enabled: node.enabled, visible: node.visible, bounds: node.tap?.bounds || node.input?.bounds || node.scroll?.bounds,
+  selector: { nodeId: String(node.id) } }));
 
 function selectFlutterNode(rawTree, spec) {
   const reject = error => ({ ok: false, error, dispatched: false });
   if (!Array.isArray(rawTree?.nodes) || rawTree.ok === false) return reject('observed_flutter_tree_required');
-  if (rawTree.truncated === true) return reject('flutter_observation_incomplete');
   const selector = spec.selector || (typeof spec.text === 'string' ? { text: spec.text } : null);
   const keys = Object.keys(selector || {});
   if (keys.length !== 1 || !['text', 'nodeId'].includes(keys[0])
@@ -15,8 +19,9 @@ function selectFlutterNode(rawTree, spec) {
   const operable = node => node.enabled !== false && node.visible !== false && node.offstage !== true && validBounds(node[action]?.bounds);
   const matches = rawTree.nodes.filter(node => keys[0] === 'nodeId'
     ? node.id != null && String(node.id) === selector.nodeId
-    : (node.text === selector.text || node.value === selector.text) && operable(node));
-  if (matches.length !== 1) return reject(matches.length ? 'flutter_selector_not_unique' : 'flutter_selector_not_found');
+    : (node.textTruncated !== true && node.text === selector.text || node.valueTruncated !== true && node.value === selector.text) && operable(node));
+  if (rawTree.truncated === true && selector?.nodeId === undefined) return incompleteSelection(matches);
+  if (matches.length !== 1) return selectionFailure(matches.length ? 'flutter_selector_not_unique' : 'flutter_selector_not_found', flutterCandidates(matches));
   const node = matches[0];
   if (!operable(node)) return reject('flutter_node_not_operable');
   const bounds = node[action].bounds;
@@ -43,7 +48,7 @@ function flutterTargetRequest(node, selector) {
 
 function bindFlutterAction(rawTree, payload) {
   const reject = error => ({ ok: false, error, dispatched: false, ambiguous: false });
-  if (rawTree?.ok === false || !Array.isArray(rawTree?.nodes) || rawTree.truncated === true) return reject('flutter_observation_incomplete');
+  if (rawTree?.ok === false || !Array.isArray(rawTree?.nodes)) return reject('flutter_observation_incomplete');
   let selector = payload.selector;
   if (payload.action === 'tapText') selector = { text: payload.text };
   if (!selector) {
@@ -58,7 +63,8 @@ function bindFlutterAction(rawTree, payload) {
         if (focused.length) nodes = focused;
       }
     } else nodes = nodes.filter(node => node.role === 'scrollable');
-    if (nodes.length !== 1) return reject(nodes.length ? 'flutter_selector_not_unique' : 'flutter_selector_not_found');
+    if (rawTree.truncated === true) return incompleteSelection(nodes);
+    if (nodes.length !== 1) return selectionFailure(nodes.length ? 'flutter_selector_not_unique' : 'flutter_selector_not_found', flutterCandidates(nodes));
     selector = { nodeId: String(nodes[0].id) };
   }
   const selected = selectFlutterNode(rawTree, { action: payload.action, selector });
@@ -70,6 +76,11 @@ function bindFlutterAction(rawTree, payload) {
   return { ok: true, payload: {
     ...action, ...(payload.action === 'tapText' ? { action: 'tapTarget' } : {}), ...guarded.request,
   } };
+}
+
+function incompleteSelection(nodes) {
+  return { ...selectionFailure('flutter_observation_incomplete', flutterCandidates(nodes)), selectionRequired: nodes.length > 0,
+    message: 'Only part of the Flutter tree was observed. Select an available candidate by nodeId; matches outside this portion have not been ruled out.' };
 }
 
 module.exports = { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest, bindFlutterAction };

@@ -62,7 +62,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.4.5"
+    private const val bridgeVersion = "0.4.6"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
     @Volatile
@@ -1086,11 +1086,12 @@ object AiAppBridge {
             val request = try { readRequest(socket) }
             catch (error: Throwable) { replyGesture(socket, 500, JSONObject().put("ok", false).put("error", error.toString())); return }
             if (request.method == "POST" && request.path in setOf("/v1/action/tap", "/v1/action/tap-target",
-                    "/v1/action/input-text", "/v1/action/input-target", "/v1/action/gesture-target", "/v1/action/cancel")) {
+                    "/v1/action/input-text", "/v1/action/input-target", "/v1/action/gesture-target", "/v1/action/cancel", "/v1/action/query")) {
                 val body = try { requestJson(request.body) }
                 catch (_: org.json.JSONException) { replyGesture(socket, 200, NativeTargetFailure("invalid_json").response()); return }
                 val reply: (JSONObject) -> Unit = { response -> enqueueActionReply(socket, response) }
                 if (request.path == "/v1/action/cancel") nativeActions.cancel(body, reply)
+                else if (request.path == "/v1/action/query") nativeActions.query(body, reply)
                 else if (flutterActions.isBusy()) reply(NativeTargetFailure("flutter_action_busy").response())
                 else if (h5Actions.isBusy()) reply(h5Failure("h5_action_busy"))
                 else {
@@ -1118,21 +1119,23 @@ object AiAppBridge {
                 }
                 return
             }
-            if (request.method == "POST" && request.path in setOf("/v1/flutter/action", "/v1/flutter/cancel")) {
+            if (request.method == "POST" && request.path in setOf("/v1/flutter/action", "/v1/flutter/cancel", "/v1/flutter/query")) {
                 val body = try { requestJson(request.body) }
                 catch (_: org.json.JSONException) { replyGesture(socket, 200, NativeTargetFailure("invalid_json").response()); return }
                 val reply: (JSONObject) -> Unit = { response -> enqueueActionReply(socket, response) }
                 if (request.path == "/v1/flutter/cancel") flutterActions.cancel(body, reply)
+                else if (request.path == "/v1/flutter/query") flutterActions.query(body, reply)
                 else if (nativeActions.isBusy()) reply(NativeTargetFailure("native_action_busy").response())
                 else if (h5Actions.isBusy()) reply(h5Failure("h5_action_busy"))
                 else flutterActions.submit(body, reply)
                 return
             }
-            if (request.method == "POST" && request.path in setOf("/v1/h5/action", "/v1/h5/cancel")) {
+            if (request.method == "POST" && request.path in setOf("/v1/h5/action", "/v1/h5/cancel", "/v1/h5/query")) {
                 val body = try { requestJson(request.body) }
                 catch (_: org.json.JSONException) { replyGesture(socket, 200, h5Failure("invalid_json")); return }
                 val reply: (JSONObject) -> Unit = { response -> enqueueActionReply(socket, response) }
                 if (request.path == "/v1/h5/cancel") h5Actions.cancel(body, reply)
+                else if (request.path == "/v1/h5/query") h5Actions.query(body, reply)
                 else if (nativeActions.isBusy()) reply(h5Failure("native_action_busy"))
                 else if (flutterActions.isBusy()) reply(h5Failure("flutter_action_busy"))
                 else if (body.keys().asSequence().toSet() != setOf("payload", "actionId", "execution") || body.opt("payload") !is JSONObject) {
@@ -1416,10 +1419,12 @@ object AiAppBridge {
                         .put("transport", "localabstract")
                         .put("runtimeEpoch", runtimeEpoch)
                         .put("nativeTargetSchema", NativeTargetContract.SCHEMA)
+                        .put("nativeSelectorFeatures", JSONArray(listOf("compound", "contains", "within", "attributeWarnings")))
                         .put("nativeExecutionSchema", ManagedActionProtocol.NATIVE.schema)
                         .put("h5ExecutionSchema", ManagedActionProtocol.H5.schema)
                         .put("h5TargetSchema", AndroidH5Bridge.SCHEMA)
                         .put("h5Action", h5Actions.status() ?: JSONObject.NULL)
+                        .put("originalCompletionQuery", true)
                         .put("nativeAction", nativeActions.status() ?: JSONObject.NULL)
                         .put("flutterAction", flutterActions.status() ?: JSONObject.NULL)
                         .put("captureTargetKey", captureTargetKey())
@@ -1468,7 +1473,11 @@ object AiAppBridge {
             val roots = windowRoots(activity)
             val foreground = runCatching { foregroundWindow(roots) }
             val windows = JSONArray()
+            var activityRootJson: JSONObject? = null
             roots.forEachIndexed { index, windowRoot ->
+                val countsBefore = counter.counts()
+                val rootJson = viewToJson(activity, windowRoot.root, counter, depth = 0, parentEffectiveVisible = true)
+                if (windowRoot.root === root) activityRootJson = rootJson
                 windows.put(
                     JSONObject()
                         .put("index", index)
@@ -1481,7 +1490,8 @@ object AiAppBridge {
                         .put("touchable", windowRoot.touchable)
                         .put("focusOwnerWindowId", windowRoot.focusOwnerWindowId ?: JSONObject.NULL)
                         .put("bounds", rectToJson(windowRoot.bounds))
-                        .put("root", viewToJson(activity, windowRoot.root, counter, depth = 0, parentEffectiveVisible = true)),
+                        .put("root", rootJson)
+                        .put("coverage", counter.coverage(countsBefore)),
                 )
             }
             val json = JSONObject()
@@ -1489,10 +1499,12 @@ object AiAppBridge {
                 .put("activity", activity.javaClass.name)
                 .put("foregroundWindowId", foreground.getOrNull()?.let { viewIdentity(it.root) } ?: JSONObject.NULL)
                 .put("foregroundWarning", foreground.exceptionOrNull()?.let { (it as? NativeTargetFailure)?.code ?: it.message } ?: JSONObject.NULL)
-                .put("root", viewToJson(activity, root, counter, depth = 0, parentEffectiveVisible = true))
+                // The legacy root and windows entry describe the same capture.
+                .put("root", activityRootJson ?: viewToJson(activity, root, counter, depth = 0, parentEffectiveVisible = true))
                 .put("windows", windows)
                 .put("windowCount", roots.size)
                 .put("nodeCount", counter.count)
+                .put("coverage", counter.coverage())
                 .put("updatedAtMs", System.currentTimeMillis())
             return NativeViewSnapshot(json, roots, counter.views)
         }
@@ -1778,7 +1790,7 @@ object AiAppBridge {
                     .put("localY", localY.toDouble())
                     .put("windowType", target.type)
                     .put("windowFocused", target.root.hasWindowFocus())
-                    .put("warnings", JSONArray().apply {
+                    .put("warnings", (resolved?.selection?.warnings ?: JSONArray()).apply {
                         if (!target.root.hasWindowFocus()) put(JSONObject().put("code", "native_window_not_focused")
                             .put("source", "View.hasWindowFocus").put("observedAtMs", System.currentTimeMillis())
                             .put("windowId", viewIdentity(target.root)))
@@ -1846,6 +1858,7 @@ object AiAppBridge {
                         .put("ambiguous", false)
                         .put("targetValidation", if (semantic) NativeTargetContract.SCHEMA else "coordinates-or-focus")
                         .put("targetRef", resolved?.selection?.node?.optJSONObject("targetRef") ?: JSONObject.NULL)
+                        .put("warnings", resolved?.selection?.warnings ?: JSONArray())
                         .put("transport", "bridge")
                         .put("source", "native-view")
                         .put("text", text)
@@ -1928,7 +1941,7 @@ object AiAppBridge {
                 else nativePointerOwnsHit(selected.view, hit)
             if (!ownsPoint) throw NativeTargetFailure("native_target_obscured")
             return NativeGestureTarget(root.root, Rect(root.bounds), root.type, selected.selection.node.getJSONObject("targetRef"),
-                startX.toFloat(), startY.toFloat(), endX.toFloat(), endY.toFloat()) {
+                startX.toFloat(), startY.toFloat(), endX.toFloat(), endY.toFloat(), selected.selection.warnings) {
                 windowRoots(owner).singleOrNull { it.root === root.root }?.let { current ->
                     current.bounds == root.bounds && current.touchable && selected.view.isAttachedToWindow
                 } == true
@@ -2013,7 +2026,14 @@ object AiAppBridge {
                         .put("height", view.height),
                 )
             if (view is TextView) {
-                json.put("text", if (isPasswordField(view)) "" else (view.text?.toString()?.take(300) ?: ""))
+                val text = if (isPasswordField(view)) "" else (view.text?.toString() ?: "")
+                var end = minOf(text.length, 300)
+                if (end < text.length && end > 0 && text[end - 1].isHighSurrogate()) end--
+                json.put("text", text.substring(0, end))
+                if (end < text.length) {
+                    json.put("textTruncated", true).put("textLength", text.length)
+                    counter.truncatedTextNodes++
+                }
             }
             val viewId = viewIdentity(view)
             val targetRef = NativeTargetContract.reference(runtimeEpoch, windowId, viewId, parentGuard, json)
@@ -2025,6 +2045,9 @@ object AiAppBridge {
                     children.put(viewToJson(activity, view.getChildAt(index), counter, depth + 1, effectiveVisible, windowId, targetRef.getString("guard")))
                 }
                 json.put("children", children)
+            } else if (view is ViewGroup && view.childCount > 0) {
+                json.put("childrenTruncated", true).put("omittedChildCount", view.childCount)
+                counter.omittedChildren += view.childCount
             }
             return json
         }
@@ -2331,7 +2354,17 @@ object AiAppBridge {
 
     private class NodeCounter {
         var count: Int = 0
+        var truncatedTextNodes: Int = 0
+        var omittedChildren: Int = 0
         val views = mutableMapOf<String, View>()
+        fun counts() = intArrayOf(count, truncatedTextNodes, omittedChildren)
+        fun coverage(before: IntArray = intArrayOf(0, 0, 0)): JSONObject {
+            val texts = truncatedTextNodes - before[1]
+            val children = omittedChildren - before[2]
+            return JSONObject().put("status", if (texts > 0 || children > 0) "partial" else "complete")
+                .put("capturedNodes", count - before[0]).put("truncatedTextNodes", texts)
+                .put("omittedChildren", children).put("maxDepth", 24).put("maxTextLength", 300)
+        }
     }
 
     private data class NativeViewSnapshot(val json: JSONObject, val roots: List<WindowRoot>, val views: Map<String, View>)

@@ -108,16 +108,14 @@ function installerDeviceAdapter(args, ports, deviceAdapter) {
       return base.observe({ ...request, provider: 'uia' });
     },
     async action(request) {
-      if (!request.route || request.spec?.action !== 'tap' || !request.spec?.selector) {
-        return { ok: false, error: 'installer_requires_observed_exact_selector', dispatched: false, ambiguous: false };
-      }
-      return base.action({ ...request, primaryProvider: 'uia', foregroundPackages: [request.route.targetPackageName],
-        spec: { ...request.spec, provider: 'uia', exact: true, requireClickable: true } });
+      // Use the provider's actual action vocabulary. Installer pages can need
+      // back/scroll/key input, and a text label may belong to a clickable parent.
+      return base.action({ ...request, primaryProvider: 'uia', spec: { ...request.spec, provider: 'uia' } });
     },
   };
 }
 
-async function createInstallIntent({ args, operationId, store, recording, dependencies = {} }) {
+async function createInstallIntent({ args, operationId, store, recording, commands, dependencies = {} }) {
   const prepared = await (dependencies.prepareApk || prepareApk)(args);
   const { artifact } = prepared;
   const target = normalizeExecutionTarget({ platform: 'android', serial: args.serial, packageName: artifact.packageName, foregroundPackages: [],
@@ -130,7 +128,7 @@ async function createInstallIntent({ args, operationId, store, recording, depend
   let worker; let installOwnership;
   try {
     const adapter = dependencies.adapter || installerDeviceAdapter(args);
-    worker = createIntentWorker({ operationId, target, ownsOutcome: false, timeoutMs: null, provider: 'uia', store, adapter, recording,
+    worker = createIntentWorker({ operationId, target, ownsOutcome: false, timeoutMs: null, provider: 'uia', store, adapter, recording, commands,
       goal: `Install the verified APK ${artifact.packageName} ${artifact.versionName}. Inspect actual system pages and choose exact selectors. Completion requires the independent installed APK identity check.` });
   } catch (error) { release(); throw error; }
   let job; let finished; let starting; let finalizing = false; let final = false; let activeUi = null; let cancelled = false;
@@ -238,9 +236,7 @@ async function createInstallIntent({ args, operationId, store, recording, depend
     let result;
     try { result = await activeUi; } finally { activeUi = null; }
     if (['failed', 'ambiguous', 'blocked_evidence_store'].includes(worker.runtime.state.status)) {
-      uiFailure = { status: worker.runtime.state.status, error: worker.runtime.state.error };
-      installation.uiFailure = uiFailure;
-      job.cancel();
+      installation.uiFailure = { status: worker.runtime.state.status, error: worker.runtime.state.error };
     }
     if (finalizing || uiFailure) { await finished; return snapshot(); }
     return { ...snapshot(), ok: result.ok, error: result.error };

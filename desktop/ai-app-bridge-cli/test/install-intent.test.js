@@ -60,7 +60,7 @@ test('install starts an Intent operation and routes its controls through the exi
   assert.equal(result.value.operationId, 'install');
   assert.deepEqual(seen[0].install, args);
   assert.equal(commandContract('install-apk').role, 'execution');
-  assert.deepEqual(commandContract('install-apk').entrypoints, { mcp: true, cli: true, script: false });
+  assert.deepEqual(commandContract('install-apk').entrypoints, { mcp: true, cli: true, script: true });
   for (const field of ['installerTimeoutMs', 'installTimeoutMs', 'buttonText', 'requestId', 'streaming']) {
     assert.throws(() => validateCommandArguments('install-apk', { ...args, [field]: 10 }), error => error.code === 'unsupported_argument');
   }

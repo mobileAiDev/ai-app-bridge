@@ -19,6 +19,18 @@ const android = { platform: 'android', serial: 'target-contract-phone', packageN
 const ios = { platform: 'ios', deviceId: 'ios-target-contract', bundleId: 'com.example.app', runtimeUrl: 'http://127.0.0.1:40234', wdaUrl: 'http://127.0.0.1:40235' };
 const source = 'module.exports.main = async () => ({ ok: true });';
 
+test('composed iOS recovery supplies only its selected SDK or WDA connection fields', () => {
+  const both = { ...ios, wdaRunnerBundleId: 'app.Runner' };
+  const wda = bindCommandTarget('ios-execution', { operation: 'status', kind: 'wda' }, both).args;
+  require('../bin/command-registry').validateCommandArguments('ios-execution', wda);
+  assert.equal(wda.bundleId, undefined); assert.equal(wda.runtimeUrl, undefined);
+  assert.equal(wda.wdaRunnerBundleId, 'app.Runner');
+  const sdk = bindCommandTarget('ios-execution', { operation: 'status' }, both).args;
+  require('../bin/command-registry').validateCommandArguments('ios-execution', sdk);
+  assert.equal(sdk.wdaUrl, undefined); assert.equal(sdk.wdaRunnerBundleId, undefined);
+  assert.equal(sdk.runtimeUrl, ios.runtimeUrl);
+});
+
 test('relative transport executables in frozen targets stay bound to the originating request directory', () => {
   const { inRequestDirectory } = require('../bin/shared-kernel/request-context');
   const compiled = inRequestDirectory('/original/task', () => compileScriptSpec({

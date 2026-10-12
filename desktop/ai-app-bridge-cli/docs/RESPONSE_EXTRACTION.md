@@ -1,9 +1,15 @@
-# Response extraction (0.4.0)
+# Response discovery and extraction
 
-Every CLI/MCP run must state what to return. Use `extract:null` for the original
-result within the body budget, or select the fields needed for the current task.
-`extract` and `output` are top-level request fields, separate from business
-`arguments`. The old request without extract is rejected before dispatch.
+Omitting `extract` uses `auto`. A result within the output budget (96 KiB by
+default) is delivered completely, with no mandatory discovery/read round trip.
+JSON above 32 KiB can use a complete table representation when removing repeated
+field names and shared values saves at least 30%; this formatting threshold never
+discards content. Over-budget JSON tries the same complete representation even
+for a smaller saving. Only results that still do not fit become partial views
+with complete records or text ranges, a structural index, and a saved source ref.
+
+Explicit `extract:null` requests the original result within the body budget.
+`extract` and `output` are top-level fields, separate from business `arguments`.
 Internal Script `ctx.call(command, args)` stays unchanged (`ok`, `result`).
 
 ```json extraction-example
@@ -18,6 +24,63 @@ A small response can be read in full. Large trees, network records and logs are
 better extracted near the Host. This saves response/context bytes, not the
 original collection time. Capture duration, history limit and extraction solve
 different problems; a one-item page can still exceed the byte budget.
+
+## Complete data first; read more only when needed
+
+`delivery.status:inline` preserves the original shape. `compact` uses
+`format:aab.response-tables/v1`, `partial:false`, `data` and `tables`. Each table has
+a JSON Pointer `path`, shared `constants`, JSON Pointer `columns`, and `rows` of
+corresponding cells. Replace the null at `data[path]` with those rows as objects:
+apply each constant leaf path and then each column's cell. Empty values, all node
+states, original ordering, duplicate labels and action bindings are preserved.
+This is a complete representation of the captured result; the original capture
+coverage/truncation flags still apply. A different object shape is kept verbatim.
+
+For example, constants `{"/enabled":true}` plus columns `["/text","/checked"]`
+and rows `[["同意",false],["同意",true]]` describe two distinct objects with all
+three fields. No row is deduplicated. The saved ref and `read` are optional
+conveniences for selecting an original row; interpreting this table needs no call.
+
+`aab.response-tables/v2` additionally shares identical long diagnostic texts,
+which are often repeated inside nested Script/Intent results. First replace the
+null placeholders at each `sharedTexts[].paths` with that entry's `text`. These
+JSON Pointers address the entire compact representation, under `/data` or
+`/tables`. Then expand tables as in v1. `tables` can be empty. This is still
+`partial:false`: every original value is recoverable from this reply alone.
+Saved response refs, select paths and extraction always address the original
+shape, independent of this delivery representation.
+
+`delivery.status:overview` uses `format:aab.response-overview/v1`, `originalBytes`,
+`fields` (JSON Pointers, types, counts and small scalar facts), `partial:true`, and
+`preview`. The preview identifies its source path and returns bounded head/tail
+ranges with exact source offsets. Array entries are complete; text prefers whole
+lines and never splits Unicode surrogate pairs. A single oversized record can
+preview its large text field while exposing sibling scalar facts in the index.
+The preview spends up to 64 KiB of the remaining body budget on actual data.
+It does not silently assert that omitted data is absent.
+
+The `read` request selects the next retained range, sized from the saved data.
+`control.source.ref` identifies that frozen response. Execution, warnings,
+continuation controls and capture coverage remain outside the view.
+
+Copy `value.read` and adjust its extraction, for example:
+
+```json
+{"mode":"select","path":"/items","offset":20,"limit":10}
+```
+
+`select` accepts a JSON Pointer without starting a script process. `offset` and
+`limit` slice arrays or strings; omit them for objects and scalars. Empty path
+selects the root; `/a~1b` selects a property named `a/b`. These reads consume the
+saved response, never rerun the device command. Use `null` with a larger output
+budget to retrieve the full retained value, or regex/JS/Python for a precise query.
+
+If storage fails, a complete table view can still be delivered without a `read`
+hint. An over-budget result that needs a partial view reports unavailable
+delivery when its source cannot be saved. No nonexistent ref is advertised.
+Retention/8 MiB source limits still apply; explicit `outFile` is available for
+large binary ADB output. These views are deterministic and do not infer business
+relevance or reduce device collection time.
 
 ## One query, one extraction
 
@@ -79,7 +142,7 @@ assertion. A selected successful row does not prove complete business coverage.
 
 ## Retry extraction without repeating the action
 
-Non-null extraction attempts to retain the original response. A null response
+Explicit select/regex/script extraction and large auto responses attempt to retain the original response. A null response
 that would exceed the budget also attempts retention. `control.source` is the
 only ref location. Only `persisted:true` makes that ref readable. Null within
 budget normally reports `persisted:false, reason:not_requested`; offline local
@@ -124,3 +187,16 @@ Discovery/help has a separate fixed 96 KiB limit; follow its command/operation
 hint. Runtime stop drains active extraction workers; CLI/MCP disconnect alone
 keeps the shared Runtime alive. Extraction is trusted local code, with bounded
 worker/channel lifetime rather than an OS/process-tree sandbox.
+## Candidate continuation
+
+Host selection failures retain all observed candidates in the original response.
+`control.candidates` (or an Intent's `control.lastAction.candidates`) is a preview
+of at most 20 records and 8 KiB, so protected control fields do not duplicate a
+large candidate array. `candidatePage` reports its path, offset, count, available
+records and whether the provider itself truncated the source. When the response
+was saved, `candidatePage.read` selects the next byte-bounded range from the same
+response; it does not repeat the original action. An inline full value already
+contains the complete list and needs no further read. `sourceTruncated:true`
+means omitted candidates were never received: follow a provider observation hint
+such as Web's filtered DOM query instead of expecting response extraction to
+recover them.

@@ -30,7 +30,7 @@ test('input-text exposes the Intent selector and empty text to CLI, MCP and Scri
     ...target, selector: JSON.stringify(selector),
   })), { ...target, selector });
   for (const extra of [{ selector: {} }, { selector, tapX: 1, tapY: 2 }, { selector, nativeTarget: {} },
-    { selector: { text: 'Previous', resourceName: 'id/editor' } }])
+    { selector: { text: 'Previous', enabled: 'true' } }])
     assert.throws(() => validateCommandArguments('input-text', { ...target, ...extra }));
   assert.throws(() => validateCommandArguments('input-text', { serial: ctx.serial, selector, text: 'x' }),
     { code: 'missing_argument', field: 'packageName' });
@@ -56,8 +56,8 @@ test('scoped Unicode input and clearing dispatch to the original editor with nat
   }
 });
 
-test('ambiguous, replaced, noneditable, unbound editors never receive input', async () => {
-  const errors = { ambiguous: 'native_selector_ambiguous', replaced: 'reobserve_required',
+test('ambiguous, noneditable and unbound editors stop; atomic SDK replacement rejection never retries', async () => {
+  const errors = { ambiguous: 'native_selector_ambiguous', replaced: 'native_target_replaced',
     noneditable: 'native_target_not_editable',
     unbound: 'native_atomic_target_unavailable' };
   for (const [scenario, error] of Object.entries(errors)) {
@@ -68,8 +68,12 @@ test('ambiguous, replaced, noneditable, unbound editors never receive input', as
     let reads = 0;
     const result = await inputNativeText(ctx, 'must-not-write', { selector: scenario === 'ambiguous' ? { text: 'Previous' } : selector }, {
       foregroundWindow: async () => foreground,
-      bridgeTree: async () => scenario === 'replaced' && ++reads > 1 ? changed : original,
-      bridgePost: async () => assert.fail('No mutation may be sent'),
+      bridgeTree: async () => { reads++; return original; }, bridgeStatus: nativeBridgeStatus,
+      bridgePost: async (_ctx, _path, request) => {
+        assert.equal(scenario, 'replaced'); assert.equal(reads, 1);
+        assert.notEqual(request.targetRef.viewId, changed.root.children[1].children[1].targetRef.viewId);
+        return nativeExecutionReceipt(request, { ok: false, error: 'native_target_replaced', dispatched: false });
+      },
     });
     assert.equal(result.ok, false, scenario);
     assert.equal(result.dispatched, false, scenario);

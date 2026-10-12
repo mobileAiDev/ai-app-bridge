@@ -96,6 +96,7 @@ async function observeAndCommit(context, provider = context.provider, observatio
   context.provider = provider;
   context.observationTarget = observationTarget;
   context.observationFailure = null;
+  context.observationStale = false;
   delete context.latestEvidenceIds.observationFailure;
   context.latestSummary = summary;
   context.latestProvider = activeProvider;

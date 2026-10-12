@@ -14,24 +14,27 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
   uiaPortFactory = createUiaRuntimePort } = {}) {
   if (args.operation === 'status') return lease.status(args.serial);
   if (args.operation === 'receipt') return require('./device-completion-history').readCompletion(args);
+  const archiveQuery = args.operation === 'reconcile-archive';
+  if (!archiveQuery && require('./ownership-archives').operations.has(args.operation))
+    return require('./ownership-archives').createArchiveStore(lease.directory).handle(args);
   const bridge = ports || require('../device-provider');
   const installCleanup = [];
-  const recovered = await lease.reconcile(args.serial, async pending => {
+  const verifyPending = async pending => {
     if (args.operation === 'cancel-install' && (pending.kind !== 'android-install' || pending.actionId !== args.actionId))
       return { settled: false, error: 'install_action_mismatch', actionId: pending.actionId };
     if (pending.kind === 'android-test-executor') {
-      try { return await require('../executors/android-host').recoverAndroidExecutor(pending); }
+      try { return await require('../executors/android-host').recoverAndroidExecutor(pending, undefined, { readOnly: archiveQuery }); }
       catch (error) { return { settled: false, error: error.code || 'executor_completion_query_failed', message: error.message }; }
     }
     if (pending.kind === 'flutter-test-executor') {
-      try { return await require('../executors/flutter-host').recoverFlutterExecutor(pending); }
+      try { return await require('../executors/flutter-host').recoverFlutterExecutor(pending, { readOnly: archiveQuery }); }
       catch (error) { return { settled: false, error: error.code || 'executor_completion_query_failed', message: error.message }; }
     }
     if (pending.kind === 'uia-node') {
       if (!uiaProtocol.validIdentity(pending) || pending.target.serial !== args.serial) return { settled: false, error: 'invalid_uia_execution_identity' };
       try {
         const port = uiaPortFactory({ ...pending.target, timeoutMs: args.timeoutMs ?? 5000 });
-        const result = await port.recover(pending);
+        const result = await port.recover(pending, { cancel: !archiveQuery });
         const proof = uiaProtocol.settlementProof(result, pending);
         if (!proof) return { settled: false, error: result?.error || 'uia_original_completion_unavailable', actionId: pending.actionId };
         return proof;
@@ -44,17 +47,17 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
       try {
         const port = installPortFactory({ ...pending.target, timeoutMs: args.timeoutMs ?? 5000 });
         let result, readError;
-        try { result = await port.read(pending, true); }
+        try { result = await port.read(pending, !archiveQuery); }
         catch (error) { readError = error; }
         const proof = installProtocol.settlementProof(result, pending);
         if (proof) {
-          installCleanup.push({ port, pending, result });
+          if (!archiveQuery) installCleanup.push({ port, pending, result });
           return proof;
         }
         const cancellation = args.operation === 'cancel-install' ? await port.cancelInstall(pending) : await port.readCancellation?.(pending);
         const cancelled = cancellationProof(cancellation, pending);
         if (!cancelled) return { settled: false, error: readError?.code || 'install_completion_unavailable', actionId: pending.actionId };
-        installCleanup.push({ port, pending, result: cancellation, cancelled: true });
+        if (!archiveQuery) installCleanup.push({ port, pending, result: cancellation, cancelled: true });
         return cancelled;
       } catch (error) { return { settled: false, error: error.code || 'install_completion_query_failed' }; }
     }
@@ -64,7 +67,7 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
       }
       try {
         const port = shellPortFactory({ ...pending.target, timeoutMs: args.timeoutMs ?? 5000 });
-        const result = await port.cancel(pending);
+        const result = await (archiveQuery ? port.query(pending) : port.cancel(pending));
         return shellProtocol.settlementProof(result, pending)
           || { settled: false, error: result?.error || 'shell_action_not_settled', actionId: pending.actionId };
       } catch (error) {
@@ -80,14 +83,18 @@ async function deviceOwnership(args, { lease = getProcessDeviceMutationLease(), 
       // Re-discover and verify this phone/package connection. A changed runtime,
       // missing action or idle SDK alone is never proof that this action ended.
       const completion = { native: bridge.nativeCompletion, flutter: bridge.flutterCompletion, h5: bridge.h5Completion }[pending.kind];
-      const reply = await completion(ctx, identity);
+      const reply = await completion(ctx, identity, { cancel: !archiveQuery });
       if (reply?.ok !== true || reply.actionId !== identity.actionId || reply.runtimeEpoch !== identity.runtimeEpoch
           || !protocol.terminalReceipt(reply.executionResult, identity)) return {
-        settled: false, error: reply?.error || `invalid_${pending.kind}_cancel_receipt`, actionId: identity.actionId,
+        settled: false, error: reply?.error || `invalid_${pending.kind}_completion_receipt`, actionId: identity.actionId,
+        ...(reply?.message ? { message: reply.message } : {}),
       };
       return protocol.settlementProof(reply.executionResult, identity);
     } catch (error) { return { settled: false, error: error.code || 'remote_completion_query_failed', message: error.message }; }
-  });
+  };
+  if (require('./ownership-archives').operations.has(args.operation))
+    return require('./ownership-archives').createArchiveStore(lease.directory).handle(args, verifyPending);
+  const recovered = await lease.reconcile(args.serial, verifyPending);
   // Reconciliation fsyncs each exact proof before its phone copy may be retired.
   // Even a later unresolved reservation cannot invalidate an earlier settlement.
   for (const { port, pending, result, cancelled } of installCleanup) {

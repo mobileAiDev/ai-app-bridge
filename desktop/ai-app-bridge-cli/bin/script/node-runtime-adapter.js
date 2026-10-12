@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { requestDirectory, inRequestDirectory } = require('../shared-kernel/request-context');
 const { createScriptSessionChannel } = require('./script-session-channel');
+const { isMutationCommand } = require('../command-registry');
+const { commandFailure } = require('../command-errors');
 
 function jsonBytes(value) {
   return Buffer.byteLength(JSON.stringify(value ?? null), 'utf8');
@@ -41,8 +43,24 @@ function createChildRuntimeAdapter({
   let child = null;
   let exited = Promise.resolve();
   let readControl = () => ({ status: 'running', pauseReason: null });
+  let active = false;
+  const controlWaiters = new Set();
+
+  function wakeControl() {
+    for (const resolve of controlWaiters) resolve();
+    controlWaiters.clear();
+  }
+
+  async function waitUntilRunning() {
+    while (active && ['pause_requested', 'paused_manual', 'paused_live', 'paused_ambiguous'].includes(readControl().status)) {
+      await new Promise(resolve => controlWaiters.add(resolve));
+    }
+    if (!active) throw new Error('runtime_stopped');
+  }
 
   async function terminate() {
+    active = false;
+    wakeControl();
     if (channel) channel.stop();
     await exited;
     child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy();
@@ -63,6 +81,7 @@ function createChildRuntimeAdapter({
     let timer = null;
     channel = null;
     exited = Promise.resolve();
+    active = true;
     try {
       directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-script-'));
       const artifact = path.join(directory, `main${extension}`);
@@ -82,6 +101,23 @@ function createChildRuntimeAdapter({
         timer = setTimeout(() => resolve({ type: 'timeout' }), spec.policy.timeoutMs);
       });
       const rpc = pending => Promise.race([pending, timedOut, finished.then(() => { throw new Error('child_crashed'); })]);
+      const reads = new Set();
+      const call = async message => {
+        await waitUntilRunning();
+        try { return await host.call(message.command, message.args, message.options); }
+        catch (error) { return commandFailure(error, message.command); }
+      };
+      const read = message => {
+        const pending = call(message).then(value => {
+          if (active) channel.send({ type: 'result', id: message.id, value, control: readControl() });
+        }).catch(error => {
+          // Stopping releases paused work without dispatching it. A failed
+          // read or reply encoding still receives a per-call error otherwise.
+          if (active) channel.send({ type: 'result', id: message.id, value: commandFailure(error, message.command), control: readControl() });
+        });
+        reads.add(pending);
+        pending.then(() => reads.delete(pending));
+      };
       const ready = await Promise.race([
         channel.nextMessage(),
         finished,
@@ -99,23 +135,34 @@ function createChildRuntimeAdapter({
       channel.send({
         type: 'start',
         inputs: spec.inputs,
+        target: spec.target,
+        sourcePath: spec.sourcePath,
         entrypoint: spec.entrypoint,
         sourceName: spec.sourcePath || artifact,
-        control: control(),
+        control: readControl(),
       });
       while (true) {
-        const message = await Promise.race([
+        let message = await Promise.race([
           channel.nextMessage(),
           finished,
           timedOut,
         ]);
+        // Reads submitted together can overlap. Writes, assertions, decisions
+        // and checkpoints retain their position after all preceding reads.
+        if (['assert', 'checkpoint', 'ask', 'return'].includes(message.type)
+          || (message.type === 'call' && isMutationCommand(message.command, message.args))) {
+          const settled = await rpc(Promise.all([...reads]));
+          if (settled?.type === 'timeout') message = settled;
+          else if (channel.failure && !['return', 'fail'].includes(message.type)) message = channel.failure;
+        }
         if (message.type === 'timeout') {
           await terminate();
           emit('script_failed', { error: 'timeout' });
           return { ok: false, error: 'timeout' };
         }
         if (message.type === 'call') {
-          const value = await rpc(host.call(message.command, message.args, message.options));
+          if (!isMutationCommand(message.command, message.args)) { read(message); continue; }
+          const value = await rpc(call(message));
           if (value && value.type === 'timeout') {
             await terminate();
             emit('script_failed', { error: 'timeout' });
@@ -125,7 +172,7 @@ function createChildRuntimeAdapter({
           continue;
         }
         if (message.type === 'assert') {
-          const value = await rpc(host.assert(message.assertion));
+          const value = await rpc(waitUntilRunning().then(() => host.assert(message.assertion)));
           if (value && value.type === 'timeout') {
             await terminate();
             emit('script_failed', { error: 'timeout' });
@@ -144,7 +191,10 @@ function createChildRuntimeAdapter({
             emit('script_failed', { error: 'progress_too_large' });
             return { ok: false, error: 'progress_too_large' };
           }
+          const state = await rpc(waitUntilRunning());
+          if (state?.type === 'timeout') { await terminate(); return { ok: false, error: 'timeout' }; }
           emit('progress', message.event);
+          if (message.id) channel.send({ type: 'progress-receipt', id: message.id, value: null, control: readControl() });
           continue;
         }
         if (message.type === 'checkpoint') {
@@ -153,7 +203,7 @@ function createChildRuntimeAdapter({
             emit('script_failed', { error: 'checkpoint_too_large' });
             return { ok: false, error: 'checkpoint_too_large' };
           }
-          const receipt = await rpc(Promise.resolve(emit('checkpoint', { name: message.name, state: message.state })));
+          const receipt = await rpc(waitUntilRunning().then(() => emit('checkpoint', { name: message.name, state: message.state })));
           if (receipt && receipt.type === 'timeout') {
             await terminate();
             emit('script_failed', { error: 'timeout' });
@@ -169,7 +219,7 @@ function createChildRuntimeAdapter({
           continue;
         }
         if (message.type === 'ask') {
-          const value = await rpc(agent.askAgent(message.request));
+          const value = await rpc(waitUntilRunning().then(() => agent.askAgent(message.request)));
           if (value && value.type === 'timeout') {
             await terminate();
             emit('script_failed', { error: 'timeout' });
@@ -232,6 +282,7 @@ function createChildRuntimeAdapter({
   function setControl(next) {
     if (!channel) return;
     channel.send({ type: 'control', control: next || readControl() });
+    wakeControl();
   }
 
   return { kind, start, stop, setControl };

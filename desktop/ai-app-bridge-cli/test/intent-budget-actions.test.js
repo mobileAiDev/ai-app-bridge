@@ -63,7 +63,7 @@ test('public autonomous budget accepts the complete advertised action vocabulary
   assert.ok(names.includes('setOrientation'));
   const args = startArguments({ allowlist: names });
   assert.deepEqual(validateCommandArguments('intent', args), args);
-  assert.deepEqual(intentBudget.properties.allowlist.default, ['tap']);
+  assert.equal(intentBudget.properties.allowlist.default, undefined);
 });
 
 test('public autonomous budget rejects unknown and duplicate action names', () => {
@@ -89,8 +89,8 @@ for (const scenario of scenarios) {
     assert.deepEqual(receipt.action, scenario.action);
   });
 
-  test(`${scenario.name} remains denied by the default budget before decision persistence`, async t => {
-    const h = autonomous(t, scenario);
+  test(`${scenario.name} can be denied by an explicit budget before decision persistence`, async t => {
+    const h = autonomous(t, scenario, ['tap']);
     const result = await h.worker.start();
     assert.equal(result.status, 'intervention_required', JSON.stringify(result));
     assert.equal(result.error, 'action_not_allowed');

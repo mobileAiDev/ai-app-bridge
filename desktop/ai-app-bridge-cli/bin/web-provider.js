@@ -130,8 +130,9 @@ class WebBridgeProvider {
     const host = this.config.host.includes(':') ? `[${this.config.host}]` : this.config.host;
     return { ...this.providerStatus(), endpoint: `ws://${host}:${this.port}${this.config.path}`, token: this.token, protocol };
   }
-  listSessions() {
-    this.sweep(); const sessions = [...this.sessions.values()].map(session => this.sessionSummary(session));
+  listSessions({ maintainConnections = true } = {}) {
+    if (maintainConnections) this.sweep();
+    const sessions = [...this.sessions.values()].map(session => this.sessionSummary(session));
     return { ok: true, running: Boolean(this.server), sessions, count: sessions.length };
   }
   sessionSummary(session) {
@@ -188,9 +189,12 @@ class WebBridgeProvider {
   }
   async dom(args) {
     const session = this.connected(args);
-    const result = await this.request(session, 'read', { name: 'domSnapshot', args: select(args, ['selector', 'maxControls']) }, args.timeoutMs ?? 5000);
+    const result = await this.request(session, 'read', { name: 'domSnapshot', args: select(args, ['selector', 'query', 'offset', 'maxControls']) }, args.timeoutMs ?? 5000);
     if (result.ok !== true || !object(result.dom) || result.dom.ok !== true)
       return failure(result.error || result.dom?.error || 'invalid_web_dom', { ...targetOf(session) });
+    if ((args.query !== undefined || args.offset !== undefined)
+      && (result.dom.offset !== (args.offset ?? 0) || !require('node:util').isDeepStrictEqual(result.dom.query, args.query)))
+      return failure('web_dom_query_unsupported', { ...targetOf(session), message: 'This SDK did not apply the requested query/page. Update the Web SDK, or use its existing CSS selector observation.' });
     try { validateSnapshot(result.dom, targetOf(session)); }
     catch (error) { return failure('invalid_web_dom_target', { ...targetOf(session), message: error.message }); }
     const receipt = this.store.record(targetOf(session), 'dom', result.dom, { captureId: randomUUID() });
@@ -348,9 +352,9 @@ class WebBridgeProvider {
     if (previous.ok) {
       if (previous.receipt.originalSha256 !== digest(result)) throw new CommandError('web_completion_conflict', 'The original action already has a different completion.');
     } else {
-      const pending = this.owner().status(sessionKey(session.sessionId)).ownership?.pending;
-      if (pending?.kind !== 'web-sdk' || pending.actionId !== identity.actionId || pending.runtimeEpoch !== identity.runtimeEpoch
-          || !isDeepStrictEqual(pending.target, target)) throw new CommandError('web_original_action_required', 'No original pending action matches this completion.');
+      const pending = this.owner().findPending(sessionKey(session.sessionId), item => item.kind === 'web-sdk'
+        && item.actionId === identity.actionId && item.runtimeEpoch === identity.runtimeEpoch && isDeepStrictEqual(item.target, target));
+      if (!pending) throw new CommandError('web_original_action_required', 'No original pending action matches this completion.');
     }
     try { if (!previous.ok) this.store.saveCompletion(target, result); }
     catch (error) { this.send(session.socket, { type: 'completionAck', binding: session.socket.binding, actionId: identity.actionId,

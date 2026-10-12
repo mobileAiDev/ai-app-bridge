@@ -106,6 +106,9 @@ function validateRecord(namespace, kind, record, { archivedUnversioned = false }
   const fields = archivedUnversioned && kind === 'observation'
     ? ['operationId', 'revision', 'serial', 'packageName', 'provider', 'capturedAtMs'] : requiredFields(kind);
   for (const field of fields) {
+    // A Host/control command has an explicit null device target. The field is
+    // still required, so a missing binding cannot masquerade as a Host action.
+    if (namespace === 'script' && field === 'target' && record.target === null) continue;
     if (record[field] === undefined || record[field] === null || record[field] === '') {
       return { ok: false, error: 'invalid_record', field };
     }

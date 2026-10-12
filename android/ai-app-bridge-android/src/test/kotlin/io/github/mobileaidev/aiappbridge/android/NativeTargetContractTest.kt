@@ -6,6 +6,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NativeTargetContractTest {
+    @Test fun truncatedTextRemainsSelectableByReferenceOrContainsButCannotImpersonateAnExactLabel() {
+        val current = editor().put("text", "prefix").put("textTruncated", true)
+        val snapshot = tree(current)
+        fails("native_selector_not_found") { resolve(snapshot, ref(current), JSONObject().put("text", "prefix")) }
+        assertSame(current, resolve(snapshot, ref(current), JSONObject().put("textContains", "prefix")).node)
+        assertSame(current, resolve(snapshot, ref(current), JSONObject().put("viewId", ref(current).getString("viewId"))).node)
+    }
     private val selector get() = JSONObject().put("resourceName", "id/editor")
     private fun bounds(left: Int = 0, top: Int = 0, right: Int = 300, bottom: Int = 500) =
         JSONObject().put("left", left).put("top", top).put("right", right).put("bottom", bottom)
@@ -60,11 +67,48 @@ class NativeTargetContractTest {
         fails("native_window_changed") { resolve(tree(editor(), windowId = "new-window"), ref(old)) }
     }
 
-    @Test fun semanticChangeAndReparentingInvalidateAnObservedView() {
+    @Test fun sameViewAttributeChangesAndReparentingAreReportedWithoutInvalidatingItsIdentity() {
         val old = editor(); tree(old)
-        fails("native_target_changed") { resolve(tree(editor().put("text", "Different note")), ref(old)) }
+        val changed = resolve(tree(editor().put("text", "Different note")), ref(old))
+        assertEquals("native_target_attributes_changed", changed.warnings.getJSONObject(0).getString("code"))
+        assertFalse(changed.warnings.getJSONObject(0).getBoolean("blocking"))
+        assertEquals("Different note", changed.warnings.getJSONObject(0).getJSONObject("current").getString("text"))
         val group = node("id/other-group").put("children", JSONArray().put(editor()))
-        fails("native_target_changed") { resolve(tree(group), ref(old)) }
+        assertEquals(1, resolve(tree(group), ref(old)).warnings.length())
+        // Caller-supplied conditions still apply to the current View.
+        fails("native_selector_not_found") {
+            resolve(tree(editor().put("text", "Different note")), ref(old), selector.put("text", "Before"))
+        }
+    }
+
+    @Test fun combinedConditionsDistinguishButtonFromProseAndDuplicateLabels() {
+        val prose = node("id/prose", "请阅读并同意条款").put("className", "TextView").put("clickable", false)
+        val label = node("id/label", "同意").put("className", "TextView").put("clickable", false)
+        val button = node("id/agree", "同意").put("className", "Button").put("clickable", true).put("checked", false)
+        val snapshot = tree(prose, label, button)
+        fails("native_selector_ambiguous") { resolve(snapshot, ref(button), JSONObject().put("text", "同意"), false) }
+        val combined = JSONObject().put("textContains", "同意").put("className", "Button").put("clickable", true).put("checked", false)
+        assertSame(button, resolve(snapshot, ref(button), combined, false).node)
+        combined.put("checked", true)
+        fails("native_selector_not_found") { resolve(snapshot, ref(button), combined, false) }
+        combined.put("checked", "false")
+        fails("invalid_argument") { resolve(snapshot, ref(button), combined, false) }
+    }
+
+    @Test fun directScopesAndRepeatedAnchorsOnlyRequireAUniqueFinalTarget() {
+        val first = editor().put("instance", "first").put("checked", false)
+        val second = editor().put("instance", "second").put("checked", true)
+        fun row(field: JSONObject) = node("id/row").put("className", "Row").put("children", JSONArray()
+            .put(node("id/label", "Same label")).put(field))
+        val snapshot = tree(row(first), row(second))
+        for (scope in listOf(JSONObject().put("resourceName", "id/row"),
+            JSONObject().put("textContains", "label").put("ancestor", JSONObject().put("className", "Row").put("resourceName", "id/row")))) {
+            val combined = selector.put("checked", true).put("within", scope)
+            assertSame(second, resolve(snapshot, ref(second), combined).node)
+            combined.remove("checked")
+            fails("native_selector_ambiguous") { resolve(snapshot, ref(second), combined) }
+        }
+        fails("native_scope_not_found") { resolve(snapshot, ref(second), selector.put("within", JSONObject().put("resourceName", "absent"))) }
     }
 
     @Test fun duplicatedLabelsAndReadOnlyEditorsNeverResolve() {

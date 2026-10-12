@@ -58,7 +58,11 @@ async function forceStopDevice(args, { directory, stopHost = stopHosts, stopDevi
     }
     const resetId = randomUUID(), resetAtMs = Date.now();
     previous = readForReset();
-    const pending = previous?.resetPending || [previous?.pending, ...(previous?.reservations || [])].filter(Boolean);
+    const covered = previous?.lastReset?.phone?.ok ? previous.lastReset.archivedOwnershipPaths || [] : [];
+    const archives = store.archives(args.serial).filter(item => !covered.includes(item.archivePath));
+    const pending = [...new Map([previous, ...archives.map(item => item.state)].filter(Boolean)
+      .flatMap(state => [...(state.resetPending || []), state.pending, ...(state.reservations || [])]).filter(Boolean)
+      .map(item => [item.id, item])).values()];
     const abandoned = pending.map(item => ({ kind: item.kind, actionId: item.actionId ?? null, runtimeEpoch: item.runtimeEpoch ?? null }));
     const archiveDir = path.join(store.directory, 'force-stopped');
     fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
@@ -69,10 +73,14 @@ async function forceStopDevice(args, { directory, stopHost = stopHosts, stopDevi
       finally { fs.closeSync(file); }
       const parent = fs.openSync(archiveDir, 'r');
       try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+      require('./ownership-archives').recordForceStoppedArchive(store.directory, resetId, args.serial);
     }
     const state = { schemaVersion, serial: args.serial, phase: 'idle', owner: null, pending: null, reservations: [],
       pendingAcknowledgements: [], lastSettlement: previous?.lastSettlement ?? null, resetRequired: true, resetPending: pending,
-      lastReset: { resetId, resetAtMs, disposition: 'force_stopped', outcome: 'unknown', abandoned, archivePath, stoppedHostPids,
+      lastReset: { resetId, resetAtMs, disposition: 'force_stopped', outcome: 'unknown', abandoned, archivePath,
+        archiveId: archivePath ? `force-stopped:${resetId}` : null, stoppedHostPids,
+        archivedOwnershipPaths: [...covered, ...archives.map(item => item.archivePath)],
+        unreadableArchives: archives.filter(item => item.error).map(({ archivePath, error }) => ({ archivePath, error })),
         ...(journalError ? { journalError } : {}) } };
     store.write(args.serial, state);
     const automationStore = require('../executors/automation-owner');
@@ -87,11 +95,11 @@ async function forceStopDevice(args, { directory, stopHost = stopHosts, stopDevi
       return { ok: false, error: code, phase: 'idle', serial: args.serial,
         ownershipReleased: true, remoteResetPending: true, ...state.lastReset,
         remoteError: { code, message: error.message },
-        message: 'Local occupancy was reset. Reconnect the device and repeat device-ownership force-stop before new actions.' };
+        message: 'Local occupancy was reset; the remote reset is incomplete. Reconnect and repeat device-ownership force-stop to stop the recorded old work. New explicit actions can proceed with a warning.' };
     }
     state.resetRequired = false; delete state.resetPending; state.lastReset.phone = phone; store.write(args.serial, state);
     return { ok: true, serial: args.serial, phase: 'idle', ownershipReleased: true, remoteResetPending: false,
-      ...state.lastReset, phone, message: 'Forced reset completed. Old tasks were stopped; agents can start new operations.' };
+      ...state.lastReset, phone, message: 'Forced reset completed for the recorded targets. Original action outcomes remain unknown; unreadable archives cannot identify additional targets.' };
   } finally { lock?.close(); control.close(); }
 }
 

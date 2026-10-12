@@ -6,7 +6,7 @@ const test = require('node:test');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { authorizeCommand, catalogPayload, DENY_DEFAULT, DENY_PERMANENT } = require('../bin/script/script-catalog');
+const { authorizeCommand, catalogPayload } = require('../bin/script/script-catalog');
 const { compileScriptSpec } = require('../bin/script/script-spec');
 const { createBoundedScriptRegistry } = require('../bin/script/bounded-script-registry');
 const { createFakeHostPort } = require('../bin/script/fake-host-port');
@@ -111,7 +111,7 @@ test('Script wait retains its own wait budget and rejects an outer isolatedTimeo
 
 test('P2 ctx.call envelope and assert distinguish coverage from condition', async () => {
   const host = createFakeHostPort({
-    executionId: 'exec-1',
+    executionId: 'exec-1', permissions: ['capture.read'],
     target: { platform: 'android', serial: 'p2-device', packageName: 'com.example.app' },
     handlers: {
       network: async (request) => captureFixture(request, 'network', [{ statusCode: 200 }]),
@@ -145,7 +145,7 @@ test('P2 ctx.call envelope and assert distinguish coverage from condition', asyn
   assert.equal(inconclusive.verdict, 'inconclusive');
   const denied = await host.call('clear-app-data', {});
   assert.equal(denied.ok, false);
-  assert.equal(denied.error, 'command_not_in_default_allowlist');
+  assert.equal(denied.error, 'permission_not_granted');
   assert.deepEqual(denied.execution, { executionId: 'exec-1', callId: 'call-2', actionId: null });
   assert.deepEqual(denied.evidence, {
     window: { afterActionId: null, closedAtMs: 0 },
@@ -180,10 +180,10 @@ test('P2 registry stays bounded after 10000 completed operations', async () => {
 test('P2 catalog and capabilities stay machine-readable', () => {
   const catalog = catalogPayload();
   assert.equal(catalog.runtime, 'trusted-local-code');
-  assert.equal(authorizeCommand('h5-eval').error, 'command_permanently_denied');
-  assert.equal(authorizeCommand('install-apk').error, 'command_not_in_default_allowlist');
-  assert.equal(DENY_DEFAULT.includes('clear-app-data'), true);
-  assert.equal(DENY_PERMANENT.includes('web-command'), true);
+  assert.equal(authorizeCommand('h5-eval').ok, true);
+  assert.equal(authorizeCommand('install-apk').ok, true);
+  assert.equal(authorizeCommand('clear-app-data').ok, true);
+  assert.equal(authorizeCommand('web-command', ['app.read']).error, 'permission_not_granted');
   const payload = capabilityPayload({ command: 'script' });
   assert.equal(payload.catalog.internalOnly[0], 'page-summary');
   assert.match(payload.warning, /not an OS sandbox/);

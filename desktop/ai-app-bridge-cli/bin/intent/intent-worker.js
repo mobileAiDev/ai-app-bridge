@@ -20,6 +20,7 @@ function createIntentWorker({
   observationTarget = null,
   store,
   adapter,
+  commands,
   mode = 'supervised',
   agent = null,
   budget = null,
@@ -42,6 +43,8 @@ function createIntentWorker({
     observationFailure: null,
     store,
     adapter,
+    commands,
+    observationStale: false,
     mode,
     now,
     capturePort,
@@ -142,6 +145,7 @@ function createIntentWorker({
   }
 
   function observationFailure(observed) {
+    runtime.state.revision = context.revision;
     if (observed.stage === 'provider') { runtime.state.status = 'waiting_for_observation'; runtime.state.error = observed.error; }
     else requestStop('blocked_evidence_store', observed.error);
     runtime.emit('blocked', { error: observed.error });
@@ -165,7 +169,8 @@ function createIntentWorker({
     if (stopping) return snapshotResult(false);
     checkExecution();
     if (!observed.ok) {
-      return observationFailure(observed);
+      const failure = observationFailure(observed);
+      return mode === 'autonomous' && runtime.state.status === 'waiting_for_observation' ? runAutonomous() : failure;
     }
     runtime.state.revision = observed.revision;
     runtime.state.status = 'waiting_for_decision';
@@ -180,7 +185,7 @@ function createIntentWorker({
   async function runAutonomous() {
     runtime.state.mode = 'autonomous';
     context.mode = 'autonomous';
-    while (runtime.state.status === 'waiting_for_decision' && !stopAutonomous) {
+    while (['waiting_for_decision', 'waiting_for_observation'].includes(runtime.state.status) && !stopAutonomous) {
       if (timedOut()) return enterTimeout();
       if (!agent || typeof agent.decide !== 'function') {
         requestStop('intervention_required', 'agent_adapter_unavailable');
@@ -205,6 +210,9 @@ function createIntentWorker({
           revision: runtime.state.revision,
           summary: context.latestSummary,
           evidenceId: context.latestEvidenceId,
+          observationFailure: context.observationFailure,
+          lastAction: context.lastAction || null,
+          observationStale: context.observationStale,
           ...(context.latestCapture ? { capture: context.latestCapture } : {}),
         }, agentController.signal);
         context.timings.decisionWaitMs += now() - waitStarted;
@@ -222,8 +230,12 @@ function createIntentWorker({
         return snapshotResult(runtime.state.status === 'completed');
       }
       const result = await decide(decision);
-      if (result.ok && decision.agentDecision === 'act') actionSteps += 1;
-      if (result.ok !== true) return result;
+      if (decision?.agentDecision === 'act') actionSteps += 1;
+      if (result.ok !== true) {
+        if (['waiting_for_decision', 'waiting_for_observation'].includes(runtime.state.status)
+          && context.lastAction?.receiptId && context.lastAction.actionId === `${operationId}:${decision?.decisionId}`) continue;
+        return result;
+      }
       if (['completed', 'failed', 'inconclusive', 'cancelled', 'ambiguous', 'intervention_required'].includes(runtime.state.status)) {
         return result;
       }
@@ -233,7 +245,8 @@ function createIntentWorker({
 
   async function decide(decision = {}) {
     if (timedOut()) return enterTimeout();
-    if (runtime.state.status !== 'waiting_for_decision') {
+    const commandAction = decision?.action?.action === 'command';
+    if (runtime.state.status !== 'waiting_for_decision' && !(commandAction && runtime.state.status === 'waiting_for_observation')) {
       return intentError('not_waiting_for_decision', snapshotResult(false));
     }
     if (Number.isInteger(decision?.basedOnRevision) && decision.basedOnRevision > 0 && decision.basedOnRevision !== runtime.state.revision) {
@@ -292,7 +305,8 @@ function createIntentWorker({
     if (stopping) return snapshotResult(false);
     checkExecution();
     if (!acted.ok) {
-      if (!acted.ambiguous && (acted.error === 'reobserve_required' || acted.dispatched === false || acted.settled === true)) {
+      if (context.lastAction?.receiptId && context.lastAction.actionId === `${operationId}:${decision.decisionId}`
+        || acted.error === 'reobserve_required' || acted.dispatched === false || acted.settled === true) {
         runtime.state.status = 'waiting_for_decision';
         runtime.state.error = acted.error;
         runtime.state.seenDecisionIds.add(decision.decisionId);
@@ -309,6 +323,11 @@ function createIntentWorker({
     runtime.state.seenDecisionIds.add(decision.decisionId);
     runtime.state.lastDecisionId = decision.decisionId;
     runtime.state.error = null;
+    if (commandAction && decision.action.observeAfter !== true) {
+      runtime.state.status = 'waiting_for_decision';
+      runtime.emit('waiting_for_decision', { revision: runtime.state.revision, decisionId: decision.decisionId, reason: 'command_returned' });
+      return snapshotResult(true);
+    }
     context.revision += 1;
     runtime.state.revision = context.revision;
     runtime.state.status = 'observing';
@@ -385,6 +404,10 @@ function createIntentWorker({
       stopAutonomous = false;
       if (mode === 'autonomous') return runAutonomous();
     }
+    if (mode === 'autonomous' && ['waiting_for_decision', 'waiting_for_observation'].includes(runtime.state.status)) {
+      stopAutonomous = false;
+      return runAutonomous();
+    }
     return snapshotResult(true);
   }
 
@@ -422,6 +445,9 @@ function createIntentWorker({
       pendingOperations: lifetime.pendingCount,
       terminalEvidenceId,
       lastAction: context.lastAction || null,
+      uiObservation: { available: context.latestRawTree !== undefined,
+        revision: context.latestSummary ? context.store.canExposeRevision(context.operationId).revision ?? null : null,
+        stale: context.observationStale || context.observationFailure !== null },
     };
     if (context.latestCapture) result.capture = context.latestCapture;
     if (context.recording) result.recording = context.recording.info();

@@ -11,7 +11,7 @@ const ctx = { packageName: 'example.app', explicitPackageName: true };
 const fg = { ok: true, packageName: 'example.app', component: 'example.app/.Main', activity: 'example.app.Main',
   windowKind: 'activity', windowType: 1, ownershipVerified: true, windowIdentity: 'window:token1:pid100:start1000' };
 const node = text => ({ visible: true, enabled: true, text, bounds: { left: 0, top: 0, right: 100, bottom: 200 } });
-const tree = (...texts) => ({ activity: { current: 'Metadata only' }, root: { ...node(''), children: texts.map(node) } });
+const tree = (...texts) => ({ coverage: { status: 'complete' }, activity: { current: 'Metadata only' }, root: { ...node(''), children: texts.map(node) } });
 function ports(extra = {}) {
   return { foregroundWindow: async () => fg, bridgeTree: async () => tree('Save, draft'),
     flutterNodes: async () => ({ nodes: [] }), uiaTreeOnce: async () => '<hierarchy><node text="Other page"/></hierarchy>', ...extra };
@@ -59,9 +59,90 @@ test('wait-text cannot assemble a passing condition from different providers or 
 
 test('pure absence cannot pass when observation fails or returns invalid material', async () => {
   for (const read of [async () => { throw new Error('SDK disconnected'); }, async () => ({ ok: false, error: 'timeout' }), async () => ({ root: {} })]) {
-    const result = await waitText(ctx, undefined, { provider: 'native', absentText: ['Loading'], timeoutMs: 100 }, ports({ bridgeTree: read }));
+    const result = await waitText(ctx, undefined, { provider: 'native', absentText: ['Loading'], timeoutMs: 40, intervalMs: 5 }, ports({ bridgeTree: read }));
     assert.equal(result.ok, false); assert.equal(result.error, 'observation_unavailable'); assert.equal(result.dispatched, false);
+    assert.equal(result.deadlineExceeded, true); assert.ok(result.attempts > 1); assert.ok(result.elapsedMs >= 35);
   }
+});
+
+test('transient observation failures recover within one deadline without repeated foreground dumps', async () => {
+  let reads = 0, probes = 0;
+  const result = await waitText(ctx, 'Ready', { provider: 'native', timeoutMs: 500, intervalMs: 2 }, ports({
+    foregroundWindow: async () => { probes++; return fg; },
+    bridgeTree: async () => {
+      if (++reads === 1) throw Object.assign(new Error('Connection restarting'), { code: 'bridge_connection_refused' });
+      if (reads === 2) return { ok: false, error: 'no_current_activity', message: 'Activity is starting' };
+      if (reads === 3) return tree('Loading');
+      return tree('Ready');
+    },
+  }));
+  assert.equal(result.ok, true); assert.equal(result.attempts, 4); assert.equal(result.failedReads, 2);
+  assert.equal(result.successfulReads, 2); assert.equal(probes, 2);
+  assert.equal(result.failures[0].error, 'no_current_activity');
+  assert.equal(result.failures[0].message, 'Activity is starting');
+  assert.equal(result.foregroundObservations.length, 2);
+});
+
+test('an optional foreground probe cannot consume the entire text deadline', async () => {
+  let reads = 0;
+  const result = await waitText(ctx, 'Ready', { provider: 'native', timeoutMs: 240 }, ports({
+    bridgeTree: async () => { reads++; return tree('Ready'); },
+    foregroundWindow: async () => { await executionSleep(10000); return fg; },
+  }));
+  assert.equal(result.ok, true); assert.equal(reads, 1);
+  assert.equal(result.foregroundObservations.at(-1).status, 'unknown');
+  assert.ok(result.warnings.some(warning => warning.code === 'deadline_exceeded'));
+});
+
+test('partial/unknown coverage permits positive evidence and explicit observed absence, but cannot prove complete absence', async () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  for (const coverage of [{ status: 'partial' }, undefined]) {
+    const rawTree = { ...tree('Ready'), coverage };
+    const deps = ports({ bridgeTree: async () => rawTree });
+    assert.equal((await waitText(ctx, 'Ready', { timeoutMs: 100 }, deps)).ok, true);
+    const args = { packageName: 'example.app', provider: 'native', absentText: ['Loading'], timeoutMs: 30, intervalMs: 4 };
+    const strict = await waitText(ctx, undefined, args, deps);
+    assert.equal(strict.ok, false); assert.equal(strict.lastCheck.absenceProven, false);
+    assert.deepEqual(strict.lastCheck.unexpected, []);
+    const guided = withActionGuidance('wait-text', args, strict);
+    const choice = guided.guidance.nextActions.find(call => call.command === 'wait-text');
+    validateCommandArguments(choice.command, choice.arguments);
+    assert.equal(choice.arguments.absenceScope, 'observed');
+    const observed = await waitText(ctx, undefined, choice.arguments, deps);
+    assert.equal(observed.ok, true); assert.equal(observed.matched.absenceScope, 'observed');
+    assert.equal(observed.matched.coverage.status, coverage?.status || 'unknown');
+  }
+});
+
+test('a complete later capture establishes absence, and background coverage does not contaminate the foreground', async () => {
+  let reads = 0;
+  const result = await waitText(ctx, undefined, { provider: 'native', absentText: ['Loading'], timeoutMs: 200, intervalMs: 2 }, ports({
+    bridgeTree: async () => ({ foregroundWindowId: 'dialog', windows: [
+      { windowId: 'activity', coverage: { status: 'partial' }, root: tree('Loading').root },
+      { windowId: 'dialog', coverage: { status: ++reads === 1 ? 'partial' : 'complete' }, root: tree('Ready').root },
+    ] }),
+  }));
+  assert.equal(result.ok, true); assert.equal(reads, 2); assert.equal(result.matched.coverage.status, 'complete');
+});
+
+test('a known truncated label cannot match its prefix as a whole label in Native or Flutter', async () => {
+  for (const provider of ['native', 'flutter']) {
+    const item = { ...node('prefix'), textTruncated: true };
+    const rawTree = provider === 'native' ? { ...tree(), root: item } : { truncated: false, nodes: [item] };
+    assert.deepEqual([...visibleLabels(provider, rawTree)], []);
+    const deps = ports({ bridgeTree: async () => rawTree, flutterNodes: async () => rawTree });
+    const result = await waitText(ctx, 'prefix', { provider, timeoutMs: 25, intervalMs: 3 }, deps);
+    assert.equal(result.ok, false); assert.equal(result.lastCheck.coverage.status, 'partial');
+  }
+});
+
+test('UIA coverage retains missing-root warnings even from an older incorrect truncated:false envelope', async () => {
+  const xml = '<hierarchy aab-truncated="false" aab-warnings="[{&quot;code&quot;:&quot;uia_window_root_unavailable&quot;}]"><node text="Ready"/></hierarchy>';
+  const deps = ports({ uiaTreeOnce: async () => xml });
+  const positive = await waitText(ctx, 'Ready', { provider: 'uia', timeoutMs: 100 }, deps);
+  assert.equal(positive.ok, true); assert.equal(positive.matched.coverage.status, 'partial');
+  const absent = await waitText(ctx, undefined, { provider: 'uia', absentText: ['Loading'], timeoutMs: 25, intervalMs: 3 }, deps);
+  assert.equal(absent.ok, false); assert.equal(absent.lastCheck.absenceProven, false);
 });
 
 test('foreground changes are warnings independent of the text predicate', async () => {

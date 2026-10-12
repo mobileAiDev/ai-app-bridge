@@ -16,7 +16,7 @@ const executionKeys = ['ok', 'error', 'message', 'field', 'details', 'dispatched
 // carries are copied; a business field of the same name in `value` is not one.
 const scriptControlKeys = ['operationId', 'status', 'pauseReason', 'eventSequence', 'resultRef', 'persisted', 'timedOut', 'waitMs', 'pendingQuestion'];
 const intentControlKeys = ['operationId', 'status', 'revision', 'lastDecisionId', 'eventSequence', 'eventGap', 'droppedEvents', 'evidenceId',
-  'latestEvidenceIds', 'terminalEvidenceId', 'observationFailure', 'provider', 'observationTarget', 'deadlineMs', 'pendingOperations', 'lastAction'];
+  'latestEvidenceIds', 'terminalEvidenceId', 'observationFailure', 'provider', 'observationTarget', 'deadlineMs', 'pendingOperations', 'lastAction', 'uiObservation', 'background', 'accepted', 'timedOut', 'waitMs'];
 const commonControlKeys = ['cursor', 'nextCursor', 'factCursor', 'hasMore', 'truncated', 'dropped', 'gap', 'updatedAtMs', 'observedAtMs', 'capturedAtMs'];
 const intentCommands = new Set(['intent', 'install-apk', 'permission-dialog']);
 const captureCommands = new Set(['logs', 'network', 'state', 'events', 'ios-logs', 'ios-network', 'ios-state', 'ios-events',
@@ -37,20 +37,89 @@ function pick(source, keys) {
 function executionFacts(value, completed) {
   if (!isRecord(value)) return { ok: completed ? true : null };
   const facts = pick(value, executionKeys);
+  if (Array.isArray(facts.details?.candidates)) {
+    const { candidates, ...details } = facts.details;
+    facts.details = { ...details, candidatesPath: '/details/candidates', availableCandidates: candidates.length };
+  }
   if (facts.ok === undefined) facts.ok = null;
   return facts;
+}
+
+// Full candidates remain source content. Keep the extraction-proof control
+// preview short so it cannot consume the entire delivery budget by itself.
+function candidatePreview(source, path, offset = 0, count = 20) {
+  const all = source.candidates, candidates = [];
+  let bytes = 2;
+  for (const candidate of all.slice(offset, offset + Math.min(count, 20))) {
+    const size = Buffer.byteLength(JSON.stringify(candidate)) + 1;
+    if (bytes + size > 8192) break;
+    candidates.push(candidate); bytes += size;
+  }
+  const hasMore = offset + candidates.length < all.length;
+  return { candidates, candidatesTruncated: source.candidatesTruncated === true || hasMore,
+    ...(hasMore || offset > 0 || source.candidatesTruncated ? { candidatePage: {
+      path, offset, count: candidates.length, available: all.length, sourceTruncated: source.candidatesTruncated === true,
+      ...(source.matched === undefined ? {} : { matched: source.matched }), hasMore,
+    } } : {}) };
+}
+
+function candidateReads(body, frozen, extract) {
+  for (const control of [body.control, body.control.lastAction]) {
+    const page = control?.candidatePage;
+    if (!page) continue;
+    let nextOffset = page.offset + page.count;
+    if (extract?.mode === 'select' && extract.path === page.path && Array.isArray(body.value)) {
+      const all = page.path.split('/').slice(1).reduce((value, key) => value[key], frozen.snapshot.value);
+      const offset = extract.offset ?? 0;
+      Object.assign(control, candidatePreview({ candidates: all, candidatesTruncated: page.sourceTruncated, matched: page.matched }, page.path, offset, body.value.length));
+      nextOffset = offset + body.value.length;
+    }
+    const current = control.candidatePage;
+    if (!current) continue;
+    delete current.read;
+    current.hasMore = nextOffset < current.available;
+    if (current.hasMore && body.control.source.ref) {
+      const all = current.path.split('/').slice(1).reduce((value, key) => value[key], frozen.snapshot.value);
+      const availableBytes = DEFAULT_OUTPUT_BYTES - replyBytes({ ...body, value: null }) - 2048;
+      let bytes = 2, count = 0;
+      for (const candidate of all.slice(nextOffset, nextOffset + 20)) {
+        bytes += Buffer.byteLength(JSON.stringify(candidate)) + 1;
+        if (bytes > availableBytes) break;
+        count++;
+      }
+      current.read = { command: 'response', arguments: { operation: 'read', ref: body.control.source.ref },
+        extract: { mode: 'select', path: current.path, offset: nextOffset, limit: Math.max(1, count) } };
+    }
+  }
 }
 
 function controlFacts(command, value, history) {
   const control = {};
   if (isRecord(value)) {
-    for (const key of ['warnings', 'foregroundObservations']) {
+    for (const key of ['warnings', 'foregroundObservations', 'guidance', 'selectionRequired']) {
       if (value[key] !== undefined) control[key] = value[key];
       else if (intentCommands.has(command) && value.summary?.[key] !== undefined) control[key] = value.summary[key];
     }
     if (command === 'script') Object.assign(control, pick(value, scriptControlKeys));
     else if (intentCommands.has(command)) Object.assign(control, pick(value, intentControlKeys));
     else Object.assign(control, pick(value, commonControlKeys));
+    if (value.controlAccepted === true) Object.assign(control, pick(value,
+      ['controlAccepted', 'completionScope', 'controlId', 'controlPid', 'status', 'resultPath']));
+    if (isRecord(control.lastAction) && Object.hasOwn(control.lastAction, 'result')) {
+      const { result, ...actionFacts } = control.lastAction;
+      // Command output is source data, not continuation metadata. Copying a
+      // child Script result here doubles it and can make auto delivery useless.
+      control.lastAction = { ...actionFacts, resultPath: '/lastAction/result',
+        ...(isRecord(result) ? { resultControl: pick(result, ['command', 'operationId', 'status', 'revision', 'eventSequence',
+          'resultRef', 'pendingQuestion', 'controlAccepted', 'controlId', 'resultPath', 'completionScope', 'accepted', 'background']) } : {}) };
+    }
+    const selection = Array.isArray(value.candidates) ? [value, '/candidates']
+      : Array.isArray(value.details?.candidates) ? [value.details, '/details/candidates']
+        : Array.isArray(value.summary?.candidates) ? [value.summary, '/summary/candidates'] : null;
+    if (selection) Object.assign(control, candidatePreview(...selection));
+    if (Array.isArray(control.lastAction?.candidates)) control.lastAction = {
+      ...control.lastAction, ...candidatePreview(control.lastAction, '/lastAction/candidates'),
+    };
     if (captureCommands.has(command)) {
       Object.assign(control, pick(value, captureControlKeys));
       if (isRecord(value._factCache)) control._factCache = pick(value._factCache,
@@ -68,7 +137,7 @@ function controlFacts(command, value, history) {
 
 // `reply` is the internal {value, history?} of the executed command; `stage`
 // names the public stage that rejected the request, when one did.
-function publicReply({ command, reply, stage, completed = false }) {
+function publicReply({ command, reply, stage, completed = false, args = {} }) {
   const { kind, value } = encodeReply(reply);
   const execution = executionFacts(reply.value, completed);
   const failureStage = stage || (execution.ok !== true || execution.ambiguous === true ? 'execution' : undefined);
@@ -81,6 +150,10 @@ function publicReply({ command, reply, stage, completed = false }) {
     kind, value,
     ...(failureStage ? { failureStage } : {}),
   };
+  if (command === 'logcat') {
+    const guidance = require('./shared-kernel/logcat-query').logcatGuidance(args, reply.value);
+    if (guidance) body.control.guidance = guidance;
+  }
   try {
     body.delivery.valueBytes = Buffer.byteLength(JSON.stringify(value));
     JSON.stringify(body);
@@ -88,8 +161,9 @@ function publicReply({ command, reply, stage, completed = false }) {
   } catch { return serializationFailure(body); }
 }
 
-function publicFailure({ command, stage, error, maxBytes = DEFAULT_OUTPUT_BYTES }) {
-  return boundedReply(publicReply({ command, reply: { value: commandFailure(error, command) }, stage }), maxBytes);
+function publicFailure({ command, stage, error, args = {}, maxBytes = DEFAULT_OUTPUT_BYTES }) {
+  const value = require('./shared-kernel/action-guidance').withActionGuidance(command, args, commandFailure(error, command));
+  return boundedReply(publicReply({ command, reply: { value }, stage }), maxBytes);
 }
 
 function minimalExecution(execution) {
@@ -132,24 +206,57 @@ async function finishReply({ body, extract, output, frozen, getStore, sourceReas
   body.delivery.limitBytes = limitBytes;
   if (body.delivery.reason === 'response_serialization_failed') return boundedReply(body, limitBytes);
   const { freezeResponse, MAX_SNAPSHOT_BYTES } = require('./response-store');
-  const extracting = extract !== null;
-  const needsSource = extracting || replyBytes(body) > limitBytes;
+  const automatic = extract?.mode === 'auto';
+  const extracting = extract !== null && !automatic;
+  const valueBytes = body.value === undefined ? 0 : Buffer.byteLength(JSON.stringify(body.value));
+  const previewing = automatic && replyBytes(body) > limitBytes;
+  const retained = Boolean(frozen);
+  let compact = null;
+  // Try a complete representation for repetitive medium/large JSON too. This
+  // threshold changes formatting only: it never removes content or forces a read.
+  if (automatic && body.kind === 'json' && (previewing || valueBytes > 32 * 1024)) {
+    try { frozen ||= freezeResponse(body); }
+    catch { return boundedReply(serializationFailure(body), limitBytes); }
+    compact = require('./extraction/tables').tableView(frozen.snapshot.value, valueBytes, body.control.source);
+    if (!previewing && compact && Buffer.byteLength(JSON.stringify(compact)) > valueBytes * 0.7) compact = null;
+  }
+  const needsSource = extracting || previewing || compact || replyBytes(body) > limitBytes;
   if (!needsSource) return body;
   if (!frozen) {
     try { frozen = freezeResponse(body); }
     catch { return boundedReply(serializationFailure(body), limitBytes); }
+  }
+  if (!retained) {
     if (getStore && body.kind !== 'bytes') {
       try { body.control.source = await getStore().save(frozen); }
       catch (error) { body.control.source = { ...body.control.source, reason: undefined, error: error.code || 'snapshot_save_failed' }; }
     } else body.control.source = { ...body.control.source, reason: body.kind === 'bytes' ? 'binary_snapshot_unsupported' : sourceReason };
   }
-  if (extracting) {
+  if (previewing || compact) {
+    const original = { value: body.value, kind: body.kind, extraction: body.extraction, delivery: body.delivery };
+    body.kind = 'json';
+    body.extraction = { status: 'succeeded', mode: 'auto', partial: true };
+    body.delivery = { status: 'overview', originalValueBytes: valueBytes, valueBytes: 0, limitBytes };
+    body.value = null;
+    const availableBytes = Math.max(0, limitBytes - replyBytes(body) - 64);
+    if (compact && body.control.source.ref) compact.read = { command: 'response', arguments: { operation: 'read', ref: body.control.source.ref },
+      extract: { mode: 'select', path: compact.tables[0]?.path ?? compact.sharedTexts[0].paths[0].slice('/data'.length), offset: 0, limit: 1 } };
+    if (compact && Buffer.byteLength(JSON.stringify(compact)) <= availableBytes) {
+      body.value = compact;
+      body.extraction.partial = false;
+      body.delivery.status = 'compact';
+    } else if (body.control.source.persisted) {
+      body.value = require('./extraction/overview').overview(body.command, frozen.snapshot.value, frozen.snapshot.kind, valueBytes, body.control.source, availableBytes);
+    } else Object.assign(body, original);
+    body.delivery.valueBytes = Buffer.byteLength(JSON.stringify(body.value));
+  } else if (extracting) {
     let result;
     if (frozen.snapshot.kind === 'bytes') result = { ok: false, error: 'extraction_binary_unsupported' };
     else if (frozen.bytes.length > MAX_SNAPSHOT_BYTES) result = { ok: false, error: 'extraction_input_too_large', maxBytes: MAX_SNAPSHOT_BYTES };
     else {
       const { kind, value: response, execution, control } = frozen.snapshot;
-      result = await require('./extraction/runner').runExtraction(extract, { kind, response, execution, control });
+      result = extract.mode === 'select' ? require('./extraction/overview').selectValue(response, extract)
+        : await require('./extraction/runner').runExtraction(extract, { kind, response, execution, control });
     }
     const { ok, result: value, timings, ...details } = result;
     body.extraction = { status: ok ? 'succeeded' : 'failed', mode: extract.mode,
@@ -164,12 +271,13 @@ async function finishReply({ body, extract, output, frozen, getStore, sourceReas
       body.failureStage ||= 'extraction';
     }
   }
+  candidateReads(body, frozen, extract);
   return boundedReply(body, limitBytes);
 }
 
 function responseReply({ snapshot, source }) {
   return { command: 'response', execution: { ok: true, dispatched: false, ambiguous: false },
-    control: { ...snapshot.control, origin: { ...snapshot.identity, execution: snapshot.execution }, source },
+    control: { ...structuredClone(snapshot.control), origin: { ...snapshot.identity, execution: snapshot.execution }, source },
     extraction: { status: 'skipped' }, delivery: { status: 'inline', valueBytes: Buffer.byteLength(JSON.stringify(snapshot.value)) },
     kind: snapshot.kind, value: snapshot.value };
 }

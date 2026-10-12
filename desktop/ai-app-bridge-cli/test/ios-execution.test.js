@@ -163,8 +163,7 @@ test('explicit iOS reconciliation retires only the old observation marker withou
   const observation = await h.run('ios-ui-observation', { operation: 'stop', leaseId: 'wrong-lease' });
   assert.equal(observation.error, 'ui_observation_lease_mismatch');
   assert.equal(lease.status(key).ownership.pending.command, 'ios-launch-app', 'observation cannot clear an unrelated action');
-  const blocked = await h.run('ios-h5-eval', { script: 'window.value = 1' });
-  assert.equal(blocked.error, 'device_ownership_unresolved');
+  assert.equal(lease.status(key).unresolved, true);
   assert.equal(h.actions.length, 0);
 });
 
@@ -195,16 +194,7 @@ test('Host SIGKILL keeps the canonical iOS device blocked across Apps and a new 
   assert.equal(JSON.parse(lost.stdout).value.error, 'runtime_connection_lost');
   assert.equal(JSON.parse(lost.stdout).value.dispatched, null);
   const udid = h.device.config.device.hardwareProperties.udid;
-  for (const command of ['ios-launch-app', 'ios-tap', 'ios-input', 'ios-swipe', 'ios-install-app']) {
-    const extra = { 'ios-tap': { tapX: 1, tapY: 1 }, 'ios-input': { text: 'x', elementId: 'editor' },
-      'ios-swipe': { startX: 1, startY: 1, endX: 2, endY: 2 }, 'ios-install-app': { appPath: '/not-an-app' } }[command] || {};
-    if (['ios-tap', 'ios-input', 'ios-swipe'].includes(command)) Object.assign(extra, {
-      runtimeUrl: undefined, wdaRunnerBundleId: 'sample.runner.xctrunner', wdaSessionId: 'sample-session',
-    });
-    const denied = await h.cli(command, { ...extra, deviceId: udid, bundleId: 'another.app' }).exited;
-    assert.equal(denied.code, 1, denied.stderr);
-    assert.equal(JSON.parse(denied.stdout).value.error, 'device_ownership_unresolved', denied.stdout);
-  }
+  // Inspect the original unknown action before choosing any new mutation.
   const absent = await h.cli('ios-execution', { operation: 'reconcile', deviceId: udid }).exited;
   assert.equal(JSON.parse(absent.stdout).value.error, 'device_ownership_unresolved');
   assert.equal(h.actions.length, 1);

@@ -3,7 +3,7 @@
 const h5Target = require('../shared-kernel/android-h5-target');
 const { isDeepStrictEqual } = require('node:util');
 const { androidAppTargetKey, getProcessTargetLease } = require('../shared-kernel/target-lease-protocol');
-const { validBounds, revalidateNativeNode, nativeTargetRequest } = require('../shared-kernel/native-target');
+const { validBounds, selectNativeNode, nativeTargetRequest } = require('../shared-kernel/native-target');
 const { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest } = require('../shared-kernel/flutter-target');
 const { selectUiaNode } = require('../shared-kernel/uia-target');
 const { observedTarget: observedUiaTarget } = require('../shared-kernel/uia-protocol');
@@ -93,7 +93,7 @@ function createProductionIntentDeviceAdapter({
         const ctx = context({ serial, packageName: route?.targetPackageName ?? targetPackageName, port, adb: targetAdb, runtimeActionId: actionId });
         let dispatchAttempted = false;
         const feedback = await readForegroundFeedback(ctx, impl.foregroundWindow, route?.observation);
-        const finish = result => withForeground(shapeAction(result), feedback);
+        const finish = result => withForeground(shapeAction(require('../shared-kernel/action-guidance').withActionGuidance('intent', ctx, result)), feedback);
         if (route && spec.provider !== route.provider) return finish({ ok: false, error: 'observation_provider_mismatch', dispatched: false });
         const actionPorts = { ...impl };
         for (const name of ['tap', 'uiaTap', 'inputText', 'nativeGesture', 'swipe', 'keyevent', 'flutterAction', 'h5Control']) {
@@ -198,7 +198,7 @@ async function tapUniqueUiaNode(impl, ctx, spec, rawTree) {
 }
 
 async function tapFromNativeObservedTree(impl, ctx, spec, rawTree, actionId) {
-  const selected = await revalidateNativeNode(() => impl.bridgeTree(ctx), rawTree, spec);
+  const selected = selectNativeNode(rawTree, spec);
   if (!selected.ok) return selected;
   const { x, y } = selected;
   const guarded = nativeTargetRequest(selected.node, spec.selector || { text: spec.text });
@@ -208,7 +208,7 @@ async function tapFromNativeObservedTree(impl, ctx, spec, rawTree, actionId) {
 
 async function inputFromNativeObservedTree(impl, ctx, spec, rawTree, actionId) {
   if (typeof spec.value !== 'string') return { ok: false, error: 'input_value_required', dispatched: false };
-  const selected = await revalidateNativeNode(() => impl.bridgeTree(ctx), rawTree, spec, true);
+  const selected = selectNativeNode(rawTree, spec, true);
   if (!selected.ok) return selected;
   const guarded = nativeTargetRequest(selected.node, spec.selector || { text: spec.text });
   if (!guarded.ok) return guarded;
@@ -226,7 +226,7 @@ async function gestureFromNativeObservedTree(impl, ctx, spec, rawTree, actionId)
   if (spec.action === 'swipe' && (!Number.isFinite(spec.deltaX) || !Number.isFinite(spec.deltaY))) return reject('invalid_swipe_delta');
   if (spec.action === 'scroll' && !['up', 'down'].includes(spec.direction)) return reject('unsupported_scroll_direction');
   if (!spec.selector) return reject('explicit_native_selector_required');
-  const selected = await revalidateNativeNode(() => impl.bridgeTree(ctx), rawTree, spec);
+  const selected = selectNativeNode(rawTree, spec);
   if (!selected.ok) return selected;
   const guarded = nativeTargetRequest(selected.node, spec.selector);
   if (!guarded.ok) return guarded;
@@ -277,6 +277,8 @@ function shapeAction(result) {
     ok: result.ok,
     mechanicalStatus: result.ok ? 'ok' : 'failed',
     providerResult: result,
+    ...Object.fromEntries(['message', 'candidates', 'candidatesTruncated', 'matched', 'selectionRequired', 'guidance']
+      .filter(key => result[key] !== undefined).map(key => [key, result[key]])),
     ...(result.warnings ? { warnings: result.warnings, foregroundObservations: result.foregroundObservations } : {}),
     ambiguous: result.ambiguous === true,
     dispatched: result.dispatched ?? (result.ok ? true : null),

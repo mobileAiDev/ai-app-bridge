@@ -42,7 +42,8 @@ function permissionDeviceAdapter({ args, origin, expectedState, canDispatch, onD
   const base = createProductionIntentDeviceAdapter({ adb: args.adb, ports: {
     ...bridge,
     uiaTap: (ctx, binding, options) => input(() => bridge.uiaTap(ctx, binding, options)),
-    keyevent: ctx => input(() => bridge.keyevent(ctx, 4)),
+    keyevent: (ctx, keyCode) => input(() => bridge.keyevent(ctx, keyCode)),
+    swipe: (...values) => input(() => bridge.swipe(...values)),
   } });
   return {
     async observe(request) {
@@ -60,12 +61,12 @@ function permissionDeviceAdapter({ args, origin, expectedState, canDispatch, onD
       selectedRequest = request.route?.permissionRequest;
       if (!sameRequest(origin(), selectedRequest)) return rejection('permission_request_changed');
       return providerResult(await base.action({ ...request, primaryProvider: 'uia', foregroundPackages: [origin().packageName],
-        spec: { ...request.spec, provider: 'uia', exact: true, requireClickable: true } }), 'action');
+        spec: { ...request.spec, provider: 'uia' } }), 'action');
     },
   };
 }
 
-async function createPermissionIntent({ args, operationId, store, recording, dependencies = {} }) {
+async function createPermissionIntent({ args, operationId, store, recording, commands, dependencies = {} }) {
   const ownership = (dependencies.lease || getProcessDeviceMutationLease()).acquire(args.serial);
   if (!ownership.ok) throw new CommandError(ownership.error, 'The device is owned by another operation.', { details: { serial: args.serial } });
   const readState = dependencies.readState || readPermissionState;
@@ -83,8 +84,8 @@ async function createPermissionIntent({ args, operationId, store, recording, dep
       onDispatch: () => { dispatched = true; permissionDialog.actionCount++; }, readState, readRequest,
       onFailure: failure => { permissionDialog.providerFailure = failure; },
       ports: dependencies.ports });
-    worker = createIntentWorker({ operationId, target, ownsOutcome: false, timeoutMs: null, provider: 'uia', store, recording, adapter,
-      goal: `Resolve the observed runtime permission request from ${args.packageName}: ${args.outcome} ${args.permission}. Read the actual UI and select exactly one visible control. Completion requires PackageManager state and closure of this Activity instance. No recording or other App action is part of this workflow.` });
+    worker = createIntentWorker({ operationId, target, ownsOutcome: false, timeoutMs: null, provider: 'uia', store, recording, adapter, commands,
+      goal: `Resolve the observed runtime permission request from ${args.packageName}: ${args.outcome} ${args.permission}. Choose any supported UIA Intent action from the observed UI, including tap, scroll, back or keyevent. Completion is independently verified using PackageManager state and closure of this Activity instance.` });
   } catch (error) { ownership.release(); throw error; }
   function snapshot() {
     return { ...worker.status(), permissionDialog: { ...permissionDialog } };
@@ -174,10 +175,11 @@ async function createPermissionIntent({ args, operationId, store, recording, dep
     if (stopping) return finish(stopping);
     if (verdict) return finish(verdict);
     permissionDialog.phase = worker.runtime.state.status;
-    return { ...snapshot(), ...(result ? { ok: result.ok, error: result.error } : {}) };
+    return { ...snapshot(), ...Object.fromEntries(['ok', 'error', 'message', 'field', 'details', 'guidance', 'dispatched', 'ambiguous']
+      .filter(key => result?.[key] !== undefined).map(key => [key, result[key]])) };
   }
   function workerFailure(result) {
-    return ['failed', 'ambiguous', 'blocked_evidence_store'].includes(result.status) ? { status: result.status, error: result.error } : null;
+    return ['failed', 'inconclusive', 'ambiguous', 'blocked_evidence_store'].includes(result.status) ? { status: result.status, error: result.error } : null;
   }
   return {
     ...worker, isManagedWorkflow: true, isFinished: () => final, status: snapshot,
@@ -197,7 +199,7 @@ async function createPermissionIntent({ args, operationId, store, recording, dep
       permissionDialog.planEvidenceId = plan.evidenceId;
       if (stopping) return {};
       const result = await worker.start();
-      return { result, verdict: result.ok ? null : { status: 'inconclusive', error: result.error } };
+      return { result, verdict: workerFailure(result) };
     }),
     observe: options => run(async () => {
       const verdict = await verify();
@@ -207,11 +209,12 @@ async function createPermissionIntent({ args, operationId, store, recording, dep
       return { result, verdict: workerFailure(result) };
     }),
     decide: decision => run(async () => {
-      const action = decision?.action;
-      const allowed = action?.action === 'tap' && action.selector && Object.keys(action).every(key => ['action', 'selector', 'provider', 'exact', 'requireClickable'].includes(key))
-        || args.outcome === 'dismiss' && action?.action === 'back' && Object.keys(action).every(key => ['action', 'provider'].includes(key));
-      if (decision?.agentDecision !== 'act' || !allowed || action?.exact === false || action?.provider && action.provider !== 'uia') {
-        return { result: { ok: false, error: 'permission_requires_observed_decision', message: 'Use an exact observed tap; dismiss also accepts back. Completion is verified independently. Use intent cancel to stop the operation.' } };
+      if (decision?.agentDecision === 'complete') {
+        const verdict = await verify();
+        if (verdict) return { verdict };
+        return { result: { ok: false, error: 'permission_outcome_not_verified',
+          message: 'The requested permission outcome has not been verified. Observe the dialog and choose a supported UIA action, or cancel this workflow to continue with generic Intent or adb-exec.',
+          guidance: { nextActions: ['observe', 'cancel'].map(operation => ({ command: 'intent', arguments: { operation, operationId } })) } } };
       }
       const previous = worker.context.latestEvidenceIds.receipt;
       const result = await worker.decide(decision);
@@ -220,6 +223,13 @@ async function createPermissionIntent({ args, operationId, store, recording, dep
       const receiptId = worker.context.latestEvidenceIds.receipt;
       if (receiptId && receiptId !== previous) {
         const receipt = store.read(receiptId);
+        if (decision.action?.action === 'command' && receipt.ok) {
+          // Diagnosis and a recoverable command failure are not failed UI
+          // permission attempts. Keep their evidence and let the Agent choose.
+          if (receipt.record.mechanicalStatus !== 'ok' || receipt.record.ambiguous || !receipt.record.dispatched) return { result };
+          const commandTarget = receipt.record.providerResult?.commandTarget;
+          if (commandTarget?.platform !== 'android' || commandTarget.serial !== args.serial) return { result };
+        }
         if (!result.ok && receipt.ok && receipt.record.dispatched === false && !receipt.record.ambiguous) return { result };
         if (!receipt.ok || receipt.record.mechanicalStatus !== 'ok' || receipt.record.ambiguous || !receipt.record.dispatched) {
           return { verdict: { status: 'inconclusive', error: 'permission_action_not_verified' } };

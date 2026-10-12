@@ -59,7 +59,7 @@ test('native longPress requires explicit bounded integer duration before any dis
 test('native longPress rejects ambiguous/hidden/out-of-window nodes and invalid selectors', async () => {
   const cases = [
     [action({ selector: undefined, text: 'Note A' }), tree(), 'explicit_native_selector_required'],
-    [action({ selector: { text: 'Note A', resourceName: 'example.notes:id/Title' } }), tree(), 'explicit_native_selector_required'],
+    [action({ selector: { text: 'Note A', clickable: 'true' } }), tree(), 'explicit_native_selector_required'],
     [action(), tree([node(), node()]), 'native_selector_ambiguous'],
     [action(), tree([node({ visible: false })]), 'native_selector_not_found'],
     [action(), tree([node({ enabled: false })]), 'native_selector_not_found'],
@@ -151,7 +151,7 @@ test('Intent records the selected SDK target and rejects stale revision reuse', 
   assert.equal(start.status, 'waiting_for_decision');
   const before = store.latest(start.operationId, 'observation');
   const next = await handle({ operation: 'decide', operationId: start.operationId, decision: { decisionId: 'hold-note', agentDecision: 'act', basedOnRevision: start.revision, action: action() } });
-  assert.equal(next.status, 'waiting_for_decision'); assert.equal(calls.length, 1); assert.equal(observations, 3);
+  assert.equal(next.status, 'waiting_for_decision'); assert.equal(calls.length, 1); assert.equal(observations, 2);
   const receipt = store.latest(start.operationId, 'action-receipt');
   assert.equal(receipt.actionId, 'long-press-sdk-executor:hold-note');
   assert.equal(receipt.rawTreeId, before.rawTreeId); assert.equal(receipt.mechanicalStatus, 'ok');

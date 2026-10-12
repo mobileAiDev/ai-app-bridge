@@ -26,20 +26,25 @@ test('Web controls publish exact selectors and mode-specific arguments', () => {
   const bound = { sessionId: target.sessionId, runtimeEpoch: target.runtimeEpoch };
   for (const [command, args] of [
     ['web-click', { selector: { text: 'Save', tag: 'button' } }],
+    ['web-click', { selector: { text: 'Save', css: '#save' } }],
     ['web-input', { selector: { elementId: 'e1' }, value: '' }],
     ['web-key', { selector: { elementId: 'e1' }, key: 'Enter' }],
     ['web-scroll', { selector: { elementId: 'e1' }, mode: 'into-view' }],
     ['web-scroll', { mode: 'by', deltaY: 200 }],
+    ['web-dom', { query: { text: 'Agree', tag: 'button' }, offset: 20, maxControls: 50 }],
+    ['web-dom', { selector: 'button', offset: 30 }],
   ]) assert.deepEqual(validateCommandArguments(command, { ...bound, ...args }), { ...bound, ...args });
   for (const [command, args] of [
     ['web-click', { selector: '#save' }],
-    ['web-click', { selector: { text: 'Save', css: '#save' } }],
     ['web-click', { targetText: 'Save' }],
     ['web-input', { selector: { elementId: 'e1' }, value: 7 }],
     ['web-key', { selector: { elementId: 'e1' }, key: 'Tab' }],
     ['web-scroll', { selector: { elementId: 'e1' }, deltaY: 200 }],
     ['web-scroll', { mode: 'into-view', selector: { elementId: 'e1' }, deltaY: 200 }],
     ['web-scroll', { mode: 'by' }],
+    ['web-dom', { query: { text: 'Agree' }, selector: 'button' }],
+    ['web-dom', { offset: -1 }],
+    ['web-dom', { history: true, offset: 0 }],
   ]) assert.throws(() => validateCommandArguments(command, { ...bound, ...args }));
 });
 
@@ -50,7 +55,7 @@ test('only the serving h5 Web adapter and typed Script controls are admitted', (
   assert.equal(authorizeCommand('web-dom', ['app.read']).ok, true);
   assert.equal(authorizeCommand('web-key', ['app.interact']).ok, true);
   assert.equal(authorizeCommand('web-key', ['app.read']).error, 'permission_not_granted');
-  assert.equal(authorizeCommand('web-command', ['app.interact']).error, 'command_permanently_denied');
+  assert.equal(authorizeCommand('web-command', ['app.interact']).error, 'permission_not_granted');
   assert.equal(catalogPayload().executablePlatforms.includes('web'), true);
 });
 

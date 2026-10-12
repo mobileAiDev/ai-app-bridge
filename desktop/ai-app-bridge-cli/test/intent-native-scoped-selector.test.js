@@ -36,32 +36,32 @@ test('actual NotallyX label topology rejects global duplicate edit selectors, se
  }
 });
 
-test('scope requires a unique visible anchor and never searches globally when missing',async()=>{
+test('scope matches visible anchors and never searches globally when missing',async()=>{
  for(const [rawTree,error] of [
   [tree([row('Another label')]),'native_scope_anchor_not_found'],
-  [tree([row(),row()]),'native_scope_anchor_ambiguous'],
+  [tree([row(),row()]),'native_selector_ambiguous'],
   [tree([row(undefined,{visible:false})]),'native_scope_anchor_not_found'],
   [tree([row(undefined,{children:[node({text:'AAB扩展标签-01',bounds:{left:700,top:20,right:800,bottom:60}}),node({resourceName:EDIT})]})]),'native_scope_anchor_not_found'],
  ]){const h=harness();const r=await dispatch(h,selector(),rawTree);assert.equal(r.error,error);assert.equal(r.dispatched,false);assert.equal(h.calls.length,0);}
  const h=harness();assert.equal((await dispatch(h,selector(),tree([row(),row(undefined,{visible:false})]))).ok,true);
 });
 
-test('explicit ancestor must be unique; wrong or multiple matching ancestors never widen scope',async()=>{
+test('explicit ancestor scope never falls back to the whole page',async()=>{
  const nested=tree([row(undefined,{children:[row()]})]);
  const cases=[
   [{...selector(),within:{...scope(),ancestor:{className:'android.widget.FrameLayout'}}},tree(),'native_scope_ancestor_not_found'],
-  [{...selector(),within:{...scope(),ancestor:{className:'android.widget.LinearLayout'}}},nested,'native_scope_ancestor_ambiguous'],
   [{...selector(),within:{...scope(),ancestor:{className:'android.widget.LinearLayout',parent:{resourceName:'id/MissingParent'}}}},tree(),'native_scope_ancestor_not_found'],
  ];
  for(const [s,t,error]of cases){const h=harness();const r=await dispatch(h,s,t);assert.equal(r.error,error);assert.equal(r.dispatched,false);assert.equal(h.calls.length,0);}
+ const nestedHarness=harness();assert.equal((await dispatch(nestedHarness,{...selector(),within:{...scope(),ancestor:{className:'android.widget.LinearLayout'}}},nested)).ok,true);
  const onlyRow=tree([node({className:'android.widget.LinearLayout',bounds:{left:0,top:0,right:600,bottom:900},children:[row(undefined,{resourceName:'id/ExactRow'})]})]);
  const h=harness();const r=await dispatch(h,{resourceName:EDIT,within:{text:'AAB扩展标签-01',ancestor:{resourceName:'id/ExactRow'}}},onlyRow);assert.equal(r.ok,true);
 });
 
-test('scope rejects invalid grammar, unknown fields and missing explicit ancestor',async()=>{
- for(const within of [null,{},'row',[],{text:'AAB扩展标签-01'},{...scope(),index:0},{...scope(),text:''},{...scope(),resourceName:'id/Label'},
-  {...scope(),ancestor:{}},{...scope(),ancestor:{className:'android.widget.LinearLayout',resourceName:'id/Row'}},{...scope(),ancestor:{text:'row'}},
-  {...scope(),ancestor:{className:'android.widget.LinearLayout',parent:null}},{...scope(),ancestor:{className:'android.widget.LinearLayout',parent:{text:'Main list'}}},{...scope(),ancestor:{className:'android.widget.LinearLayout',parent:{resourceName:'id/List',className:'RecyclerView'}}},{...scope(),ancestor:{className:''}},{...scope(),ancestor:{className:7}},
+test('scope rejects invalid grammar and unknown fields',async()=>{
+ for(const within of [null,{},'row',[],{...scope(),index:0},{...scope(),text:''},
+  {...scope(),ancestor:{}},
+  {...scope(),ancestor:{className:'android.widget.LinearLayout',parent:null}},{...scope(),ancestor:{className:''}},{...scope(),ancestor:{className:7}},
  ]){const h=harness();const r=await dispatch(h,{resourceName:EDIT,within});assert.equal(r.error,'invalid_native_scope');assert.equal(r.dispatched,false);assert.equal(h.calls.length,0);}
 });
 
@@ -125,7 +125,7 @@ test('real Intent executor persists scoped decision and dispatches observed row 
  const start=await handle({operation:'start',operationId:'scoped-label-edit',goal:'Edit one label',target,adapter:h.adapter,store});
  assert.equal(start.status,'waiting_for_decision');const observed=store.latest(start.operationId,'observation');
  const decision={decisionId:'edit-exact-row',agentDecision:'act',basedOnRevision:start.revision,action:{provider:'native',action:'tap',selector:selector()}};
- const next=await handle({operation:'decide',operationId:start.operationId,decision});assert.equal(next.status,'waiting_for_decision');assert.equal(h.calls.length,1);assert.equal(observes,3);
+ const next=await handle({operation:'decide',operationId:start.operationId,decision});assert.equal(next.status,'waiting_for_decision');assert.equal(h.calls.length,1);assert.equal(observes,2);
  const receipt=store.latest(start.operationId,'action-receipt');assert.deepEqual(receipt.action.selector,selector());assert.equal(receipt.rawTreeId,observed.rawTreeId);assert.equal(receipt.mechanicalStatus,'ok');
  const stale=await handle({operation:'decide',operationId:start.operationId,decision:{...decision,decisionId:'stale-edit'}});assert.equal(stale.error,'reobserve_required');assert.equal(h.calls.length,1);
 });

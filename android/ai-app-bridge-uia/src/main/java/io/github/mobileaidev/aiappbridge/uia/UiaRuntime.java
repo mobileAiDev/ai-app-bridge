@@ -27,6 +27,7 @@ public final class UiaRuntime {
     private final UiaNodes nodes;
     private final UiaActionEngine actions;
     private final LocalServerSocket server;
+    private final org.json.JSONArray startupWarnings;
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32));
     private final ThreadPoolExecutor clients = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(4));
     private volatile boolean stopping;
@@ -37,7 +38,7 @@ public final class UiaRuntime {
         epoch = UUID.randomUUID().toString();
         token = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "");
         File sessions = new File(root, "sessions");
-        new UiaJournal(root, files).prepare(dexHash);
+        startupWarnings = new UiaJournal(root, files).prepare(dexHash);
         session = new File(sessions, epoch); files.directory(session); files.directory(new File(session, "actions"));
         files.syncDirectory(sessions); files.syncDirectory(root);
         connection = new UiaConnection();
@@ -45,7 +46,7 @@ public final class UiaRuntime {
         try { opened = new LocalServerSocket("aab-uia-" + epoch); }
         catch (Exception error) { connection.close(); throw error; }
         server = opened;
-        nodes = new UiaNodes(connection, bootId, epoch);
+        nodes = new UiaNodes(connection, bootId, epoch, startupWarnings);
         actions = new UiaActionEngine(bootId, epoch, UiaJournal.ACTION_CAPACITY,
             (id, record) -> files.write(new File(new File(session, "actions"), Wire.sha256(id) + ".json"), record.toString()),
             nodes, worker, SystemClock::elapsedRealtime);
@@ -64,7 +65,7 @@ public final class UiaRuntime {
 
     private JSONObject handle(JSONObject request) throws Exception {
         String operation = Wire.string(request, "op");
-        if (operation.equals("status")) { Wire.keys(request, "op"); return actions.status().put("dexSha256", dexHash); }
+        if (operation.equals("status")) { Wire.keys(request, "op"); return actions.status().put("dexSha256", dexHash).put("warnings", startupWarnings); }
         if (operation.equals("stop")) {
             Wire.keys(request, "op");
             if (!actions.beginClose()) throw new Wire.Failure("uia_runtime_has_pending_actions");

@@ -18,7 +18,7 @@ function createIntentBudget({
   maxSteps = 30,
   maxDurationMs = 120000,
   maxAgentCalls = 30,
-  allowlist = ['tap'],
+  allowlist,
   startedAtMs,
   now = Date.now,
 } = {}) {
@@ -32,7 +32,7 @@ function createIntentBudget({
       if ((phase === 'agent' || action) && steps >= maxSteps) return { ok: false, reason: 'max_steps' };
       if (atMs - started >= maxDurationMs) return { ok: false, reason: 'max_duration' };
       if (phase === 'agent' ? agentCalls >= maxAgentCalls : agentCalls > maxAgentCalls) return { ok: false, reason: 'max_agent_calls' };
-      if (action && !allowlist.includes(action.action)) {
+      if (action && allowlist && !allowlist.includes(action.action)) {
         return { ok: false, reason: 'action_not_allowed' };
       }
       return { ok: true };

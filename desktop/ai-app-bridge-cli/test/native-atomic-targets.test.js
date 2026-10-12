@@ -63,32 +63,36 @@ test('automatic text discovery stops on a matched Native control without an SDK 
   assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.deepEqual(calls, []);
 });
 
-test('text targeting carries an exact accessible-name selector and rejects replacement during observation', async () => {
-  let reads = 0, effects = 0;
-  const options = { foregroundWindow, bridgeTree: async () => tree(++reads === 1 ? targetRef : { ...targetRef, viewId: 'replacement' }),
-    tap: async () => { effects++; }, uiaTree: async () => { throw new Error('no fallback'); } };
-  assert.equal((await tapText(ctx, 'Save', {}, options)).error, 'reobserve_required');
-  assert.equal(effects, 0);
+test('text targeting captures once and retains atomic SDK replacement rejection without retry', async () => {
+  let reads = 0, attempts = 0;
+  const result = await tapText(ctx, 'Save', {}, { foregroundWindow, bridgeTree: async () => { reads++; return tree(); },
+    tap: async (_ctx, _x, _y, options) => {
+      attempts++; assert.deepEqual(options.nativeTarget, { selector: { text: 'Save' }, targetRef });
+      return { ok: false, error: 'native_target_replaced', dispatched: false };
+    }, uiaTree: async () => { throw new Error('no fallback'); } });
+  assert.equal(result.error, 'native_target_replaced'); assert.equal(result.dispatched, false);
+  assert.equal(reads, 1); assert.equal(attempts, 1);
   const accessible = tree(); accessible.root.text = ''; accessible.root.contentDescription = '保存';
-  const result = await tapText(ctx, '保存', { provider: 'native' }, { foregroundWindow, bridgeTree: async () => accessible,
+  const selected = await tapText(ctx, '保存', { provider: 'native' }, { foregroundWindow, bridgeTree: async () => accessible,
     tap: async (_ctx, _x, _y, options) => {
       assert.deepEqual(options.nativeTarget, { selector: { contentDescription: '保存' }, targetRef }); return { ok: true };
-    },
-  });
-  assert.equal(result.ok, true);
+    } });
+  assert.equal(selected.ok, true);
 });
 
-test('Intent checks View instance identity and refuses missing metadata before invoking either mutation port', async () => {
+test('Intent carries the observed View to the atomic SDK and refuses missing metadata before invoking it', async () => {
   for (const action of [{ action: 'tap' }, { action: 'inputText', value: '' }]) {
-    for (const replacement of [true, false]) {
-      let effects = 0;
-      const observed = tree(replacement ? targetRef : null);
-      const current = tree(replacement ? { ...targetRef, viewId: 'new-view' } : null);
+    for (const bound of [true, false]) {
+      let attempts = 0;
+      const port = async (...args) => {
+        attempts++; assert.deepEqual(args.at(-1).nativeTarget, { selector, targetRef });
+        return { ok: false, error: 'native_target_replaced', dispatched: false };
+      };
       const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,
-        bridgeTree: async () => current, tap: async () => { effects++; }, inputText: async () => { effects++; } } });
-      const result = await adapter.action({ ...ctx, rawTree: observed, spec: { provider: 'native', selector, ...action } });
-      assert.equal(result.error, replacement ? 'reobserve_required' : 'native_atomic_target_unavailable');
-      assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.equal(effects, 0);
+        bridgeTree: async () => assert.fail('Do not capture a second tree for an already observed target'), tap: port, inputText: port } });
+      const result = await adapter.action({ ...ctx, rawTree: tree(bound ? targetRef : null), spec: { provider: 'native', selector, ...action } });
+      assert.equal(result.error, bound ? 'native_target_replaced' : 'native_atomic_target_unavailable');
+      assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.equal(attempts, bound ? 1 : 0);
     }
   }
 });

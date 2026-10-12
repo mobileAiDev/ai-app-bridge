@@ -38,7 +38,8 @@ function webCommandSchema(common) {
   const { selectorSchema, expectedTargetSchema } = require('./web-dom-target');
   const selector = { selector: selectorSchema, expectedTarget: expectedTargetSchema };
   return variants('name', [
-    command('domSnapshot', object({ selector: text, maxControls: integer(1, 1000) })),
+    command('domSnapshot', { ...object({ selector: text, query: selectorSchema, offset: integer(0, Number.MAX_SAFE_INTEGER), maxControls: integer(1, 1000) }),
+      not: { required: ['selector', 'query'] } }),
     command('click', object(selector, ['selector']), ['arguments']),
     command('input', object({ ...selector, value: { type: 'string', maxLength: 16384 } }, ['selector', 'value']), ['arguments']),
     command('key', object({ ...selector, key: { enum: ['Enter', 'Escape'] } }, ['selector', 'key']), ['arguments']),

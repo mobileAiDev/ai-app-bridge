@@ -7,10 +7,11 @@ const { verifyChecksum, checksumOf } = require('../shared-kernel/evidence-schema
 
 const RESTORE_CONTEXT = Symbol('scriptRestoreContext');
 
-function unmatchedPreparedAction(store, operationId) {
+function unmatchedPreparedAction(store, operationId, boundary = 0) {
   const records = store.list(operationId);
   return records.some((marker) => {
     if (marker.kind !== 'dispatch-marker' || marker.state !== 'prepared') return false;
+    if (marker.actionSequence <= boundary) return false;
     const receipt = records.find((item) => item.kind === 'action-receipt' && item.actionId === marker.actionId);
     return !receipt || receipt.ambiguous === true;
   });
@@ -26,7 +27,7 @@ function loadDurableCheckpoint(store, operationId) {
   }
   const checkpoint = records.filter((item) => item.kind === 'checkpoint').at(-1);
   if (!checkpoint) return scriptError('unknown_operation', { operationId });
-  if (unmatchedPreparedAction(store, operationId)) {
+  if (unmatchedPreparedAction(store, operationId, checkpoint.checkpointActionSequence || 0)) {
     return scriptError('ambiguous', { operationId, status: 'ambiguous', pauseReason: 'ambiguous' });
   }
   const actionSequence = records.reduce((maximum, item) => Math.max(maximum, item.actionSequence || 0), checkpoint.actionSequence || 0);

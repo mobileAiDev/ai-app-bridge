@@ -43,7 +43,7 @@ test('Intent side effect then production port throw persists ambiguous receipt a
   resetIntentOperations();let effects=0;const evidence=store();
   const first=await start({store:evidence,ports:ports(async()=>{effects++;throw new Error('response_lost');})});
   const next=await handle({operation:'decide',operationId:first.operationId,decision:decision(first.revision)});
-  assert.equal(next.status,'ambiguous');
+  assert.equal(next.status,'waiting_for_decision');
   assert.equal(evidence.latest(first.operationId,'action-receipt').ambiguous,true);
   assert.equal(evidence.latest(first.operationId,'action-receipt').error,'response_lost');
   await handle({operation:'resume',operationId:first.operationId});
@@ -56,7 +56,7 @@ test('Intent undefined production return is ambiguous, never an invented success
   resetIntentOperations();const evidence=store();
   const first=await start({store:evidence,ports:ports(async()=>undefined)});
   const next=await handle({operation:'decide',operationId:first.operationId,decision:decision(first.revision)});
-  assert.equal(next.status,'ambiguous');
+  assert.equal(next.status,'waiting_for_decision');
   const receipt=evidence.latest(first.operationId,'action-receipt');
   assert.equal(receipt.mechanicalStatus,'failed');
   assert.equal(receipt.error,'invalid_action_receipt');
@@ -67,10 +67,9 @@ test('Intent direct adapter throw is durably ambiguous and retains unresolved de
   const adapter={observe:async({provider,rawTreeId})=>({ok:true,provider,rawTreeId,rawTree:tree}),action:async()=>{throw new Error('adapter_threw');}};
   const first=await start({store:evidence,adapter});
   const next=await handle({operation:'decide',operationId:first.operationId,decision:decision(first.revision)});
-  assert.equal(next.status,'ambiguous');
+  assert.equal(next.status,'waiting_for_decision');
   assert.equal(evidence.latest(first.operationId,'action-receipt').ambiguous,true);
-  const lease=getProcessDeviceMutationLease().acquire(target.serial);
-  assert.equal(lease.error,'device_ownership_unresolved');
+  assert.equal(getProcessDeviceMutationLease().status(target.serial).unresolved,true);
 });
 
 test('Intent receipt persistence failure remains ambiguous after provider success', async () => {

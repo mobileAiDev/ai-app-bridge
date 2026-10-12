@@ -10,6 +10,66 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testBridge(
+      'a long label reports its truncated preview and keeps explicit node selection',
+      (h) async {
+    var taps = 0;
+    final label = '${List.filled(299, 'x').join()}😀suffix';
+    await h.tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: TextButton(
+      onPressed: () => taps++,
+      child: Text(label, maxLines: 1),
+    ))));
+    final nodes = await h.observe();
+    final observed = nodes.firstWhere((n) => n['textTruncated'] == true);
+    expect(observed['text'], List.filled(299, 'x').join());
+    expect(observed['textLength'], label.length);
+    expect(h.snapshots.last['layout']['operable']['coverage']['status'],
+        'partial');
+    final incorrectExact = await h.action({
+      'action': 'tapTarget',
+      'selector': {'text': observed['text']}
+    });
+    expect(incorrectExact['ok'], false);
+    expect(taps, 0);
+    final selected = await h.action({
+      'action': 'tapTarget',
+      'selector': {'nodeId': observed['id']},
+      'targetRef': observed['targetRef']
+    });
+    expect(selected['ok'], true, reason: '$selected');
+    expect(taps, 1);
+  });
+  testBridge('a returned nodeId remains actionable in a truncated tree',
+      (h) async {
+    var taps = 0;
+    await h.tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: Wrap(
+      children: List.generate(
+          650,
+          (i) => SizedBox(
+              width: 20,
+              height: 16,
+              child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => taps++,
+                  child: Text('$i')))),
+    ))));
+    final nodes = await h.observe();
+    expect(h.snapshots.last['layout']['operable']['truncated'], true);
+    final first =
+        nodes.firstWhere((node) => (node['actions'] as List).contains('tap'));
+    final result = await h.action({
+      'action': 'tapTarget',
+      'selector': {'nodeId': first['id']},
+      'targetRef': first['targetRef']
+    });
+    expect(result['ok'], true, reason: '$result');
+    expect(taps, 1);
+  });
+
   testBridge('transparent skeleton text is neither observed nor dispatched',
       (h) async {
     await h.tester.pumpWidget(const MaterialApp(
@@ -338,7 +398,8 @@ void main() {
     expect(during, before, reason: 'Pending observation is deferred.');
     expect(taps, 1);
     expect(heldInspections, 0);
-    expect(h.snapshots.length, before, reason: 'No automatic snapshots after UP.');
+    expect(h.snapshots.length, before,
+        reason: 'No automatic snapshots after UP.');
     await h.observe();
     expect(h.snapshots.length, greaterThan(before));
   });

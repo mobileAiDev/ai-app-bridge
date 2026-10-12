@@ -7,11 +7,11 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.4.5`; registry publication is a separate release step.
+This source version is `0.4.6`; registry publication is a separate release step.
 Android foreground facts and warnings are separate from action execution. Window
 formatting, mismatch or changes do not veto an explicit action or switch its target.
 The SDK and UIA executors retain exact node/reference validation and original receipts.
-Device and Web SDKs share version `0.4.5`.
+Device and Web SDKs share version `0.4.6`.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
 and Playwright executors use the existing `capabilities + run` and Python/JS Script contracts.
@@ -30,8 +30,10 @@ connection can observe or decide the same operation ID. Disconnecting either
 client leaves tasks running. Use `runtime --operation status --extract null` to inspect its
 owner, `runtime --operation stop --extract null` to drain it, and task `cancel` to stop one task.
 
-Each run explicitly supplies `extract`: `null` for the original result, or
-regex/JavaScript/Python for a smaller result. CLI: `--extract null`.
+Omitted `extract` uses auto: complete results fit the budget directly or in a
+lossless compact representation; larger results include a partial preview and
+an original-response read request. Use explicit `null` for the original shape,
+or select/regex/JavaScript/Python for a known subset. CLI: `--extract null`.
 The compact body is `{command, execution, control, extraction, delivery, kind,
 value?, failureStage?}`. Original execution facts and continuation controls stay
 separate from the extracted value. Default body budget: 96 KiB UTF-8; overflow
@@ -64,7 +66,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.4.5
+npm install -g @mobileaidev/ai-app-bridge@0.4.6
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
@@ -116,8 +118,8 @@ This keeps install, data reset, launch, UI action, Flutter, WebView/H5/CDP,
 iOS, Web Bridge, logcat, network, permission, port-forward,
 and first-class `script`/`intent` capabilities discoverable without exposing
 dozens of full schemas at session start. `script` is trusted-local-code
-JavaScript or Python: `permissions` gate Bridge SDK calls only and are not
-an OS sandbox. There is no explore, export-to-script, or assemble-report command.
+JavaScript or Python: omitted `permissions` allow every registered command; explicit
+permissions restrict Bridge SDK calls and are not an OS sandbox. There is no explore, export-to-script, or assemble-report command.
 Per-command MCP aliases and the old full surface were removed.
 All command parameters belong exclusively in `run.arguments`.
 

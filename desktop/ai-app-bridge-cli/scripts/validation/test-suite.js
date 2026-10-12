@@ -1,5 +1,6 @@
 'use strict';
-// Timing gates run after the functional suite, one file at a time.
+// Runtime/process fixtures also exercise short deadlines. Bound their parallel
+// processes; leave timing gates isolated rather than loosening product budgets.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -22,6 +23,6 @@ for (const group of selected) {
   if (!groups[group]) throw new Error(`Unknown test group: ${group}`);
   process.stdout.write(`Test group: ${group} (${groups[group].length} files)\n`);
   const child = spawnSync(process.execPath, ['--import', './test-support/ownership-test-sandbox.js', '--test',
-    ...(group === 'performance' ? ['--test-concurrency=1'] : []), ...groups[group].sort()], { cwd: root, stdio: 'inherit' });
+    `--test-concurrency=${group === 'performance' ? 1 : 2}`, ...groups[group].sort()], { cwd: root, stdio: 'inherit' });
   if (child.status !== 0) process.exit(child.status || 1);
 }

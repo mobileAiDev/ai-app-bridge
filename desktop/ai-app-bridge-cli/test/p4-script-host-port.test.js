@@ -214,15 +214,16 @@ test('P4 page-summary is a pure transform and does not call actions', async () =
   assert.equal(host.actionCallCount, 0);
 });
 
-test('P4 denied catalog commands stay denied', async () => {
+test('P4 explicit read-only permissions reject mutations', async () => {
   const host = createScriptHostPort({
+    permissions: ['app.read'],
     target: { platform: 'android', serial: 's1', packageName: 'pkg' },
     actions: async () => ({ ok: true }),
     runner: async () => completePage('logs'),
   });
   const denied = await host.call('clear-app-data', {});
   assert.equal(denied.ok, false);
-  assert.equal(denied.error, 'command_not_in_default_allowlist');
+  assert.equal(denied.error, 'permission_not_granted');
   assertScriptCallEnvelope(denied, {
     command: 'clear-app-data',
     callId: 'call-1',

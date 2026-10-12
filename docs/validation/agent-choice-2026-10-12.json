@@ -1,0 +1,80 @@
+{
+  "environment": {
+    "serial": "emulator-5570",
+    "avd": "aab_agent_choice_20261012",
+    "api": 36,
+    "samplePackage": "io.github.mobileaidev.aiappbridge.sample",
+    "physicalDevicesTouched": false,
+    "temporaryAvdRemoved": true
+  },
+  "duplicateSelection": {
+    "error": "uia_selector_not_unique",
+    "matched": 2,
+    "dispatched": false,
+    "suggestedActions": 2,
+    "confirmedUiText": "选择结果：按钮2"
+  },
+  "movingReference": {
+    "executionConfirmed": true,
+    "confirmedUiText": "选择结果：移动按钮"
+  },
+  "publicReset": {
+    "ok": true,
+    "stopped": true,
+    "resetId": "8baf95b8-286e-4efe-8b6a-6c0da8a63c33",
+    "archivePath": "/data/local/tmp/ai-app-bridge-uia/v1/force-stopped/8baf95b8-286e-4efe-8b6a-6c0da8a63c33",
+    "outcome": "unknown"
+  },
+  "deadOwnerRecovery": {
+    "serial": "emulator-5570",
+    "oldEpoch": "b6d709e9-6c0b-45c3-a298-2a61b7f5807a",
+    "newEpoch": "090f061e-2788-4381-bf1b-837d4883c066",
+    "newActionCount": 0,
+    "observationNodes": 9,
+    "recovered": true
+  },
+  "responseDelivery": {
+    "dataset": "300 rows, 100 Chinese characters per row",
+    "rawValueBytes": 97111,
+    "fullReplyBytes": 97992,
+    "overviewReplyBytes": 2543,
+    "pageReplyBytes": 7348,
+    "pageCount": 20,
+    "providerCalls": 1
+  },
+  "automatedTests": {
+    "nodeFunctional": {
+      "passed": 1422,
+      "failed": 0,
+      "concurrency": 4
+    },
+    "nodePerformance": {
+      "passed": 50,
+      "failed": 0,
+      "concurrency": 1
+    },
+    "uiaJava": {
+      "passed": 50,
+      "failed": 0
+    },
+    "androidSdkDebugAndRelease": {
+      "passed": 388,
+      "failed": 0
+    },
+    "flutterWidgetTargets": {
+      "passed": 32,
+      "failed": 0
+    }
+  },
+  "packageVerification": {
+    "ok": true,
+    "tarball": "mobileaidev-ai-app-bridge-0.4.5.tgz",
+    "sha256": "dee21e205488d22c46f348eb04251ed3d484bbfd0ab7a27f905f705e0e345d26",
+    "freshInstall": true,
+    "publicMcp": true,
+    "uiaBundle": {
+      "sha256": "a8b8833583adb7699f8739adad1c5f2d5ac9cd1af34b06a71be84037d9951fbe",
+      "minApi": 25
+    }
+  }
+}

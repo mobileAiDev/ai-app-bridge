@@ -63,6 +63,72 @@ Use exactly one of `sourcePath` and `source`. JavaScript is loaded as CommonJS
 in a real Node child. Export `main`; use `ctx.inputs` for run-specific values.
 The source is trusted local code, not an OS sandbox. Use `ctx.call` for device
 operations so the Host can apply permissions and record receipts.
+`ctx.target` is a copy of the declared default target (or null); changing it does
+not change Host routing defaults. `ctx.sourcePath` is the declared source file
+(or null for inline source). Python exposes `ctx.target` and `ctx.source_path`.
+
+## Editable recipes and fewer round trips
+
+Read `script {operation:"recipes"}` to list shipped ordinary JavaScript sources,
+then add `name` to read one source and its start request. This works without a
+shared Runtime or FactStore. The same directory appears under `catalog.recipes`
+in `capabilities {command:"script",operation:"start"}`. CLI:
+
+```sh
+ai-app-bridge script --operation recipes
+ai-app-bridge script --operation recipes --name android-test-session
+ai-app-bridge script --operation recipes --name android-launch-and-wait
+```
+
+Use the returned `start` request, replacing its explicit target and `inputs`.
+You can copy/edit the source or run its installed `sourcePath`; it uses the same
+Script lifecycle, call receipts and cancellation as other Scripts. There is no
+separate workflow interpreter.
+
+`android-launch-and-wait` launches once and uses `wait-text` for the exact
+`readyText` condition, with optional `provider`, `timeoutMs` and `intervalMs`.
+The default provider is UIA, so this recipe does not require an integrated App
+SDK. The Script returns the launch receipt and last condition result; unsuccessful
+or unknown launch stops that recipe without replay. For a custom short batch,
+write sequential `ctx.call` statements, handle each returned envelope, then
+observe once where the next decision needs fresh state. Use read commands for
+condition polling; code decides whether a failed mutation should be tried again.
+`wait` already holds until events/state change or its deadline and returns a
+terminal `resultRef`; use `result` to read the saved final value, without replay.
+The launch/wait recipe keeps execution, matched conditions, foreground identity,
+timestamps and warnings, while omitting repeated raw dumpsys evidence. Choose
+`fullResult:true` when those diagnostic dumps are part of the task. Its result
+marks this projection explicitly; normal output still follows the auto budget.
+
+`android-test-session` accepts a device-only target and inputs such as:
+
+```json
+{"operation":"prepare","stateFile":"/absolute/session.json","stayAwake":true,"rotation":0,"showImeWithHardware":true,"wake":true}
+```
+
+It first records the explicit serial, current Android user, rotation, plugged-in
+stay-awake value, IME component, selected subtype/history and hardware-keyboard
+visibility setting in a new local file. Only supplied options change settings.
+An optional `imeId` uses `ime set` for an installed/enabled keyboard. Each write
+is recorded before dispatch and read back; `ok` verifies those setting values,
+not whether an App honored rotation or displayed a keyboard. The returned
+`restore` request starts the same recipe with
+`{"operation":"restore","stateFile":"/absolute/session.json"}`. Keep the file:
+restoration works in a new Script after cancellation or connection loss and
+restores only settings the preparation attempted, including a lost receipt.
+Already restored values cause no write. Existing state files are preserved; use
+a fresh path for another preparation. If a write fails, the original record and
+receipt remain available for the next choice.
+
+`stayAwake` applies while on AC/USB/wireless power. App orientation policies may
+override the default rotation. `wake` requests screen wake only; a credential
+lock needs its own authorized interaction, and restore does not turn the screen
+off. The recipe restores the recorded Android settings, not arbitrary keyboard
+App preferences or the currently focused editor. These semantics follow the
+[Android settings definitions](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/java/android/provider/Settings.java)
+and [IME shell command implementation](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/inputmethod/InputMethodManagerService.java).
+
+## Runtime and permission notes
 
 An explicit `permissions` list replaces the defaults: `events`, `logs`, `network`
 and `state` need `capture.read`, included in both starting examples above.
@@ -89,7 +155,10 @@ including those waiting for an Agent. MCP EOF or a signal to a CLI/MCP client
 disconnects that client without cancelling the task. Cancellation closes owned local subprocesses and HTTP requests;
 it cannot undo an effect already accepted by a device. A submitted effect without
 a confirmed result remains `ambiguous`, and cannot be replayed from an old
-checkpoint. Permission and lifecycle mutations use the same dispatch ledger as
+checkpoint. The script may inspect an unknown receipt, make an explicit new decision
+and commit a later checkpoint; restore uses that boundary and retains the old
+unknown receipt. Uncommitted durable writes still prevent a valid checkpoint.
+Permission and lifecycle mutations use the same dispatch ledger as
 UI actions. `policy.timeoutMs` is the whole runtime budget; command arguments may
 set a shorter `timeoutMs`, but never extend it.
 
@@ -261,15 +330,34 @@ def main(ctx):
 
 Use `capabilities` to inspect each command's `inputSchema` and `entrypoints.script`.
 Script supports the Android, iOS and Web commands listed in the catalog. An Android target requires
-`platform: "android"`, `serial`, and `packageName`; optional `adb` and `port`
+`platform: "android"` and `serial`; `packageName` is needed only for App commands. Optional `adb` and `port`
 are retained in the frozen spec and passed to commands that accept them.
-Install APKs through the CLI or MCP Intent installation workflow before starting a fixed Script.
-Expert commands outside the catalog remain unavailable. Add `app.lifecycle`
-explicitly for clear-data fixtures and `app.permissions` for permission
-fixture changes. Defaults remain read/capture/interact; source runs as trusted
-local code. Targets and permissions participate in the recovery hash.
+Installation and permission workflows can be started with `ctx.call('install-apk', ...)`
+and `ctx.call('permission-dialog', ...)`; their returned Intent operationId supports
+the same status/observe/decide/cancel operations inside the Script.
+All supported catalog permission categories are enabled by default, including
+`app.lifecycle`, `app.permissions`, `app.expert`, `app.workflow` and `evidence.read`. An explicit `permissions` list
+restricts Bridge calls. `adb-exec` accepts argv for device or Host ADB commands;
+every registered command has a Script entry. Source is trusted local code. Targets and permissions participate in the recovery hash.
 
-An iOS target requires `platform: "ios"`, `deviceId` and `bundleId`. SDK transports
+`ctx.call('script', {operation:'start', script:...})` and `ctx.call('intent',
+{operation:'start', goal:...})` inherit the owning target when the child omits it.
+Explicit `script.target:null` selects Host-only execution. Retain the child ID
+from `reply.result.operationId`; use Script wait/result or Intent wait/decide
+to continue. Child operations own their lifetime: stopping a parent does not
+silently stop a child. Composed Intent start defaults to `background:true`, so a
+slow observation or autonomous loop does not hold the parent call open. Set
+`background:false` to await its initial loop. Parent permissions restrict its
+SDK calls; a child Script has its own explicit/default permissions.
+
+Control calls preserve the child's whole response under `result`, including
+status and resultRef. Runtime stop/force-stop run in a separate controller and
+return `controlAccepted`, `completionScope:'control-request'` and `resultPath`.
+Read that file or query status from another call to confirm completion. Self
+cancel requests drain after the initiating call returns; a self wait returns
+current status immediately instead of waiting on itself.
+
+An iOS target requires `platform: "ios"` and `deviceId`; App commands also need `bundleId`. SDK transports
 use `runtimeUrl` or `iosHost`/`iosPort`; WDA commands additionally require the
 explicit `wdaRunnerBundleId` and, where applicable, `wdaSessionId`. The iOS
 provider resolves and arbitrates the physical UDID; it never borrows an Android
@@ -383,6 +471,20 @@ module.exports.main = async function main(ctx) {
 are inside **`result`**. This differs from ordinary MCP `run` results.
 `execution.callId` identifies the call; a mutation also has an action ID.
 
+Use `Promise.all` for independent JavaScript reads. Reads submitted together
+run concurrently; a write waits for preceding reads, and subsequent reads wait
+for that write. Assertions, checkpoints and agent questions also wait for prior
+reads, preserving their evidence and persistence boundaries. Await a result
+before submitting a call that depends on it. The SDK keeps 32 requests in flight
+and queues larger bursts; reaching that window does not fail the Script. Progress
+is acknowledged through the same channel. Returning from `main` drains already
+requested SDK calls before reporting completion; explicitly cancel to stop work.
+
+Python calls remain synchronous, but ordinary calls use one request/reply with
+control state attached. The Host holds dispatch while paused; `controlPoint()`
+is an explicit query for scripts doing long local computation. Neither language
+needs a separate before/after control query for every ordinary command.
+
 `executionReceipt` is a nullable compact Native/Flutter/H5 SDK or Android shell
 settlement proof. `kind` identifies its protocol. A command containing several
 physical operations can instead provide `executionReceipts`.
@@ -404,7 +506,9 @@ complete new suffix before acting; the old gap remains part of the evidence.
 For native `h5-dom`, use the control's `value` to verify empty input; display
 `text` and `ariaLabel` are separate fields. See [H5 execution](COMMAND_CONTRACT.md#android-h5-execution-and-dom-operations).
 Cancellation fences shell work that has not started. An admitted command drains
-on the phone and can outlive the Host timeout; unknown ownership remains blocked.
+on the phone and can outlive the Host timeout. Unknown ownership is preserved in
+an archive; an explicit new action may continue after the actual owner releases
+the device, with the previous unknown outcome reported as a warning.
 Recovery
 records a separate receipt in the `device-ownership` command's execution history;
 it does not rewrite the original unknown action as successful.
@@ -623,3 +727,5 @@ Unknown `checked: null` is not accepted as unchecked. The sample reports its
 actual UI failure even when the backend saved correctly; it does not change the
 business expectation to fit the observed page. The entry source is self-contained
 because the Script runtime copies that source into its execution directory.
+
+Intent wait uses `afterEventSequence: previous.eventSequence`, not the history cursor. It waits on Host events and does not capture another UI tree. Use it after background start or during managed installation instead of polling status in a tight loop.

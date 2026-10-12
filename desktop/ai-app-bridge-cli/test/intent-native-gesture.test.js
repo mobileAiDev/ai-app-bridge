@@ -83,7 +83,7 @@ test('native swipe requires one explicit exact selector and an eligible observed
   const cases = [
     [spec({ selector: undefined, text: 'Task row' }), tree(), 'explicit_native_selector_required'],
     [spec({ selector: {} }), tree(), 'explicit_native_selector_required'],
-    [spec({ selector: { text: 'Task row', resourceName: 'example.gesture:id/DragHandle' } }), tree(), 'explicit_native_selector_required'],
+    [spec({ selector: { text: 'Task row', clickable: 'true' } }), tree(), 'explicit_native_selector_required'],
     [spec({ selector: { text: 'Task' } }), tree(), 'native_selector_not_found'],
     [spec(), tree([node(), node()]), 'native_selector_ambiguous'],
     [spec(), tree([node({ effectiveVisible: false })]), 'native_selector_not_found'],
@@ -144,7 +144,7 @@ test('Intent persists observed-revision SDK gesture receipt with the same action
     decisionId: 'swipe-row', agentDecision: 'act', basedOnRevision: start.revision, action: spec(),
   } });
   assert.equal(next.status, 'waiting_for_decision');
-  assert.equal(calls.length, 1); assert.equal(observations, 3, 'prior observation, dispatch revalidation, and post-action observation');
+  assert.equal(calls.length, 1); assert.equal(observations, 2, 'prior and post-action observations; the SDK validates the original reference atomically');
   const receipt = store.latest(start.operationId, 'action-receipt');
   assert.equal(receipt.actionId, 'native-gesture-integration:swipe-row');
   assert.equal(receipt.rawTreeId, observed.rawTreeId);

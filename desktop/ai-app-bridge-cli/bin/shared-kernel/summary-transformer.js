@@ -6,6 +6,7 @@ const { semanticNode } = require('./semantic-node');
 const { parseXmlAttributes } = require('./xml-attributes');
 const iosNative = require('./ios-native-target');
 const uia = require('./uia-protocol');
+const { observationCoverage } = require('./observation-coverage');
 
 const DEFAULT_MAX_BYTES = 64 * 1024;
 const HARD_LIMIT_MS = 50;
@@ -38,9 +39,14 @@ function summarizeTree({
       bodyTextTruncated: rawTree.dom.bodyTextTruncated || rawTree.dom.bodyText.length > Math.min(12000, Math.floor(maxBytes / 12)) } : undefined;
   const activity = provider === 'native' && typeof rawTree?.activity === 'string' ? rawTree.activity : undefined;
   const uiaSnapshot = provider === 'uia' ? uia.snapshotIdentity(rawTree) : null;
+  const sourceCoverage = observationCoverage(provider, rawTree);
 
   walkProvider(provider, rawTree, (source, sourceIndex) => {
     visited += 1;
+    if (source?.textTruncated === true || source?.valueTruncated === true || source?.labelTruncated === true || source?.childrenTruncated === true) {
+      sourceCoverage.status = 'partial';
+      sourceCoverage.reason ||= 'provider_fields_truncated';
+    }
     if (now() - startedAtMs > hardLimitMs) {
       truncated = true;
       reason = 'hard_limit_ms';
@@ -61,10 +67,13 @@ function summarizeTree({
     maxBytes,
     activity,
     page,
+    sourceCoverage,
     prioritizeVisibleControls: provider === 'native' && rawTree?.nativeTargetSchema === iosNative.schema,
   });
   truncated = truncated || nodes.truncated;
   reason = reason || nodes.reason;
+  const coverage = { source: sourceCoverage, projection: { truncated, reason } };
+  if (sourceCoverage.status === 'partial') { truncated = true; reason = reason || 'source_incomplete'; }
 
   return {
     ok: true,
@@ -74,6 +83,7 @@ function summarizeTree({
     visited,
     truncated,
     reason,
+    coverage,
     ...(activity === undefined ? {} : { activity }),
     ...(page === undefined ? {} : { page }),
     nodes: nodes.nodes,
@@ -215,6 +225,8 @@ function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId, 
     role,
     text,
     label,
+    ...(source.textTruncated || source.valueTruncated ? { textTruncated: true } : {}),
+    ...(source.contentDescriptionTruncated || source.labelTruncated ? { labelTruncated: true } : {}),
     ...(provider === 'flutter' ? { hint: source.hint, errorText: source.errorText } : {}),
     bounds: boundsOf(source),
     enabled: source.enabled !== false && source.enabled !== 'false',
@@ -308,8 +320,11 @@ function boolOrNull(value) {
   return null;
 }
 
-function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity, page, prioritizeVisibleControls }) {
-  const meta = { ok: true, provider, rawTreeId, screenshotId, visited, truncated, reason, ...(activity === undefined ? {} : { activity }), ...(page === undefined ? {} : { page }) };
+function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity, page, sourceCoverage, prioritizeVisibleControls }) {
+  const meta = { ok: true, provider, rawTreeId, screenshotId, visited, truncated: truncated || sourceCoverage.status === 'partial',
+    reason: reason || (sourceCoverage.status === 'partial' ? 'source_incomplete' : null),
+    coverage: { source: sourceCoverage, projection: { truncated, reason } },
+    ...(activity === undefined ? {} : { activity }), ...(page === undefined ? {} : { page }) };
   if (byteSize(nodes, meta) <= maxBytes) {
     return { nodes, truncated, reason };
   }
@@ -327,6 +342,7 @@ function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated
       ...meta,
       truncated: true,
       reason: reason || 'max_bytes',
+      coverage: { source: sourceCoverage, projection: { truncated: true, reason: reason || 'max_bytes' } },
     };
     if (byteSize(candidates.slice(0, mid), candidate) <= maxBytes) low = mid;
     else high = mid - 1;

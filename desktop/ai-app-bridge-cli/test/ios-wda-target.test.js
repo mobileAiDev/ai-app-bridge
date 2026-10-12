@@ -108,7 +108,8 @@ test('WDA response loss dispatches only once and retains unknown physical owners
     assert.equal(result.ambiguous, true);
     assert.equal(h.readEffects().length, 1);
     const blocked = await h.run('ios-tap', { bundleId: 'other.app', wdaSessionId: 'other', tapX: 1, tapY: 2 });
-    assert.equal(blocked.error, 'device_ownership_unresolved');
+    assert.equal(blocked.error, 'ios_wda_session_changed');
+    assert.equal(blocked.warnings[0].code, 'previous_execution_unknown');
     assert.equal(h.readEffects().length, 1);
   });
 });

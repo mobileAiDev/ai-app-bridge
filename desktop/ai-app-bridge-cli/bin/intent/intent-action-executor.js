@@ -6,10 +6,14 @@ const { checksumOf } = require('../shared-kernel/evidence-schema');
 const { intentError } = require('./intent-errors');
 const { checkExecution } = require('../shared-kernel/execution-scope');
 const { admitExecutionMutation } = require('../shared-kernel/execution-admission');
+const { bindCommandTarget } = require('../shared-kernel/execution-target');
+const { isMutationCommand } = require('../command-registry');
+const { commandFailure } = require('../command-errors');
 
 async function executeDecisionAction(context, decision) {
   checkExecution();
-  const exposed = context.store.canExposeRevision(context.operationId);
+  const commandAction = decision.action?.action === 'command';
+  const exposed = commandAction ? { ok: true, revision: context.revision } : context.store.canExposeRevision(context.operationId);
   if (!exposed.ok) return intentError(exposed.error);
   if (decision.basedOnRevision !== exposed.revision) {
     return intentError('reobserve_required', { revision: exposed.revision });
@@ -37,7 +41,7 @@ async function executeDecisionAction(context, decision) {
   const timings = context.timings || {};
   const startedAtMs = context.now();
   try {
-    return await admitExecutionMutation(context.target, getProcessDeviceMutationLease(), async () => {
+    const execute = async () => {
       const marker = await context.store.persist('dispatch-marker', {
         actionId: `${context.operationId}:${decision.decisionId}`,
         operationId: context.operationId,
@@ -53,7 +57,7 @@ async function executeDecisionAction(context, decision) {
       if (!marker.ok) return intentError(marker.error || 'dispatch_marker_not_persisted');
       context.latestEvidenceIds.marker = marker.evidenceId;
       context.actionId = `${context.operationId}:${decision.decisionId}`;
-      if (!context.store.canDispatch(context.operationId).ok) {
+      if (!commandAction && !context.store.canDispatch(context.operationId).ok) {
         return intentError('dispatch_marker_not_persisted');
       }
       let result;
@@ -61,6 +65,7 @@ async function executeDecisionAction(context, decision) {
         checkExecution();
         result = context.canDispatch && !context.canDispatch()
           ? { ok: false, mechanicalStatus: 'failed', error: 'cancelled', ambiguous: false, dispatched: false }
+          : commandAction ? await executeCommand(context, decision.action)
           : await runDeviceEffect({ kind: 'intent-provider', actionId: context.actionId, target: context.target }, () => context.adapter.action({
           ...context.target,
           actionId: context.actionId,
@@ -110,6 +115,10 @@ async function executeDecisionAction(context, decision) {
       timings.receiptCommitMs = (timings.receiptCommitMs || 0) + (context.now() - receiptStarted);
       context.lastAction = { actionId: context.actionId, receiptId: receipt.ok ? receipt.evidenceId : null,
         error: result.error || null, ambiguous: result.ambiguous === true || !receipt.ok,
+        ...(commandAction ? { command: decision.action.command, result: result.result,
+          commandTarget: result.commandTarget ?? null } : {}),
+        ...Object.fromEntries(['message', 'candidates', 'candidatesTruncated', 'matched', 'selectionRequired', 'guidance']
+          .filter(key => result[key] !== undefined).map(key => [key, result[key]])),
         warnings: result.warnings || [], foregroundObservations: result.foregroundObservations || [],
         dispatched: result.dispatched ?? (result.ok ? true : null), mechanicalStatus: result.ok ? 'ok' : 'failed' };
       if (!receipt.ok) {
@@ -119,8 +128,32 @@ async function executeDecisionAction(context, decision) {
       if (result?.ambiguous) return intentError('ambiguous', { ambiguous: true });
       if (result?.ok === false) return intentError(result.error || 'action_failed', executionFields(result));
       return { ok: true, receiptId: receipt.evidenceId, decisionId: decision.decisionId };
-    });
+    };
+    // The command executor owns its target and admission. A command may query,
+    // select another device, start a child workflow or cancel old ownership.
+    return commandAction ? await execute()
+      : await admitExecutionMutation(context.target, getProcessDeviceMutationLease(), execute);
   } catch (error) { return intentError(error.code || error.message, executionFields(error)); }
+}
+
+async function executeCommand(context, action) {
+  let binding;
+  try {
+    binding = bindCommandTarget(action.command, action.arguments || {}, context.target, action.target);
+    if (isMutationCommand(action.command, binding.args)) context.observationStale = true;
+    const dispatch = context.commands || require('../execution-host').dispatchProviderCommand;
+    const raw = await dispatch(action.command, binding.args, { caller: { command: 'intent', operationId: context.operationId } });
+    const ok = raw != null && raw.ok !== false && !raw.error;
+    return { ok, ...executionFields(raw), ...(raw?.error ? { error: raw.error } : {}),
+      ...Object.fromEntries(['message', 'guidance', 'candidates', 'warnings', 'foregroundObservations']
+        .filter(key => raw?.[key] !== undefined).map(key => [key, raw[key]])),
+      result: raw, commandTarget: binding.target,
+      // A child operation's status remains in result; returning from start is
+      // not a claim that the child or application behavior has completed.
+      settled: raw?.ambiguous !== true, dispatched: raw?.dispatched ?? (ok ? isMutationCommand(action.command, binding.args) : null) };
+  } catch (error) {
+    return { ...commandFailure(error, action.command), commandTarget: binding?.target ?? null };
+  }
 }
 
 function specHash(action = {}) {

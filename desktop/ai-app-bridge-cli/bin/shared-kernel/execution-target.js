@@ -25,7 +25,7 @@ function executionTargetSchema({ intent = false, nullable = false } = {}) {
       if (intent) properties.foregroundPackages = { type: 'array', items: identifier, maxItems: 32, uniqueItems: true, description: 'Legacy metadata; does not route or veto actions. Use Intent observe observationTarget.packageName to select another Android app.' };
     }
     if (platform === 'ios') properties.iosPort = integer(1, 65535);
-    return object(properties, ['platform', ...definition.identity]);
+    return object(properties, ['platform', ...definition.identity.filter(key => key !== 'packageName' && (intent || key !== 'bundleId'))]);
   });
   return { anyOf: nullable ? [...branches, { type: 'null' }] : branches,
     description: 'Explicit platform and target identity. Connection options belong only to that platform.' };
@@ -73,6 +73,49 @@ function commandPlatform(command) {
 // select another platform; a partial identity can override defaults only on the
 // same platform. Never mix an Android serial with an iOS/Web connection.
 function bindCommandTarget(command, args, defaultTarget = null, explicitTarget) {
+  if (command === 'script' || command === 'intent') {
+    const selected = explicitTarget === undefined ? defaultTarget : normalizeExecutionTarget(explicitTarget);
+    if (args.operation !== 'start') return { target: null, args: { ...args } };
+    if (command === 'script') {
+      const script = { ...args.script };
+      if (script.target === undefined && selected) script.target = { ...selected };
+      return { target: script.target ?? null, args: { ...args, script } };
+    }
+    const target = args.target ?? selected;
+    return { target, args: { ...args, ...(target ? { target: { ...target } } : {}) } };
+  }
+  const contract = require('../command-registry').commandContract(command);
+  if (command === 'ios-devices') return { target: null, args: { ...args } };
+  if (['host', 'host-runtime', 'operation'].includes(contract.targetKind) && command !== 'doctor') {
+    return { target: null, args: { ...args } };
+  }
+  if (command === 'doctor') {
+    const selected = explicitTarget === undefined ? defaultTarget : normalizeExecutionTarget(explicitTarget);
+    const platform = args.platform ?? selected?.platform ?? 'android';
+    if (explicitTarget !== undefined && selected?.platform !== platform)
+      throw new CommandError('target_platform_mismatch', 'Doctor platform conflicts with options.target.');
+    const bound = { ...args, platform };
+    if (selected?.platform === platform) for (const key of require('../doctor').fields[platform]) {
+      if (explicitTarget !== undefined && bound[key] !== undefined && selected[key] !== undefined && bound[key] !== selected[key])
+        throw new CommandError('target_argument_conflict', `Argument ${key} conflicts with options.target.`, { field: key });
+      if (bound[key] === undefined && selected[key] !== undefined) bound[key] = selected[key];
+    }
+    return { target: selected?.platform === platform ? selected : null, args: bound };
+  }
+  if (['adb-exec', 'uia-runtime', 'device-ownership', 'install-apk'].includes(command)) {
+    const selected = explicitTarget === undefined ? defaultTarget : normalizeExecutionTarget(explicitTarget);
+    if (selected && selected.platform !== 'android' && (explicitTarget !== undefined || !args.serial)) {
+      throw new CommandError('target_platform_mismatch', `${command} requires an Android target.`);
+    }
+    const bound = { ...args };
+    const schema = require('../command-registry').commandSchema(command);
+    for (const key of ['serial', 'adb'].filter(key => schema.properties?.[key])) {
+      if (explicitTarget !== undefined && bound[key] !== undefined && selected?.[key] !== undefined && bound[key] !== selected[key])
+        throw new CommandError('target_argument_conflict', `Argument ${key} conflicts with options.target.`, { field: key });
+      if (bound[key] === undefined && selected?.[key] !== undefined) bound[key] = selected[key];
+    }
+    return { target: bound.serial ? { platform: 'android', serial: bound.serial } : null, args: bound };
+  }
   if (command === 'executor-prepare') {
     if (explicitTarget !== undefined) throw new CommandError('target_platform_mismatch', 'Executor preparation runs on the Host and accepts no device target.');
     return { target: null, args: { ...args } };
@@ -107,6 +150,8 @@ function bindCommandTarget(command, args, defaultTarget = null, explicitTarget) 
   const bound = { ...args };
   const operationBranches = [...(schema.oneOf || []), ...(schema.anyOf || [])]
     .filter(branch => branch.properties?.operation?.const === args.operation && args.operation !== undefined);
+  if (command === 'ios-execution') operationBranches.push(schema.oneOf.find(branch => args.kind === 'wda'
+    ? branch.properties.kind.const === 'wda' : branch.properties.kind.enum));
   // Transport options may describe both SDK HTTP and WDA on the same iPhone;
   // each command receives only fields its public contract accepts.
   for (const [key, value] of Object.entries(normalized)) {

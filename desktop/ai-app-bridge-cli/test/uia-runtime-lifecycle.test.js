@@ -100,14 +100,14 @@ test('concurrent Hosts share one rotation and one forward for the new epoch', as
   assert.equal(f.calls.filter(args => args[2] === 'forward' && args[3] === 'tcp:0').length, 1);
 });
 
-test('a full unacknowledged session stays available for original receipt recovery and does not rotate', async t => {
+test('a full terminal session rotates and retains original unacknowledged receipts', async t => {
   const f = await fixture(t, { onRequest: body => body.op === 'acknowledge'
     ? { httpStatus: 503, ok: false, error: 'uia_journal_write_failed' } : undefined });
   const binding = await f.observe(); const result = await f.click(binding, 'unacknowledged');
   assert.equal(result.ok, true); assert.equal(result.cleanupError, 'uia_journal_write_failed');
-  assert.equal((await f.observe()).runtimeEpoch, binding.runtimeEpoch); assert.equal(f.state.launches, 0);
-  assert.equal(f.peer.records.get('unacknowledged').acknowledged, false);
-  assert.equal(f.peer.requests.some(body => body.op === 'stop'), false);
+  assert.notEqual((await f.observe()).runtimeEpoch, binding.runtimeEpoch); assert.equal(f.state.launches, 1);
+  const original = JSON.parse(fs.readFileSync(f.peer.phoneFile(`${protocol.rootDirectory}/sessions/${binding.runtimeEpoch}/actions/${protocol.digest('unacknowledged')}.json`)));
+  assert.equal(original.acknowledged, false);
 });
 
 test('pending work prevents rotation even when the action journal is full', async t => {
@@ -120,9 +120,9 @@ test('pending work prevents rotation even when the action journal is full', asyn
   f.peer.complete('pending');
 });
 
-test('an unreachable observation never infers process death or launches a replacement', async t => {
+test('an unreachable observation probes the OS lock and retains a live owner', async t => {
   const f = await fixture(t, { onRequest: body => body.op === 'status' ? { close: true } : undefined });
-  await assert.rejects(f.port.observe(), { code: 'uia_runtime_unreachable' }); assert.equal(f.state.launches, 0); assert.equal(f.state.probes, 0);
+  await assert.rejects(f.port.observe(), { code: 'uia_runtime_unreachable' }); assert.equal(f.state.launches, 0); assert.equal(f.state.probes, 1);
 });
 
 test('explicit start uses the OS-lock observation, preserves live ownership and never overwrites the loaded artifact', async t => {

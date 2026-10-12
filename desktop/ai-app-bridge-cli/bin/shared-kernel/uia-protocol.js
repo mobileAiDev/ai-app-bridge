@@ -71,7 +71,12 @@ function observedTarget(xml, node, selector, packageName, { exact = true } = {})
   const ref = nodeTargetRef(snapshotIdentity(xml), node);
   if (!ref) fail('uia_bound_observation_required', 'Observe UIA again using the node runtime before selecting an action.');
   const keys = Object.keys(selector || {});
-  if (keys.length !== 1) fail('invalid_uia_selector', 'A UIA action requires exactly one selector field.');
+  // Compound/scoped queries choose an observed node. The runtime executes that
+  // node reference and reports attribute changes, without a second tree capture.
+  if (keys.length !== 1 || !['text', 'contentDescription', 'resourceName', 'nodeRef'].includes(keys[0])) {
+    require('./argument-schema').validateValue(selector, require('./uia-target').intentSelectorSchema, 'selector');
+    return bindingFromTargetRef(ref, packageName);
+  }
   return { bootId: ref.bootId, runtimeEpoch: ref.runtimeEpoch,
     target: { snapshotId: ref.snapshotId, ref: ref.nodeRef,
       selector: { kind: keys[0], value: selector[keys[0]], exact, packageName } } };
@@ -153,7 +158,7 @@ function validRecoveryReceipt(receipt, identity, request) {
 function matchingBinding(binding, request) {
   if (!record(binding) || binding.snapshotId !== request.target.snapshotId || binding.ref !== request.target.ref
     || !isDeepStrictEqual(binding.selector, request.target.selector) || binding.clickPolicy !== request.clickPolicy
-    || binding.identityStrength !== 'same_connection_node_and_reobserved_attributes'
+    || !['same_connection_node_and_reobserved_attributes', 'same_connection_node'].includes(binding.identityStrength)
     || !record(binding.window) || !Number.isSafeInteger(binding.window.id) || binding.window.id < 0
     || binding.window.displayId !== 0 || typeof binding.window.focused !== 'boolean') return false;
   const { target, actionTarget } = binding;

@@ -132,15 +132,22 @@ test('a UIA tree belonging to another app is reported as observed; the explicit 
 });
 
 test('node replacement is still an action failure; fresh observation can continue the same Intent', async () => {
-  let reads = 0;
+  let reads = 0, attempts = 0;
   const changed = structuredClone(native); changed.root.targetRef.viewId = 'replacement';
-  const h = harness({ bridgeTree: async () => ++reads === 1 ? native : changed });
+  const h = harness({ bridgeTree: async () => ++reads === 1 ? native : changed,
+    tap: async (_ctx, _x, _y, options) => {
+      attempts++;
+      return options.nativeTarget.targetRef.viewId === changed.root.targetRef.viewId
+        ? { ok: true, dispatched: true, ambiguous: false }
+        : { ok: false, error: 'native_target_replaced', dispatched: false, ambiguous: false };
+    } });
   const state = await h.worker.start();
   const result = await h.worker.decide({ decisionId: 'replaced', basedOnRevision: state.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
-  assert.equal(result.error, 'reobserve_required');
-  assert.equal(result.lastAction.dispatched, false);
-  assert.equal(h.calls.some(c => c[0] === 'tap'), false);
-  assert.equal((await h.worker.observe()).ok, true);
+  assert.equal(result.error, 'native_target_replaced');
+  assert.equal(result.lastAction.dispatched, false); assert.equal(attempts, 1);
+  const fresh = await h.worker.observe(); assert.equal(fresh.ok, true);
+  const next = await h.worker.decide({ decisionId: 'fresh', basedOnRevision: fresh.revision, agentDecision: 'act', action: { action: 'tap', selector: { text: '导入' } } });
+  assert.equal(next.lastAction.dispatched, true); assert.equal(attempts, 2);
 });
 
 test('a failed node action retains foreground warnings and leaves later commands available', async () => {

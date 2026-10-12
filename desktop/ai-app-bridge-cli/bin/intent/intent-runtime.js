@@ -10,6 +10,7 @@ function createIntentRuntime({
   let sequence = 0;
   let eventBytes = 0;
   let droppedEvents = 0;
+  const listeners = new Set();
   const state = {
     operationId,
     status: 'created',
@@ -32,6 +33,7 @@ function createIntentRuntime({
       eventBytes -= removed.encoded;
       droppedEvents += 1;
     }
+    for (const listener of listeners) listener(event);
     return event;
   }
 
@@ -55,6 +57,7 @@ function createIntentRuntime({
     state,
     emit,
     snapshot,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     get events() { return events.map((item) => item.event); },
     get eventBytes() { return eventBytes; },
   };

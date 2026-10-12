@@ -1,3 +1,8 @@
+## 0.4.6
+
+- Align the optional executor identity with the coordinated 0.4.6 release. The WidgetTester execution contract is unchanged.
+- The matching Host supports all registered commands from Script and command composition from Intent; permissions are optional explicit restrictions.
+
 ## 0.4.5
 
 - Coordinate with the Android foreground observation and explicit-action contract. Android window formatting differences are diagnosed without vetoing actions; target references and execution receipts remain authoritative.

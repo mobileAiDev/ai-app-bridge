@@ -33,15 +33,19 @@ Default `capabilities` returns a light command directory. Request `command` and 
 
 CLI and MCP use the same independent local execution runtime and command contracts. Intent, Script, installation and permission operations can be started from either client and continued by operation ID from the other. Client exit leaves tasks running; use task `cancel` or `runtime --operation stop --extract null` for explicit shutdown.
 
-- `script` runs trusted-local-code JavaScript or Python. `permissions` only gate Bridge SDK calls; this is not an OS sandbox. The default allowlist excludes clear-data, install, permission changes, eval, raw shell, and ADB management. `page-summary` stays internal to Script/Intent.
+- `script` runs trusted-local-code JavaScript or Python. Omitted `permissions` allow every registered command; explicit permissions restrict Bridge SDK calls and are not an OS sandbox. Scripts can compose Intent, Script, Bridge commands and wrapped ADB. `page-summary` stays internal to Script/Intent.
 - `intent` records observation, decision, action, and evidence refs. Agents read that history and write Script themselves.
 - Android and iOS `logs` / `network` / `state` / `events` use phone-side persistent storage. `history:true` reads retained phone facts while connected; Host stores execution/observation evidence separately. Web capture is committed to the Host FactStore at ingress. Check refs, target, epoch, coverage and retention for each query.
 
-The coordinated `0.4.5` release accepts Android WindowManager field formatting across
-versions and vendors. Foreground mismatch, change and probe failure are observations
-and warnings; they do not veto explicit actions or select another app/provider.
-Node references and execution receipts still describe the actual action. See the
-[Android foreground contract](desktop/ai-app-bridge-cli/docs/INTENT_FOREGROUND.md).
+The coordinated `0.4.6` release improves execution efficiency, command composition
+and recovery. Script can call every registered Bridge command by default, including
+Intent and wrapped ADB; Intent can compose Bridge commands, Scripts and child Intents.
+Independent Script reads can run concurrently. Omitted extraction uses automatic
+complete or lossless compact output before falling back to a partial preview.
+Foreground and historical recovery diagnostics inform the agent; actual targets,
+receipts and unknown outcomes remain explicit. See the
+[release audit](docs/AGENT_CHOICE_AUDIT_2026-10-12.md) and
+[command contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md).
 
 ## What It Solves
 
@@ -112,7 +116,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.5")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.6")
 }
 ```
 
@@ -145,7 +149,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.5"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.6"
 }
 
 aiAppBridge {
@@ -160,7 +164,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.5")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.6")
 ```
 
 Start the runtime once in the debug app process:
@@ -176,7 +180,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.5
+npm install -g @mobileaidev/ai-app-bridge@0.4.6
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -191,7 +195,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.5
+  ai_app_bridge_flutter: 0.4.6
 ```
 
 Initialize once:
@@ -258,14 +262,15 @@ The package includes the embedded FactStore prebuild; no database service,
 C/C++ compiler or Python is needed for ordinary commands and JS/regex extraction.
 Python is only needed for Python scripts/extraction. See the [Host support
 matrix and local-tarball setup](desktop/ai-app-bridge-cli/docs/INSTALLATION.md).
-The configuration pins the coordinated 0.4.5 release.
+The configuration pins the coordinated 0.4.6 release.
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.5","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.6","ai-app-bridge-mcp"]}}}
 ```
 
-Every run explicitly supplies `extract:null` for the original result, or a
-focused regex/JS/Python extraction. See [response extraction and safe ref
+Omit `extract` for complete data within the output budget. Over-budget JSON first
+tries a lossless table view; larger results include usable preview ranges and a saved
+ref. Use `select`, regex/JS/Python, or explicit `extract:null` for the original shape. See [response extraction and safe ref
 recovery](desktop/ai-app-bridge-cli/docs/RESPONSE_EXTRACTION.md).
 
 ## Debug Builds Only

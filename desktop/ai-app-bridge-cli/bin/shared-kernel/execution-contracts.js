@@ -35,11 +35,7 @@ function exactlyOne(properties, keys, required = []) {
   return { ...object(properties, required), oneOf: keys.map(key => ({ required: [key] })) };
 }
 
-const nodeLabels = { text, resourceName: text, contentDescription: text };
-const nodeIdentity = exactlyOne({ className: text, resourceName: text }, ['className', 'resourceName']);
-const ancestor = exactlyOne({ ...nodeIdentity.properties, parent: nodeIdentity }, ['className', 'resourceName']);
-const within = exactlyOne({ ...nodeLabels, ancestor }, Object.keys(nodeLabels), ['ancestor']);
-const nativeSelector = exactlyOne({ ...nodeLabels, within }, Object.keys(nodeLabels));
+const nativeSelector = require('./native-target').selectorSchema;
 const uiaSelector = require('./uia-target').intentSelectorSchema;
 const flutterSelector = exactlyOne({ text, nodeId: text }, ['text', 'nodeId']);
 
@@ -57,7 +53,11 @@ function nativeGestureSchema() {
 }
 
 function intentActionSchema(activeProvider, platform) {
-  const branches = [];
+  const branches = [object({ action: { const: 'command' }, command: text,
+    arguments: jsonObject, target: executionTargetSchema(),
+    observeAfter: { type: 'boolean', default: false,
+      description: 'Optional fresh UI observation after this command. Default false returns its result directly; existing UI evidence retains its original revision.' },
+  }, ['action', 'command'])];
   for (const name of activeProvider ? [activeProvider] : provider.enum) {
     const make = (action, properties = {}, required = []) => object({ action: { const: action }, provider: { const: name }, ...properties }, ['action', ...required]);
     if (name === 'h5') {
@@ -113,7 +113,8 @@ const intentTarget = intentTargetSchema();
 const scriptTarget = executionTargetSchema({ nullable: true });
 const intentActionNames = intentActionSchema().properties.action.enum;
 const intentBudget = object({ maxSteps: { ...integer(1, 10000), default: 30 }, maxAgentCalls: { ...integer(1, 10000), default: 30 },
-  maxDurationMs: { ...milliseconds, default: 120000 }, allowlist: { ...array({ enum: intentActionNames }, 0, intentActionNames.length), uniqueItems: true, default: ['tap'] } });
+  maxDurationMs: { ...milliseconds, default: 120000 }, allowlist: { ...array({ enum: intentActionNames }, 0, intentActionNames.length), uniqueItems: true,
+    description: 'Optional caller restriction. Omit to allow every action supported by the selected platform and provider.' } });
 const captureRequirements = object({ streams: { ...array({ enum: ['logs', 'network', 'state', 'events'] }, 1, 4), uniqueItems: true },
   view: { enum: ['decision-window', 'connected-history'], default: 'decision-window' }, sinceMs: integer(0), limit: pageLimit,
   timeoutMs: milliseconds, runtimeEpoch: text,
@@ -125,7 +126,7 @@ function scriptSpecSchema(permissionNames) {
     language: { enum: ['javascript', 'python'] }, source: text, sourcePath: text, cwd: text,
     entrypoint: { ...text, default: 'main' }, target: scriptTarget, inputs: { ...jsonObject, default: {} },
     permissions: { ...array({ enum: permissionNames }, 0, permissionNames.length), uniqueItems: true,
-      default: ['app.read', 'app.interact', 'capture.read'] },
+      default: permissionNames, description: 'Optional caller restriction. Omit to enable every supported Script command.' },
     policy: object({ timeoutMs: { ...milliseconds, default: 600000 },
       restartPolicy: { enum: ['none', 'checkpoint'], default: 'none' },
       maxOutputBytes: { ...integer(1, 64 * 1024 * 1024), default: 1048576 }, maxProgressBytes: { ...integer(1, 64 * 1024 * 1024), default: 1048576 } }),
@@ -156,9 +157,11 @@ function executionCommandSchema(command, permissionNames) {
     ...['pause', 'resume', 'cancel'].map(name => control(name, scriptRead)),
     operation('decide', { operationId: text, requestId: text, revision, decision: { contentMediaType: 'application/json', description: 'JSON answer to the current ctx.askAgent request; business data is preserved.' }, ...scriptRead }, ['operationId', 'requestId', 'revision', 'decision']),
     operation('runtime-status', {}),
+    operation('recipes', { name: { type: 'string', enum: require('../script/recipes').names } }),
   ]);
   if (command === 'intent') {
     const start = { goal: text, target: intentTarget, provider: { ...provider, default: 'native' }, observationTarget: observationTargetSchema, operationId: text,
+      background: { type: 'boolean', default: false, description: 'Return operationId after admission while observation/Agent work continues. Script/Intent command composition defaults this to true; explicit false waits for the initial decision loop.' },
       timeoutMs: { ...milliseconds, default: 300000, description: 'Total lifetime including observations, decision waits, paused time and actions; terminal persistence drains afterwards.' },
       require: captureRequirements, recordingDir: text };
     return variants('operation', [
@@ -166,6 +169,9 @@ function executionCommandSchema(command, permissionNames) {
       operation('start', { ...start, mode: { const: 'autonomous' }, agentModule: text, budget: intentBudget }, ['goal', 'target', 'mode', 'agentModule']),
       control('status', historyRead), control('observe', { basedOnRevision: revision, observationTarget: observationTargetSchema,
         provider: { ...provider, description: 'Observe through this provider on the frozen target. Becomes selected only after the new observation and summary are committed; omitted retains the last committed selection.' } }),
+      control('wait', { ...historyRead, afterEventSequence: { ...integer(0), default: 0,
+        description: 'Event cursor from the previous Intent response eventSequence; distinct from history.afterSequence.' },
+        waitMs: { ...integer(0, 60000), default: 30000 } }),
       operation('decide', { operationId: text, decision: intentDecisionSchema() }, ['operationId', 'decision']),
       ...['pause', 'resume', 'cancel'].map(name => control(name)),
       operation('intervene', { operationId: text, reason: text }, ['operationId', 'reason']),

@@ -80,7 +80,7 @@ for (const acknowledgedOnPhone of [false, true]) test(`Host SIGKILL with a durab
   }
 });
 
-test('eight failed acknowledgements bound retained obligations and the next UIA action never prepares', async t => {
+test('eight failed acknowledgements archive cleanup obligations and the next UIA action proceeds', async t => {
   let reject = true;
   const { peer, target } = await fixture(t, { onRequest: body => body.op === 'acknowledge' && reject
     ? { httpStatus: 503, ok: false, error: 'uia_journal_write_failed' } : undefined });
@@ -90,12 +90,13 @@ test('eight failed acknowledgements bound retained obligations and the next UIA 
   }
   assert.equal(ownership(peer.serial).pendingAcknowledgements.length, 8);
   const rejected = await executeCommand('tap-uia-text', { ...target, requestId: 'over-capacity' });
-  assert.equal(rejected.error, 'device_acknowledgements_full');
-  assert.equal(rejected.dispatched, false); assert.equal(rejected.ambiguous, false);
-  assert.equal(peer.requests.filter(item => item.op === 'prepare').length, 8);
+  assert.equal(rejected.ok, true);
+  const archived = rejected.warnings.find(item => item.code === 'receipt_acknowledgements_archived');
+  assert.equal(JSON.parse(fs.readFileSync(archived.archivePath)).pendingAcknowledgements.length, 8);
+  assert.equal(peer.requests.filter(item => item.op === 'prepare').length, 9);
   reject = false;
   const recovered = await reconcileInChild(peer.serial);
-  assert.equal(recovered.pendingAcknowledgements, 0); assert.equal(peer.dispatches.length, 8);
+  assert.equal(recovered.pendingAcknowledgements, 0); assert.equal(peer.dispatches.length, 9);
   assert.equal((await executeCommand('tap-uia-text', { ...target, requestId: 'after-cleanup' })).ok, true);
 });
 
@@ -134,7 +135,7 @@ test('v1 journal upgrade preserves unknown ownership under the same physical loc
   const store = createOwnershipStore(directory), lease = createDeviceMutationLease({ directory });
   assert.deepEqual(store.read('phone'), { ...original, schemaVersion: 'aab.device-ownership/v2', pendingAcknowledgements: [] });
   assert.deepEqual(JSON.parse(fs.readFileSync(journal(directory, 'phone'))), original);
-  assert.equal(lease.acquire('phone').error, 'device_ownership_unresolved');
+  assert.equal(lease.status('phone').unresolved, true);
   const held = store.lock('phone'); assert.equal(lease.acquire('phone').error, 'target_busy'); held.close();
   assert.equal((await lease.reconcile('phone', async pending => {
     assert.deepEqual(pending, original.pending); return { settled: true, original: true };
@@ -143,7 +144,7 @@ test('v1 journal upgrade preserves unknown ownership under the same physical loc
   assert.equal(upgraded.schemaVersion, 'aab.device-ownership/v2'); assert.deepEqual(upgraded.pendingAcknowledgements, []);
 });
 
-test('corrupt acknowledgement bytes block acquisition before any further phone dispatch', async t => {
+test('corrupt acknowledgement bytes remain archived while new explicit work proceeds', async t => {
   const { peer, target } = await fixture(t, { onRequest: body => body.op === 'acknowledge'
     ? { httpStatus: 503, ok: false, error: 'uia_journal_write_failed' } : undefined });
   await executeCommand('tap-uia-text', { ...target, requestId: 'original' });
@@ -151,8 +152,10 @@ test('corrupt acknowledgement bytes block acquisition before any further phone d
   t.after(() => fs.writeFileSync(file, original));
   const corrupt = JSON.parse(original); corrupt.pendingAcknowledgements[0].proof.receiptJson += ' ';
   fs.writeFileSync(file, JSON.stringify(corrupt));
-  assert.equal((await executeCommand('tap-uia-text', { ...target, requestId: 'must-not-run' })).error, 'device_ownership_corrupt');
-  assert.deepEqual(peer.dispatches, ['original']);
+  const next = await executeCommand('tap-uia-text', { ...target, requestId: 'next' });
+  assert.equal(next.ok, true);
+  assert.equal(JSON.parse(fs.readFileSync(next.warnings[0].archivePath)).pendingAcknowledgements[0].proof.receiptJson, corrupt.pendingAcknowledgements[0].proof.receiptJson);
+  assert.deepEqual(peer.dispatches, ['original', 'next']);
 });
 
 test('Host storage failure after phone acknowledgement retains the durable cleanup obligation for retry', async t => {

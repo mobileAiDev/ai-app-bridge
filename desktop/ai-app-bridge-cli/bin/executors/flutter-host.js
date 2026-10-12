@@ -102,12 +102,12 @@ class FlutterExecutorHost extends AndroidExecutorHost {
   }
 }
 
-async function recoverFlutterExecutor(pending) {
+async function recoverFlutterExecutor(pending, options) {
   const descriptor = readJson(pending.descriptorFile);
   if (!descriptor || descriptor.sessionId !== pending.sessionId || descriptor.serial !== pending.target?.serial)
     return { settled: false, error: 'executor_descriptor_mismatch' };
   const port = new FlutterExecutorPort(descriptor);
-  if (!await port.bootChanged()) {
+  if (!options?.readOnly && !await port.bootChanged()) {
     if (!descriptor.pid) {
       const starting = await port.readRecord('starting.json');
       if (starting) {
@@ -118,6 +118,6 @@ async function recoverFlutterExecutor(pending) {
     const closed = await port.readRecord('closed.json');
     if (closed?.settled && descriptor.pid) await port.terminateClosedProcess();
   }
-  return recoverAndroidExecutor(pending, value => new FlutterExecutorPort(value));
+  return recoverAndroidExecutor(pending, value => new FlutterExecutorPort(value), options);
 }
 module.exports = { FlutterExecutorHost, FlutterExecutorPort, protocol, recoverFlutterExecutor };

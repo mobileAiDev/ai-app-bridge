@@ -139,8 +139,8 @@ test('an offline phone cannot keep local occupancy; reset can be retried after r
   assert.equal(offline.ownershipReleased, true);
   assert.equal(offline.remoteResetPending, true);
   assert.equal(lease.status('phone').active, 0);
-  assert.equal(lease.acquire('phone').error, 'device_reset_required');
-  assert.match(lease.acquire('phone').message, /Reconnect/);
+  const continued = await lease.run('phone', async () => ({ ok: true }));
+  assert.equal(continued.warnings[0].reason, 'remote_reset_incomplete');
   let original;
   const connected = await forceStopDevice({ serial: 'phone' }, { directory, stopHost: async () => [],
     stopDevice: async (serial, pending) => { original = pending[0].target.adb; return { ok: true }; } });

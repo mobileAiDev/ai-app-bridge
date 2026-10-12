@@ -2,12 +2,13 @@
 
 const fs = require('fs');
 const { CommandError, executionFields } = require('./command-errors');
+const { validateLogcatQuery, filterLogcat, queryLogcat } = require('./shared-kernel/logcat-query');
 const { createHash, randomUUID } = require('node:crypto');
 const net = require('net');
 const path = require('path');
 const { runExecution, checkExecution, executionSleep, withoutExecution } = require('./shared-kernel/execution-scope');
 const { execFileBounded, httpRequestBounded } = require('./shared-kernel/execution-io');
-const { nativeWindow, nativeNodeIdentity, nativeWindowIdentity, nativeTargetRequest, selectNativeNode, revalidateNativeNode, explicitlyHidden, pointInsideBounds, validBounds } = require('./shared-kernel/native-target');
+const { nativeWindow, nativeTargetRequest, selectNativeNode, explicitlyHidden, pointInsideBounds, validBounds } = require('./shared-kernel/native-target');
 const { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest, bindFlutterAction } = require('./shared-kernel/flutter-target');
 const { executeFlutterAction, settlementProof: flutterSettlementProof } = require('./shared-kernel/flutter-execution');
 const { executeNativeAction, settlementProof: nativeSettlementProof } = require('./shared-kernel/native-execution');
@@ -24,6 +25,7 @@ const { IOSBridgeProvider } = require('./ios-provider');
 const { discoverAndroidSdkEndpoint } = require('./shared-kernel/android-sdk-endpoint');
 const { createBridgeForward, verifyBridgeForward, removeBridgeForward } = require('./bridge-forward');
 const { decodeXmlAttribute, parseXmlAttributes } = require('./shared-kernel/xml-attributes');
+const { visitAndroidUiHierarchyTags } = require('./android-uia-xml');
 const { readForegroundFeedback, withForeground, foregroundProbeFailure } = require('./shared-kernel/android-foreground-feedback');
 const { parseForegroundWindowIdentity, verifyForegroundPackageUid, verifyForegroundProcessIdentity,
   sameForegroundWindow } = require('./shared-kernel/android-foreground-identity');
@@ -72,6 +74,10 @@ function isIOSCommand(command) {
 
 async function runCommand(command, options, ctx) {
   switch (command) {
+    case 'doctor':
+      return require('./doctor').doctor(options);
+    case 'adb-exec':
+      return require('./shared-kernel/adb-exec').adbExec(options);
     case 'device-ownership':
       return require('./shared-kernel/device-ownership-recovery').deviceOwnership(options);
     case 'uia-runtime':
@@ -1408,7 +1414,9 @@ function compactTreeOptions(options = {}) {
 }
 
 function compactBridgeTree(tree, options = {}) {
+  if (tree?.ok === false) return { ...tree, compact: true, source: 'bridge-tree' };
   const compactOptions = compactTreeOptions(options);
+  const sourceCoverage = tree?.coverage || require('./shared-kernel/observation-coverage').observationCoverage('native', tree);
   const result = {
     ok: true,
     source: 'bridge-tree',
@@ -1421,6 +1429,8 @@ function compactBridgeTree(tree, options = {}) {
     scannedNodes: 0,
     matchedNodes: 0,
     truncated: false,
+    coverage: { source: { ...sourceCoverage, scope: 'window-group' }, projection: { truncated: false, reason: null,
+      filtered: Boolean(compactOptions.textFilter || compactOptions.resourceIdFilter || compactOptions.classFilter || compactOptions.visibleOnly) } },
     updatedAtMs: tree?.updatedAtMs || Date.now(),
   };
 
@@ -1437,7 +1447,7 @@ function compactBridgeTree(tree, options = {}) {
       }
     });
   }
-  if (tree?.root) {
+  if (!roots.length && tree?.root) {
     roots.push({
       root: tree.root,
       windowType: 'root',
@@ -1457,6 +1467,11 @@ function compactBridgeTree(tree, options = {}) {
     if (result.truncated) break;
   }
 
+  if (result.truncated) {
+    result.coverage.projection.truncated = true;
+    result.coverage.projection.reason = 'max_nodes';
+  }
+  result.truncated = result.coverage.source.status === 'partial' || result.coverage.projection.truncated;
   return result;
 }
 
@@ -1481,7 +1496,13 @@ function visitBridgeTreeNode(node, state) {
     }));
   }
 
-  if (state.depth >= state.options.maxDepth) return;
+  if (state.depth >= state.options.maxDepth) {
+    if (children.length) {
+      state.result.coverage.projection.truncated = true;
+      state.result.coverage.projection.reason ||= 'max_depth';
+    }
+    return;
+  }
   for (const child of children) {
     visitBridgeTreeNode(child, {
       ...state,
@@ -1510,6 +1531,9 @@ function compactBridgeNode(node, extra) {
     resourceName: node.resourceName || null,
     text: node.text || null,
     contentDescription: node.contentDescription || null,
+    ...Object.fromEntries(['nodeId', 'targetRef', 'textTruncated', 'textLength', 'childrenTruncated', 'omittedChildCount', 'checked', 'editable', 'effectiveVisible']
+      .filter(key => Object.hasOwn(node, key)).map(key => [key, node[key]])),
+    ...(node.targetRef?.viewId ? { selector: { viewId: node.targetRef.viewId } } : {}),
     visible: node.visible !== false && node.effectiveVisible !== false,
     enabled: node.enabled !== false,
     clickable: Boolean(node.clickable),
@@ -1525,61 +1549,72 @@ function compactUiaTree(xml, options = {}) {
   const compactOptions = compactTreeOptions(options);
   const text = String(xml || '');
   const snapshot = uiaSnapshotIdentity(text);
-  const viewport = parseUiaViewport(text);
+  const hierarchy = parseXmlAttributes(text.match(/<hierarchy\b[^>]*>/)?.[0] || '');
+  const sourceCoverage = require('./shared-kernel/observation-coverage').observationCoverage('uia', text);
   const result = {
     ok: true,
     source: 'uiautomator',
     compact: true,
     rawBytes: Buffer.byteLength(text, 'utf8'),
-    viewport,
+    viewport: null,
     options: compactTreeResultOptions(compactOptions),
     nodes: [],
     scannedNodes: 0,
     matchedNodes: 0,
     truncated: false,
+    coverage: { source: sourceCoverage, projection: { truncated: false, reason: null,
+      filtered: Boolean(compactOptions.textFilter || compactOptions.resourceIdFilter || compactOptions.classFilter || compactOptions.visibleOnly) } },
+    ...(hierarchy['aab-warnings'] ? { warnings: JSON.parse(hierarchy['aab-warnings']) } : {}),
     updatedAtMs: Date.now(),
   };
 
-  const tokenRegex = /<\/node>|<node\b[^>]*\/?>/g;
-  let depth = -1;
-  let token;
-  while ((token = tokenRegex.exec(text)) !== null) {
-    const tag = token[0];
-    if (tag.startsWith('</node')) {
-      depth = Math.max(-1, depth - 1);
-      continue;
-    }
-
-    depth += 1;
+  const ancestors = [];
+  visitAndroidUiHierarchyTags(text, ({ tag, tagName, closing, selfClosing }) => {
+    if (closing) { ancestors.pop(); return; }
+    const depth = ancestors.length;
     result.scannedNodes += 1;
     const attrs = parseXmlAttributes(tag);
+    if (!attrs.class && tagName !== 'node') attrs.class = tagName;
     const node = compactUiaNode(attrs, depth, result.scannedNodes);
+    if (ancestors.at(-1)?.hidden) node.effectiveVisible = false;
+    else if (node.visible !== undefined) node.effectiveVisible = node.visible;
+    if (depth === 0) result.viewport = unionUiaBounds(result.viewport, node.bounds);
+    const windowBounds = depth === 0 ? node.bounds : ancestors[0].bounds;
     if (snapshot) node.targetRef = uiaNodeTargetRef(snapshot, attrs);
-    if (depth <= compactOptions.maxDepth && uiaNodeMatchesCompactFilters(node, compactOptions, viewport)) {
+    if (depth <= compactOptions.maxDepth && uiaNodeMatchesCompactFilters(node, compactOptions, windowBounds)) {
       result.matchedNodes += 1;
       if (result.nodes.length >= compactOptions.maxNodes) {
         result.truncated = true;
-        break;
+        return false;
       }
       result.nodes.push(node);
+    } else if (depth > compactOptions.maxDepth) {
+      result.coverage.projection.truncated = true;
+      result.coverage.projection.reason ||= 'max_depth';
     }
-    if (tag.endsWith('/>')) {
-      depth = Math.max(-1, depth - 1);
-    }
-  }
+    if (!selfClosing) ancestors.push({ bounds: node.bounds, hidden: node.effectiveVisible === false });
+  });
 
+  if (result.truncated) {
+    result.coverage.projection.truncated = true;
+    result.coverage.projection.reason = 'max_nodes';
+  }
+  result.truncated = sourceCoverage.status === 'partial' || result.coverage.projection.truncated;
   return result;
 }
 
 function compactUiaNode(attrs, depth, sequence) {
+  const visible = attrs['visible-to-user'] ?? attrs.displayed;
   return {
     depth,
     sequence,
+    ...(attrs['aab-window-id'] ? { windowId: Number(attrs['aab-window-id']) } : {}),
     className: attrs.class || '',
     resourceId: attrs['resource-id'] || null,
     text: attrs.text || null,
     contentDescription: attrs['content-desc'] || null,
     packageName: attrs.package || null,
+    ...(['true', 'false'].includes(visible) ? { visible: visible === 'true' } : {}),
     enabled: attrs.enabled !== 'false',
     clickable: attrs.clickable === 'true',
     focusable: attrs.focusable === 'true',
@@ -1592,7 +1627,7 @@ function compactUiaNode(attrs, depth, sequence) {
 }
 
 function uiaNodeMatchesCompactFilters(node, options, viewport) {
-  if (options.visibleOnly && !boundsInViewport(node.bounds, viewport)) return false;
+  if (options.visibleOnly && (node.effectiveVisible === false || !boundsInViewport(node.bounds, viewport))) return false;
   return compactFiltersMatch({
     text: compactString(node.text || node.contentDescription || ''),
     resource: compactString(node.resourceId || ''),
@@ -1914,25 +1949,25 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
     const selectedProvider = options.provider || 'native';
     const providers = selectedProvider === 'auto' ? ['native', 'flutter', 'uia'] : [selectedProvider];
     const observations = [];
-    let nativeForeground;
-    const reject = (error, message) => withForeground({ ok: false, error, message, targetText, dispatched: false, ambiguous: false, observations }, feedback);
+    const reject = (error, message, details) => withForeground({ ok: false, error, message, ...(details || {}), targetText, dispatched: false, ambiguous: false, observations }, feedback);
     async function readMatch(provider) {
       checkExecution();
       if (provider === 'native') {
         const tree = await (dependencies.bridgeTree || bridgeTree)(ctx);
         if (tree?.ok === false) throw new CommandError('observation_unavailable', tree.error || 'native_tree_unavailable');
-        nativeForeground = nativeWindow(tree);
         const found = findTappableNodeByText(tree, targetText);
-        if (found.ambiguous) throw new CommandError('target_ambiguous', 'Several native Views match targetText. Use tap-native or Intent with a precise selector.');
+        if (found.ambiguous) throw new CommandError('target_ambiguous', 'Several native Views match targetText. Select a candidate viewId.',
+          { details: { matched: found.matches.length, candidates: require('./shared-kernel/native-target').nativeCandidates(found.matches) } });
         if (!found.node) return null;
         return { x: (found.node.bounds.left + found.node.bounds.right) / 2,
           y: (found.node.bounds.top + found.node.bounds.bottom) / 2, node: bridgeNodeTarget(found.node, found.windowType),
           guarded: nativeTargetRequest(found.node, found.node.text === targetText ? { text: targetText } : { contentDescription: targetText }),
-          identity: { window: nativeWindowIdentity(nativeForeground), node: nativeNodeIdentity(found.node) }, coordinateSpace: 'physical-pixels' };
+          coordinateSpace: 'physical-pixels' };
       }
       if (provider === 'flutter') {
         const selected = selectFlutterNode(await (dependencies.flutterNodes || flutterNodes)(ctx), { text: targetText });
-        if (selected.error === 'flutter_selector_not_unique') throw new CommandError('target_ambiguous', 'Several Flutter nodes match targetText. Use Intent with a precise selector.');
+        if (selected.error === 'flutter_selector_not_unique') throw new CommandError('target_ambiguous', selected.message,
+          { details: { matched: selected.matched, candidates: selected.candidates } });
         if (!selected.ok) {
           if (selected.error === 'flutter_selector_not_found') return null;
           throw new CommandError(selected.error, 'The Flutter target could not be observed.');
@@ -1940,10 +1975,10 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
         return { ...selected, guarded: flutterTargetRequest(selected.node, { text: targetText }), identity: flutterNodeIdentity(selected.node), coordinateSpace: 'flutter-logical-pixels' };
       }
       const xml = await (dependencies.uiaTree || uiaTree)(ctx);
-      const node = findUiaNodeByAny(xml, { texts: [targetText], exact: true, requireUnique: true, packageName: ctx.packageName });
+      const node = findUiaNodeByAny(xml, { texts: [targetText], exact: options.exact !== false, requireUnique: true, packageName: ctx.packageName });
       if (!node) return null;
-      const selector = node.rawNode.text === targetText ? { text: targetText } : { contentDescription: targetText };
-      return { node: node.matched, binding: observedUiaTarget(xml, node.rawNode, selector, ctx.packageName) };
+      const selector = (options.exact === false ? node.rawNode.text?.includes(targetText) : node.rawNode.text === targetText) ? { text: targetText } : { contentDescription: targetText };
+      return { node: node.matched, binding: observedUiaTarget(xml, node.rawNode, selector, ctx.packageName, { exact: options.exact !== false }) };
     }
     for (const provider of providers) {
       let match;
@@ -1951,7 +1986,7 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
       catch (error) {
         checkExecution();
         observations.push({ provider, status: 'unavailable', error: error.code || error.message });
-        if (error.code === 'target_ambiguous' || selectedProvider !== 'auto') return reject(error.code || 'observation_unavailable', error.message);
+        if (error.code === 'target_ambiguous' || selectedProvider !== 'auto') return reject(error.code || 'observation_unavailable', error.message, error.details);
         continue;
       }
       observations.push({ provider, status: match ? 'matched' : 'not-found', observedAtMs: Date.now() });
@@ -1960,13 +1995,12 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
       // cannot trigger an input through another provider.
       let currentMatch = match;
       try {
-        if (provider === 'flutter') nativeForeground = undefined;
-        if (provider !== 'uia') currentMatch = await readMatch(provider);
+        if (provider === 'flutter') currentMatch = await readMatch(provider);
       } catch (error) {
         checkExecution();
-        return reject(error.code || 'observation_unavailable', error.message);
+        return reject(error.code || 'observation_unavailable', error.message, error.details);
       }
-      if (!currentMatch || provider !== 'uia' && JSON.stringify(match.identity) !== JSON.stringify(currentMatch.identity)) return reject('reobserve_required', 'The selected target changed before dispatch.');
+      if (!currentMatch || provider === 'flutter' && JSON.stringify(match.identity) !== JSON.stringify(currentMatch.identity)) return reject('reobserve_required', 'The selected target changed before dispatch.');
       match = currentMatch;
       if (['native', 'flutter'].includes(provider) && !match.guarded.ok) return withForeground({ ...match.guarded, targetText, provider, observations }, feedback);
       if (provider !== 'uia' && (!Number.isFinite(match.x) || !Number.isFinite(match.y) || match.x < 0 || match.y < 0)) return reject('invalid_observed_coordinates');
@@ -1980,7 +2014,7 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
         : await (dependencies.tap || tap)(ctx, Math.round(match.x), Math.round(match.y), { ...options,
           nativeTarget: match.guarded.request, scope: 'app' });
       return withForeground({ ...result, targetText, provider, source: provider === 'native' ? 'bridge-tree' : provider === 'flutter' ? 'flutter-operable-tree' : 'uia-node-runtime',
-        ...(provider === 'uia' ? {} : { coordinateSpace: match.coordinateSpace }), selected: match.node, revalidatedAtMs, observations }, feedback, current);
+        ...(provider === 'uia' ? {} : { coordinateSpace: match.coordinateSpace }), selected: match.node, ...(provider === 'native' ? { boundAtMs: revalidatedAtMs } : { revalidatedAtMs }), observations }, feedback, current);
     }
     return reject('target_not_found', 'No observed provider has a unique operable match.');
   } catch (error) {
@@ -2024,7 +2058,7 @@ function findNodeByText(node, targetText, viewport = null) {
     for (const child of current.children || []) visit(child, [...ancestors, current]);
   }
   visit(node);
-  return { node: matches.length === 1 ? matches[0] : null, ambiguous: matches.length > 1, rejected };
+  return { node: matches.length === 1 ? matches[0] : null, ambiguous: matches.length > 1, matches, rejected };
 }
 
 function nodeTapState(node, viewport) {
@@ -2060,24 +2094,23 @@ function findUiaNodeByText(xml, targetText) {
 }
 
 function parseUiaViewport(xml) {
-  const match = /<node\b[^>]*\bbounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/.exec(String(xml || ''));
-  if (!match) return null;
-  const left = Number(match[1]);
-  const top = Number(match[2]);
-  const right = Number(match[3]);
-  const bottom = Number(match[4]);
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width: right - left,
-    height: bottom - top,
-  };
+  let depth = 0, viewport = null;
+  visitAndroidUiHierarchyTags(xml, ({ tag, closing, selfClosing }) => {
+    if (closing) { depth--; return; }
+    if (depth === 0) viewport = unionUiaBounds(viewport, parseUiaBounds(parseXmlAttributes(tag).bounds));
+    if (!selfClosing) depth++;
+  });
+  return viewport;
+}
+
+function unionUiaBounds(previous, bounds) {
+  if (!bounds || bounds.right <= bounds.left || bounds.bottom <= bounds.top) return previous;
+  const left = Math.min(previous?.left ?? bounds.left, bounds.left), top = Math.min(previous?.top ?? bounds.top, bounds.top);
+  const right = Math.max(previous?.right ?? bounds.right, bounds.right), bottom = Math.max(previous?.bottom ?? bounds.bottom, bounds.bottom);
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
 }
 
 async function tapUiaText(ctx, targetText, options = {}) {
-  if (options.exact === false) throw new CommandError('invalid_argument', 'Text actions require an exact match. Use an observed Intent selector.');
   return tapText(ctx, targetText, { ...options, provider: 'uia' });
 }
 
@@ -2088,7 +2121,8 @@ async function bindNativeCommandTarget(ctx, selector, editable, dependencies) {
   const feedback = await readForegroundFeedback(ctx, readForeground);
   try {
     const readTree = () => (dependencies.bridgeTree || bridgeTree)(ctx);
-    const selected = await revalidateNativeNode(readTree, await readTree(), { selector }, editable);
+    // The SDK resolves this View reference and its current geometry on the UI thread.
+    const selected = selectNativeNode(await readTree(), { selector }, editable);
     if (!selected.ok) return withForeground({ ...selected, ambiguous: false }, feedback);
     const binding = nativeTargetRequest(selected.node, selector);
     if (!binding.ok) return withForeground(binding, feedback);
@@ -2128,7 +2162,7 @@ async function tapUia(ctx, options = {}) {
       const xml = await uiaTree(ctx);
       const selected = selectUiaNode(xml, { selector: options.selector }, ctx.packageName);
       if (!selected.ok) return withForeground({ ...selected, ambiguous: false,
-        message: `UIAutomator selector did not identify one enabled visible node: ${selected.error}.`, selector: options.selector }, feedback);
+        message: selected.message || `UIAutomator could not resolve this selector: ${selected.error}.`, selector: options.selector }, feedback);
       binding = observedUiaTarget(xml, selected.node, options.selector, ctx.packageName);
     }
     const current = await readForegroundFeedback(ctx, foregroundWindow, feedback.foregroundObservations[0]);
@@ -2193,7 +2227,8 @@ function findUiaNodeByAny(xml, options) {
     if (!options.requireUnique) return found;
     matches.push(found);
   }
-  if (matches.length > 1) throw new CommandError('target_ambiguous', 'Several UIAutomator nodes match the label. Use tap-uia or Intent with an explicit text, contentDescription or resourceName selector.');
+  if (matches.length > 1) throw new CommandError('target_ambiguous', 'Several UIAutomator nodes match the label. Choose a candidate targetRef.',
+    { details: { matched: matches.length, candidates: require('./shared-kernel/uia-target').uiaCandidates(xml, matches.map(item => item.rawNode)) } });
   return matches[0] || null;
 }
 
@@ -2259,9 +2294,8 @@ async function flutterAction(ctx, payload, options = {}) {
   }
 }
 
-async function flutterCompletion(ctx, identity) {
-  await bridgeGet(ctx, '/v1/status');
-  return bridgePost(ctx, '/v1/flutter/cancel', identity);
+async function flutterCompletion(ctx, identity, options) {
+  return originalCompletion(ctx, identity, 'flutter', options);
 }
 
 async function h5Dom(ctx, options = {}) {
@@ -2305,9 +2339,8 @@ async function h5Action(ctx, payload) {
   }
 }
 
-async function h5Completion(ctx, identity) {
-  await bridgeGet(ctx, '/v1/status');
-  return bridgePost(ctx, '/v1/h5/cancel', identity);
+async function h5Completion(ctx, identity, options) {
+  return originalCompletion(ctx, identity, 'h5', options);
 }
 
 async function h5Eval(ctx, options) {
@@ -2607,9 +2640,15 @@ async function nativeAction(ctx, path, payload, dependencies = {}) {
   }), result => nativeSettlementProof(result, identity));
 }
 
-async function nativeCompletion(ctx, identity) {
-  await bridgeGet(ctx, '/v1/status');
-  return bridgePost(ctx, '/v1/action/cancel', identity);
+async function originalCompletion(ctx, identity, route, { cancel = true } = {}) {
+  const status = await bridgeGet(ctx, '/v1/status');
+  if (!cancel && status.debugBridge?.originalCompletionQuery !== true) return { ok: false, error: 'completion_query_unavailable',
+    message: 'Update the Android app SDK for read-only original completion queries. The current SDK only exposes cancellation; no cancellation was sent.' };
+  return bridgePost(ctx, `/v1/${route}/${cancel ? 'cancel' : 'query'}`, identity);
+}
+
+async function nativeCompletion(ctx, identity, options) {
+  return originalCompletion(ctx, identity, 'action', options);
 }
 
 async function keyevent(ctx, keyCode) {
@@ -2618,6 +2657,7 @@ async function keyevent(ctx, keyCode) {
 }
 
 async function logcat(ctx, options) {
+  validateLogcatQuery(options);
   const follow = Boolean(options.follow || options.live);
   const args = ['logcat', '-v', String(options.logcatFormat || options.format || 'threadtime')];
   const cleared = options.clear || options.clearFirst
@@ -2638,8 +2678,9 @@ async function logcat(ctx, options) {
     ? await adbFollow(ctx, args, Number(options.durationMs || Number(options.durationSec || 5) * 1000))
     : (await adb(ctx, args)).stdout;
   const pid = await resolveLogcatPid(ctx, options);
-  const output = filterLogcat(text, { ...options, pid });
-  return cleared ? { ok: true, text: output, ...executionFields(cleared) } : output;
+  const result = await queryLogcat(text, { ...options, pid });
+  if (!result.ok) return { ...result, ...(cleared ? executionFields(cleared) : {}) };
+  return cleared ? { ok: true, text: result.text, ...executionFields(cleared) } : result.text;
 }
 
 async function appopsSet(ctx, op, mode) {
@@ -2682,62 +2723,6 @@ async function resolveLogcatPid(ctx, options) {
     }
   }
   return '';
-}
-
-function filterLogcat(text, options) {
-  const tags = splitCsv(options.tag || options.tags);
-  const grep = options.grep ? String(options.grep) : '';
-  const grepCaseSensitive = Boolean(options.grepCaseSensitive);
-  const minLevel = priorityValue(options.level || options.minLevel || '');
-  const pid = options.pid ? String(options.pid) : '';
-  const requiresAppPid = options.appPid || options.packagePid || options.pid === 'current';
-  if (requiresAppPid && !pid) {
-    return '';
-  }
-  const lines = String(text || '').split(/\r?\n/);
-  const filtered = [];
-  let previousIncluded = false;
-  for (const line of lines) {
-    if (!line) continue;
-    const parsed = parseLogcatLine(line);
-    if (!parsed) {
-      if (previousIncluded) filtered.push(line);
-      continue;
-    }
-    let include = true;
-    if (pid && parsed.pid !== pid) include = false;
-    if (tags.length && !tags.includes(parsed.tag)) include = false;
-    if (minLevel >= 0 && priorityValue(parsed.priority) < minLevel) include = false;
-    if (grep) {
-      include = include && (
-        grepCaseSensitive
-          ? line.includes(grep)
-          : line.toLowerCase().includes(grep.toLowerCase())
-      );
-    }
-    previousIncluded = include;
-    if (include) filtered.push(line);
-  }
-  const limit = Number(options.limitLines || options.outputLines || 0);
-  const result = limit > 0 && filtered.length > limit ? filtered.slice(-limit) : filtered;
-  return result.join('\n');
-}
-
-function parseLogcatLine(line) {
-  const match = /^\d\d-\d\d\s+\d\d:\d\d:\d\d\.\d+\s+(\d+)\s+(\d+)\s+([VDIWEAF])\s+([^:]+):\s?(.*)$/.exec(line);
-  if (!match) return null;
-  return {
-    pid: match[1],
-    tid: match[2],
-    priority: match[3],
-    tag: match[4].trim(),
-    message: match[5],
-  };
-}
-
-function priorityValue(value) {
-  const normalized = String(value || '').trim().toUpperCase();
-  return { V: 0, D: 1, I: 2, W: 3, E: 4, F: 5, A: 5 }[normalized] ?? -1;
 }
 
 function splitCsv(value) {

@@ -1,0 +1,168 @@
+{
+  "date": "2026-10-12",
+  "baseline": "a76302e",
+  "status": "local-implementation-validated; overall-goal-active",
+  "changes": [
+    "Read-only text wait retries failures within the original deadline",
+    "Foreground diagnostics sampled less often and independently bounded",
+    "Native Activity root captured once and compact legacy root not duplicated",
+    "Native/Flutter truncated labels retain source lengths and cannot impersonate exact labels",
+    "Source coverage distinct from Host projection",
+    "Observed-scope absence is an explicit Agent choice",
+    "Partial Flutter semantic selection returns concrete node IDs",
+    "Compact UIA visibility uses each window and provider visibility",
+    "Compact Native provider failure remains a failure",
+    "Controller exception writes terminal unknown instead of leaving requested"
+  ],
+  "tests": {
+    "functional": {
+      "tests": 1517,
+      "pass": 1517,
+      "fail": 0,
+      "concurrency": 2,
+      "log": "/tmp/aab-composition-observation-functional-final.log",
+      "scope": "Before the final compact UIA visibility followup"
+    },
+    "finalVisibilityFollowup": {
+      "tests": 102,
+      "pass": 102,
+      "fail": 0,
+      "log": "/tmp/aab-observation-visibility-followup.log"
+    },
+    "performance": {
+      "tests": 50,
+      "pass": 50,
+      "fail": 0,
+      "log": "/tmp/aab-composition-observation-performance.log"
+    },
+    "androidSdk": {
+      "debug": 199,
+      "release": 199,
+      "fail": 0,
+      "log": "/tmp/aab-observation-android.log"
+    },
+    "uiaJava": {
+      "tests": 50,
+      "pass": 50,
+      "fail": 0
+    },
+    "flutterWidget": {
+      "tests": 33,
+      "pass": 33,
+      "fail": 0,
+      "log": "/tmp/aab-observation-flutter.log"
+    },
+    "finalDocsAndDiscovery": {
+      "tests": 24,
+      "pass": 24,
+      "fail": 0,
+      "log": "/tmp/aab-observation-final-docs.log"
+    }
+  },
+  "device": {
+    "ok": true,
+    "serial": "emulator-5576",
+    "physicalDevicesTouched": false,
+    "checks": {
+      "singleNativeTraversalAndCoverage": {
+        "capturedNodes": 29,
+        "legacyRootMatchesWindow": true,
+        "longTextLength": 307
+      },
+      "partialObservationDoesNotProveAbsence": true,
+      "intentRetainsSourceCoverage": true,
+      "completeObservationCanProveAbsence": true
+    },
+    "apkSha256": "43a6f58236da2849852921e141c6615573b2dc6ecbfb16f24469de40fcd242b7",
+    "source": "/tmp/aab-observation-device-20261012/validation2/report.json",
+    "cleanup": {
+      "emulatorPid": 31941,
+      "processExited": true,
+      "adbSerialAbsent": true,
+      "temporaryAvdRemoved": true,
+      "physicalDevicesTouched": false
+    }
+  },
+  "sourceBundle": {
+    "uiaJarSha256": "755b1a509f97b961bb67e89657a90d1afeba96d1c236973a8f82028c5414ef3d",
+    "sourcesVerified": 12,
+    "generatedH5CopiesVerified": 4
+  },
+  "recordedXmlVisibilityReplay": {
+    "ok": true,
+    "source": "/tmp/aab-observation-device-20261012/diagnosis2/raw.xml",
+    "viewport": {
+      "left": 0,
+      "top": 0,
+      "right": 1080,
+      "bottom": 2400,
+      "width": 1080,
+      "height": 2400
+    },
+    "appNodes": 38,
+    "visibleLabels": [
+      "4:20",
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀suffix",
+      "深层仍在加载",
+      "清理部分观察"
+    ],
+    "deviceActionsReplayed": false
+  },
+  "autoReplay": {
+    "source": "/tmp/aab-observation-device-20261012/response-replay.json",
+    "samples": 13,
+    "counts": {
+      "inline": 13
+    },
+    "complete": 13,
+    "originalsMissing": 0,
+    "deviceActionsReplayed": false,
+    "population": "One isolated emulator regression flow, not the historical census"
+  },
+  "retainedFailures": [
+    {
+      "log": "/tmp/aab-composition-observation-functional.log",
+      "tests": 1516,
+      "pass": 1512,
+      "fail": 4,
+      "distinctFailedAssertions": 3,
+      "details": "Autonomous execution deadline, extraction worker deadline, WDA process start deadline. Parent suite counts a fourth failure. No product deadline was loosened.",
+      "unchangedCodeRepeat": {
+        "log": "/tmp/aab-composition-observation-failures-repeat.log",
+        "tests": 85,
+        "pass": 85,
+        "fail": 0
+      },
+      "finalSuiteConcurrency": 2
+    },
+    {
+      "report": "/tmp/aab-observation-device-20261012/validation/report.json",
+      "cause": "Fixture title was under the Android status bar; actual UIA visible-to-user=false.",
+      "evidence": "/tmp/aab-observation-device-20261012/diagnosis2/raw.xml",
+      "resolution": "Fixture applies system window insets; no product visibility bypass."
+    }
+  ],
+  "limitations": [
+    "Complete means the stated provider representation, not off-screen lazy content or custom-drawn pixels.",
+    "Older providers without coverage metadata report unknown; observed scope remains selectable.",
+    "UIA missing-root acquisition flags are source/Host-fixture coverage, not a forced real-device missing-root reproduction.",
+    "Flutter was validated through widget tests, not a physical Flutter app in this batch.",
+    "No iPhone or physical OEM device actions, no publication, push or global install."
+  ],
+  "package": {
+    "ok": true,
+    "sourceFilesCompared": 194,
+    "allScriptCommands": 125,
+    "schemas": [
+      "Intent command action",
+      "Intent wait",
+      "observed absenceScope"
+    ],
+    "offlineInstalledForceStop": true,
+    "installedMultiwindowVisibility": true,
+    "sha256": "b12f2861fe4dc9c77e5b804021dd97f7b92b13e852dee61519abbbc6f5bff52a",
+    "report": "/tmp/aab-observation-package-final-20261012/report.json",
+    "details": "/tmp/aab-observation-package-final-20261012/composition-observation-extras.json",
+    "scope": "Final package after compact visibility followup; controlled ADB only"
+  }
+}

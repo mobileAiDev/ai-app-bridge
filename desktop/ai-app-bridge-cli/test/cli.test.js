@@ -440,7 +440,7 @@ test('MCP compact surface negotiates protocol and exposes a small capability ind
   assert.deepEqual(responses.get(2).result, {});
   const tools = responses.get(3).result.tools;
   assert.deepEqual(tools.map((tool) => tool.name), ['capabilities', 'run']);
-  assert.deepEqual(tools[1].inputSchema.required, ['command', 'extract']);
+  assert.deepEqual(tools[1].inputSchema.required, ['command']);
   assert.equal(tools[1].inputSchema.properties.extract.oneOf[0].type, 'null');
 });
 

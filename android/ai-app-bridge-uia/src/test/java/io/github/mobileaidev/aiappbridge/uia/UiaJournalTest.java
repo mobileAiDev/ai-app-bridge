@@ -14,6 +14,14 @@ public class UiaJournalTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
     private static final String HASH = "a".repeat(64), OLD_HASH = "b".repeat(64);
     private Path root() throws Exception { return temporary.newFolder().toPath().toRealPath(); }
+    private String maintenanceWarning(Path root) throws Exception {
+        org.json.JSONArray warnings = new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH);
+        assertEquals(1, warnings.length());
+        JSONObject warning = warnings.getJSONObject(0);
+        assertEquals("uia_history_maintenance_incomplete", warning.getString("code"));
+        assertFalse(warning.getBoolean("blocking"));
+        return warning.getString("reason");
+    }
 
     private static final class Session {
         final Path path;
@@ -93,6 +101,27 @@ public class UiaJournalTest {
         assertFalse(Files.exists(session.path));
     }
 
+    @Test public void observedWarningsAndUnfocusedWindowSurviveRestartAndAcknowledgement() throws Exception {
+        for (boolean focused : new boolean[]{true, false}) {
+            Path root = root(); Session session = new Session(root); session.add(false, true);
+            JSONObject receipt = new JSONObject(session.record.getString("receiptJson"));
+            JSONObject binding = receipt.getJSONObject("binding");
+            binding.getJSONObject("window").put("focused", focused);
+            binding.put("warnings", new org.json.JSONArray().put(new JSONObject()
+                .put("code", "uia_window_not_focused").put("source", "AccessibilityWindowInfo.isFocused")
+                .put("windowId", 3).put("observedAtMs", 100)));
+            session.record.put("receiptJson", receipt.toString()).put("receiptSha256", Wire.sha256(receipt.toString()));
+            session.save();
+            String original = DurableFiles.read(session.file.toFile(), 131072);
+            UiaJournal journal = new UiaJournal(root.toFile(), JvmPosix.FILES);
+            assertEquals(0, journal.prepare(HASH).length());
+            assertEquals(original, DurableFiles.read(session.file.toFile(), 131072));
+            assertEquals("acknowledged", journal.acknowledge(session.identity(), null).getString("disposition"));
+            journal.prepare(HASH);
+            assertFalse(Files.exists(session.path));
+        }
+    }
+
     @Test public void changedNodeReferenceCannotAuthorizeOriginalSessionRetirement() throws Exception {
         Path root = root(); Session session = new Session(root);
         JSONObject request = session.request(), target = request.getJSONObject("target");
@@ -103,8 +132,7 @@ public class UiaJournalTest {
         session.record.put("receiptJson", receipt.toString()).put("receiptSha256", Wire.sha256(receipt.toString()));
         session.save();
         String original = DurableFiles.read((session.file).toFile(), 131072);
-        assertEquals("uia_completion_identity_mismatch", assertThrows(Wire.Failure.class,
-            () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH)).code);
+        assertEquals("uia_completion_identity_mismatch", maintenanceWarning(root));
         assertEquals(original, DurableFiles.read((session.file).toFile(), 131072));
     }
 
@@ -137,14 +165,16 @@ public class UiaJournalTest {
         assertTrue(Files.exists(first)); assertTrue(Files.exists(session.file));
     }
 
-    @Test public void everyNonterminalPhaseBlocksReopenAndAllOriginalReclamation() throws Exception {
+    @Test public void everyNonterminalPhaseAllowsNewWorkWithoutChangingHistoricalOutcomes() throws Exception {
         for (String phase : new String[]{"prepared", "queued", "admitted", "unknown"}) {
             Path root = root(); Session good = new Session(root), pending = new Session(root);
             good.add(true, true); pending.add(false, true);
             pending.record.put("phase", phase).put("receiptJson", JSONObject.NULL).put("receiptSha256", JSONObject.NULL); pending.save();
             String bytes = DurableFiles.read((pending.file).toFile(), 131072);
-            Wire.Failure error = assertThrows(Wire.Failure.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH));
-            assertEquals("uia_previous_action_unresolved", error.code);
+            assertEquals("uia_previous_action_unresolved", maintenanceWarning(root));
+            Session next = new Session(root); next.add(true, true);
+            assertEquals("terminal", next.record.getString("phase"));
+            assertTrue(new JSONObject(next.record.getString("receiptJson")).getBoolean("ok"));
             assertEquals(bytes, DurableFiles.read((pending.file).toFile(), 131072)); assertTrue(Files.exists(good.file));
         }
     }
@@ -154,7 +184,7 @@ public class UiaJournalTest {
         Path leftover = session.file.resolveSibling(session.file.getFileName() + "." + UUID.randomUUID() + ".tmp");
         JvmPosix.FILES.write((leftover).toFile() , session.record.toString());
         session.record.put("phase", "unknown").put("receiptJson", JSONObject.NULL).put("receiptSha256", JSONObject.NULL); session.save();
-        assertEquals("uia_previous_action_unresolved", assertThrows(Wire.Failure.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH)).code);
+        assertEquals("uia_previous_action_unresolved", maintenanceWarning(root));
         assertTrue(Files.exists(leftover)); assertTrue(Files.exists(session.file));
     }
 
@@ -180,7 +210,7 @@ public class UiaJournalTest {
             }
             if (!fault.equals("receipt-hash")) bad.record.put("receiptJson", receipt.toString()).put("receiptSha256", Wire.sha256(receipt.toString()));
             bad.save(); String original = DurableFiles.read((bad.file).toFile(), 131072);
-            assertThrows(Exception.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH));
+            maintenanceWarning(root);
             assertEquals(original, DurableFiles.read((bad.file).toFile(), 131072)); assertTrue(fault, Files.exists(good.file));
         }
     }
@@ -206,16 +236,16 @@ public class UiaJournalTest {
         Path root = root(), outside = root(); Session session = new Session(root); session.add(true, true);
         Path protectedFile = outside.resolve(session.file.getFileName()); Files.move(session.file, protectedFile);
         Files.createSymbolicLink(session.file, protectedFile);
-        assertThrows(Exception.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH)); assertTrue(Files.exists(protectedFile));
+        maintenanceWarning(root); assertTrue(Files.exists(protectedFile));
         Path second = root(); JvmPosix.FILES.directory((second.resolve("sessions")).toFile());
         Files.createSymbolicLink(second.resolve("sessions").resolve(session.epoch), session.path);
-        assertThrows(Exception.class, () -> new UiaJournal(second.toFile(), JvmPosix.FILES).prepare(HASH)); assertTrue(Files.exists(protectedFile));
+        maintenanceWarning(second); assertTrue(Files.exists(protectedFile));
     }
 
     @Test public void retainedCapacityNeverEvictsAnUnacknowledgedSession() throws Exception {
         Path root = root();
         for (int i = 0; i < 64; i++) { Session session = new Session(root); session.add(false, false); }
-        assertEquals("uia_session_capacity_exhausted", assertThrows(Wire.Failure.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH)).code);
+        assertEquals("uia_session_capacity_exhausted", maintenanceWarning(root));
         assertEquals(64, root.resolve("sessions").toFile().list().length);
     }
 
@@ -241,7 +271,7 @@ public class UiaJournalTest {
         unknown.record.put("phase", "unknown").put("receiptJson", JSONObject.NULL).put("receiptSha256", JSONObject.NULL); unknown.save();
         String original = DurableFiles.read((unknown.file).toFile(), 131072);
         assertEquals("acknowledged", new UiaJournal(root.toFile(), JvmPosix.FILES).acknowledge(known.identity(), null).getString("disposition"));
-        assertEquals("uia_previous_action_unresolved", assertThrows(Wire.Failure.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH)).code);
+        assertEquals("uia_previous_action_unresolved", maintenanceWarning(root));
         assertTrue(Files.exists(known.file)); assertEquals(original, DurableFiles.read((unknown.file).toFile(), 131072));
     }
 
@@ -362,7 +392,7 @@ public class UiaJournalTest {
         String unknown = DurableFiles.read((known.file).toFile(), 131072);
         new UiaJournal(root.toFile(), JvmPosix.FILES).recover(pending.recoveryIdentity(), pending.boot, 500, HASH);
         assertEquals(unknown, DurableFiles.read((known.file).toFile(), 131072));
-        assertEquals("uia_previous_action_unresolved", assertThrows(Wire.Failure.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH)).code);
+        assertEquals("uia_previous_action_unresolved", maintenanceWarning(root));
     }
 
     @Test public void recoveryRejectsSymlinksAndMalformedRecoveryCredentials() throws Exception {
@@ -378,7 +408,7 @@ public class UiaJournalTest {
         session.record.put("receiptJson", receipt.toString()).put("receiptSha256", Wire.sha256(receipt.toString())); session.save();
         String malformed = DurableFiles.read((session.file).toFile(), 131072);
         assertThrows(Exception.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).acknowledge(session.identity(), null));
-        assertThrows(Exception.class, () -> new UiaJournal(root.toFile(), JvmPosix.FILES).prepare(HASH));
+        maintenanceWarning(root);
         assertEquals(malformed, DurableFiles.read((session.file).toFile(), 131072));
     }
 }

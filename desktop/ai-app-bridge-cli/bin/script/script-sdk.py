@@ -78,7 +78,8 @@ class HostContext:
         self._read_reply(message_id)
 
     def _safe_point(self):
-        self._sync_control()
+        # Normal replies carry control state; the Host also holds dispatch
+        # while paused. Explicit controlPoint() is available for local loops.
         self._hold_if_paused()
 
     def call(self, command, args=None, options=None):
@@ -99,7 +100,9 @@ class HostContext:
 
     def progress(self, event):
         self._safe_point()
-        send({"type": "progress", "event": event})
+        message_id = self._id("p")
+        send({"type": "progress", "id": message_id, "event": event})
+        self._read_reply(message_id)
         self._safe_point()
 
     def checkpoint(self, name, state):
@@ -192,6 +195,9 @@ def main():
     sys.stdout = sys.stderr
     extraction = start.get("extraction") is not None
     ctx = SimpleNamespace(inputs=start["inputs"]) if extraction else HostContext(start.get("inputs") or {}, start.get("control") or {"status": "running", "pauseReason": None})
+    if not extraction:
+        ctx.target = start.get("target")
+        ctx.source_path = start.get("sourcePath")
     entry = start.get("entrypoint") or "main"
     try:
         execution_started = time.perf_counter()

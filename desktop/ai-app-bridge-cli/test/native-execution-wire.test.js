@@ -74,8 +74,8 @@ test('the default public native recovery port retains an unknown operation until
   const first = await executeCommand('input-text', { ...target, text: 'one-write', requestId: 'native-original' });
   assert.equal(first.settled, false); assert.equal(first.ambiguous, true); assert.equal(first.executionReceipt, null);
   const occupied = await executeCommand('device-ownership', { serial: target.serial, operation: 'status' });
-  assert.equal(occupied.active, 1); assert.equal(occupied.ownership.pending.kind, 'native');
-  assert.equal((await executeCommand('keyevent', { ...target, keyCode: 4 })).error, 'device_ownership_unresolved');
+  assert.equal(occupied.active, 0); assert.equal(occupied.unresolved, true); assert.equal(occupied.ownership.pending.kind, 'native');
+  assert.equal((await executeCommand('device-ownership', { serial: target.serial, operation: 'status' })).unresolved, true);
   assert.equal((await executeCommand('device-ownership', { serial: target.serial, operation: 'reconcile' })).error, 'device_ownership_unresolved');
   valid = true;
   const recovered = await executeCommand('device-ownership', { serial: target.serial, operation: 'reconcile' });

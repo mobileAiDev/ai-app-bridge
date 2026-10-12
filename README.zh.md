@@ -33,11 +33,11 @@ AI App Bridge 让自主 AI agent 可以直接接入正在运行的 Android、iOS
 
 CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Script、安装和权限操作可以由任一客户端启动，再由另一客户端通过 operationId 继续。客户端退出后任务继续运行；显式使用任务 cancel 或 `runtime --operation stop --extract null` 停止。
 
-- `script` 运行 trusted-local-code 的 JavaScript 或 Python。`permissions` 只门闩 Bridge SDK 调用，不是 OS 沙箱。默认 allowlist 不含清数据、安装、权限变更、eval、raw shell 或 ADB 管理。`page-summary` 只留在 Script/Intent 内部。
+- `script` 运行 trusted-local-code 的 JavaScript 或 Python。省略 `permissions` 时允许全部已注册命令，显式声明时才限制 Bridge SDK 调用；这不是 OS 沙箱。支持 Intent/Script 组合、自身命令及封装 ADB。`page-summary` 只留在 Script/Intent 内部。
 - `intent` 记录 observation、decision、action 和证据引用。Agent 自行读取历史并编写 Script。
 - Android 和 iOS 的 `logs` / `network` / `state` / `events` 使用手机侧持久存储，连接时通过 `history:true` 查询保留的事实；Host 分别保存执行与观察证据。Web 采集在接收时写入 Host FactStore。每次查询均需核对 refs、目标、epoch、coverage 和保留范围。
 
-`0.4.5` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码版本。Android 窗口按字段解析，支持厂商前缀、跨行和排版差异。前台不匹配、变化或探测失败作为事实和 warning 返回，由 agent 决策；工具保持明确指定的 App、provider 和节点。节点引用与回执仍如实核验实际动作。详见[前台观测合同](desktop/ai-app-bridge-cli/docs/INTENT_FOREGROUND.md)与[可选执行器](desktop/ai-app-bridge-cli/docs/OPTIONAL_EXECUTORS.md)。
+`0.4.6` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码版本，重点改善效率、能力和故障恢复。Script 默认支持全部注册命令，独立读取可并行；Intent 支持调用 Bridge 命令、Script 和子 Intent。省略 extract 时优先完整或无损压缩返回。前台与历史恢复诊断交给 agent 决策，同时保留真实目标、执行回执和未知结果。详见[全项目审查及验证](docs/AGENT_CHOICE_AUDIT_2026-10-12.md)与[命令合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md)。
 
 ## 解决的问题
 
@@ -105,7 +105,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.5")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.6")
 }
 ```
 
@@ -138,7 +138,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.5"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.6"
 }
 
 aiAppBridge {
@@ -153,7 +153,7 @@ aiAppBridge {
 在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.5")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.6")
 ```
 
 在 debug app 进程启动一次 runtime：
@@ -169,7 +169,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 安装桌面 CLI，并检查完整 iOS 控制栈：
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.5
+npm install -g @mobileaidev/ai-app-bridge@0.4.6
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -184,7 +184,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.5
+  ai_app_bridge_flutter: 0.4.6
 ```
 
 初始化一次：
@@ -246,13 +246,13 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 
 ### 安装 MCP server
 
-安装 Node >=26.3.0 <27，然后只需一份固定版本 MCP 配置。包内已包含嵌入式 FactStore 原生扩展，不需要另外安装数据库服务、编译器或 Python；Python 只用于 Python Script/extract。支持矩阵及发布前本地 tarball 接入见[安装说明](desktop/ai-app-bridge-cli/docs/INSTALLATION.md)。0.4.5 实际发布后下面的 registry 配置才可解析。
+安装 Node >=26.3.0 <27，然后只需一份固定版本 MCP 配置。包内已包含嵌入式 FactStore 原生扩展，不需要另外安装数据库服务、编译器或 Python；Python 只用于 Python Script/extract。支持矩阵及发布前本地 tarball 接入见[安装说明](desktop/ai-app-bridge-cli/docs/INSTALLATION.md)。0.4.6 实际发布后下面的 registry 配置才可解析。
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.5","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.6","ai-app-bridge-mcp"]}}}
 ```
 
-每次 run 顶层明确提供 `extract:null` 取得预算内原始结果，或者 regex/JS/Python 提取对象。大结果和提取失败可通过原 ref 重读，不重放动作；详见[公共返回与提取](desktop/ai-app-bridge-cli/docs/RESPONSE_EXTRACTION.md)。
+省略 `extract` 时，预算内直接返回完整结果；超预算先尝试无损表格视图，仍放不下才返回完整记录或文本片段、结构目录和原始引用。按需用 select、regex/JS/Python 提取，或显式 `extract:null` 取得原始形状。补读使用原 ref，不重放动作；详见[公共返回与提取](desktop/ai-app-bridge-cli/docs/RESPONSE_EXTRACTION.md)。
 
 ## 仅限 debug 构建
 

@@ -6,6 +6,35 @@ Script runs repeatable JavaScript/Python with progress, assertions and control.
 Both use the device capabilities below and retained evidence. A single command
 remains useful for observation, interaction, fixture setup and diagnosis.
 
+## On-demand diagnosis
+
+`doctor` runs locally through CLI/MCP even when the shared Runtime is stopped,
+unresponsive or a different build. `doctor --platform host` reports client and
+Runtime identities, compatibility and log paths without starting it.
+`doctor --serial DEVICE` also reads Android transports, device/version/boot
+properties, current ownership, ADB forwards, foreground/lock indicators and UIA
+status. Add `--package-name example.app` for installed/running App and SDK status;
+device-only diagnosis does not require a package. Without serial it lists
+transports and target-specific diagnostic calls, selecting no device implicitly.
+
+Each check has `status: observed | issue | not_run`, observed facts or its error,
+and a timestamp. `ok:true` means the diagnostic report was collected; inspect
+`checks` and `issueCount`, not a global readiness gate. A different foreground
+package is an observation. A failed SDK probe does not hide ADB/UIA observations.
+`timeoutMs` is one overall probe budget (default 10000, maximum 60000).
+`full:true` includes raw SDK/window/property details. `nextActions` are suggestions
+with validated command arguments; none is executed by diagnosis.
+
+`doctor --platform ios` reports device, SDK and WDA paths independently; explicit
+`deviceId`, `bundleId` and WDA options scope the probes. The older `ios-doctor`
+retains its aggregate `ready/fullControlReady` for compatibility and also returns
+separate `paths`. `doctor --platform web` reads provider/session identity through
+the Runtime's read-only status protocol; optional `sessionId/runtimeEpoch` identify
+missing or changed sessions. An older Runtime without this status view is
+reported as such. Diagnosis does not launch apps, input, cancel tasks or reset
+runtimes. Android SDK/UIA status may establish their diagnostic ADB forwarding;
+normal actions do not run doctor as a prerequisite.
+
 ## Discovery and entrypoints
 
 MCP exposes exactly `capabilities` and `run`. A default or domain query returns
@@ -24,7 +53,7 @@ runtime contract. Intent terminal decisions remain available in the selected
 decision schema. Unsupported operations or scope combinations return an error
 with the offending field. Omit filters to read the complete command contract.
 
-Business parameters are under `run.arguments`. The required top-level `extract` chooses delivery; explicit `null` requests the original result within budget:
+Business parameters are under `run.arguments`. The optional top-level `extract` chooses delivery (omitted: complete value within budget, then a complete table view if useful, then a partial preview with a saved ref); explicit `null` requests the original shape within budget:
 
 ```json
 {
@@ -69,6 +98,34 @@ one; `runtime --operation stop --extract null` cancels and drains active work be
 its ownership. CLI exit, MCP EOF and client SIGINT/SIGTERM close only that client.
 Use `intent`/`script --operation cancel --operation-id ID` to cancel one task.
 The same operation ID can be queried and controlled from either entrypoint.
+
+`runtime stop` waits up to `timeoutMs` (default 5000 ms); a timeout does not undo
+the stop request or claim that outstanding work settled. If the Host is stuck,
+`runtime --operation force-stop` explicitly terminates its identified process,
+archives its endpoint and independent owner record, releases the OS lock and retains the FactStore. Original
+device effects remain unknown. `device-ownership --operation force-stop --serial
+DEVICE` additionally stops recorded device work. Status, stop and force-stop do
+not require matching client code/configuration. From inside Script/Intent,
+runtime stop and force-stop use an independent controller: `controlAccepted`
+acknowledges only the request, with `resultPath` for its eventual result and a
+status command. This prevents a task from waiting for its own shutdown.
+`runtime start/status` use the same raw result contract inside Script/Intent and
+through CLI/MCP (`status`, `pid`, `runtimeId`, identity and compatibility fields
+where applicable). The broader diagnostic structure belongs to `doctor`.
+
+The Host publishes `owner.json` under its OS lock before initializing execution
+services; it contains PID, process start identity and namespace, independently of
+the endpoint/token. A broken or missing endpoint can therefore be force-stopped.
+`doctor --platform host` exposes both record paths and the independent identity.
+If both records are missing or corrupt, the error includes a short OS inspection
+command. After identifying the intended Host, the agent can explicitly choose
+`runtime --operation force-stop --owner-pid PID`. This override verifies that PID
+is a live Bridge execution-runtime process; the caller chooses its namespace.
+Unrelated processes are rejected. The result records the identity source and
+archive paths; malformed records retain their original bytes. If the OS lock is
+already free, the next explicit start archives stale records and starts normally.
+Neither a record parsing failure nor endpoint removal requires deleting the
+SQLite lock file. The lock inode must remain intact.
 
 A runtime namespace is keyed by the canonical FactStore directory. Configure it
 with `AI_APP_BRIDGE_FACT_STORE_DIR`; symlinks to the same directory identify the
@@ -260,11 +317,12 @@ returned in `webViews` when selection is ambiguous. It returns `pageRef` with
 `dom.controls` exposes stable element IDs, visible text, ariaLabel, values and bounds.
 Password values are redacted. The first 1000 controls and first 20000 body characters
 are retained with explicit truncation flags. Text selection rejects a truncated
-snapshot; an explicit observed element ID remains usable within the renderer's
-5000-control scan bound.
+snapshot; an explicit observed element ID remains usable regardless of the total
+control count.
 
-`ios-h5-click`, `ios-h5-input` and `ios-h5-scroll` require `selector` with exactly
-one of `elementId`, exact `text`, or exact `ariaLabel`; optional `tag` narrows it.
+`ios-h5-click`, `ios-h5-input` and `ios-h5-scroll` require `selector` with at least
+one of `elementId`, exact `text`, or exact `ariaLabel`. These fields and optional
+`tag` may be combined; every supplied constraint must match.
 Input requires `text` (including empty text to clear). Scroll brings that element
 into view. Click/input require the element to be in the viewport and unobscured.
 These are DOM operations, not trusted physical touch or keyboard events. Native
@@ -506,25 +564,69 @@ this contract; physical-device execution remains a separate gate.
 ## Execution operation contracts
 
 `operation` is required. Each operation accepts only its own fields. For Intent,
-use `start/status/observe/decide/pause/resume/cancel/intervene`; intervention
+use `start/status/wait/observe/decide/pause/resume/cancel/intervene`; intervention
 requires a reason. For Script, use `start/status/wait/result/pause/resume/decide/cancel/runtime-status`.
 Read progress through `status` or event pages from `wait`; `ctx.progress()` remains
 available inside the program. `progress`, Script `intervene`, Intent `reobserve`,
 and `start.spec` are removed aliases.
 
 Intent start requires `goal` and an explicit Android, iOS or Web target. Android uses
-`platform:"android"`, `serial`, and `packageName`; optional fields include `adb`,
+`platform:"android"` and `serial`; App observations additionally need `packageName`. Optional fields include `adb`,
 `port` and legacy `foregroundPackages` metadata (no automatic routing). iOS uses `platform:"ios"`, `deviceId`
 and `bundleId`, plus the SDK/WDA binding described above. Web uses `platform:"web"`,
 `sessionId`, `runtimeEpoch` and the observed `targetId`, with provider `h5`. Supervised
 mode is the default. Autonomous mode requires `mode:"autonomous"` and `agentModule`;
-its `budget` defaults to 30 actions, 30 Agent calls, 120000 ms and `allowlist:["tap"]`.
+its `budget` defaults to 30 actions, 30 Agent calls and 120000 ms. Omitted `allowlist` permits all supported actions; an explicit list restricts them.
 The allowlist uses the public action vocabulary, including Web `pressKey` and iOS
 `setOrientation`; it never bypasses the selected provider/platform action schema.
 The last permitted Agent reply is validated and may act or finish. A spent action
 or call budget prevents another Agent call. Malformed replies remain
 `waiting_for_decision` with a field error and require explicit correction; they
 neither dispatch nor trigger another Agent request automatically.
+
+### Compose commands and workflows
+
+Intent accepts `{action:"command", command, arguments}` alongside provider UI
+actions. Every registered Bridge command is available, including `adb-exec`,
+`script`, `intent`, installation, diagnosis and recovery. Arguments use the
+ordinary command contract; target defaults come from the owning Intent, with
+explicit arguments or `action.target` selecting a different target. This action
+does not require a working UI observation, so it also works in
+`waiting_for_observation`. Android device commands need no fictional package.
+
+```json
+{"operation":"decide","operationId":"FROM_START","decision":{"decisionId":"diagnose-1","basedOnRevision":1,"agentDecision":"act","action":{"action":"command","command":"adb-exec","arguments":{"argv":["shell","getprop","sys.boot_completed"],"readOnly":true}}}}
+```
+
+The full command result is in `lastAction.result` and the durable action receipt.
+`observeAfter` defaults to false: it does not collect another UI tree or change
+the observation revision. `uiObservation` reports its availability, original
+revision and whether a command may have made it stale. Set `observeAfter:true`
+or call `intent observe` when fresh UI evidence is needed. No command failure is
+silently retried. A persisted failure/unknown receipt leaves the Intent available
+for another decision; autonomous Agents receive `lastAction` and
+`observationFailure` on their next budgeted decision. Malformed decisions still
+return a field error for correction; `resume` can restart autonomous decisions.
+
+Script uses the same in-process entry through `ctx.call(command, arguments)`.
+Script can call Intent/Script, and Intent command actions can call either one.
+Child start calls inherit a missing target; explicit `script.target:null` retains
+Host-only execution. Children own their operation IDs, deadlines and cancellation:
+keep the returned ID and use status/wait/decide/result/cancel. Parent completion
+or cancellation does not implicitly cancel children. No parent device lock is
+held while starting or controlling a child. `intent start.background:true` returns
+after admission while observing/Agent work continues; composition defaults this
+to true, direct CLI/MCP defaults to false. Explicit false awaits the initial loop.
+Admission is not task completion. Status and receipts remain authoritative.
+`intent wait` subscribes to Host events without polling the device; use the last
+`eventSequence` as `afterEventSequence` and `waitMs` up to 60000. It wakes on new
+events, terminal state or timeout, returning `timedOut`. Its history paging still
+uses the separate `afterSequence` cursor. Cancelling a waiting caller cancels
+that wait, not the child Intent.
+
+Command output appears once in `value.lastAction.result`; control retains its
+`resultPath` JSON Pointer and `resultControl` with child IDs/status/result refs.
+It does not duplicate the potentially large nested result into control.
 
 A supervised Intent is driven by the caller: observe, decide against the
 observed revision, observe again, judge independently. One complete lifecycle,
@@ -552,9 +654,10 @@ judgment rather than evidence of the business outcome.
 
 Every decision requires `decisionId`, positive integer `basedOnRevision`, and
 `agentDecision`. `act` requires a provider-specific `action`; terminal decisions
-`complete/fail/inconclusive` forbid one. Tap uses an exact `selector` object, with
-one identity: Native/UIA `text`, `resourceName` or `contentDescription`; Flutter
-`text` or `nodeId`. Only Native supports a scoped `within` selector. Actions inherit
+`complete/fail/inconclusive` forbid one. Native/UIA selectors combine attributes
+with AND and can scope through `within`; `text` and `contentDescription` are exact,
+while `textContains` and `contentDescriptionContains` explicitly request substrings.
+Flutter uses `text` or `nodeId`. Actions inherit
 the provider of the committed observation; an explicit provider must match it.
 To change providers within a supervised Intent, call
 `{"operation":"observe","operationId":"…","provider":"h5","basedOnRevision":3}`.
@@ -704,13 +807,16 @@ aliases that address one phone.
 
 An OS-managed exclusive lock has no heartbeat expiry. A separately synced journal
 records pending work before dispatch. An idle dead owner can be replaced; an
-unresolved action survives Host death, timeout and restart and blocks new writes
-with `device_ownership_unresolved`. Long-running installation retains its own
+unresolved action survives Host death, timeout and restart as an unknown outcome.
+Once the actual owner exits, a new explicit operation archives the old journal
+and proceeds with `previous_execution_unknown`, `blocking:false`, an archive
+path and an overlap warning. This never retries or declares the old action complete.
+`active` reflects the OS lock; `unresolved` separately describes pending history. Long-running installation retains its own
 record while observed installer UI actions execute under the same owner. Ending
 the local ADB process does not by itself confirm a cancelled install has settled.
 
 Use `device-ownership {operation:"status",serial:"DEVICE"}` to inspect ownership,
-or `operation:"reconcile"` to query the recorded action through its original
+or `operation:"reconcile"` to recover the recorded action through its original
 package and transport configuration. Reconciliation exclusively owns the device
 while checking; normal reconciliation does not expire or replay actions, or
 substitute their target. Android Native, Flutter, H5 and managed shell actions can
@@ -726,6 +832,46 @@ A missing action, idle SDK, changed runtime or failed connection is insufficient
 Other transports without a matching completion protocol remain unresolved.
 Installation uses the original phone job and PackageInstaller session contract
 described below.
+
+Current `reconcile` can request cancellation of an unfinished action as part of
+settlement; `cancel-install` explicitly cancels the selected installation. Use the
+archive query below when only reading an old action's completion is intended.
+
+Archived ownership is available through the same command:
+
+```json
+{"command":"device-ownership","arguments":{"operation":"archives","serial":"DEVICE","actionId":"ORIGINAL-ID","limit":20}}
+```
+
+`actionId` is optional. Follow `nextCursor` with the same serial/filter to page
+through the live archive directory; start a new listing to include newly created
+archives. Each item supplies `archiveId`, an entry preview and a valid `read`
+request. `operation:"archive"` with that `archiveId` reads the original journal,
+including corrupt original text when its serial is known. Additional fields in
+old journals are preserved. Both unresolved and force-stopped archives are listed;
+pre-metadata corrupt force-stop files that cannot be attributed to a serial are
+reported as skipped. A damaged archive does not prevent listing readable peers.
+
+`operation:"reconcile-archive"` takes `serial`, `archiveId`, one original `entryId`
+and optional `timeoutMs`. It queries that exact original action without replay,
+cancellation, receipt cleanup, or taking the current device mutation lock. A
+separate checksum-bound record retains the query result. Already retained terminal
+proof is returned with `cached:true`; unknown queries may be retried. The original
+archive outcome remains unknown, and current device state does not prove what an
+old action did. UIA, managed shell/install and test executor receipts use their
+original protocols. Android Native/H5/Flutter SDKs expose `POST /v1/action/query`,
+`/v1/h5/query`, `/v1/flutter/query`, advertised by
+`debugBridge.originalCompletionQuery:true`; older SDKs produce a concise update
+message without falling back to cancellation. SDK query retention is still the
+original coordinator's retained completion, not unlimited App history.
+
+CLI/MCP archive controls run without starting or depending on the shared Runtime.
+Large offline archive reads can use `extract:{mode:"select",path:"/journal/..."}`;
+offline results do not promise a saved response reference. Archives have no
+automatic expiry. `operation:"delete-archive"` with the returned ID explicitly
+deletes only that local original and its query record; it does not cancel a remote
+effect or alter current occupancy. Original bytes also remain accessible at
+`archivePath` when local file inspection is useful.
 
 **Stuck device / agent handoff:** use `device-ownership
 {operation:"force-stop",serial:"DEVICE"}`. CLI: `ai-app-bridge device-ownership
@@ -747,8 +893,9 @@ Even a corrupt Host task journal is archived as bytes and reset explicitly.
 Device admission and force-stop share an independent administrative gate.
 If the phone cannot reset, local tasks and occupancy still stop; the reply has
 `ownershipReleased:true,remoteResetPending:true`. Reconnect and repeat force-stop.
-A durable reset-required marker prevents new dispatch until phone reset succeeds,
-including after a reset-client crash. Occupancy failures include a short
+A durable reset marker preserves the unfinished remote reset. New explicit work
+can archive it and proceed with a warning; a later force-stop also reads these
+archives to find recorded old targets. Unreadable archives are listed honestly. Occupancy failures include a short
 `recoveryHint` with exact force-stop arguments. Resetting an idle device is valid.
 
 The ownership journal is `aab.device-ownership/v2`, under the **same physical
@@ -758,8 +905,10 @@ so the upgrade cannot invent cleanup obligations for already forgotten actions.
 Older writers reject v2 instead of dropping its new records.
 
 UIA settlement atomically saves an acknowledgement obligation with the exact
-request, receipt and original FactStore destination. At most eight may remain;
-`device_acknowledgements_full` rejects further UIA preparation until reconciliation.
+request, receipt and original FactStore destination. At most eight remain in the
+active queue; before another UIA dispatch, a full queue is archived byte-for-byte
+with `receipt_acknowledgements_archived`. The phone keeps its original receipts.
+This cleanup backlog does not block a new action or turn a known result unknown.
 Acknowledgement first synchronously commits and reads back a completion record
 in the same segmented FactStore used by MCP/Intent/Script. Only then may the phone
 confirm its copy and the Host remove the obligation. Failures preserve the queue
@@ -814,6 +963,20 @@ not implemented. A missing directory or changed boot cannot release ownership.
 
 `logcat` reads retain their text result. `logcat {clear:true}` returns an object
 with `ok`, `text` and the verified execution fields because it mutates the phone.
+`grep` defaults to a literal substring, case-insensitive unless
+`grepCaseSensitive:true`. Use `grepMode:"regex"` for expressions such as
+`Receipt|Upload`; invalid syntax fails before reading or clearing the buffer.
+Regex matching runs off the Host event loop with a 2-second deadline. If it fails,
+the reply reports `logcat_filter_failed`, `filterApplied:false`, its cause and the
+captured `text`, retaining any verified clear receipt. Filter that response instead
+of repeating a destructive clear.
+
+Raw/non-threadtime text remains readable and supports text filtering. PID/tag/level
+filters need threadtime metadata; missing metadata returns the collected text with
+`logcat_format_not_filterable` instead of pretending the log is empty. A missing
+App PID is reported as `logcat_app_pid_unavailable`. Empty literal expressions such
+as `A|B` receive a short regex hint in `control.guidance`; ordinary empty results do
+not. Suggested reads explicitly set `clear:false` and omit the old `requestId`.
 
 A common command's `requestId` reuses the result only for the same target and
 canonical command/arguments. Different content returns `idempotency_conflict`.
@@ -902,11 +1065,14 @@ receipts described above; each real-App scenario retains its own evidence limits
 ## Semantic targets and text waits
 
 `tap-uia` takes an explicit package and either a selector or the complete
-`targetRef` described below. A selector has exactly one field:
-`{"text":"All files"}`, `{"contentDescription":"All files"}` or
-`{"resourceName":"com.example:id/files"}`. A text selector matches only the
-text attribute. A parent accessibility description with the same wording does
-not make that child text ambiguous. Two actual text matches remain an error.
+`targetRef` described below. Selectors can combine `text`, `textContains`,
+`contentDescription`, `contentDescriptionContains`, `resourceName`, `className`,
+`clickable`, `enabled` and `checked`. All supplied conditions apply, including
+boolean false; checked is meaningful only for UIA `checkable:true` nodes (UIA also
+accepts a `checkable` condition). `text:"同意"` excludes prose containing that word;
+`{text:"同意",className:"android.widget.Button",clickable:true}` excludes a label.
+Text never implicitly matches contentDescription. Multiple final matches return
+candidates with actual references; no first match is chosen.
 The command observes the current UIA runtime, binds the selected node, checks
 the foreground again and sends the same original action ID through the existing
 UIA execution journal. CLI, MCP and Script share this implementation.
@@ -919,10 +1085,9 @@ Pass that complete object as `tap-uia.targetRef`, mutually exclusive with
 current revision, which supplies the original observation identity.
 
 Reference actions use the retained node from that exact snapshot. The phone
-locates the same accessibility source in the same focused window and checks all
-original node and clickable-ancestor attributes before requesting the click.
-Duplicate text does not choose a different node. Expired, changed or foreign
-references fail before dispatch; they are never replaced with a fresh text
+locates the same accessibility source in its original window and checks current
+operability before requesting the click. Attribute changes are warnings, while
+replaced nodes, expired snapshots and foreign runtime references fail before dispatch; they are never replaced with a fresh text
 match. UIA retains at most eight snapshots for 60 seconds, so Scripts observe
 immediately before selecting and acting. This is a runtime reference, not a
 persistent selector to save between runs.
@@ -939,14 +1104,24 @@ Initial Native selection requires a resolvable observed window. Once bound, the
 original window/node is revalidated even when focus changes. Flutter operations
 stay with Flutter when a native dialog is observed. Coordinates remain logical pixels.
 
-Native Intent tap/input/longPress/swipe/scroll and Flutter tap/input/scrollBy re-read before input.
-UIA revalidates its saved node reference on the phone before Binder admission.
+Native direct commands capture once; Native Intent actions reuse the committed
+observation. The SDK atomically resolves the original View and current selector
+conditions on the UI thread, avoiding a redundant Host tree capture. Flutter
+tap/input/scrollBy still re-read before input. UIA revalidates its saved node
+reference on the phone before Binder admission. Compound/scoped UIA selectors
+query the observation, then bind its exact nodeRef; live attribute changes are
+reported as warnings. Single-field UIA label selectors also check that label at
+execution. Use a full targetRef to explicitly keep the same UIA node across label
+changes.
 Changed identity, ambiguity or invalid bounds reject before dispatch. Native
 input requires the SDK's explicit `editable:true`, including standard EditText.
 Native tree nodes expose `checked:true|false` for Android `Checkable` controls
 and `checked:null` for other Views. The checked state participates in the SDK
-target guard; a state change after observation rejects the old target before
-dispatch, so a stale checkbox action cannot toggle a newly changed value.
+target guard; changes to the same View's attributes or ancestry produce
+`native_target_attributes_changed` with previous/current guard and current facts.
+To make a state a required execution condition, supply it in the Native selector,
+for example `{viewId:"observed-id",checked:false}`. A replacement View, changed
+runtime/window, failed selector or inoperable target still cannot receive input.
 Semantic summaries retain both checked and unchecked controls, including
 unlabelled preference switches. UIAutomator's `checked` value is meaningful only
 when its node declares `checkable:true`; other UIA nodes have `checked:null`.
@@ -960,9 +1135,17 @@ await ctx.call('tap-native', { selector: {
 } });
 ```
 
-It requires an explicit App target and one unique match, revalidates the same View
-before dispatch, and retains the original Native execution receipt. Its selector
-uses the shared Native contract, including `within`; ambiguous, replaced and
+Native supports the same conditions plus `viewId` and `editable`. An optional
+`within:{resourceName:"..."}` selects matching containers. To use a neighboring
+label, use `within:{text:"Enterprise account",ancestor:{resourceName:"..."}}`;
+`ancestor.parent` can add conditions on its immediate parent. These objects accept
+attribute combinations. Multiple matching containers/anchors form a scope set:
+only the final action target must be unique. No nearest ancestor is guessed.
+
+It requires an explicit App target and one unique match, validates the same View
+inside the SDK before dispatch, and retains the original Native execution receipt.
+Compound selectors and attribute warnings require the matching new Android SDK;
+status advertises `debugBridge.nativeSelectorFeatures`. Ambiguous, replaced and
 unbound targets fail without dispatch. Passive descendants inside a selected
 semantic container may receive its gesture; an interactive child or unrelated
 overlay still prevents that container tap.
@@ -1017,14 +1200,16 @@ All versions retain durable file and directory synchronization and original
 Binder callbacks. Device validation covers API 25, 30 and 36; this is not a
 claim that every vendor framework implementation has been tested.
 
-The runtime checks the focused default-display window, unique selector match,
-node attributes and clickable ancestor before one node action. Its guarantee
-is `same_connection_node_and_reobserved_attributes`, not a transaction across
-the App's content changes and Android window management. Original Binder
-callbacks distinguish handled/rejected outcomes; an admitted action without a
-matching callback remains unknown. Host timeout, cancellation or process exit
-does not release that action's device ownership. Pre-admission cancellation
-persists a tombstone, so a delayed start cannot execute afterward.
+The runtime observes all available default-display windows. Missing roots,
+partial trees, absent focus and idle timeout become explicit observations or
+warnings, so returned references remain usable. Each action revalidates the
+original connection, window and node identity and current operability. The
+identity guarantee is `same_connection_node`; layout/text/state changes on an
+explicit reference produce `uia_target_attributes_changed` with before/current
+values. A semantic selector must still match. An accessibility callback describes
+handled/rejected execution; absence of that callback leaves the old action unknown.
+A new explicit action can proceed after the old owner exits, with that uncertainty
+retained. Pre-admission cancellation retains a tombstone against a delayed start.
 
 For a dead UIA owner, `device-ownership --operation reconcile` can recover a
 committed `prepared` or `queued` record. One-shot phone maintenance must acquire
@@ -1039,24 +1224,23 @@ Already admitted/unknown actions and absent original records remain unresolved.
 The first valid recovery receipt is retained on retry, persisted to FactStore,
 and acknowledged through the same durable cleanup queue as other UIA receipts.
 
-`uia-runtime --serial DEVICE --operation status|start|stop` exposes expert
-lifecycle control. `status` is read-only; `start` and `stop` share device
-ownership with actions. Stop requires committed terminal actions. Explicit start
-checks the phone's OS-managed process lock. A dead process can be reopened only
-after the new process acquires that lock and audits all original action records;
-any nonterminal or corrupt record blocks reopening, including after a reboot.
-The 0.3.5 audit compares a nodeRef selector with the receipt's `binding.ref`;
-the target attributes do not contain a `nodeRef` field. A successful audit may
-retire acknowledged sessions and publish a new epoch. It does not resurrect
-the old process or authorize replay of old actions.
-An HTTP timeout or a stale `running` descriptor does not authorize replacement.
-Authentication tokens
-stay in private phone descriptors and are absent from public status and Host
-ownership records. Each runtime retains at most 256 actions; the root retains
-at most 64 sessions. A fresh observation automatically rotates a full session
-only when every action is durably terminal and acknowledged. An already bound
-action never triggers rotation; a full journal rejects it before Host preparation.
-Old epoch references become invalid and require a new observation.
+`uia-runtime --serial DEVICE --operation status|start|stop|force-reset` exposes
+lifecycle control. `status` reads state; normal stop requires terminal actions.
+`force-reset` ends the UIA process and archives sessions with unknown outcomes;
+it does not stop the Bridge Host or SDK apps. Fresh observation can start a new epoch.
+
+When observation cannot reach the old runtime, the Host probes the real phone
+process lock. A live lock preserves the error; a free lock permits a new process.
+No old bound action is replayed. Startup history maintenance preserves unreadable
+or unresolved records and reports `uia_history_maintenance_incomplete` instead
+of preventing a new epoch. The reader accepts `binding.warnings` and both old
+and new identityStrength values. Storage/lock failures remain real errors.
+
+Tokens stay in private phone descriptors. The active runtime has a 256-action
+budget. Fresh observation can rotate a full epoch once all its actions are
+terminal, even if receipt acknowledgement is behind. Unacknowledged original
+receipts remain retained. Already bound actions never trigger epoch rotation;
+a full epoch returns an error with a fresh-observation/recovery path.
 
 At startup, fully acknowledged sessions move atomically into `retired/`; both
 parent directories are synced before any contents are deleted. Interrupted
@@ -1280,11 +1464,40 @@ and text from another provider cannot complete a condition. For example:
 ```
 
 At least one condition is required. Pure absence or Activity-only waits require
-an explicit provider. An unreadable/invalid tree returns `observation_unavailable`,
-never successful absence. A deadline returns `deadline_exceeded`; the last
-available check reports missing/unexpected labels. Cancellation remains
+an explicit provider. Read failures are retried within the original deadline;
+`rounds`, `attempts`, `successfulReads`, `failedReads`, `elapsedMs` and the last
+failure per provider describe what happened. If no valid tree was obtained, the
+deadline returns `observation_unavailable` with `deadlineExceeded:true`; otherwise
+it returns `deadline_exceeded` and the last available check. Reads do not replay
+actions. Foreground diagnostics are sampled at entry and a matching text check,
+rather than twice per unsuccessful poll. Optional probes are bounded to at most
+500 ms and one quarter of the requested text deadline each; `requireActivity`
+uses the original deadline for its required foreground evidence. Cancellation remains
 `cancelled`. `timeoutSec` and CSV strings are rejected for this command. In the
 CLI, pass JSON arrays to `--require-text`/`--absent-text`; commas remain part of the label.
+
+Positive labels can match in a partial tree. `absentText` defaults to
+`absenceScope:"complete"`: the selected provider must report complete coverage of
+its tree/operable labels. A partial tree or an older SDK with unreported coverage
+cannot prove that a label is absent from that range. To test only the portion
+actually returned, choose `absenceScope:"observed"`; `matched.absenceScope` and
+`matched.coverage` retain that narrower meaning. Neither mode proves anything
+about content outside that provider's representation, such as off-screen lazy
+items or custom drawing. Failure guidance includes the relevant observation and
+the explicit observed-scope request. Invalid/unreadable material never passes.
+
+Native and Flutter labels retain `textTruncated`/`valueTruncated`/`labelTruncated`
+and source lengths when their 300 UTF-16 code-unit preview is clipped (Flutter
+reports lengths after its existing whitespace normalization).
+An exact selector or text wait cannot mistake that prefix for the full label.
+Native contains queries and observed View/Flutter node IDs remain available.
+Native windows report their own source coverage, depth omissions and text
+truncation. The Activity legacy root reuses the same window capture. Compact
+Native trees use window roots once and retain targetRef, selectors and state;
+their projection limits are reported separately. UIA missing window roots and
+empty window inventories mark source coverage partial. Intent/page summaries
+separate `coverage.source` from `coverage.projection`; a complete Host projection
+does not turn an incomplete device observation into complete evidence.
 The H5 wait contract is described below; other platform waits remain separate.
 
 ## Android H5 execution and DOM operations
@@ -1301,12 +1514,18 @@ has an `elementId` tied to that DOM object. Navigation, including history return
 to the same URL, and replacing an element invalidate the original action.
 
 `h5-click`, `h5-input`, `h5-scroll` and `h5-wait` use an object `selector` with
-exactly one of `elementId`, exact `text` or exact `ariaLabel`, optionally qualified
-by `tag`. CSS strings and the old `targetText`/`exact` aliases are removed from
+at least one of `elementId`, exact `text` or exact `ariaLabel`, optionally qualified
+by `tag`. All supplied fields must match. CSS strings and the old `targetText`/`exact` aliases are removed from
 these Android commands. A truncated snapshot requires an explicit observed
 `elementId`; duplicate visible matches are rejected. `expectedTarget` on typed
 mutations binds the original `{ pageRef, element }`. Intent supplies this binding
 automatically from its committed observation.
+An unchanged page/DOM object remains actionable after its text or attributes
+change, with `target_attributes_changed` and the changed field names. The returned
+element describes the current target. A replaced element or changed document
+requires a new observation. Explicit text/ariaLabel constraints remain exact.
+This behavior is shared by Android, iOS and Flutter H5 renderers; page size alone
+does not reject an observed element ID.
 
 `h5-input` uses string `text`, including `""` to clear an editor. It validates
 editability and rechecks the same element and value after focus callbacks.
@@ -1327,7 +1546,8 @@ there is no automatic provider fallback. Frame selection remains unimplemented.
 `deltaX` and `deltaY` to scroll the page in CSS pixels. Mixing these forms or
 supplying two zero deltas is rejected. Page scrolling can include `expectedPage`.
 Expert `h5-eval` always requires `expectedPage`; it executes synchronous JavaScript
-in that observed page. Script does not permit this expert escape hatch.
+in that observed page. Script allows this through `app.expert`; an explicit
+permissions list can restrict access.
 
 Mutations use `/v1/h5/action` and `aab.h5-execution/v1`. The SDK advertises
 `h5ExecutionSchema`, `h5TargetSchema` and the active `h5Action` in
@@ -1400,21 +1620,33 @@ substitute false for missing state. Checked state is observation data, not part
 of element identity. `web-click` remains one click, not an idempotent set-state
 operation; reobserve and verify the business result after it.
 
-Typed actions take an object `selector` with exactly one identity field:
+Typed actions take an object `selector` with at least one identity field:
 `elementId`, `text`, `ariaLabel` or `css`, optionally restricted by `tag`/`role`.
-They require one visible match. String selectors, mixed identity fields and
-ambiguous text matches are rejected. `web-dom.selector` is a CSS string for a
+All supplied constraints apply together. They require one visible match;
+ambiguous matches return candidate selectors and their actual count. String
+selectors are invalid. `web-dom.selector` is a CSS string for a
 bounded read; it is a different argument contract from an action selector.
+For the same constraints as an action, use `web-dom.query` with an object selector
+instead of `web-dom.selector`. `offset` (default 0) and `maxControls` page the
+matching controls; `totalControls`, `offset` and `nextOffset` describe the returned
+range. Filtering is applied before the offset. A nonzero offset remains a partial
+observation even on the last page, so select its explicit `elementId`. Pagination
+is a fresh observation, not an immutable index: DOM changes can shift positions;
+the returned page/element identity still governs the chosen action. An older SDK
+that ignores the requested query/page is reported explicitly. Ambiguous SDK
+actions retain a bounded candidate preview and a `candidateQuery` for the rest.
 Intent decisions select observed controls by `elementId`, `text` or `ariaLabel`;
-they do not run an unobserved CSS query. A truncated Intent snapshot is rejected
-for action selection, rather than assuming the missing controls cannot match.
+they do not run an unobserved CSS query. A truncated Intent snapshot requires an
+explicit observed `elementId`. The SDK can resolve that ID directly, without a
+full document scan or a control-count refusal.
 
 An action may bind its original observation using
 `expectedTarget: { pageRef, element }`. Copy the element fields `elementId`,
 `tag`, `id`, `name`, `type`, `role`, `ariaLabel`, `placeholder`, `href` and `text`
 from that observation. Intent supplies this binding automatically. The SDK
 rechecks the original page and element before dispatch, including after focus
-callbacks. A changed page or element requires a new observation; it never selects
+callbacks. Attribute changes on the same DOM object produce
+`target_attributes_changed`; a changed page or replaced element requires a new observation. It never selects
 a replacement using the old text or CSS selector.
 
 | Command | Behavior |
@@ -1665,8 +1897,9 @@ Trigger the runtime permission request through the App's existing flow, then cal
 ```
 
 This MCP entry returns an ordinary Intent ID, the actual UI summary, and
-`permissionDialog`. Choose an exact selector from that summary through `intent
-decide`. The Host has no permission-button label or resource-ID table. The
+`permissionDialog`. Choose a supported UIA Intent action through `intent decide`:
+tap an observed selector, scroll, Back or a specified keyevent. The Host has no
+permission-button label or resource-ID table. The
 request's App, Android user, UID and Activity instance must still match at input.
 The UIA node runtime revalidates the saved reference and current selector;
 changed text, window identity or duplicate matches stop dispatch. Android ActivityManager currently exposes the requesting App,
@@ -1680,9 +1913,9 @@ not the requested permission list. The Agent must match the dialog's meaning to
 | `deny` | `granted:false`, `USER_SET` present |
 | `dismiss` | Grant and all permission flags unchanged from the initial state |
 
-`deny` accepts only an observed tap. Its state check does not distinguish first
-refusal from "don't ask again"; the selected visible control is retained in the
-receipt. `dismiss` accepts an observed tap or `{ "action":"back" }`. A named
+Actions are available for every requested outcome; their effect is independently
+verified. The `deny` state check does not distinguish first refusal from "don't ask
+again"; the selected action is retained in the receipt. A named
 permission alone does not verify every permission in a grouped request, an app-op,
 or background access. These require their own observations and state assertions.
 
@@ -1692,6 +1925,10 @@ means verification is pending. Use `intent observe` to refresh the proof; no
 second button click is required. Missing/changed evidence never becomes success.
 Caller `complete` cannot override verification. Export the Intent's plan, UI,
 decision, receipt and final permission checkpoint with `evidence export`.
+The Agent can end the test as `fail` or `inconclusive`, releasing ownership without
+dismissing the dialog. A premature `complete` returns a brief explanation and
+executable `intent observe` / `intent cancel` requests; cancel also lets the Agent
+continue with generic Intent or `adb-exec`.
 
 `intent cancel` stops further dispatch, waits for any submitted input to settle,
 then records the actual state. It does not close the dialog or undo an Android
@@ -1787,3 +2024,19 @@ dispatch; acquiring evidence does not mark the enclosing UI action dispatched.
 Launch retains its independent system feedback path. Script/Intent bypass this
 feedback wrapper and explicitly request windows only when their evidence needs
 them. SDK/page expiry handles a Host that disappears without sending stop.
+
+## Expert ADB execution
+
+`adb-exec` unifies arbitrary ADB argv without a Host shell or command allowlist.
+For example `{"argv":["shell","pm","list","packages"],"serial":"DEVICE"}`;
+Host queries such as `{"argv":["devices","-l"],"readOnly":true}` need no app.
+For remote shell syntax, explicitly pass `["shell","sh","-c","..."]`.
+`serial` binds device ownership; conflicting leading transport selectors reject
+with `adb_target_conflict`. Omitting serial delegates transport selection to ADB
+and makes no shared device-ownership claim. `readOnly` is a caller assertion.
+
+Results include stdout/stderr/exitCode and `completionScope:adb-process`;
+nonzero exit is known failure, timeout can remain uncertain, and process exit
+never proves a business outcome. `outFile` preserves binary stdout. A file-write
+error after process completion preserves that known execution, so it does not
+invite repeating the action. Script uses `app.expert`, enabled by default.

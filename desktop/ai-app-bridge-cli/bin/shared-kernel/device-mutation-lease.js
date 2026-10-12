@@ -9,11 +9,28 @@ const acknowledgements = require('./device-acknowledgements');
 const context = new AsyncLocalStorage();
 const effectContext = new AsyncLocalStorage();
 
+function unknownWarning(serial, archive, reason) {
+  return { code: 'previous_execution_unknown', blocking: false, serial, ...archive, reason,
+    message: 'A previous action has no confirmed outcome. Its record is preserved; this new action can proceed and may overlap a remote effect.',
+    suggestion: 'Read the archived identity or original receipt before deciding whether to repeat that action.',
+    read: { command: 'device-ownership', arguments: { operation: 'archive', serial, archiveId: archive.archiveId } } };
+}
+
+function continueAfterUnknown(owner) {
+  if (owner.state.phase !== 'unresolved') return;
+  const archive = owner.store.archive(owner.serial);
+  owner.warnings.push(unknownWarning(owner.serial, archive, 'unresolved'));
+  owner.state.lastUnknown = archive;
+  owner.state.pending = null;
+  owner.state.phase = 'owned';
+  owner.commit();
+}
+
 const recoveryHint = serial => ({ command: 'device-ownership', arguments: { operation: 'force-stop', serial },
   message: 'If stuck, force-stop this device to cancel old tasks and reset occupancy. Already dispatched effects are not rolled back.' });
 
 function rejection(error, serial, ownership) {
-  return { ok: false, error, serial, active: 1, dispatched: false, ambiguous: false,
+  return { ok: false, error, serial, active: error === 'target_busy' ? 1 : 0, dispatched: false, ambiguous: false,
     message: error === 'target_busy' ? 'Another Host operation owns this physical device.'
       : error === 'device_reset_required' ? 'Phone reset is incomplete. Reconnect and repeat device-ownership force-stop before new actions.'
       : 'A previous device action has no confirmed completion. Reconcile device ownership before another mutation.',
@@ -37,7 +54,7 @@ function createDeviceMutationLease({ directory } = {}) {
     if (typeof serial !== 'string' || !serial) return { ok: false, error: 'serial_required', dispatched: false, ambiguous: false };
     const parent = context.getStore();
     if (parent?.serial === serial && parent.directory === store.directory && !parent.closed) {
-      if (parent.state.phase === 'unresolved') return rejection('device_ownership_unresolved', serial, parent.state);
+      continueAfterUnknown(parent);
       return { ok: true, serial, run: action => {
         if (parent.closed) throw new CommandError('device_ownership_lost', 'The owning device operation has already closed.');
         return action();
@@ -50,16 +67,23 @@ function createDeviceMutationLease({ directory } = {}) {
     try {
       lock = store.lock(serial);
       if (!lock) return rejection('target_busy', serial);
-      const previous = store.read(serial);
-      if (previous?.resetRequired) { lock.close(); return rejection('device_reset_required', serial, previous); }
-      if (previous?.pending || previous?.reservations.length) { lock.close(); return rejection('device_ownership_unresolved', serial, previous); }
+      let previous, journalError;
+      try { previous = store.read(serial); }
+      catch (error) { if (error.code !== 'device_ownership_corrupt') throw error; journalError = error.code; }
+      const warnings = [];
+      let lastUnknown = previous?.lastUnknown ?? null;
+      if (journalError || previous?.resetRequired || previous?.pending || previous?.reservations.length) {
+        lastUnknown = store.archive(serial);
+        warnings.push(unknownWarning(serial, lastUnknown, journalError || (previous.resetRequired ? 'remote_reset_incomplete' : 'unresolved')));
+      }
       const state = { schemaVersion, serial, phase: 'owned', owner: { id: randomUUID(), pid: process.pid,
         processStart: require('./host-process-stop').processStart(), acquiredAtMs: Date.now() },
         pending: null, reservations: [], lastSettlement: previous?.lastSettlement ?? null,
         lastReset: previous?.lastReset ?? null,
+        lastUnknown,
         pendingAcknowledgements: previous?.pendingAcknowledgements ?? [] };
       store.write(serial, state);
-      const owner = { serial, directory: store.directory, state, closed: false,
+      const owner = { serial, directory: store.directory, state, store, warnings, closed: false,
         commit() { if (owner.closed) throw new CommandError('device_ownership_lost', 'The owning device operation has already closed.'); store.write(serial, state); } };
       held.set(serial, owner);
       return {
@@ -80,14 +104,18 @@ function createDeviceMutationLease({ directory } = {}) {
         },
         async run(action) {
           if (owner.closed) throw new CommandError('device_ownership_lost', 'The owning device operation has already closed.');
-          if (state.phase === 'unresolved' || state.pending) return rejection('device_ownership_unresolved', serial, state);
+          continueAfterUnknown(owner);
+          if (state.pending) return rejection('target_busy', serial, state);
           // Only an actual transport effect or installation reservation can
           // outlive this Host. Observation/preparation does not dispatch work.
           const receipts = [];
           owner.receipts = receipts;
           try {
-            return await context.run(owner, action);
+            const result = await context.run(owner, action);
+            return result && typeof result === 'object' && !Buffer.isBuffer(result) && !Array.isArray(result) && warnings.length
+              ? { ...result, warnings: [...warnings, ...(result.warnings || [])] } : result;
           } catch (error) {
+            if (warnings.length) error.warnings = [...warnings, ...(error.warnings || [])];
             if (receipts.length && !state.pending) {
               error.settled = true;
               if (receipts.some(proof => proof.dispatched === true)) error.dispatched = true;
@@ -119,8 +147,8 @@ function createDeviceMutationLease({ directory } = {}) {
     try {
       const state = store.read(serial);
       const unresolved = state?.pending || state?.reservations.length;
-      return { ok: true, serial, active: !lock || unresolved ? 1 : 0, maxActive: 1,
-        phase: !lock ? 'owned' : unresolved ? 'unresolved' : 'idle', ownership: state ? structuredClone(state) : null,
+      return { ok: true, serial, active: !lock ? 1 : 0, unresolved: Boolean(unresolved), maxActive: 1,
+    phase: !lock ? 'owned' : unresolved ? 'unresolved' : 'idle', ownership: state ? structuredClone(state) : null,
         ...(unresolved || state?.resetRequired ? { recoveryHint: recoveryHint(serial) } : {}) };
     } finally { lock?.close(); }
   }
@@ -168,7 +196,7 @@ function createDeviceMutationLease({ directory } = {}) {
       return { ok: true, remaining: state.pendingAcknowledgements.length, errors, retired };
     } finally { lock.close(); }
   }
-  return { acquire, run, status, reconcile, drainAcknowledgements, directory: store.directory };
+  return { acquire, run, status, reconcile, drainAcknowledgements, findPending: store.findPending, directory: store.directory };
 }
 
 // Ordinary transport calls inherit a managed provider's effect scope. Its
@@ -179,10 +207,18 @@ async function runDeviceEffect(descriptor, action, settled = knownOutcome, { all
   if (owner.closed) throw new CommandError('device_ownership_lost', 'The device owner has closed.');
   if (effectContext.getStore() === owner) return action();
   const state = owner.state;
-  if (state.phase === 'unresolved' || state.pending && state.pending.allowNested !== true) {
-    throw new CommandError('device_ownership_unresolved', 'The preceding device action is still unresolved.');
+  continueAfterUnknown(owner);
+  if (state.pending && state.pending.allowNested !== true) {
+    throw new CommandError('target_busy', 'A device action is still executing in this Host. Wait for that call to return before another mutation.');
   }
-  acknowledgements.checkCapacity(state, descriptor);
+  if (descriptor.kind === 'uia-node' && state.pendingAcknowledgements.length >= acknowledgements.capacity) {
+    const archive = owner.store.archive(owner.serial, 'recorded');
+    owner.warnings.push({ code: 'receipt_acknowledgements_archived', blocking: false, ...archive,
+      message: 'Receipt cleanup is behind. Original completion receipts are preserved in this archive and on the phone; new actions can continue.' });
+    state.lastAcknowledgementsArchive = archive;
+    state.pendingAcknowledgements = [];
+    owner.commit();
+  }
   const pending = { ...descriptor, ...(allowNested ? { allowNested: true } : {}), id: randomUUID(), preparedAtMs: Date.now() };
   state.pending = pending; owner.commit();
   const finish = proof => {
@@ -237,4 +273,6 @@ async function completeDeviceAcknowledgement(proof, acknowledge) {
   return retireAcknowledgement(owner.state, entry, () => owner.commit(), acknowledge);
 }
 
-module.exports = { createDeviceMutationLease, getProcessDeviceMutationLease, runDeviceEffect, isDeviceSettlementDurable, completeDeviceAcknowledgement };
+function withoutDeviceMutationLease(action) { return context.exit(() => effectContext.exit(action)); }
+
+module.exports = { createDeviceMutationLease, getProcessDeviceMutationLease, runDeviceEffect, isDeviceSettlementDurable, completeDeviceAcknowledgement, withoutDeviceMutationLease };

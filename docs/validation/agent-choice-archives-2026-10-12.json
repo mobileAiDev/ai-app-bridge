@@ -1,0 +1,152 @@
+{
+  "date": "2026-10-12",
+  "overallGoal": "active",
+  "published": false,
+  "scope": [
+    "complete Host candidate retention with bounded continuation",
+    "Web filtered DOM observation and pagination",
+    "offline ownership archive browsing, query and explicit deletion",
+    "Android SDK original completion query without cancellation"
+  ],
+  "checks": {
+    "nodeFunctional": {
+      "passed": 1451,
+      "failed": 0,
+      "concurrency": 4,
+      "log": "/tmp/aab-choice-archives-functional.log",
+      "note": "Full suite before adding two final edge-case tests; no product source changed after this run began."
+    },
+    "finalCandidateArchiveEdges": {
+      "passed": 12,
+      "failed": 0,
+      "log": "/tmp/aab-choice-pages-archives-bounds.log"
+    },
+    "nodePerformance": {
+      "passed": 50,
+      "failed": 0,
+      "concurrency": 1,
+      "log": "/tmp/aab-choice-archives-performance.log"
+    },
+    "documentationContracts": {
+      "passed": 24,
+      "failed": 0,
+      "log": "/tmp/aab-choice-archives-doc-contract.log"
+    },
+    "webSdk": {
+      "passed": 27,
+      "failed": 0,
+      "log": "/tmp/aab-choice-pages-web2.log"
+    },
+    "androidSdk": {
+      "debug": 196,
+      "release": 196,
+      "failed": 0,
+      "log": "/tmp/aab-choice-archive-sdk.log"
+    },
+    "generatedH5Copies": 4,
+    "skillCopiesEqual": true,
+    "realBrowser": {
+      "report": "/tmp/aab-choice-pages-browser-20261012/result.json",
+      "ok": true,
+      "checks": [
+        {
+          "name": "native value setter dispatches actual browser input",
+          "passed": true
+        },
+        {
+          "name": "contenteditable browser insertion reaches the editor",
+          "passed": true
+        },
+        {
+          "name": "duplicate visible text does not dispatch",
+          "passed": true
+        },
+        {
+          "name": "6000-control page keeps an observed element actionable after a label update",
+          "passed": true
+        },
+        {
+          "name": "combined text, role and CSS select the intended Agree control",
+          "passed": true
+        },
+        {
+          "name": "duplicate candidates beyond the first 20 can be queried, paged and selected",
+          "passed": true
+        },
+        {
+          "name": "replacement with the same selector rejects old identity",
+          "passed": true
+        },
+        {
+          "name": "returning to the same URL rejects an old page observation",
+          "passed": true
+        },
+        {
+          "name": "focus replacement cannot write to the new input",
+          "passed": true
+        },
+        {
+          "name": "an overlay prevents clicking the covered target",
+          "passed": true
+        },
+        {
+          "name": "explicit scrolling makes the observed off-screen target reachable",
+          "passed": true
+        },
+        {
+          "name": "Enter delivers one keydown even when the handler navigates",
+          "passed": true
+        }
+      ]
+    },
+    "freshPackage": {
+      "report": "/tmp/aab-choice-archives-package-20261012/report.json",
+      "ok": true,
+      "sha256": "fb8f998d0081ae518baf9e8f477026aa65bb7d2ed7e6acc1e50039f27f833c19",
+      "sourceFilesCompared": 12,
+      "sourceFilesEqual": true,
+      "ownershipArchives": {
+        "installedModule": true,
+        "mcpFilteredList": true,
+        "cliOriginalRead": true,
+        "explicitDeletePreservesCurrentJournal": true
+      }
+    },
+    "responseReplay": {
+      "report": "/tmp/aab-response-delivery-replay.json",
+      "representations": 28760,
+      "artifacts": {
+        "n": 25845,
+        "compact": 3825,
+        "overOld8KiB": 9231,
+        "next_inline": 3854,
+        "inline": 21991,
+        "overview": 29,
+        "previewWithData": 29
+      },
+      "conversations": {
+        "n": 2915,
+        "inline": 2914,
+        "overOld8KiB": 122,
+        "compact": 1,
+        "next_inline": 1
+      },
+      "note": "Same complete archived bodies and complete conversation bodies as the earlier audit, not new independent population samples. No original device action replayed."
+    },
+    "localOwnershipArchiveSizes": {
+      "sample": 47,
+      "maxBytes": 4690,
+      "p95Bytes": 3880,
+      "over96KiB": 0,
+      "note": "Current default Host directory only; no historical private payload copied into the repo."
+    }
+  },
+  "limits": [
+    "No physical Android, OEM permission, native WebView or iPhone acceptance in this batch. Android completion-query verification is JVM plus controlled HTTP/ADB protocol evidence.",
+    "Web pagination is a fresh DOM observation; positions may shift. The chosen element remains bound to its actual ID and page.",
+    "SDK completion query uses existing retained original coordinator completion, not unlimited SDK receipt history. Missing or changed original runtime remains unknown.",
+    "Old corrupt force-stop files without serial metadata or a current-journal attribution are not silently assigned to a device.",
+    "Offline archive reads can be extracted directly but do not invent a persisted response reference. Large unparsed bytes retain an explicit filesystem path and deletion path.",
+    "Unified diagnosis, test workflow/preparation recipes and remaining selection/evidence-sampling assessments are still open."
+  ]
+}

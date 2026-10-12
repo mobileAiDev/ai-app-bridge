@@ -168,7 +168,7 @@ class AndroidExecutorHost {
   }
 }
 
-async function recoverAndroidExecutor(pending, createPort = descriptor => new AndroidExecutorPort(descriptor)) {
+async function recoverAndroidExecutor(pending, createPort = descriptor => new AndroidExecutorPort(descriptor), { readOnly = false } = {}) {
   const descriptor = readJson(pending.descriptorFile);
   if (!descriptor || descriptor.serial !== pending.target?.serial || descriptor.sessionId !== pending.sessionId)
     return { settled: false, error: 'executor_descriptor_mismatch' };
@@ -180,7 +180,7 @@ async function recoverAndroidExecutor(pending, createPort = descriptor => new An
     if (session) {
       Object.assign(descriptor, { runtimeEpoch: session.runtimeEpoch, pid: session.pid, processStartTicks: session.processStartTicks });
       if (pending.kind === 'flutter-test-executor') descriptor.port = session.port;
-      atomicJson(pending.descriptorFile, descriptor);
+      if (!readOnly) atomicJson(pending.descriptorFile, descriptor);
       return settlement({ ...session, ok: true }, pending);
     }
     const runner = readJson(path.join(path.dirname(pending.descriptorFile), 'runner-result.json'));

@@ -7,9 +7,14 @@ const { validateValue } = require('./shared-kernel/argument-schema');
 // The public run request shared by MCP and the CLI. Business arguments stay
 // under `arguments`; `extract` and `output` never reach a device action.
 const extractSchema = {
-  description: 'Required. Use null for this command\'s result within the output budget, or regex/script to extract a smaller result on the Host. Execution and control facts remain separate. On overflow or extraction failure, use a returned response ref to retry extraction; do not repeat the action.',
+  description: 'Optional; omitted uses auto: return the complete result whenever it fits output.maxBytes (96 KiB by default). Over-budget JSON first tries a complete table representation; only results that still do not fit become partial views with complete records or text ranges and a saved response ref. Explicit null requests the original shape without automatic formatting. Select a JSON Pointer/slice or use regex/script for precise extraction. Execution/control facts remain separate; do not repeat the action to read more.',
   oneOf: [
     { type: 'null' },
+    { type: 'object', additionalProperties: false, required: ['mode'], properties: { mode: { const: 'auto' } } },
+    { type: 'object', additionalProperties: false, required: ['mode', 'path'], properties: {
+      mode: { const: 'select' }, path: { type: 'string', description: 'JSON Pointer into the original response. Empty string selects the root.' },
+      offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1 },
+    } },
     {
       type: 'object', additionalProperties: false,
       required: ['mode', 'pattern', 'inputPath'],
@@ -42,7 +47,7 @@ const outputSchema = {
 
 function publicRequestSchema() {
   return {
-    type: 'object', additionalProperties: false, required: ['command', 'extract'],
+    type: 'object', additionalProperties: false, required: ['command'],
     properties: {
       command: { type: 'string', minLength: 1 },
       arguments: { type: 'object', additionalProperties: true },
@@ -65,13 +70,11 @@ function validateRunRequest(args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) throw new CommandError('invalid_argument', 'run requires an object.', { field: 'arguments' });
   const extra = Object.keys(args).find(key => !['command', 'arguments', 'extract', 'output'].includes(key));
   if (extra) throw new CommandError('unsupported_argument', 'Put all command parameters in run.arguments; only command, arguments, extract and output are top-level fields.', { field: extra });
-  if (!Object.hasOwn(args, 'extract')) {
-    throw new CommandError('missing_argument', 'extract is required. Pass null (CLI: --extract null) to deliver this command\'s own result, or a regex/script extraction. Nothing was dispatched.', { field: 'extract' });
-  }
-  validateValue(args.extract, extractSchema, 'extract');
+  const extract = Object.hasOwn(args, 'extract') ? args.extract : { mode: 'auto' };
+  validateValue(extract, extractSchema, 'extract');
   if (Object.hasOwn(args, 'output')) validateValue(args.output, outputSchema, 'output');
   const command = typeof args.command === 'string' ? args.command : '';
-  return { command, arguments: validateCommandArguments(command, args.arguments === undefined ? {} : args.arguments), extract: args.extract,
+  return { command, arguments: validateCommandArguments(command, args.arguments === undefined ? {} : args.arguments), extract,
     ...(args.output ? { output: args.output } : {}) };
 }
 

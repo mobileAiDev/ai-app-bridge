@@ -145,9 +145,9 @@ test('Activity identity comes from the top-resumed detailed record, independent 
   }
 });
 
-test('permission-dialog is an Intent entry; old label heuristics and Script nesting are rejected', async () => {
+test('permission-dialog is an Intent entry available to Script; old label heuristics stay invalid', async () => {
   const args = { ...params, outcome: 'deny' };
-  assert.deepEqual(commandContract('permission-dialog').entrypoints, { mcp: true, cli: true, script: false });
+  assert.deepEqual(commandContract('permission-dialog').entrypoints, { mcp: true, cli: true, script: true });
   assert.equal(commandContract('permission-dialog').role, 'execution');
   for (const field of ['buttonText', 'targetText', 'attempts', 'resourceId', 'port', 'requestId', 'feedback']) {
     assert.throws(() => validateCommandArguments('permission-dialog', { ...args, [field]: 'old' }), error => error.code === 'unsupported_argument');
@@ -157,6 +157,7 @@ test('permission-dialog is an Intent entry; old label heuristics and Script nest
     validateCommandArguments(command, { ...params, requestId: 'script-action' });
   }
   assert.equal(authorizeCommand('permission-dialog', ['app.permissions']).ok, false);
+  assert.equal(authorizeCommand('permission-dialog').ok, true);
   const router = createCommandRouter({ dispatchCommon: () => assert.fail(), loadIntent: () => ({ handle: received => {
     assert.deepEqual(received.permissionDialog, args); return { ok: true, command: 'intent' };
   } }) });
@@ -175,11 +176,13 @@ async function fixture(t, options = {}) {
   const readState = async () => { await options.beforeStateRead?.(); return options.readState ? options.readState() : { ...current, flags: [...current.flags] }; };
   const send = async values => {
     calls.push(values); if (options.sendInput) await options.sendInput();
+    if (values.kind === 'swipe' || values.kind === 'keyevent' && values.keyCode !== 4) return { ok: true, dispatched: true, ambiguous: false };
     current = { ...state, granted: (options.outcome || 'allow').startsWith('allow'), flags: options.outcome === 'allow-once' ? ['ONE_TIME', 'USER_SET'] : options.outcome === 'deny' ? ['USER_SET'] : [] , ...options.after };
     dialog = options.keepDialog === true;
     return { ok: true, dispatched: true, ambiguous: false };
   };
   const workflow = await createPermissionIntent({ args: { serial, packageName, permission, outcome: options.outcome || 'allow', timeoutMs: options.timeoutMs || 60000 }, operationId: serial, store,
+    commands: options.commands,
     dependencies: { readState, readRequest,
       ports: {
         createBridgeContext: args => args,
@@ -192,6 +195,8 @@ async function fixture(t, options = {}) {
           ? { ok: false, error: 'uia_reobserve_required', dispatched: false, ambiguous: false }
           : send({ kind: 'uia-node', actionId: ctx.runtimeActionId, binding }),
         keyevent: async (ctx, keyCode) => send({ kind: 'keyevent', actionId: ctx.runtimeActionId, keyCode }),
+        parseUiaViewport: () => ({ left: 0, top: 0, width: 400, height: 800 }),
+        swipe: async (ctx, ...coordinates) => send({ kind: 'swipe', actionId: ctx.runtimeActionId, coordinates }),
         tap: async () => assert.fail('Permission text choices must use a bound UIA node'),
       },
     } });
@@ -199,6 +204,32 @@ async function fixture(t, options = {}) {
   const decide = (action = { action: 'tap', selector: { text: 'Décision observée' } }, extra = {}) => workflow.decide({ decisionId: `decision-${calls.length}-${Math.random()}`, basedOnRevision: workflow.status().revision, agentDecision: 'act', action, ...extra });
   return { workflow, serial, store, calls, decide, setToken: value => { token = value; }, setLabel: value => { label = value; }, setState: value => { current = { ...current, ...value }; }, close: () => { dialog = false; } };
 }
+
+test('permission workflow permits diagnostic commands and known or unknown command failures without closing the task', async t => {
+  let count = 0;
+  const h = await fixture(t, { commands: async () => ++count === 1 ? { ok: true, stdout: 'diagnostic' }
+    : count === 2 ? { ok: false, error: 'adb_exit_nonzero', dispatched: true, ambiguous: false, settled: true }
+      : { ok: false, error: 'connection_lost', dispatched: null, ambiguous: true } });
+  await h.workflow.start();
+  for (let i = 0; i < 3; i++) {
+    const result = await h.decide({ action: 'command', command: 'adb-exec', arguments: { argv: ['devices'], readOnly: i === 0 } });
+    assert.equal(result.status, 'waiting_for_decision', JSON.stringify(result));
+    assert.equal(result.permissionDialog.verified, false);
+    assert.equal(h.workflow.isFinished(), false);
+  }
+  assert.equal(h.calls.length, 0);
+  assert.equal((await h.decide()).status, 'completed');
+});
+
+test('permission workflow retains a failed initial UI observation so a command can repair it', async t => {
+  const h = await fixture(t, { treeRead: async count => { if (count === 1) throw Object.assign(new Error('offline'), { code: 'uia_runtime_unreachable' }); },
+    commands: async () => ({ ok: true, stdout: 'repaired', dispatched: false }) });
+  const initial = await h.workflow.start();
+  assert.equal(initial.status, 'waiting_for_observation', JSON.stringify(initial));
+  assert.equal((await h.decide({ action: 'command', command: 'adb-exec', arguments: { argv: ['devices'], readOnly: true } })).status, 'waiting_for_decision');
+  assert.equal((await h.workflow.observe()).ok, true);
+  assert.equal((await h.decide()).status, 'completed');
+});
 
 test('all four outcomes require an owned decision, committed receipt, PackageManager state and original Activity closure', async t => {
   for (const outcome of ['allow', 'allow-once', 'deny', 'dismiss']) {
@@ -222,11 +253,38 @@ test('all four outcomes require an owned decision, committed receipt, PackageMan
 
 test('agent completion, arbitrary keys and stale revisions cannot bypass verification or dispatch', async t => {
   const h = await fixture(t); await h.workflow.start();
-  assert.equal((await h.decide(undefined, { agentDecision: 'complete' })).error, 'permission_requires_observed_decision');
-  assert.equal((await h.decide({ action: 'back', keyCode: 3 })).error, 'permission_requires_observed_decision');
+  const incomplete = await h.decide(undefined, { agentDecision: 'complete' });
+  assert.equal(incomplete.error, 'permission_outcome_not_verified');
+  assert.match(incomplete.message, /Observe the dialog/);
+  incomplete.guidance.nextActions.forEach(next => validateCommandArguments(next.command, next.arguments));
+  assert.equal((await h.decide({ action: 'back', keyCode: 3 })).error, 'unsupported_argument');
   assert.equal((await h.decide(undefined, { basedOnRevision: 0 })).error, 'invalid_argument');
   assert.equal(h.calls.length, 0);
   assert.equal((await h.decide()).status, 'completed');
+});
+
+test('permission workflow permits scroll, keyevent and Back for any outcome while verifying actual permission state', async t => {
+  const h = await fixture(t, { outcome: 'deny' }); await h.workflow.start();
+  const scrolled = await h.decide({ action: 'scroll', direction: 'down' });
+  assert.equal(scrolled.ok, true, JSON.stringify(scrolled));
+  assert.equal(scrolled.permissionDialog.verified, false);
+  assert.equal(h.calls[0].kind, 'swipe');
+  assert.equal((await h.decide({ action: 'keyevent', keyCode: 61 })).ok, true);
+  assert.equal(h.calls[1].keyCode, 61, 'the requested key must not be silently replaced with Back');
+  const done = await h.decide({ action: 'back' });
+  assert.equal(done.status, 'completed'); assert.equal(done.permissionDialog.verified, true);
+  assert.equal(h.calls[2].keyCode, 4);
+});
+
+test('agent may finish permission testing as failed or inconclusive without dismissing the dialog', async t => {
+  for (const decision of ['fail', 'inconclusive']) {
+    const h = await fixture(t); await h.workflow.start();
+    const result = await h.workflow.decide({ decisionId: decision, basedOnRevision: h.workflow.status().revision,
+      agentDecision: decision, reason: 'Stop this test and use another workflow.' });
+    assert.equal(result.status, decision === 'fail' ? 'failed' : decision);
+    assert.equal(result.permissionDialog.verified, false); assert.equal(h.calls.length, 0);
+    assert.equal(getProcessDeviceMutationLease().status(h.serial).active, 0);
+  }
 });
 
 test('a changed Activity instance, state, or label is never clicked using an old decision', async t => {

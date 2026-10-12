@@ -77,6 +77,26 @@ test('G3 identical input is deterministic and each node maps back', () => {
   }
 });
 
+test('source truncation and Host projection budgets are independent facts and keep selectable nodes', () => {
+  for (const [provider, rawTree] of [
+    ['native', { coverage: { status: 'partial', omittedChildren: 5 }, root: { id: 'a', text: 'Ready' } }],
+    ['flutter', { truncated: true, nodes: [{ id: 'a', text: 'Ready' }] }],
+    ['uia', '<hierarchy aab-truncated="true"><node text="Ready"/></hierarchy>'],
+  ]) {
+    const result = summarizeTree({ provider, rawTree, rawTreeId: 'partial-source' });
+    assert.equal(result.truncated, true); assert.equal(result.reason, 'source_incomplete');
+    assert.equal(result.coverage.source.status, 'partial');
+    assert.deepEqual(result.coverage.projection, { truncated: false, reason: null });
+    assert.equal(result.nodes[0].text, 'Ready');
+  }
+  const result = summarizeTree({ provider: 'flutter', rawTreeId: 'full-source', maxBytes: 1200,
+    rawTree: { truncated: false, nodes: Array.from({ length: 100 }, (_, id) => ({ id, text: 'Label', textTruncated: id === 0 })) } });
+  assert.equal(result.coverage.source.status, 'partial');
+  assert.equal(result.coverage.projection.truncated, true);
+  assert.equal(result.nodes[0].textTruncated, true);
+  assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 1200);
+});
+
 test('Flutter editor summaries retain each field declaration independently of its value', () => {
   const summary = summarizeTree({ provider: 'flutter', rawTreeId: 'form-now', rawTree: { nodes: [
     { id: 'reps', widgetType: 'EditableText', text: '', label: 'Reps',

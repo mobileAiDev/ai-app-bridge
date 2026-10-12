@@ -187,8 +187,11 @@
           return;
         }
         if (message.payload?.name !== 'domSnapshot') { reply(message, { ok: false, error: 'unknown_web_read' }); return; }
-        const dom = observeDom(message.payload.args ?? {});
-        reply(message, dom.ok ? { ok: true, dom } : dom); return;
+        try {
+          const dom = observeDom(message.payload.args ?? {});
+          reply(message, dom.ok ? { ok: true, dom } : dom);
+        } catch (error) { reply(message, { ok: false, error: 'web_dom_query_failed', message: error.message }); }
+        return;
       }
       if (message.type === 'cancel') {
         const identity = message.payload;
@@ -326,7 +329,8 @@
   }
 
   function documentTarget(doc) {
-    if (!documentTargets.has(doc)) documentTargets.set(doc, { navigationId: newIdentity(), available: true, elements: new WeakMap(), nextElement: 0 });
+    if (!documentTargets.has(doc)) documentTargets.set(doc, { navigationId: newIdentity(), available: true,
+      elements: new WeakMap(), elementsById: new Map(), nextElement: 0 });
     return documentTargets.get(doc);
   }
   function documentPageRef(binding) {
@@ -358,6 +362,7 @@
   function elementIdentity(element, doc = element.ownerDocument || globalValue('document')) {
     const state = documentTarget(doc);
     if (!state.elements.has(element)) state.elements.set(element, `e${++state.nextElement}`);
+    state.elementsById.set(state.elements.get(element), element);
     const sensitive = isSensitiveInput(element);
     return { elementId: state.elements.get(element), tag: text(element.tagName).toLowerCase(), id: text(element.id),
       name: attr(element, 'name'), type: attr(element, 'type'), role: attr(element, 'role'), ariaLabel: attr(element, 'aria-label'),
@@ -414,16 +419,22 @@
       return { ok: false, error: 'document_unavailable' };
     }
     const selector = options.selector || defaultControlSelector;
+    if (options.query && options.selector) return { ok: false, error: 'invalid_web_dom_query' };
+    const state = documentTarget(doc);
+    for (const [id, element] of state.elementsById) {
+      if (!element.isConnected || element.ownerDocument !== doc) state.elementsById.delete(id);
+    }
     const maxControls = Number(options.maxControls || 200);
+    const offset = options.offset ?? 0;
     const controls = [];
-    const matched = doc.querySelectorAll(selector);
-    const elements = Array.prototype.slice.call(matched, 0, maxControls);
+    const matched = options.query ? matchingElements(options.query, doc) : doc.querySelectorAll(selector);
+    const elements = Array.prototype.slice.call(matched, offset, offset + maxControls);
     elements.forEach((element, index) => {
       const sensitive = isSensitiveInput(element);
       const elementValue = text(element.value);
       controls.push({
         ...elementIdentity(element, doc),
-        index,
+        index: offset + index,
         sensitive,
         ...(sensitive ? { valueLength: elementValue.length } : {}),
         disabled: elementDisabled(element),
@@ -445,7 +456,10 @@
       bodyTextTruncated: text(doc.body && doc.body.innerText).length > 20000,
       controls,
       controlCount: controls.length,
-      truncated: matched.length > maxControls,
+      totalControls: matched.length, offset,
+      nextOffset: offset + controls.length < matched.length ? offset + controls.length : null,
+      ...(options.query ? { query: options.query } : {}),
+      truncated: offset > 0 || matched.length > controls.length,
       updatedAtMs: Date.now(),
     };
   }
@@ -453,7 +467,7 @@
   function clickElement(args, task) {
     const selected = actionTarget(args, task);
     ensureTarget(selected, task, { hit: true }); task.permit(); selected.element.click();
-    return { ok: true, resolved: selected.ref };
+    return { ok: true, resolved: selected.ref, ...targetWarnings(selected) };
   }
 
   function inputElement(args, task) {
@@ -484,6 +498,7 @@
     return {
       ok: true,
       resolved: selected.ref,
+      ...targetWarnings(selected),
       sensitive,
       valueLength: (richText ? element.innerText : element.value).length,
       ...(sensitive ? {} : { value: richText ? element.innerText : element.value }),
@@ -499,7 +514,7 @@
       key: args.key, code: args.key, bubbles: true, cancelable: true, composed: true,
     });
     task.permit(); element.dispatchEvent(event);
-    return { ok: true, resolved: selected.ref, key: args.key, eventType: 'keydown',
+    return { ok: true, resolved: selected.ref, ...targetWarnings(selected), key: args.key, eventType: 'keydown',
       trusted: event.isTrusted, defaultPrevented: event.defaultPrevented };
   }
 
@@ -539,12 +554,12 @@
     if (args.mode === 'into-view') {
       if (!selected) return { ok: false, error: 'web_selector_required' };
       ensureTarget(selected, task); task.permit(); selected.element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-      return { ok: true, resolved: selected.ref };
+      return { ok: true, resolved: selected.ref, ...targetWarnings(selected) };
     }
     if (args.mode !== 'by') return { ok: false, error: 'invalid_web_scroll_mode' };
     if (selected) {
       ensureTarget(selected, task); task.permit(); selected.element.scrollBy({ left: deltaX, top: deltaY, behavior: 'instant' });
-      return { ok: true, resolved: selected.ref };
+      return { ok: true, resolved: selected.ref, ...targetWarnings(selected) };
     }
     const win = globalValue('window');
     if (win && win.scrollBy) {
@@ -554,20 +569,28 @@
     return { ok: false, error: 'scroll_unavailable' };
   }
 
-  function findElement(selector) {
-    const doc = globalValue('document');
-    if (!doc) return null;
+  function matchingElements(selector, doc) {
     if (!selector || typeof selector !== 'object') throw new Error('invalid_web_selector');
     const identities = ['elementId', 'text', 'ariaLabel', 'css'].filter(key => typeof selector[key] === 'string' && selector[key].length > 0);
-    if (identities.length !== 1) throw new Error('invalid_web_selector');
-    const elements = doc.querySelectorAll(selector.css ?? defaultControlSelector);
-    if (elements.length > 1000) throw new Error('web_selector_scan_limit');
-    const matches = Array.from(elements).filter(element => {
-      if (!elementVisible(element)) return false;
+    if (!identities.length) throw new Error('invalid_web_selector');
+    const known = selector.elementId === undefined ? null : documentTarget(doc).elementsById.get(selector.elementId);
+    const elements = selector.elementId === undefined ? doc.querySelectorAll(selector.css ?? defaultControlSelector) : known ? [known] : [];
+    return Array.from(elements).filter(element => {
+      if (element.ownerDocument !== doc || !elementVisible(element) || selector.elementId !== undefined && selector.css !== undefined && !element.matches(selector.css)) return false;
       const ref = elementIdentity(element);
       return ['elementId', 'text', 'ariaLabel', 'tag', 'role'].every(key => selector[key] === undefined || selector[key] === ref[key]);
     });
-    if (matches.length > 1) throw new Error('web_element_ambiguous');
+  }
+  function findElement(selector) {
+    const doc = globalValue('document');
+    if (!doc) return null;
+    const matches = matchingElements(selector, doc);
+    if (matches.length > 1) throw Object.assign(new Error('web_element_ambiguous'), { details: {
+      selectionRequired: true, matched: matches.length, candidatesTruncated: matches.length > 20,
+      ...(matches.length > 20 ? { candidateQuery: { query: selector, offset: 20, maxControls: 200 } } : {}),
+      candidates: matches.slice(0, 20).map(element => { const ref = elementIdentity(element); return { text: ref.text, tag: ref.tag,
+        role: ref.role, ariaLabel: ref.ariaLabel, disabled: elementDisabled(element), bounds: bounds(element), selector: { elementId: ref.elementId } }; }),
+    } });
     return matches[0] ?? null;
   }
 
@@ -576,8 +599,19 @@
     if (!element) throw new Error('web_element_not_found');
     const ref = { pageRef: task.pageRef(), element: elementIdentity(element) };
     if (args.expectedTarget && (!samePage(ref.pageRef, args.expectedTarget.pageRef)
-      || !elementKeys.every(key => ref.element[key] === args.expectedTarget.element[key]))) throw new Error('reobserve_required');
-    return { element, ref };
+      || ref.element.elementId !== args.expectedTarget.element.elementId)) throw new Error('reobserve_required');
+    const selected = { element, ref, observed: args.expectedTarget?.element ?? ref.element, changedFields: new Set() };
+    recordTargetChanges(selected, ref.element);
+    return selected;
+  }
+  function recordTargetChanges(selected, current, edited = false) {
+    for (const key of elementKeys) {
+      if ((!edited || key !== 'text') && current[key] !== selected.observed[key]) selected.changedFields.add(key);
+    }
+  }
+  function targetWarnings(selected) {
+    return selected.changedFields.size ? { warnings: [{ code: 'target_attributes_changed', fields: [...selected.changedFields],
+      message: 'The observed DOM element is still present; its attributes changed.' }] } : {};
   }
   function samePage(a, b) {
     return ['schemaVersion', 'sessionId', 'runtimeEpoch', 'targetId', 'navigationId', 'url'].every(key => a[key] === b?.[key]);
@@ -590,7 +624,8 @@
     if (!element.isConnected || element.ownerDocument !== doc || elementDisabled(element) || !elementVisible(element)
       || (focus && doc.activeElement !== element)) throw new Error('web_element_changed');
     const current = elementIdentity(element);
-    if (!elementKeys.filter(key => !edited || key !== 'text').every(key => current[key] === ref.element[key])) throw new Error('reobserve_required');
+    if (current.elementId !== ref.element.elementId) throw new Error('reobserve_required');
+    recordTargetChanges(selected, current, edited);
     if (hit) {
       const interaction = interactionState(element);
       if (interaction.status !== 'ready') throw Object.assign(new Error(interaction.status === 'outside-viewport'

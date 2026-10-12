@@ -33,6 +33,20 @@ class FlutterActionExecutorTest {
         }
     }
 
+    @Test fun readOnlyQueriesLeaveDartPermissionAndTheOriginalActionIntact() {
+        val p = Peer(); val original = p.submit()
+        val pending = Response(); p.executor.query(p.identity(), pending::reply)
+        assertFalse(pending.await().getBoolean("settled")); assertFalse(original.ready())
+        assertEquals(listOf("executeAction"), p.calls.map { it.first })
+        assertTrue(p.executor.check(p.identity()).getBoolean("ok"))
+        val wrong = Response(); p.executor.query(p.identity("other"), wrong::reply)
+        assertFalse(wrong.await().getBoolean("ok"))
+        p.finish(); assertTrue(original.await().getBoolean("ok"))
+        val completed = Response(); p.executor.query(p.identity(), completed::reply)
+        assertTrue(completed.await().getJSONObject("executionResult").getBoolean("ok"))
+        assertEquals(listOf("executeAction"), p.calls.map { it.first })
+    }
+
     @Test fun queuedCancellationRevokesAllFuturePermission() {
         val p = Peer(); val original = p.submit(); val cancel = p.cancel().await()
         assertFalse(original.await().getBoolean("dispatched"))

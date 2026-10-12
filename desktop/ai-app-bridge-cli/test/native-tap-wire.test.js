@@ -28,7 +28,7 @@ test('tap-native shares the Intent selector contract with CLI, MCP and Script', 
   assert.deepEqual(commandSchema('tap-native').properties.selector, nativeSelector);
   const target = { serial: ctx.serial, packageName: ctx.packageName };
   assert.deepEqual(validateCommandArguments('tap-native', parseCliOptions('tap-native', { ...target, selector: JSON.stringify(selector) })), { ...target, selector });
-  for (const bad of [{}, { text: 'Open', resourceName: 'id/open' }, { text: 'Open', within: { text: 'Second' } }]) {
+  for (const bad of [{}, { text: 'Open', clickable: 'true' }, { text: 'Open', within: {} }]) {
     assert.throws(() => validateCommandArguments('tap-native', { ...target, selector: bad }));
   }
   assert.throws(() => validateCommandArguments('tap-native', { ...target, selector, targetRef: {} }));
@@ -52,7 +52,7 @@ test('a scoped repeated control sends one bound SDK tap and retains its original
   assert.equal(Object.hasOwn(calls[0].body, 'y'), false);
 });
 
-test('ambiguous, replaced, unbound selections never dispatch', async () => {
+test('ambiguous and unbound targets stop at Host; SDK replacement rejection is returned without input', async () => {
   for (const scenario of ['ambiguous', 'replaced', 'unbound']) {
     const original = tree(), changed = structuredClone(original);
     if (scenario === 'replaced') changed.root.children[1].children[1].targetRef.viewId = 'replaced-view';
@@ -60,11 +60,15 @@ test('ambiguous, replaced, unbound selections never dispatch', async () => {
     let reads = 0;
     const result = await tapNative(ctx, { selector: scenario === 'ambiguous' ? { text: 'Open' } : selector }, {
       foregroundWindow: async () => foreground,
-      bridgeTree: async () => scenario === 'replaced' && ++reads > 1 ? changed : original,
-      bridgePost: async () => assert.fail('No mutation may be sent'),
+      bridgeTree: async () => { reads++; return original; }, bridgeStatus: nativeBridgeStatus,
+      bridgePost: async (_ctx, _path, request) => {
+        assert.equal(scenario, 'replaced'); assert.equal(reads, 1);
+        assert.notEqual(request.targetRef.viewId, changed.root.children[1].children[1].targetRef.viewId);
+        return nativeExecutionReceipt(request, { ok: false, error: 'native_target_replaced', dispatched: false });
+      },
     });
     assert.equal(result.ok, false, scenario); assert.equal(result.dispatched, false, scenario);
-    assert.equal(result.error, { ambiguous: 'native_selector_ambiguous', replaced: 'reobserve_required',
+    assert.equal(result.error, { ambiguous: 'native_selector_ambiguous', replaced: 'native_target_replaced',
       unbound: 'native_atomic_target_unavailable' }[scenario]);
   }
 });

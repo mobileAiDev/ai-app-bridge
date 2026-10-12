@@ -194,6 +194,32 @@ function setFakeLocation(location, href) {
   location.hash = parsed.hash;
 }
 
+test('DOM query pages enumerate all duplicate controls and return the requested observation only', async t => {
+  const elements = Array.from({ length: 63 }, (_, i) => fakeElement({ id: `choice-${i}`, innerText: 'Agree' }));
+  elements.push(fakeElement({ id: 'note', innerText: 'Please read and Agree to the terms' }));
+  installDocument(t, elements, 'https://example.test/choices');
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test/', sessionId: 'pages', WebSocket }).start();
+  t.after(() => bridge.stop());
+  const socket = WebSocket.instances[0]; socket.open();
+  const failure = await socket.command('click', { selector: { text: 'Agree' } });
+  assert.equal(failure.details.matched, 63);
+  assert.equal(failure.details.candidates.length, 20);
+  assert.equal(failure.details.candidateQuery.offset, 20);
+  const seen = [], query = { text: 'Agree', tag: 'button' };
+  let offset = 0;
+  do {
+    const result = bridge.snapshotDom({ query, offset, maxControls: 17 });
+    assert.equal(result.totalControls, 63); assert.deepEqual(result.query, query);
+    assert.equal(result.offset, offset); assert.equal(result.controls[0].index, offset);
+    seen.push(...result.controls.map(node => node.id)); offset = result.nextOffset;
+  } while (offset !== null);
+  assert.deepEqual(seen, elements.slice(0, 63).map(element => element.id));
+  const empty = bridge.snapshotDom({ query, offset: 100 });
+  assert.equal(empty.controls.length, 0); assert.equal(empty.nextOffset, null);
+  assert.equal(bridge.snapshotDom({ query, selector: 'button' }).error, 'invalid_web_dom_query');
+});
+
 test('snapshotDom shapes controls from a supplied document', () => {
   const button = fakeElement({
     id: 'save',
@@ -329,6 +355,57 @@ test('click command returns the component that received the click', async (t) =>
   assert.equal(commandResult.resolved.element.role, 'button');
   assert.equal(commandResult.resolved.pageRef.url, 'https://example.test/order');
   bridge.stop();
+});
+
+test('large Web pages can click an observed ID without rescanning or rejecting changed attributes', async t => {
+  const button = fakeElement({ id: 'save', innerText: 'Save' }); let clicks = 0;
+  button.click = () => { clicks++; };
+  installDocument(t, [button, ...Array.from({ length: 5000 }, (_, i) => fakeElement({ id: `other-${i}`, innerText: 'Other' }))], 'https://example.test/large');
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'large', WebSocket, capture: {} });
+  t.after(() => bridge.stop()); bridge.start(); const socket = WebSocket.instances[0]; socket.open();
+  const observed = bridge.snapshotDom();
+  assert.equal(observed.truncated, true);
+  const element = Object.fromEntries(['elementId', 'tag', 'id', 'name', 'type', 'role', 'ariaLabel', 'placeholder', 'href', 'text']
+    .map(key => [key, observed.controls[0][key]]));
+  button.innerText = 'Save (1)';
+  document.querySelectorAll = () => assert.fail('an observed ID should not rescan the document');
+  const result = await socket.command('click', { selector: { elementId: element.elementId }, expectedTarget: { pageRef: observed.pageRef, element } });
+  assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(clicks, 1);
+  assert.equal(result.resolved.element.text, 'Save (1)');
+  assert.deepEqual(result.warnings[0].fields, ['text']);
+});
+
+test('Web text and role can be combined; duplicate matches return selectors within the receipt limit', async t => {
+  const button = fakeElement({ innerText: 'Agree', attrs: { role: 'button', 'aria-label': 'Accept' } }); let clicks = 0;
+  button.click = () => { clicks++; };
+  const elements = [button, ...Array.from({ length: 3000 }, () => fakeElement({ innerText: 'Agree', attrs: { role: 'note' } }))];
+  installDocument(t, elements, 'https://example.test/agree');
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'choices', WebSocket, capture: {} });
+  t.after(() => bridge.stop()); bridge.start(); const socket = WebSocket.instances[0]; socket.open();
+  const choices = await socket.command('click', { selector: { text: 'Agree' } }, 'choices');
+  assert.equal(choices.error, 'web_element_ambiguous'); assert.equal(choices.dispatched, false); assert.equal(clicks, 0);
+  assert.equal(choices.details.matched, 3001); assert.equal(choices.details.candidatesTruncated, true);
+  assert.equal(choices.details.candidates.length, 20); assert.ok(choices.details.candidates[0].selector.elementId);
+  socket.onmessage({ data: JSON.stringify({ type: 'completionAck', binding: socket.binding, actionId: 'choices', stored: true }) });
+  const result = await socket.command('click', { selector: { text: 'Agree', role: 'button', ariaLabel: 'Accept' } }, 'chosen');
+  assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(clicks, 1);
+});
+
+test('a removed Web element ID cannot select its same-label replacement', async t => {
+  const original = fakeElement({ id: 'save', innerText: 'Save' });
+  const replacement = fakeElement({ id: 'save', innerText: 'Save' }); let clicks = 0;
+  original.click = replacement.click = () => { clicks++; };
+  installDocument(t, [original, replacement], 'https://example.test/replace');
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'replacement', WebSocket, capture: {} });
+  t.after(() => bridge.stop()); bridge.start(); const socket = WebSocket.instances[0]; socket.open();
+  const elementId = bridge.snapshotDom().controls[0].elementId;
+  original.isConnected = false;
+  bridge.snapshotDom();
+  const result = await socket.command('click', { selector: { elementId } });
+  assert.equal(result.error, 'web_element_not_found'); assert.equal(result.dispatched, false); assert.equal(clicks, 0);
 });
 
 test('createAiAppBridge exposes a stable session API before connection', () => {

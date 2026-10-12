@@ -31,6 +31,24 @@ class NativeActionExecutorTest {
         override fun stop(reason: String) { this.reason = reason; stopped.countDown() }
     }
 
+    @Test fun queriesForNativeAndH5NeverCancelOrDispatchAndKeepTheOriginalCompletion() {
+        for (protocol in listOf(ManagedActionProtocol.NATIVE, ManagedActionProtocol.H5)) {
+            val executor = ManagedActionExecutor(protocol, epoch)
+            val body = request().also { it.getJSONObject("execution").put("schemaVersion", protocol.schema) }
+            val task = Task(); val original = Reply()
+            executor.submit("tap", body, { task }, original::accept)
+            val pending = Reply(); executor.query(identity(), pending::accept)
+            assertFalse(pending.await().getBoolean("settled")); assertNull(task.reason)
+            assertEquals(1, task.starts); assertTrue(executor.isBusy()); assertEquals(1L, original.done.count)
+            val wrong = Reply(); executor.query(identity("other"), wrong::accept)
+            assertFalse(wrong.await().getBoolean("ok")); assertNull(task.reason)
+            task.complete(success()); assertTrue(original.await().getBoolean("ok"))
+            val complete = Reply(); executor.query(identity(), complete::accept)
+            assertTrue(complete.await().getJSONObject("executionResult").getBoolean("ok"))
+            assertNull(task.reason); assertEquals(1, task.starts)
+        }
+    }
+
     @Test fun completedActionHasAnImmutableIdentityBoundReceiptAndIsNeverReplayed() {
         val executor = ManagedActionExecutor(ManagedActionProtocol.NATIVE, epoch)
         val task = Task(); val reply = Reply()

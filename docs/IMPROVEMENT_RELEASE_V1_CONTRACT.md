@@ -1,5 +1,7 @@
 # 改善版本 V1：公共返回合同与实现边界
 
+> Historical 0.4.0 contract. The 2026-10-12 working-tree design supersedes required extract and blanket unknown/default-permission gates; see [current command contract](../desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md) and [audit](AGENT_CHOICE_AUDIT_2026-10-12.md).
+
 日期：2026-09-19。状态：配套整体方案第 6 版，M0 接口基线已确认，可按工作包实施；下面均为 **0.4.0 目标行为，当前 0.3.8 尚不支持**。本文件是参数、返回、快照、预算语义的唯一设计来源；工作顺序和放行条件见 [整体方案](IMPROVEMENT_RELEASE_V1_2026-09-18.md)。完整测试与限额校准随 M2 实现完成，不要求先做一套完整原型再重做正式实现。
 
 ## 1. 公共请求
@@ -206,3 +208,5 @@ M0 只完成三项：确认本文件的请求/返回字段及普通命令、Scri
 迁移包括：顶层 extract、MCP 由原顶层数据改读 value、公共状态与 CLI 退出码 2；value._feedback 保持原位置。Runtime 沿用 `aab.runtime/v1` 传输封套，公共正文放入其 reply.value；旧代码仍由既有身份检查拒绝。新增存储 namespace/记录类型 response，复用现有 evidence schema/checksum/归档版本，不再叠加独立的公共响应或快照版本标识。
 
 真实 tools/list、CLI 解析、全部响应族、落盘重读、故障注入分别进入 M2a/M2b 的正式测试；最大输入/两语言/参考机性能进入 M2c，第 5 节数值在发布前据此确认。语义预检、无重放、预算和控制字段验收没有取消，只移到对应实现提交中做一次。修改已确定的接口需回写本文件；常规实现选择与实测限额调整记录在工作包内，不逐条增加审批步骤。
+
+2026-10-12 组合命令补充：Intent lastAction.result 是原始命令结果，保留在 value 与源响应中；control.lastAction 只保留结果位置 resultPath 和子任务继续所需的 resultControl，避免重复复制大结果。uiObservation、background/accepted 和 Intent wait 的 timedOut/waitMs 作为控制事实保留。

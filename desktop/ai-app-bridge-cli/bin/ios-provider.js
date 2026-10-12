@@ -74,6 +74,7 @@ class IOSBridgeProvider {
         ...(error.field ? { field: error.field } : {}),
         dispatched: typeof error.dispatched === 'boolean' ? error.dispatched : null,
         ambiguous: error.ambiguous !== false,
+        ...(error.warnings ? { warnings: error.warnings } : {}),
         ...(error.devicectlReply ? { deviceOutcome: error.devicectlReply } : {}),
       };
     }
@@ -231,6 +232,8 @@ class IOSBridgeProvider {
       ok: true,
       ready,
       fullControlReady: ready,
+      paths: { sdk: { available: runtime.ok === true }, wda: { available: wda.ok === true } },
+      runtime, wda,
       checks,
       devices,
       selectedDevice: selected,

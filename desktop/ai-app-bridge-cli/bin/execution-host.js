@@ -4,9 +4,10 @@ const { executeProviderCommand } = require('./device-provider');
 const { validateRunRequest, publicOutputLimit } = require('./command-request');
 const { resolveCommandPaths } = require('./shared-kernel/request-context');
 const { commandFailure, normalizeCommandResult } = require('./command-errors');
+const { withActionGuidance } = require('./shared-kernel/action-guidance');
 const { publicReply, publicFailure, responseReply, finishReply, boundedReply } = require('./public-reply');
 const { prepareExtraction } = require('./extraction/prepare');
-const { runExecution, withoutExecution } = require('./shared-kernel/execution-scope');
+const { runExecution, withoutExecution, currentExecution } = require('./shared-kernel/execution-scope');
 const { getHostFactStore } = require('./shared-kernel/host-fact-store');
 const { FactRecorder, historyDescriptor, isMobileCaptureCommand } = require('./fact-recorder');
 const { runWithFeedbackProbe } = require('./feedback-probe');
@@ -84,15 +85,48 @@ const commandRouter = createCommandRouter({
   dispatchCommon: runCommand,
 });
 
-// Script and Intent capture call provider results directly. MCP text shaping,
-// feedback probes and Host history are not part of their execution path.
-async function dispatchProviderCommand(command, args) {
+// One in-process command path for Script and Intent. Compound workflows keep
+// their own lifetime/locks; ordinary commands retain target admission. Neither
+// path serializes through MCP nor adds another feedback observation/history.
+async function dispatchProviderCommand(command, args, options = {}) {
   try {
     const validated = resolveCommandPaths(command, validateCommandArguments(command, args));
-    return normalizeCommandResult(await targetExecution.execute(command, validated, (name, parameters) =>
+    if (command === 'response') return responseReply(getResponseStore().read(validated.ref));
+    if (command === 'runtime') {
+      if (validated.operation === 'stop' || validated.operation === 'force-stop') {
+        return require('./shared-kernel/composed-control').start(command, validated);
+      }
+      return await require('./runtime-client').runtimeCommand(validated, { signal: currentExecution()?.signal });
+    }
+    if (command === 'device-ownership' && validated.operation === 'force-stop') {
+      return require('./shared-kernel/composed-control').start(command, validated);
+    }
+    if (isolatedByName.has(command) || ['install-apk', 'permission-dialog'].includes(command)) {
+      if (command === 'intent' && validated.operation === 'start' && options.caller && validated.background === undefined) validated.background = true;
+      const invoke = () => commandRouter.route(command, validated).then(reply => reply.value);
+      if (options.caller?.command === command && options.caller.operationId === validated.operationId) {
+        if (validated.operation === 'cancel' || validated.operation === 'intervene') {
+          // Request cancellation now; the owner drains this call after it
+          // returns. Awaiting the owner's drain here would wait on ourselves.
+          withoutExecution(() => invoke().catch(error => process.stderr.write(`${error.message}\n`)));
+          return { ok: true, command, operationId: validated.operationId, status: 'cancelling',
+            controlAccepted: true, completionScope: 'control-request', settled: true };
+        }
+        if (validated.operation === 'wait') {
+          const { waitMs, ...statusArgs } = validated;
+          return commandRouter.route(command, { ...statusArgs, operation: 'status' })
+            .then(reply => ({ ...reply.value, message: 'A task cannot wait for its own completion from inside ctx.call; current status is returned.' }));
+        }
+      }
+      // A returned child operationId has an independent lifetime. Future
+      // calls use its own deadline, rather than the already-settled start call.
+      return validated.operation === 'start' || ['install-apk', 'permission-dialog'].includes(command)
+        ? withoutExecution(() => require('./shared-kernel/device-mutation-lease').withoutDeviceMutationLease(invoke)) : invoke();
+    }
+    return withActionGuidance(command, validated, normalizeCommandResult(await targetExecution.execute(command, validated, (name, parameters) =>
       runRawCommand(name, isMutationCommand(name, parameters)
-        ? { ...parameters, runtimeActionId: actionIdForInvocation(parameters) } : parameters)), command);
-  } catch (error) { return commandFailure(error, command); }
+        ? { ...parameters, runtimeActionId: actionIdForInvocation(parameters) } : parameters)), command));
+  } catch (error) { return withActionGuidance(command, args, commandFailure(error, command)); }
 }
 
 function resolveScriptWaitMs(value) {
@@ -145,6 +179,7 @@ function wrapIsolatedEntry(entry, namespace) {
           query: createLiveCaptureQuery({ runner: dispatchProviderCommand }),
         });
       }
+      if (namespace === 'intent' && !args.commands) args.commands = dispatchProviderCommand;
       return entry.handle(args);
     },
   };
@@ -172,8 +207,9 @@ async function runGeneric(args = {}, dependencies = {}) {
       return { value: await finishReply({ body: responseReply(frozen), extract, output: request.output, frozen }) };
     }
     const reply = await commandRouter.route(request.command, commandArguments, dependencies);
-    return { value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true }), extract, output: request.output, getStore }) };
-  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error, maxBytes: request.output?.maxBytes }) }; }
+    reply.value = withActionGuidance(command, commandArguments, reply.value);
+    return { value: await finishReply({ body: publicReply({ command: request.command, reply, completed: true, args: commandArguments }), extract, output: request.output, getStore }) };
+  } catch (error) { return { value: publicFailure({ command: request.command, stage: 'execution', error, args: commandArguments, maxBytes: request.output?.maxBytes }) }; }
 }
 
 async function runCommand(command, args = {}, dependencies = {}) {
@@ -638,4 +674,8 @@ function resultReply(result, history) {
   return { value: normalizeCommandResult(result), ...(history ? { history } : {}) };
 }
 
-module.exports = { run, close, dispatchProviderCommand, commandRouter, ...require('./command-discovery') };
+function diagnosticState() {
+  return { closing, activeRequests: activeRuns.size, web: webProvider.providerStatus(), sessions: webProvider.listSessions({ maintainConnections: false }) };
+}
+
+module.exports = { run, close, diagnosticState, dispatchProviderCommand, commandRouter, ...require('./command-discovery') };

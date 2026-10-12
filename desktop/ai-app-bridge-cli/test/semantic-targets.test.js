@@ -60,7 +60,7 @@ const control = extra => node({ className: 'android.widget.EditText', resourceNa
   bounds: { left: 20, top: 40, right: 100, bottom: 80 }, ...extra });
 const nativeTree = children => windowTree([{ type: 'activity', root: node({ className: 'DecorView', children }) }]);
 
-test('all native Intent selectors preserve target identity after layout movement', async () => {
+test('all native Intent actions send the original reference for atomic SDK geometry resolution', async () => {
   for (const spec of [
     { action: 'tap' }, { action: 'inputText', value: 'New name' },
     { action: 'longPress', durationMs: 600 }, { action: 'swipe', deltaX: 20, deltaY: 30, durationMs: 300 },
@@ -76,9 +76,9 @@ test('all native Intent selectors preserve target identity after layout movement
     const result = await adapter.action({ ...target, rawTree: nativeTree([control()]),
       spec: { provider: 'native', selector: { resourceName: 'example.app:id/Name' }, ...spec } });
     assert.equal(result.ok, true, JSON.stringify(result));
-    assert.equal(reads, 1); assert.equal(calls.length, 1);
+    assert.equal(reads, 0); assert.equal(calls.length, 1);
     if (spec.action === 'inputText') assert.deepEqual(calls[0].args[1].nativeTarget, { selector: { resourceName: 'example.app:id/Name' }, targetRef: { ...nativeTargetRef(), windowId: 'window-0' } });
-    else if (spec.action === 'tap') assert.deepEqual(calls[0].args.slice(0, 2), [70, 120]);
+    else if (spec.action === 'tap') assert.deepEqual(calls[0].args[2].nativeTarget, { selector: { resourceName: 'example.app:id/Name' }, targetRef: { ...nativeTargetRef(), windowId: 'window-0' } });
     else {
       assert.equal(calls[0].kind, 'gesture');
       assert.deepEqual(calls[0].args[0].targetRef, { ...nativeTargetRef(), windowId: 'window-0' });
@@ -87,33 +87,31 @@ test('all native Intent selectors preserve target identity after layout movement
   }
 });
 
-test('changed native identity, editability, ambiguity or foreground window rejects before dispatch', async () => {
-  const dialog = nativeTree([control()]);
-  dialog.windows.push({ windowId: 'dialog', type: 'dialog', root: node({ children: [control()] }) });
-  dialog.foregroundWindowId = 'dialog';
-  for (const [current, action, error] of [
-    [nativeTree([control({ text: 'Other account' })]), 'tap', 'reobserve_required'],
+test('observed noneditable or ambiguous Native selections never reach the SDK action endpoint', async () => {
+  for (const [observed, action, error] of [
     [nativeTree([control({ editable: undefined })]), 'inputText', 'native_target_not_editable'],
     [nativeTree([control(), control()]), 'tap', 'native_selector_ambiguous'],
   ]) {
-    let effects = 0;
+    let attempts = 0;
     const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,
-      bridgeTree: async () => current, tap: async () => { effects++; }, inputText: async () => { effects++; } } });
-    const result = await adapter.action({ ...target, rawTree: nativeTree([control()]),
+      bridgeTree: async () => assert.fail('No redundant capture'), tap: async () => { attempts++; }, inputText: async () => { attempts++; } } });
+    const result = await adapter.action({ ...target, rawTree: observed,
       spec: { provider: 'native', action, selector: { resourceName: 'example.app:id/Name' }, value: 'New name' } });
-    assert.equal(result.error, error); assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.equal(effects, 0);
+    assert.equal(result.error, error); assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.equal(attempts, 0);
   }
 });
 
-test('deadline or cancellation during target revalidation never dispatches a late native action', async () => {
+test('deadline or cancellation during the final foreground observation never dispatches a late Native action', async () => {
   for (const reason of ['deadline_exceeded', 'cancelled']) {
     let effects = 0;
-    const controller = new AbortController();
+    const controller = new AbortController(); let observations = 0;
     const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,
-      bridgeTree: async () => {
-        if (reason === 'cancelled') controller.abort({ code: 'cancelled' });
-        await executionSleep(1000);
-        return nativeTree([control()]);
+      foregroundWindow: async () => {
+        if (++observations > 1) {
+          if (reason === 'cancelled') controller.abort({ code: 'cancelled' });
+          await executionSleep(1000);
+        }
+        return { ok: true, packageName: target.packageName };
       }, tap: async () => { effects++; return { ok: true }; } } });
     const result = await runExecution({ timeoutMs: 30, signal: controller.signal, mutation: true }, () => adapter.action({
       ...target, rawTree: nativeTree([control()]), spec: { provider: 'native', action: 'tap', selector: { text: 'Name' } },

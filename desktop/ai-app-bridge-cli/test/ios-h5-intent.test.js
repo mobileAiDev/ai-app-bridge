@@ -140,7 +140,8 @@ test('document scrolling after native hit testing invalidates even an unchanged 
 test('public H5 contracts require an observed page for expert eval and expose typed Script commands', () => {
   assert.throws(() => validateCommandArguments('ios-h5-eval', { deviceId: 'phone', bundleId: 'pkg', script: '1' }));
   for (const name of ['ios-h5-click', 'ios-h5-input', 'ios-h5-scroll']) {
-    assert.throws(() => validateCommandArguments(name, { deviceId: 'phone', bundleId: 'pkg', selector: { text: 'x', elementId: 'e1' } }));
+    assert.doesNotThrow(() => validateCommandArguments(name, { deviceId: 'phone', bundleId: 'pkg', selector: { text: 'x', elementId: 'e1' },
+      ...(name.endsWith('input') ? { text: 'value' } : {}) }));
     assert.ok(commandSchema(name).properties.expectedTarget);
   }
 });

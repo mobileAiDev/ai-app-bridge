@@ -355,8 +355,8 @@ function createScriptSupervisor({
     if (!record) return scriptError('unknown_operation', { operationId: args.operationId || null });
     if (record.cancelling) return scriptError('runtime_stopped', { operationId: record.operationId });
     if (record.status === 'finishing') return scriptError('not_resumable', { operationId: record.operationId });
-    if (record.mutationUnknown || record.inFlightMutations > 0) {
-      return scriptError('ambiguous', { operationId: record.operationId, status: 'ambiguous' });
+    if (record.inFlightMutations > 0) {
+      return scriptError('operation_busy', { operationId: record.operationId, status: record.status });
     }
     if (record.finished) {
       const gate = restartGate({
@@ -380,7 +380,6 @@ function createScriptSupervisor({
     }
     record.status = 'running';
     record.pauseReason = null;
-    record.mutationUnknown = false;
     emitRecord(record, 'resumed', { status: 'running' }, now);
     pushControl(record);
     return snapshotOf(record, args);
@@ -603,11 +602,11 @@ function trackHost(host, record, now) {
 
   async function callTracked(command, args, options) {
     if (isLivePause(record.status)) return failedCall(command, 'paused');
-    if (record.durableError || record.mutationUnknown) {
-      return failedCall(command, record.durableError || 'ambiguous', null, record.mutationUnknown);
+    if (record.durableError && isMutationCommand(command, args)) {
+      return failedCall(command, record.durableError, null, record.mutationUnknown);
     }
-    const gate = authorizeCommand(command, record.spec.permissions);
-    if (!gate.ok) return rejectCall(gate.error);
+    const gate = authorizeCommand(command, record.spec.permissions, args);
+    if (!gate.ok) return rejectCall(gate.error, { message: gate.message });
     let boundTarget = null;
     if (command !== 'page-summary') {
       try {
@@ -824,7 +823,8 @@ async function emitRuntimeRecord(record, type, extra, now) {
     return null;
   }
   if (type !== 'checkpoint') return emitRecord(record, type, extra, now);
-  if (record.mutationUnknown || record.inFlightMutations > 0) return { ok: false, error: 'ambiguous', persisted: false };
+  if (record.durableError) return { ok: false, error: record.durableError, persisted: false };
+  if (record.inFlightMutations > 0) return { ok: false, error: 'operation_busy', persisted: false };
   const checkpoint = { name: extra.name, state: extra.state };
   const revision = record.checkpointRevision + 1;
   let persisted = null;
@@ -843,6 +843,7 @@ async function emitRuntimeRecord(record, type, extra, now) {
   }
   record.checkpointRevision = revision;
   record.lastCheckpoint = checkpoint;
+  record.mutationUnknown = false;
   record.checkpointActionSequence = record.actionSequence;
   record.actionsSinceCheckpoint = [];
   if (record.finished || record.status === 'finishing' || record.cancelling) return { ok: false, error: 'runtime_stopped', persisted: Boolean(persisted) };

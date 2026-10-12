@@ -129,7 +129,9 @@ class AiAppBridge {
   /// Frame/interaction evidence is opt-in and cannot outlive five seconds.
   Map<String, Object?> uiObservation(Map<String, Object?> request) {
     if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
-    if (_uiObservationInstalled && _observationClock.elapsedMilliseconds >= _observationDurationMs) _stopUiObservation();
+    if (_uiObservationInstalled &&
+        _observationClock.elapsedMilliseconds >= _observationDurationMs)
+      _stopUiObservation();
     final operation = request['operation'];
     final keys = switch (operation) {
       'start' => {'operation', 'durationMs'},
@@ -204,7 +206,9 @@ class AiAppBridge {
   }
 
   void _handleFrameTimings(List<FrameTiming> timings) {
-    if (_uiObservationInstalled && _observationClock.elapsedMilliseconds >= _observationDurationMs) _stopUiObservation();
+    if (_uiObservationInstalled &&
+        _observationClock.elapsedMilliseconds >= _observationDurationMs)
+      _stopUiObservation();
     if (!_enabled || !_uiObservationInstalled || timings.isEmpty) return;
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
     final List<AiAppBridgeUiTransition> transitions =
@@ -583,12 +587,15 @@ class AiAppBridge {
   Future<void> _refreshH5Snapshot() async {
     if (!_enabled) return;
     try {
-      _h5 = await _h5Targets.snapshot(null, managed: false)
+      _h5 = await _h5Targets
+          .snapshot(null, managed: false)
           .timeout(const Duration(milliseconds: 800));
     } catch (error) {
       _h5 = <String, Object?>{
         'ok': false,
-        'error': error is _FlutterTargetFailure ? error.code : 'flutter_h5_snapshot_failed',
+        'error': error is _FlutterTargetFailure
+            ? error.code
+            : 'flutter_h5_snapshot_failed',
         'adapters': _h5Targets.candidates,
         'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
       };
@@ -784,14 +791,14 @@ class AiAppBridge {
                 : widget is Scrollable
                     ? 'scrollable'
                     : 'control',
-            if (text.isNotEmpty) 'text': _trimNodeText(text),
-            if (value.isNotEmpty) 'value': _trimNodeText(value),
-            if (description?.label != null)
-              'label': _trimNodeText(description!.label!),
-            if (description?.hint != null)
-              'hint': _trimNodeText(description!.hint!),
-            if (description?.errorText != null)
-              'errorText': _trimNodeText(description!.errorText!),
+            ..._nodeLabelFields({
+              if (text.isNotEmpty) 'text': text,
+              if (value.isNotEmpty) 'value': value,
+              if (description?.label != null) 'label': description!.label!,
+              if (description?.hint != null) 'hint': description!.hint!,
+              if (description?.errorText != null)
+                'errorText': description!.errorText!,
+            }),
             'bounds': _rectToJson(bounds),
             'actions': actions.toList()..sort(),
             if (text.isNotEmpty)
@@ -892,6 +899,17 @@ class AiAppBridge {
         'actionCount': actionCount,
         'sampleWidgetTypes': sampleWidgetTypes,
         'truncated': truncated,
+        'coverage': <String, Object?>{
+          'status': truncated ||
+                  nodes.any((node) => ['text', 'value', 'label']
+                      .any((key) => node['${key}Truncated'] == true))
+              ? 'partial'
+              : 'complete',
+          'capturedNodes': nodes.length,
+          'maxNodes': _maxOperableNodes,
+          'maxDepth': _maxOperableDepth,
+          'maxTextLength': 300,
+        },
         'viewport': <String, Object?>{
           'devicePixelRatio': devicePixelRatio,
           'logicalWidth': logicalSize.width,
@@ -1054,7 +1072,7 @@ class AiAppBridge {
             _FlutterActionLifetime.zoneKey: lifetime,
           });
       lifetime?.throwIfStopped();
-        return result;
+      return result;
     } on _FlutterActionStopped catch (error) {
       return {'ok': false, 'error': error.code, 'ambiguous': false};
     } on _FlutterTargetFailure catch (error) {
@@ -1251,8 +1269,9 @@ class AiAppBridge {
   }
 
   Map<String, Object?> _runH5Adapters() => {
-    'ok': true, 'adapters': _h5Targets.candidates,
-  };
+        'ok': true,
+        'adapters': _h5Targets.candidates,
+      };
 
   Future<Map<String, Object?>> _runH5Dom(Map<String, Object?> request) async {
     try {
@@ -1746,12 +1765,22 @@ class AiAppBridge {
     return '';
   }
 
-  String _trimNodeText(String value) {
-    final String normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (normalized.length <= 300) {
-      return normalized;
+  Map<String, Object?> _nodeLabelFields(Map<String, String> values) {
+    final fields = <String, Object?>{};
+    for (final entry in values.entries) {
+      final normalized = entry.value.replaceAll(RegExp(r'\s+'), ' ').trim();
+      var end = normalized.length > 300 ? 300 : normalized.length;
+      if (end < normalized.length &&
+          end > 0 &&
+          normalized.codeUnitAt(end - 1) >= 0xD800 &&
+          normalized.codeUnitAt(end - 1) <= 0xDBFF) end--;
+      fields[entry.key] = normalized.substring(0, end);
+      if (end < normalized.length) {
+        fields['${entry.key}Truncated'] = true;
+        fields['${entry.key}Length'] = normalized.length;
+      }
     }
-    return normalized.substring(0, 300);
+    return fields;
   }
 
   Future<Map<String, Object?>> _readSnapshot() async {
@@ -1767,7 +1796,8 @@ class AiAppBridge {
           .timeout(const Duration(milliseconds: 800));
       await _refreshH5Snapshot();
       if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
-      if (_targets.runtimeEpoch != runtimeEpoch) return {'ok': false, 'error': 'flutter_runtime_changed'};
+      if (_targets.runtimeEpoch != runtimeEpoch)
+        return {'ok': false, 'error': 'flutter_runtime_changed'};
       if (_actionInFlight || _shortPointerInFlight)
         return {'ok': false, 'error': 'flutter_observation_busy'};
       return {
@@ -1826,8 +1856,6 @@ class AiAppBridge {
       }
     }, zoneValues: <Object, Object?>{_autoCaptureSuppressionKey: true});
   }
-
-
 
   Future<bool> _invokeBridgeMethod(String method, String body) async {
     try {
@@ -2689,37 +2717,63 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     if (start < 0 || !script.endsWith('))')) {
       throw StateError('unsupported_h5_fixture_script');
     }
-    final request = jsonDecode(script.substring(start + 2, script.length - 2)) as Map;
+    final request =
+        jsonDecode(script.substring(start + 2, script.length - 2)) as Map;
     if (request['operation'] == 'snapshot') {
       _h5FixtureDocumentId ??= request['seed'] as String;
       return jsonEncode({'ok': true, 'dom': _h5FixtureDom()});
     }
-    const rejected = {'ok': false, 'error': 'reobserve_required',
-      'dispatched': false, 'ambiguous': false};
+    const rejected = {
+      'ok': false,
+      'error': 'reobserve_required',
+      'dispatched': false,
+      'ambiguous': false
+    };
     final page = request['pageRef'] as Map;
     if (page['documentId'] != _h5FixtureDocumentId ||
-        page['url'] != 'https://debug.local/flutter-runtime-h5') return jsonEncode(rejected);
+        page['url'] != 'https://debug.local/flutter-runtime-h5')
+      return jsonEncode(rejected);
     final action = request['action'];
     if (action == 'eval') {
-      return jsonEncode({'ok': false, 'error': 'h5_fixture_eval_unsupported',
-        'dispatched': false, 'ambiguous': false});
+      return jsonEncode({
+        'ok': false,
+        'error': 'h5_fixture_eval_unsupported',
+        'dispatched': false,
+        'ambiguous': false
+      });
     }
     if (action == 'scrollBy') {
-      setState(() => _h5FixtureScrollY += (request['deltaY'] as num).toDouble());
-      return jsonEncode({'ok': true, 'dispatched': true, 'ambiguous': false,
-        'scrollX': 0, 'scrollY': _h5FixtureScrollY});
+      setState(
+          () => _h5FixtureScrollY += (request['deltaY'] as num).toDouble());
+      return jsonEncode({
+        'ok': true,
+        'dispatched': true,
+        'ambiguous': false,
+        'scrollX': 0,
+        'scrollY': _h5FixtureScrollY
+      });
     }
     final expected = request['element'] as Map;
-    final matches = [_h5InputTarget(), _h5ButtonTarget()].where((element) =>
-      _FlutterH5Targets.elementFields.every((key) => element[key] == expected[key])).toList();
+    final matches = [_h5InputTarget(), _h5ButtonTarget()]
+        .where((element) => _FlutterH5Targets.elementFields
+            .every((key) => element[key] == expected[key]))
+        .toList();
     if (matches.length != 1) return jsonEncode(rejected);
     final element = matches.single;
-    final geometry = {'bounds': element['bounds'], 'scrollY': _h5FixtureScrollY};
+    final geometry = {
+      'bounds': element['bounds'],
+      'scrollY': _h5FixtureScrollY
+    };
     if (request['operation'] == 'prepare') {
-      return jsonEncode({'ok': true, 'geometry': geometry,
-        'dispatched': false, 'ambiguous': false});
+      return jsonEncode({
+        'ok': true,
+        'geometry': geometry,
+        'dispatched': false,
+        'ambiguous': false
+      });
     }
-    if (action != 'scroll' && jsonEncode(request['geometry']) != jsonEncode(geometry)) {
+    if (action != 'scroll' &&
+        jsonEncode(request['geometry']) != jsonEncode(geometry)) {
       return jsonEncode(rejected);
     }
     if (action == 'input' && element['id'] == 'flutter-h5-input') {
@@ -2727,8 +2781,12 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
     } else if (action == 'click' && element['id'] == 'flutter-h5-button') {
       setState(() => _h5FixtureClicked = true);
     } else if (action != 'scroll') {
-      return jsonEncode({'ok': false, 'error': 'h5_fixture_action_unsupported',
-        'dispatched': false, 'ambiguous': false});
+      return jsonEncode({
+        'ok': false,
+        'error': 'h5_fixture_action_unsupported',
+        'dispatched': false,
+        'ambiguous': false
+      });
     }
     return jsonEncode({'ok': true, 'dispatched': true, 'ambiguous': false});
   }
@@ -2816,7 +2874,6 @@ class _AiAppBridgeHarnessPageState extends State<_AiAppBridgeHarnessPage> {
       },
     };
   }
-
 }
 
 class _NodeCounter {

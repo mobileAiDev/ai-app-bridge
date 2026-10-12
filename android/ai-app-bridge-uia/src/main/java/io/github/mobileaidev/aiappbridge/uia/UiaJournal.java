@@ -1,6 +1,7 @@
 package io.github.mobileaidev.aiappbridge.uia;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.File;
 import java.io.IOException;
 import static io.github.mobileaidev.aiappbridge.uia.DurableFiles.canonical;
@@ -73,16 +74,21 @@ final class UiaJournal {
     }
 
     private static void binding(JSONObject value, JSONObject request) throws Exception {
-        Wire.keys(value, "snapshotId", "ref", "selector", "clickPolicy", "target", "actionTarget", "window", "identityStrength");
+        // Binding diagnostics are observations, not completion authority. Older
+        // receipts omit them; current runtimes include them even when empty.
+        List<String> fields = new ArrayList<>(Arrays.asList("snapshotId", "ref", "selector", "clickPolicy", "target", "actionTarget", "window", "identityStrength"));
+        if (value.has("warnings")) fields.add("warnings");
+        Wire.keys(value, fields.toArray(new String[0]));
         JSONObject selected = request.getJSONObject("target");
         for (String key : new String[]{"snapshotId", "ref", "selector"})
             if (!same(value.get(key), selected.get(key))) throw new Wire.Failure("uia_completion_identity_mismatch");
         if (!same(value.get("clickPolicy"), request.get("clickPolicy"))
-                || !Wire.string(value, "identityStrength").equals("same_connection_node_and_reobserved_attributes"))
+                || !Arrays.asList("same_connection_node_and_reobserved_attributes", "same_connection_node").contains(Wire.string(value, "identityStrength")))
             throw new Wire.Failure("uia_completion_identity_mismatch");
         JSONObject window = Wire.object(value, "window"), target = Wire.object(value, "target"), action = Wire.object(value, "actionTarget");
         long windowId = Wire.integer(window, "id", 0, Integer.MAX_VALUE);
-        if (Wire.integer(window, "displayId", 0, Integer.MAX_VALUE) != 0 || !Wire.bool(window, "focused"))
+        Wire.bool(window, "focused");
+        if (Wire.integer(window, "displayId", 0, Integer.MAX_VALUE) != 0)
             throw new Wire.Failure("uia_invalid_completion_record");
         for (JSONObject node : new JSONObject[]{target, action}) {
             if (Wire.integer(node, "windowId", 0, Integer.MAX_VALUE) != windowId || !Wire.string(node, "sourceId").matches("-?[0-9]{1,20}")
@@ -293,8 +299,23 @@ final class UiaJournal {
         files.syncDirectory(session); DurableFiles.delete(session); files.syncDirectory(retired);
     }
 
-    void prepare(String currentDexHash) throws Exception {
+    JSONArray prepare(String currentDexHash) throws Exception {
         files.directory(sessions); files.directory(retired); files.syncDirectory(root);
+        JSONArray warnings = new JSONArray();
+        try { maintain(currentDexHash); }
+        catch (Exception error) {
+            // The exclusive runtime lock proves the old process no longer owns
+            // this executor. Unknown/corrupt history must remain unknown, but it
+            // must not prevent a new epoch from observing or executing work.
+            warnings.put(new JSONObject().put("code", "uia_history_maintenance_incomplete")
+                .put("reason", Wire.code(error)).put("message", "Historical records were not fully reclaimed; their original outcomes are unchanged. New epochs can continue.")
+                .put("path", sessions.toString()).put("blocking", false)
+                .put("suggestion", "Inspect original receipts if needed. New actions use new identities; no old action was replayed."));
+        }
+        return warnings;
+    }
+
+    private void maintain(String currentDexHash) throws Exception {
         List<File> reclaim = new ArrayList<>();
         int retained = 0;
         // Audit EVERY original session before moving or deleting any of them.

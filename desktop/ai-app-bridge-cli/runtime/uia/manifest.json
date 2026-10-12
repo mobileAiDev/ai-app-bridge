@@ -2,7 +2,7 @@
     "schemaVersion": "aab.uia.bundle.v1",
     "mainClass": "io.github.mobileaidev.aiappbridge.uia.UiaRuntime",
     "artifact": "ai-app-bridge-uia.jar",
-    "sha256": "ab190552979267c24a9d628e17e22b9f04308cc4a55b75fbf5df0deafad6a2eb",
+    "sha256": "755b1a509f97b961bb67e89657a90d1afeba96d1c236973a8f82028c5414ef3d",
     "minApi": 25,
     "compileApi": 35,
     "buildTools": "36.0.0",
@@ -15,10 +15,11 @@
         "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaActionEngine.java": "e7cb3ba5b58d87a1024d6c0dd9eff24f07e74ca90fb716f898441255977c3e6f",
         "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaConnection.java": "907bc9b3439078766bff03b669cd6d0338d2b309e32403371583b03f60e5eea3",
         "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaHttp.java": "43447130a1829354e50c4df4dac2a66afea3ef7d9f8fa5732d773f526fc6e72a",
-        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaJournal.java": "718a367429c68b16f56418e36d6f73f9147508b85e424c15a8d81c061a82a892",
-        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaNodes.java": "8cc523078ca9db7b89208b40c9eed26ae811608eb3fa36c80c8b99d83fde7188",
+        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaJournal.java": "872f7ec8e87c33747b37df69649902cb3387b247e9a6eb777d123dbc24a728ce",
+        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaNodeIdentity.java": "563072e1b0e2d1fd5f6416a83b7cbbefed0e217c7e694076f4f0d66633cc37f9",
+        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaNodes.java": "6966a41b6458c8e1c686ea67968516bbc3be250e60d06d11babdda687fc304c8",
         "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaReset.java": "5dfd537ee83a4ae8e6bd87aab5606edf21c132271aea2d46609606e8baa488e5",
-        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaRuntime.java": "b8d1b298f29a3abcf80d0b5aba8a225607e08612f06b4deda56edcbb547bcac9",
+        "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/UiaRuntime.java": "089877f09d7ef5ae7a19e746d129304977885b0e50ba2eb2e5bde982d13cf723",
         "android/ai-app-bridge-uia/src/main/java/io/github/mobileaidev/aiappbridge/uia/Wire.java": "d54e79c5e064abf5c7b36d2ab43205b7d47cca001ec37bf9b82ab01e33cf816c"
     }
 }

@@ -20,7 +20,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 test('one discoverable registry supplies all live command schemas and only two MCP tools', () => {
   const definitions = [...commandDefinitions, ...isolatedCommandDefinitions];
-  assert.equal(definitions.length, 123);
+  assert.equal(definitions.length, 125);
   assert.equal(new Set(definitions.map(d => d.command)).size, definitions.length);
   for (const definition of definitions) {
     const schema = commandSchema(definition.command);
@@ -260,13 +260,13 @@ test('automatic text routing permits read-only discovery failure but refuses amb
   assert.equal(changed.ok, true); assert.equal(changed.warnings[0].code, 'foreground_changed'); assert.equal(dispatches, 2);
 });
 
-test('Script discovery is first-class, and fixture permissions are opt-in with the same mutation lease', async () => {
+test('Script discovery is first-class, and explicit permissions restrict defaults with the same mutation lease', async () => {
   const { createScriptHostPort } = require('../bin/script/script-host-port');
   const { createDeviceMutationLease } = require('../bin/shared-kernel/device-mutation-lease');
   const { authorizeCommand, catalogPayload } = require('../bin/script/script-catalog');
   assert.deepEqual(Object.keys(capabilityPayload().domains).slice(0, 2), ['execution', 'evidence']);
   for (const command of ['script', 'intent']) assert.equal(capabilityPayload({ command, operation: 'start' }).role, 'execution');
-  assert.equal(authorizeCommand('clear-app-data').ok, false);
+  assert.equal(authorizeCommand('clear-app-data').ok, true);
   assert.equal(authorizeCommand('clear-app-data', ['app.lifecycle']).ok, true);
   assert.equal(authorizeCommand('permission-revoke', ['app.permissions']).ok, true);
   assert.equal(authorizeCommand('ios-tap').ok, true);
@@ -281,7 +281,8 @@ test('Script discovery is first-class, and fixture permissions are opt-in with t
   const cleared = await host.call('clear-app-data');
   assert.equal(cleared.ok, true); assert.equal(actions, 1); assert.match(cleared.execution.actionId, /^setup:/);
   const capture = createScriptHostPort({ target, permissions: ['capture.read'], actions: async () => { actions++; } });
-  assert.equal((await capture.call('webview-network', { script: 'doSomething()' })).error, 'capture_mutation_not_allowed');
+  assert.equal((await capture.call('logcat', { clear: true })).error, 'permission_not_granted');
+  assert.equal((await capture.call('webview-network', { script: 'doSomething()' })).error, 'permission_not_granted');
   assert.equal(actions, 1);
 });
 

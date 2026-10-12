@@ -6,6 +6,8 @@ const { boundedText, errorDiagnostic } = require('./script-diagnostics');
 
 const artifactPath = fs.realpathSync(process.argv[2]);
 const replies = new Map();
+const requests = [];
+const outstanding = new Set();
 const controlWaiters = [];
 let nextId = 0;
 let control = { status: 'running', pauseReason: null };
@@ -24,15 +26,21 @@ console.log = (...args) => writeStderr(args);
 console.info = (...args) => writeStderr(args);
 console.debug = (...args) => writeStderr(args);
 
-function waitReply(id) {
-  return new Promise((resolve) => {
-    if (replies.size >= 32) {
-      send({ type: 'fail', error: 'channel_backlog' });
-      process.exit(1);
-      return;
-    }
-    replies.set(id, resolve);
-  });
+function pumpRequests() {
+  while (requests.length && replies.size < 32 && !isHeld(control.status)) {
+    const { message, resolve, reject } = requests.shift();
+    replies.set(message.id, resolve);
+    try { send(message); }
+    catch (error) { replies.delete(message.id); reject(error); }
+  }
+}
+
+function request(message) {
+  message.id = `r${nextId += 1}`;
+  const pending = new Promise((resolve, reject) => { requests.push({ message, resolve, reject }); pumpRequests(); });
+  outstanding.add(pending);
+  pending.then(() => outstanding.delete(pending), () => outstanding.delete(pending));
+  return pending.then(async reply => { await holdIfPaused(); return reply.value; });
 }
 
 rl.on('line', (line) => {
@@ -74,6 +82,7 @@ rl.on('line', (line) => {
     const resolve = replies.get(message.id);
     replies.delete(message.id);
     resolve(message);
+    pumpRequests();
   }
 });
 
@@ -82,7 +91,8 @@ send({ type: 'ready' });
 function applyControl(next) {
   if (!next) return;
   control = next;
-  while (controlWaiters.length > 0) controlWaiters.shift()();
+  for (const resume of controlWaiters.splice(0)) resume();
+  pumpRequests();
 }
 
 function isHeld(status) {
@@ -137,43 +147,13 @@ async function run(start, inputParseMs) {
   }
   const ctx = {
     inputs: start.inputs || {},
-    call: async (command, args, options) => {
-      await holdIfPaused();
-      const id = `c${nextId += 1}`;
-      send({ type: 'call', id, command, args: args || {}, options: options || {} });
-      const reply = await waitReply(id);
-      await holdIfPaused();
-      return reply.value;
-    },
-    assert: async (assertion) => {
-      await holdIfPaused();
-      const id = `a${nextId += 1}`;
-      send({ type: 'assert', id, assertion });
-      const reply = await waitReply(id);
-      await holdIfPaused();
-      return reply.value;
-    },
-    progress: async (event) => {
-      await holdIfPaused();
-      send({ type: 'progress', event });
-      await holdIfPaused();
-    },
-    checkpoint: async (name, state) => {
-      await holdIfPaused();
-      const id = `k${nextId += 1}`;
-      send({ type: 'checkpoint', id, name, state });
-      const reply = await waitReply(id);
-      await holdIfPaused();
-      return reply.value;
-    },
-    askAgent: async (request) => {
-      await holdIfPaused();
-      const id = `q${nextId += 1}`;
-      send({ type: 'ask', id, request });
-      const reply = await waitReply(id);
-      await holdIfPaused();
-      return reply.value;
-    },
+    target: start.target ? Object.freeze(structuredClone(start.target)) : null,
+    sourcePath: start.sourcePath ?? null,
+    call: (command, args, options) => request({ type: 'call', command, args: args || {}, options: options || {} }),
+    assert: assertion => request({ type: 'assert', assertion }),
+    progress: event => request({ type: 'progress', event }),
+    checkpoint: (name, state) => request({ type: 'checkpoint', name, state }),
+    askAgent: value => request({ type: 'ask', request: value }),
     controlPoint: () => control,
     resume: () => {
       const state = control || {};
@@ -182,6 +162,9 @@ async function run(start, inputParseMs) {
     },
   };
   const result = await main(ctx);
+  // A returned main must not discard calls already requested by the script.
+  while (outstanding.size) await Promise.all([...outstanding]);
+  await holdIfPaused();
   send({ type: 'return', result });
   process.exit(0);
 }

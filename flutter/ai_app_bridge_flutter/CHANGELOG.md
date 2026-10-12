@@ -1,3 +1,9 @@
+## 0.4.6
+
+- Allow actions on explicitly observed nodes in partial widget snapshots; preserve coverage and text truncation diagnostics.
+- Preserve DOM node identity across attribute changes and include the improved Android selectors, action recovery and observation runtime.
+- Align Android and iOS runtime identities with the coordinated 0.4.6 release.
+
 ## 0.4.5
 
 - Coordinate with the Android foreground observation and explicit-action contract. Android window formatting differences are diagnosed without vetoing actions; target references and execution receipts remain authoritative.

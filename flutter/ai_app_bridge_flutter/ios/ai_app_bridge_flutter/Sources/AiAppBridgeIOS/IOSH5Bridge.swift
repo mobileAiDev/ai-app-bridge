@@ -186,7 +186,9 @@ final class IOSH5Bridge {
     static let renderer = #"""
     (function(request) {
       const key = '__aabIOSH5TargetV1';
-      const fail = (error, dispatched = false) => ({ok:false,error,dispatched,ambiguous:false});
+      let warnings = [];
+      const detail = () => warnings.length ? {warnings} : {};
+      const fail = (error, dispatched = false) => ({ok:false,error,dispatched,ambiguous:false,...detail()});
       let state = window[key];
       if (request.operation === 'snapshot' && !state) {
         state = {document, documentId:request.seed, generation:0, sequence:0, nodes:new WeakMap(), suspended:false};
@@ -239,29 +241,32 @@ final class IOSH5Bridge {
         window.scrollBy({left:request.deltaX,top:request.deltaY,behavior:'instant'});
         return {ok:true,dispatched:true,ambiguous:false,scrollX,scrollY};
       }
-      const all=controls();
-      if (all.length>5000) return fail('ios_h5_target_scan_truncated');
       const expected=request.element;
-      const selected=all.filter(e=>state.nodes.get(e)===expected?.elementId);
-      if (selected.length!==1) return fail('reobserve_required');
-      const element=selected[0];
-      const current = () => document.documentElement.contains(element)&&page.documentId===state.documentId&&page.url===location.href
-        &&Object.entries(ref(element)).every(([key,value])=>expected[key]===value)&&!disabled(element)&&visible(element);
+      const element=controls().find(e=>state.nodes.get(e)===expected?.elementId);
+      if (!element) return fail('reobserve_required');
+      let actual;
+      const current = () => {
+        if (!document.documentElement.contains(element)||page.documentId!==state.documentId||page.url!==location.href) return false;
+        actual=ref(element);
+        const fields=Object.keys(actual).filter(key=>actual[key]!==expected[key]);
+        warnings=fields.length?[{code:'target_attributes_changed',fields,message:'The observed DOM element is still present; its attributes changed.'}]:[];
+        return !disabled(element)&&visible(element);
+      };
       if (!current()) return fail('reobserve_required');
       if (request.action==='scroll') {
         element.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
-        return {ok:true,dispatched:true,ambiguous:false,element:ref(element),bounds:bounds(element),interaction:interaction(element)};
+        return {ok:true,dispatched:true,ambiguous:false,element:actual,bounds:bounds(element),interaction:interaction(element),...detail()};
       }
       const reachability=interaction(element);
       if (reachability.status==='outside-viewport') return fail('ios_h5_target_outside_viewport');
       if (reachability.status!=='ready') return fail('ios_h5_target_obscured');
       const r=bounds(element),{x,y}=reachability.point;
       const geometry={x,y,width:innerWidth,height:innerHeight,scrollX,scrollY,bounds:r};
-      if (request.operation==='prepare') return {ok:true,geometry,dispatched:false,ambiguous:false};
+      if (request.operation==='prepare') return {ok:true,geometry,dispatched:false,ambiguous:false,...detail()};
       if (!request.geometry || !['x','y','width','height','scrollX','scrollY'].every(key=>geometry[key]===request.geometry[key]) || !request.geometry.bounds || !Object.keys(r).every(key=>r[key]===request.geometry.bounds[key])) return fail('reobserve_required');
       if (request.action==='click') {
         if (typeof element.click!=='function') return fail('ios_h5_target_not_clickable');
-        element.click();return {ok:true,dispatched:true,ambiguous:false,element:expected};
+        element.click();return {ok:true,dispatched:true,ambiguous:false,element:actual,...detail()};
       }
       if (request.action==='input') {
         const tag=element.tagName.toLowerCase(), valueControl=tag==='input'||tag==='textarea';
@@ -274,7 +279,7 @@ final class IOSH5Bridge {
         element.dispatchEvent(new Event('input',{bubbles:true}));
         if (!document.documentElement.contains(element)) return fail('ios_h5_target_changed',true);
         element.dispatchEvent(new Event('change',{bubbles:true}));
-        return {ok:true,dispatched:true,ambiguous:false,element:expected};
+        return {ok:true,dispatched:true,ambiguous:false,element:actual,...detail()};
       }
       return fail('invalid_h5_operation');
     })
