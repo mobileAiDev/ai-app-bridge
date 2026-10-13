@@ -74,6 +74,15 @@ lossless response-byte saving is a delivery result, not execution-time saving.
 Initial authoring and explicit agent-decision waits have separate timing scopes.
 These flows do not constitute complete coverage of arbitrary apps.
 
+Flutter 0.4.8 changes version/dependency metadata, not the already tested
+execution implementation. Earlier real mixed commerce and expired-session
+recovery programs completed in 25.938 and 29.377 seconds. However, the complete
+process-death recovery program took **67.501 seconds** and recorded
+`performanceBudgetMet:false`. A later targeted recovery diagnostic does not
+replace that complete commerce result. This cold-start/recovery long tail is
+retained as a performance limitation, not marked as a passed one-minute budget.
+Exact historical reports are listed in `N/publication/final-audit.md`.
+
 ## Local and consumer updates
 
 The global CLI and installed Bridge skill use 0.4.8. All 218 global installed

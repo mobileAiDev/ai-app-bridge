@@ -90,5 +90,10 @@ Android startup outliers align with host App Nap throttling; the diagnostic work
 does not establish a new SDK speedup or explain all delays. No new iOS device or
 Simulator runtime acceptance is claimed.
 
+One earlier complete Flutter process-death recovery program passed functional
+checks but took 67.501 seconds, exceeding its performance budget. A later narrow
+recovery diagnostic does not replace that full-flow result; cold-start/recovery
+long tails are not claimed to be fully resolved.
+
 See [the detailed validation record](WORKFLOW_PERFORMANCE_0.4.8_CANDIDATE_2026-10-13.md)
 for source fingerprints, retained failures, full timing boundaries and evidence.
