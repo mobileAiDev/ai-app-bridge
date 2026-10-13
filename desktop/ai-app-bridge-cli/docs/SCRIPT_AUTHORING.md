@@ -20,7 +20,77 @@ Continue the currently understood steps in the same program, including local
 observations, waits and branches on an unfamiliar page. Return a focused question
 with `ctx.askAgent` when new judgment is needed; return the result when done.
 You do not need to discover the entire App before using Script. See
-[Web steps and local waiting](#web-steps-and-local-waiting) below.
+[Web first use](#web-first-use) below.
+
+## Web first use
+
+With an already connected Web session, call
+`run({command:"script",arguments:{operation:"recipes",name:"web-steps"}})`.
+It returns editable ordinary JavaScript, an absolute `sourcePath` and a `start`
+request. Fill the current session target in `start`; it reads the complete DOM
+and waits up to 60 seconds for the result in the same call. The recipe does not
+open or inject a browser. Inspect that first observation to choose the actual
+fields and result conditions for the App.
+
+For the next understood steps, import the returned `sourcePath` from your own
+Script. Replace the path below with that exact path and supply the values in
+`script.inputs`. Run this code through the same `script start` with `waitMs:60000`:
+
+```javascript
+const { createWebSteps } = require('/returned/sourcePath/recipes/web-steps.js');
+exports.main = async ctx => {
+  const web = createWebSteps(ctx), i = ctx.inputs;
+  let page = await web.wait(p => p.dom.controls.some(c =>
+    c.placeholder === i.field && c.editable && c.interaction.status === 'ready'));
+  await web.action('web-input', page, web.one(page, c => c.placeholder === i.field), { value: i.value });
+  page = await web.wait(p => p.dom.controls.some(c =>
+    c.text === i.submit && !c.disabled && c.interaction.status === 'ready'));
+  await web.action('web-click', page, web.one(page, c => c.text === i.submit));
+  return await web.wait(p => p.dom.bodyText.includes(i.successText));
+};
+```
+
+Wait on the actual usable control or business result; a URL change can precede
+rendering. Continue additional inputs, clicks and branches in this same ordinary
+program. `read(args)` returns the complete ordinary `web-dom` result, and
+`one(page, predicate)` requires exactly one control. `bind(page, control)` keeps
+the page's explicit session/epoch/target and the complete observed control;
+`action(command, page, control, args)` uses that binding, calls once and returns
+the unchanged call envelope. It does not perform a new observation afterwards.
+Other commands remain available through `ctx.call`.
+
+`wait(predicate,{initial,timeoutMs:15000,intervalMs:150})` first checks `initial`
+when supplied, then makes full DOM reads against that observation's target.
+Each read uses the remaining deadline. Predicates and branches are JavaScript
+functions; use complete capture coverage when proving absence. A failed call
+throws an error with its original `reply`; a condition timeout retains the last
+`observation`. These complete properties are available to a local `catch`; return
+the needed facts or an original `error.reply` when the caller needs them. An
+uncaught error reports a short diagnostic; original calls remain in Script's
+records (set `recordingDir` for exportable local files). The helper does not
+refresh a rejected identity or replay an action.
+After explicitly reading a new target with `web.read({runtimeEpoch:current})`,
+use that returned page for binding or as `wait`'s `initial`, even if `ctx.target`
+still names the original epoch.
+
+Only a genuinely unresolved choice needs `askAgent`. Keep the original controls
+and page for the answer; a changed binding will be rejected by the Host:
+
+```javascript
+let control;
+try { control = web.one(page, myBusinessPredicate); }
+catch (error) {
+  if (error.code !== 'web_element_ambiguous') throw error;
+  const choice = await ctx.askAgent({ question: 'Which observed record is intended?', candidates: error.candidates });
+  control = web.one(page, c => c.elementId === choice.elementId);
+}
+await web.action('web-click', page, control);
+```
+
+The helper is optional editable source, not a restriction on Script or a separate
+execution format. Copy/pin it with your program when a replay needs fixed imports.
+
+## Saved scripts
 
 For reuse, save the code and use `sourcePath`. This Android example shows the
 expanded shape; supply the actual target and source path:
@@ -108,10 +178,12 @@ in `capabilities {command:"script",operation:"start"}`. CLI:
 ai-app-bridge script --operation recipes
 ai-app-bridge script --operation recipes --name android-test-session
 ai-app-bridge script --operation recipes --name android-launch-and-wait
+ai-app-bridge script --operation recipes --name web-steps
 ```
 
 Use the returned `start` request, replacing its explicit target and `inputs`.
-You can copy/edit the source or run its installed `sourcePath`; it uses the same
+The returned start request sets `waitMs:60000`; choose `0` when you want an
+asynchronous start. You can copy/edit the source or run its installed `sourcePath`; it uses the same
 Script lifecycle, call receipts and cancellation as other Scripts. There is no
 separate workflow interpreter.
 
@@ -815,56 +887,13 @@ the Web SDK and connect before a Web Script can use it; the command does not
 open, inject or reload an arbitrary page. Reuse the application's integration
 or the supplied browser harness for that setup.
 
-For example, after observing a login page, pass its exact field/button bindings
-as `accountTarget`, `passwordTarget` and `submitTarget` in `inputs` (each contains
-`selector` and `expectedTarget` as described above). This is ordinary JavaScript,
-which can be supplied as `source` in the first example. Success/failure text must
-be the actual result conditions for that App:
-
-```javascript
-module.exports.main = async ctx => {
-  async function call(command, args) {
-    const reply = await ctx.call(command, args);
-    if (!reply.ok) throw new Error(JSON.stringify({ command, reply }));
-    return reply;
-  }
-  const i = ctx.inputs;
-  await call('web-input', { ...i.accountTarget, value: i.account });
-  await call('web-input', { ...i.passwordTarget, value: i.password });
-  await call('web-click', i.submitTarget);
-  const deadline = Date.now() + 15000;
-  let read = await call('web-dom', {});
-  while (true) {
-    const text = read.result.dom.bodyText;
-    if (text.includes(i.successText)) return { outcome: 'success', evidence: read.evidence };
-    if (text.includes(i.failureText)) return { outcome: 'rejected', evidence: read.evidence };
-    if (Date.now() >= deadline) return {
-      outcome: 'unresolved', url: read.result.dom.url, evidence: read.evidence,
-      message: 'Submitted once; neither expected result appeared. Inspect before choosing the next action.'
-    };
-    await new Promise(resolve => setTimeout(resolve, 150));
-    read = await call('web-dom', {});
-  }
-};
-```
-
-This evaluates the first observation before requesting another and keeps empty
-loading states and network waits inside the Script. It does not resubmit a
-mutation when the outcome is unknown. `web-wait {targetText,timeoutMs}` is shorter
+The [Web first-use example](#web-first-use) shares observation, binding and local
+waits through an ordinary editable module. Use a predicate that checks competing
+success/error states when the App may reject a submitted form. Return or inspect
+the rejection before choosing another action. `web-wait {targetText,timeoutMs}` is shorter
 when text/selector presence alone is the condition; use ordinary code for
 disappearance, competing success/error states, or another predicate. Likewise,
 an initially empty page can be polled locally until relevant controls appear.
-
-If an unfamiliar state needs judgment, `ctx.askAgent` can return just the issue
-and relevant observed candidates. For example:
-
-```javascript
-const choice = await ctx.askAgent({
-  question: 'Which of these observed controls is the intended record?',
-  candidates: candidates.map(({ elementId, text, ariaLabel }) => ({ elementId, text, ariaLabel })),
-});
-// Use the answer with the retained page/element bindings; observe again if they changed.
-```
 
 An unlabelled Web control can include `context.ancestors`: bounded text samples
 from its actual DOM ancestors. These can distinguish two record menus without

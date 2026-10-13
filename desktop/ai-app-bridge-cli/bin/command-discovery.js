@@ -27,7 +27,7 @@ const commandDomains = {
 };
 const supportedTargetsText = `AI App Bridge supports ${supportedTargets.join('; ')}.`;
 const commandDomainsText = `Command domains: ${Object.entries(commandDomains).map(([domain, summary]) => `${domain}(${summary})`).join('; ')}.`;
-const discoveryText = 'Use capabilities with a domain for a command directory, then request one command and operation when applicable. For intent decide, narrow by the actual platform, provider and action. Discovery output is limited to 96 KiB; narrow the query if a full schema or includeOptions:true exceeds this budget. Execute with run and command-specific arguments. Omit extract for auto delivery, or select the fields you need.';
+const discoveryText = 'Request a known command directly with capabilities and select operation when applicable. Use a domain directory only when discovering command names. For intent decide, narrow by the actual platform, provider and action. Discovery output is limited to 96 KiB; narrow the query if a full schema or includeOptions:true exceeds this budget. Execute with run and command-specific arguments. Omit extract for auto delivery, or select the fields you need.';
 
 function discoveryBudget(value) {
   const limitBytes = require('./public-reply').DEFAULT_OUTPUT_BYTES;
@@ -147,7 +147,7 @@ function shapeCommandDefinition(definition, includeOptions, filters = {}) {
     const { catalogPayload } = require('./script/script-catalog');
     shaped.runtime = 'trusted-local-code';
     shaped.warning = 'Script source is trusted-local-code, not an OS sandbox.';
-    shaped.catalog = catalogPayload();
+    if (!filters.operation || filters.operation === 'start') shaped.catalog = catalogPayload();
   }
   return shaped;
 }

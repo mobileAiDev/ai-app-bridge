@@ -118,10 +118,11 @@ test('launch-and-wait launches once and leaves condition polling to the read com
 
 test('recipe discovery refers to shipped editable sources and valid Script requests', () => {
   const advertised = require('../bin/command-discovery').capabilities({ command: 'script', operation: 'start' }).catalog.recipes;
-  assert.equal(advertised.length, 2); assert.deepEqual(advertised, catalog());
+  assert.equal(advertised.length, 3); assert.deepEqual(advertised, catalog());
   const files = require('../package.json').files; assert.ok(files.includes('recipes'));
   for (const recipe of advertised) {
     assert.equal(fs.existsSync(recipe.sourcePath), true);
+    assert.equal(recipe.start.arguments.waitMs, 60000);
     validateCommandArguments(recipe.start.command, recipe.start.arguments);
     assert.equal(compileScriptSpec(recipe.start.arguments.script).ok, true);
   }
@@ -169,4 +170,104 @@ test('CLI and MCP read doctor/recipes locally even with an invalid FactStore pro
   assert.equal(cli.code, 0); assert.deepEqual(cli.value, recipes);
   assert.equal(fs.existsSync(env.AI_APP_BRIDGE_FACT_STORE_DIR), false);
   assert.equal(fs.existsSync(env.AI_APP_BRIDGE_RUNTIME_HOME), false);
+});
+
+function webPage(epoch = 'current') {
+  const control = { elementId: 'e1', tag: 'input', id: 'title', name: '', type: 'text', role: 'textbox',
+    ariaLabel: '', placeholder: 'Title', href: '', text: '', editable: true, checked: null,
+    interaction: { status: 'ready', point: { x: 30, y: 40 } },
+    context: { ancestors: [{ tag: 'article', text: 'FIRST note', truncated: false }] } };
+  return { pageRef: { schemaVersion: 'aab.web-dom-target/v1', sessionId: 'web-recipe', runtimeEpoch: epoch,
+    targetId: 'main', navigationId: 'navigation', url: 'https://example.test/notes' },
+    dom: { url: 'https://example.test/notes', controls: [control], bodyText: '', truncated: false } };
+}
+
+test('Web recipe retains complete controls and explicitly routes actions from the chosen fresh observation', async () => {
+  const { createWebSteps } = require('../recipes/web-steps');
+  const { bindCommandTarget } = require('../bin/shared-kernel/execution-target');
+  const page = webPage(), calls = [], receipt = { ok: true, execution: { dispatched: true, ambiguous: false }, result: { changed: true } };
+  const target = { platform: 'web', sessionId: 'web-recipe', runtimeEpoch: 'old', targetId: 'main' };
+  const web = createWebSteps({ call: async (command, args) => {
+    const bound = bindCommandTarget(command, args, target).args;
+    validateCommandArguments(command, bound); calls.push({ command, args: bound });
+    assert.equal(bound.runtimeEpoch, 'current');
+    return command === 'web-dom' ? { ok: true, result: page } : receipt;
+  } });
+  const observed = await web.read({ runtimeEpoch: 'current' });
+  const control = web.one(observed, node => node.placeholder === 'Title');
+  const binding = web.bind(observed, control);
+  assert.equal(binding.expectedTarget.element, control);
+  assert.equal(binding.expectedTarget.pageRef, observed.pageRef);
+  assert.equal(await web.action('web-input', observed, control, { value: 'changed' }), receipt);
+  assert.deepEqual(calls.map(c => c.command), ['web-dom', 'web-input']);
+  assert.deepEqual(calls[1].args.expectedTarget.element.context, control.context);
+  assert.equal(calls[1].args.expectedTarget.element.checked, null);
+});
+
+test('Web recipe waits for usable controls after URL transition and evaluates an initial observation first', async () => {
+  const { createWebSteps } = require('../recipes/web-steps');
+  const ready = webPage(), loading = { ...ready, dom: { ...ready.dom, controls: [] } }, calls = [];
+  const web = createWebSteps({ call: async (command, args) => {
+    calls.push({ command, args });
+    assert.equal(command, 'web-dom');
+    assert.equal(args.runtimeEpoch, 'current');
+    assert(args.timeoutMs > 0 && args.timeoutMs <= 100);
+    return { ok: true, result: ready };
+  } });
+  const usable = page => page.dom.controls.some(c => c.editable && c.interaction.status === 'ready');
+  assert.equal(await web.wait(usable, { initial: ready }), ready);
+  assert.equal(calls.length, 0);
+  assert.equal(await web.wait(usable, { initial: loading, timeoutMs: 100, intervalMs: 1 }), ready);
+  assert.equal(calls.length, 1);
+  const never = createWebSteps({ call: async (command, args) => ({ ok: true, result: loading }) });
+  await assert.rejects(never.wait(usable, { initial: loading, timeoutMs: 5, intervalMs: 1 }), error => {
+    assert.equal(error.code, 'web_condition_timeout'); assert.equal(error.observation, loading); return true;
+  });
+});
+
+test('Web recipe ambiguity and failed or unknown calls stop without refreshing or replaying', async () => {
+  const { createWebSteps } = require('../recipes/web-steps');
+  const page = webPage(); page.dom.controls.push({ ...page.dom.controls[0], elementId: 'e2' });
+  let calls = 0;
+  const web = createWebSteps({ call: async () => { calls++; } });
+  assert.throws(() => web.one(page, c => c.placeholder === 'Title'), error => {
+    assert.equal(error.code, 'web_element_ambiguous'); assert.deepEqual(error.candidates, page.dom.controls); return true;
+  });
+  assert.throws(() => web.one(page, c => c.text === 'absent'), { code: 'web_element_not_found' });
+  assert.equal(calls, 0);
+  for (const reply of [ { ok: false, error: 'web_target_changed', dispatched: false, ambiguous: false },
+    { ok: false, error: 'action_outcome_unknown', dispatched: true, ambiguous: true, diagnostic: 'retained complete diagnostic '.repeat(5000) } ]) {
+    const failed = createWebSteps({ call: async () => { calls++; return reply; } });
+    const before = calls;
+    await assert.rejects(failed.action('web-click', page, page.dom.controls[0]), error => {
+      assert.equal(error.reply, reply); assert.match(error.message, new RegExp(reply.error));
+      assert(error.message.length < 256); assert.equal(error.message.includes('retained complete diagnostic'), false); return true;
+    });
+    assert.equal(calls, before + 1);
+    await assert.rejects(failed.wait(() => false, { timeoutMs: 10 }), error => error.reply === reply);
+    assert.equal(calls, before + 2);
+  }
+});
+
+test('Web recipe is discoverable and imported unchanged by the real Script child', async () => {
+  const recipe = require('../bin/script/recipes').read({ name: 'web-steps' }).recipe;
+  assert.ok(recipe, 'an unfamiliar Web caller can discover the editable helper through existing recipes');
+  const { sourcePath: recipePath, ...template } = recipe.start.arguments.script;
+  const compiled = compileScriptSpec({ ...template,
+    target: { platform: 'web', sessionId: 'web-recipe', runtimeEpoch: 'current', targetId: 'main' },
+    source: `const { createWebSteps } = require(${JSON.stringify(recipePath)});
+      exports.main = async ctx => { const web = createWebSteps(ctx); const page = await web.read();
+        await web.action('web-input', page, web.one(page, c => c.placeholder === 'Title'), {value:'changed'});
+        return await web.wait(p => p.dom.bodyText === 'Saved', {initial:page,timeoutMs:1000,intervalMs:1}); };` });
+  assert.equal(compiled.ok, true, JSON.stringify(compiled));
+  const before = webPage(), after = { ...before, dom: { ...before.dom, bodyText: 'Saved' } }, calls = [];
+  const result = await createNodeRuntimeAdapter().start({ spec: compiled.spec, control: () => ({ status: 'running' }), emit() {},
+    host: { call: async (command, args) => {
+      calls.push(command);
+      return command === 'web-dom' ? { ok: true, result: calls.length === 1 ? before : after }
+        : { ok: true, execution: { dispatched: true }, result: { changed: true } };
+    } } });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(result.result, after);
+  assert.deepEqual(calls, ['web-dom', 'web-input', 'web-dom']);
 });

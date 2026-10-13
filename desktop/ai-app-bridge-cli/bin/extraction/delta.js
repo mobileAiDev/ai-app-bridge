@@ -10,7 +10,9 @@ const escape = key => String(key).replaceAll('~', '~0').replaceAll('/', '~1');
 // snapshot id once, while retaining every fresh node reference in the rows.
 function representation(snapshot) {
   const value = snapshot.value, size = bytes(value);
-  const table = snapshot.kind === 'json' ? tableView(value, size, {}) : null;
+  // columns/v1 has no sparse-field encoding. Keep its original homogeneous
+  // strategy, so optional fields elsewhere cannot disable existing columns.
+  const table = snapshot.kind === 'json' ? tableView(value, size, {}, { homogeneousOnly: true }) : null;
   if (!table || table.format !== 'aab.response-tables/v1') return value;
   // Key columns by their paths instead of numeric positions. If one checkbox
   // changes from a shared constant to a variable, other columns do not shift.

@@ -31,6 +31,8 @@ function expand(view) {
       table.columns.forEach((path, index) => { row = set(row, path, cells[index]); });
       return row;
     });
+    for (const [path, entries] of Object.entries(table.sparseColumns || {}))
+      for (const [index, value] of entries) rows[index] = set(rows[index], path, value);
     result = set(result, table.path, rows);
   }
   return result;
@@ -53,6 +55,80 @@ test('nested workflow diagnostics keep repeated long text once and restore every
   assert(Buffer.byteLength(JSON.stringify(result)) < 96 * 1024);
   assert.ok(result.value.sharedTexts.some(item => item.paths.some(pointer => pointer.startsWith('/tables/'))));
   assert.deepEqual(store.read(result.control.source.ref).snapshot.value, original);
+});
+
+test('a first Web page below 32 KiB keeps optional control state in one complete compact reply', async () => {
+  const raw = { ok: true, dom: { targetSchema: 'aab.web-dom-target/v1',
+    pageRef: { schemaVersion: 'aab.web-dom-target/v1', sessionId: 'first-use', runtimeEpoch: 'document',
+      targetId: 'main', navigationId: 'nav', url: 'http://localhost/' },
+    bodyText: 'Calendar and two same-prefix notes', bodyTextTruncated: false, truncated: false,
+    controlCount: 62, controls: Array.from({ length: 62 }, (_, index) => ({
+      elementId: `e${index}`, tag: index < 40 ? 'button' : 'input', id: '', name: '', type: '', role: '',
+      ariaLabel: '', placeholder: '', href: '', text: index < 40 ? String(index) : '',
+      index, visible: true, disabled: index === 40, editable: index >= 40, sensitive: index === 41,
+      checked: index === 42 ? 'mixed' : null, ariaChecked: null,
+      interaction: { status: 'ready', point: { x: 10, y: index * 5 } },
+      bounds: { left: 0, top: index * 5, right: 50, bottom: index * 5 + 5, width: 50, height: 5 },
+      ...(index === 41 ? { valueLength: 17 } : {}),
+      ...(index > 55 ? { context: { source: 'ancestor-dom-text', truncated: false, ancestors: [
+        { depth: 3, tag: 'article', id: '', role: '', text: index % 2 ? 'Prefix FIRST original' : 'Prefix SECOND untouched',
+          textTruncated: false, identityTruncated: false },
+      ] } } : {}),
+    })) } };
+  const originalBytes = Buffer.byteLength(JSON.stringify(raw));
+  assert(originalBytes > 8 * 1024 && originalBytes < 32 * 1024);
+  const store = createResponseStore({ adapter: createMemoryEvidenceAdapter() });
+  const reply = await finishReply({ body: publicReply({ command: 'web-dom', reply: { value: raw } }),
+    extract: { mode: 'auto' }, getStore: () => store });
+  assert.equal(reply.delivery.status, 'compact');
+  assert.equal(reply.value.format, 'aab.response-tables/v3');
+  assert.equal(reply.value.partial, false);
+  assert.deepEqual(expand(reply.value), raw);
+  assert(Buffer.byteLength(JSON.stringify(reply.value)) < originalBytes * 0.6);
+  assert.deepEqual(store.read(reply.control.source.ref).snapshot.value, raw);
+});
+
+test('heterogeneous tables distinguish absent, null and changing nested types without defaults', () => {
+  const raw = Array.from({ length: 30 }, (_, index) => {
+    const node = { identity: 'same-page', index, diagnostics: 'original warning '.repeat(20),
+      state: [null, {}, [], false, { inner: [1, 2] }, { inner: { deep: 3 } }][index % 6],
+      ...(index % 3 === 0 ? { optional: null } : index % 3 === 1 ? { optional: false } : {}),
+      'a/b~c': index % 2 ? { '': null } : {},
+    };
+    Object.defineProperty(node, '__proto__', { value: index % 2 ? null : { kept: index }, enumerable: true });
+    return node;
+  });
+  const view = tableView(raw, Buffer.byteLength(JSON.stringify(raw)), {});
+  assert.equal(view.format, 'aab.response-tables/v3');
+  assert.deepEqual(expand(view), raw);
+  assert.equal(Object.hasOwn(expand(view)[2], 'optional'), false);
+  assert.equal({}.kept, undefined);
+});
+
+test('v3 shares long sparse values and restores original state and failure diagnostics', async () => {
+  const diagnostic = 'original ambiguous response; do not replay\n'.repeat(50);
+  const raw = { ok: false, error: 'response_lost', dispatched: true, ambiguous: true,
+    nodes: Array.from({ length: 40 }, (_, index) => ({ index, target: { epoch: 'original', nodeRef: `node-${index}` },
+      ...(index % 2 ? { warning: diagnostic } : { warning: { text: diagnostic } }),
+    })) };
+  const store = createResponseStore({ adapter: createMemoryEvidenceAdapter() });
+  const result = await finishReply({ body: publicReply({ command: 'web-click', reply: { value: raw } }),
+    extract: { mode: 'auto' }, getStore: () => store });
+  assert.equal(result.value.format, 'aab.response-tables/v3');
+  assert.ok(result.value.sharedTexts.length > 0);
+  assert.deepEqual(expand(result.value), raw);
+  assert.deepEqual(result.execution, { ok: false, error: 'response_lost', dispatched: true, ambiguous: true });
+  assert.equal(result.failureStage, 'execution');
+});
+
+test('explicit null preserves heterogeneous Web JSON and auto skips small savings', async () => {
+  const raw = { controls: Array.from({ length: 50 }, (_, i) => ({ id: i, text: `unshared-${i}-`.repeat(30),
+    ...(i % 2 ? { checked: null } : {}) })) };
+  const original = publicReply({ command: 'web-dom', reply: { value: raw } });
+  const exact = await finishReply({ body: structuredClone(original), extract: null });
+  assert.equal(exact.delivery.status, 'inline'); assert.deepEqual(exact.value, raw);
+  const automatic = await finishReply({ body: structuredClone(original), extract: { mode: 'auto' } });
+  assert.equal(automatic.delivery.status, 'inline'); assert.deepEqual(automatic.value, raw);
 });
 
 test('shared texts work without tables and keep nulls and escaped pointer keys distinct', () => {

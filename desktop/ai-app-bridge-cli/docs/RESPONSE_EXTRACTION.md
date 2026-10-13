@@ -2,7 +2,7 @@
 
 Omitting `extract` uses `auto`. A result within the output budget (96 KiB by
 default) is delivered completely, with no mandatory discovery/read round trip.
-JSON above 32 KiB can use a complete table representation when removing repeated
+JSON above 8 KiB can use a complete table representation when removing repeated
 field names and shared values saves at least 30%; this formatting threshold never
 discards content. Over-budget JSON tries the same complete representation even
 for a smaller saving. Only results that still do not fit become partial views
@@ -34,7 +34,7 @@ corresponding cells. Replace the null at `data[path]` with those rows as objects
 apply each constant leaf path and then each column's cell. Empty values, all node
 states, original ordering, duplicate labels and action bindings are preserved.
 This is a complete representation of the captured result; the original capture
-coverage/truncation flags still apply. A different object shape is kept verbatim.
+coverage/truncation flags still apply.
 
 For example, constants `{"/enabled":true}` plus columns `["/text","/checked"]`
 and rows `[["同意",false],["同意",true]]` describe two distinct objects with all
@@ -49,6 +49,16 @@ JSON Pointers address the entire compact representation, under `/data` or
 `partial:false`: every original value is recoverable from this reply alone.
 Saved response refs, select paths and extraction always address the original
 shape, independent of this delivery representation.
+
+`aab.response-tables/v3` also compresses records with optional fields. Expand
+shared texts (if present), constants and columns as above. Then each table's
+optional `sparseColumns` maps a leaf JSON Pointer to `[rowIndex, value]` pairs;
+set that leaf only in those zero-based rows. For example,
+`{"/checked":[[0,null],[2,false]]}` preserves a null in row 0, an absent key in
+row 1, and false in row 2. Missing keys, empty containers and changing field types
+remain distinct. Every row is still present and `partial:false` requires no read.
+Script `ctx.call` continues to return ordinary objects; only public delivery uses
+these representations.
 
 `delivery.status:overview` uses `format:aab.response-overview/v1`, `originalBytes`,
 `fields` (JSON Pointers, types, counts and small scalar facts), `partial:true`, and

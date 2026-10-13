@@ -219,7 +219,7 @@ async function finishReply({ body, extract, output, frozen, getStore, sourceReas
   let compact = null;
   // Try a complete representation for repetitive medium/large JSON too. This
   // threshold changes formatting only: it never removes content or forces a read.
-  if (automatic && body.kind === 'json' && (previewing || valueBytes > 32 * 1024)) {
+  if (automatic && body.kind === 'json' && (previewing || valueBytes > 8 * 1024)) {
     try { frozen ||= freezeResponse(body); }
     catch { return boundedReply(serializationFailure(body), limitBytes); }
     compact = require('./extraction/tables').tableView(frozen.snapshot.value, valueBytes, body.control.source);

@@ -126,7 +126,8 @@ const captureRequirements = object({ streams: { ...array({ enum: ['logs', 'netwo
 
 function scriptSpecSchema(permissionNames) {
   return { ...object({ schemaVersion: { const: 'aab.code-script/v1' }, name: { ...text, default: 'script' },
-    language: { enum: ['javascript', 'python'] }, source: text, sourcePath: text, cwd: text,
+    language: { enum: ['javascript', 'python'] }, source: { ...text,
+      description: 'JavaScript exports main(ctx); Python defines main(ctx). Workflow ctx.call(command, args) returns {ok,result,error}; check ok before reading command data from result.' }, sourcePath: text, cwd: text,
     entrypoint: { ...text, default: 'main' }, target: scriptTarget, inputs: { ...jsonObject, default: {} },
     permissions: { ...array({ enum: permissionNames }, 0, permissionNames.length), uniqueItems: true,
       default: permissionNames, description: 'Optional caller restriction. Omit to enable every supported Script command.' },
@@ -135,6 +136,15 @@ function scriptSpecSchema(permissionNames) {
       maxOutputBytes: { ...integer(1, 64 * 1024 * 1024), default: 1048576 }, maxProgressBytes: { ...integer(1, 64 * 1024 * 1024), default: 1048576 } }),
   }, ['schemaVersion', 'language']), oneOf: [{ required: ['source'] }, { required: ['sourcePath'] }] };
 }
+
+const scriptStartExamples = ['javascript', 'python'].map(language => ({
+  operation: 'start', waitMs: 5000,
+  script: { schemaVersion: 'aab.code-script/v1', language,
+    source: language === 'javascript'
+      ? "module.exports.main = async ctx => { const reply = await ctx.call('runtime', {operation:'status'}); if (!reply.ok) throw new Error(reply.error); return reply.result; };"
+      : "def main(ctx):\n    reply = ctx.call('runtime', {'operation': 'status'})\n    if not reply['ok']:\n        raise RuntimeError(reply['error'])\n    return reply['result']\n",
+  },
+}));
 
 function executionCommandSchema(command, permissionNames) {
   // Script and Intent page with different cursors; the schema states which one.
@@ -150,8 +160,10 @@ function executionCommandSchema(command, permissionNames) {
   const operation = (name, properties, required = []) => object({ operation: { const: name }, ...properties }, ['operation', ...required]);
   const control = (name, properties = {}) => operation(name, { operationId: text, ...properties }, ['operationId']);
   if (command === 'script') return variants('operation', [
-    { ...operation('start', { script: scriptSpecSchema(permissionNames), operationId: text, recordingDir: text, pythonPath: text,
+    { ...operation('start', { script: scriptSpecSchema(permissionNames), operationId: text,
+      recordingDir: { ...text, description: 'Optional new recording directory. Put this beside script in the start arguments, not inside the script object.' }, pythonPath: text,
       waitMs: { ...integer(0, 60000), default: 0, description: 'Optionally wait for completion or an Agent question in this same call. Zero starts asynchronously; a timeout returns the running operationId.' } }, ['script']),
+      examples: scriptStartExamples,
       allOf: [
         { if: { required: ['pythonPath'] }, then: { properties: { script: { properties: { language: { const: 'python' } } } } } },
         { if: { required: ['recordingDir'] }, then: { properties: { script: { properties: { policy: { properties: { restartPolicy: { const: 'none' } } } } } } } },

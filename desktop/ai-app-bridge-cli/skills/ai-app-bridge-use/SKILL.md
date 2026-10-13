@@ -11,6 +11,8 @@ description: 使用 AI App Bridge 观察、操作和验证 Android、iOS、Flutt
 - **Script**：当前已知的连续步骤、动态观察分支和重复运行，自由编写 JavaScript/Python（trusted-local-code），用 `ctx.call` 调用设备能力；权限声明不是 OS 沙箱。
 - **单次命令**：观察、单步动作、安装、权限夹具和诊断可独立调用，无须包装成完整流程。
 
+**已连接 Web 首次使用：** 可直接 `run({command:"script",arguments:{operation:"recipes",name:"web-steps"}})`，把实际会话 target 填进返回的 `start` 即可完整观察。后续普通 JS 导入该 `sourcePath` 的 `createWebSteps`，复用 read/one/bind/action/wait；基础 web-dom/input/click/key 用源码内示例即可，新增命令或不同参数再按需查合同。等待实际可用控件或业务结果，真正未知的选择才 askAgent。辅助源码可选、可编辑，`ctx.call` 仍可自由调用其他能力；短例见 SCRIPT_AUTHORING.md **Web first use**。
+
 ## 共享调用合同
 
 MCP 入口是 `capabilities` 和 `run`；`capabilities` 是独立工具，不是 `run` 的命令。命令参数全部放在 `run.arguments`，包括目标和 operation，使用当前命令名与 JSON 类型。默认 capabilities 或 domain 查询只取目录；domain 取值为 execution、evidence、core、app、action、flutter、webview、ios、web、diagnostics、advanced；android 是平台不是 domain，平台筛选只用于 Intent decide 的 `platform`。用 `command` 查合同，Intent/Script/evidence 加 `operation` 只取当前操作。Intent decide 可再加实际 `platform`、`provider`、`action`，例如 `{"command":"intent","operation":"decide","platform":"android","provider":"native","action":"tap"}`。CLI `--help COMMAND` 接受相同筛选；发现正文上限 96 KiB，宽查询超限时按提示用 command/operation 收窄，不反复读取整个 schema。
@@ -36,6 +38,8 @@ Script 恢复可用 `resume {waitMs:60000}`，回答问题可用 `decide {...,wa
 `aab.response-tables/v1` 包含 `data/tables`：在各 `table.path` 处，用 `constants` 的公共叶子字段和 `columns` 对应的每行 `rows` 单元格构造对象，替换 null。路径都是 JSON Pointer；节点、空值、状态、顺序和重复项完整保留，不必再查原文。`aab.response-overview/v1` 的 `preview.ranges` 给出原偏移和完整记录/文本片段；只有确实需要未展示部分时，才使用 `value.read` 或自行 select 原始路径。原采集范围仍以 coverage/truncated 为准。
 
 `aab.response-tables/v2` 还将重复长文本放在 `sharedTexts`：先把每项 `text` 填回它的 `paths`（指向整个表示的 `/data` 或 `/tables`），再按 v1 展开表格。`tables` 可以为空；`partial:false` 仍表示本次已完整返回，不需要补读。提取和保存的 ref 始终使用原始响应路径。
+
+`aab.response-tables/v3` 在此基础上支持可选字段：展开共享文本、常量和行后，将每张表 `sparseColumns` 中各 JSON Pointer 的 `[rowIndex,value]` 对填入对应的零基行。只填写列出的行，未列出的字段仍缺失，不能补 null；所有控件、身份及状态仍完整。Script 内 `ctx.call` 保持普通对象。
 
 反复观察同一页面时，可首轮用 `extract:{mode:"delta"}`，后续传 `base:上一轮control.source.ref`。`aab.response-delta/v1` 首轮 `mode:full` 给完整 `data`，后续 `mode:patch` 给针对前一份重建 data 的 RFC 6902 operations；检查 baseSha256/sha256。data 若为 `aab.response-columns/v1`，按各 table 的 rowCount、constants 和按字段路径索引的 columns 还原每行；保留展开前的 data 供下轮 patch 使用。新节点引用、状态和覆盖信息都保留，仍执行新观察。基线失效或差量不划算会给新完整基线，不阻断动作；不要把元数据变化或空 patch 等同于全 App 没变化。Script 内部直接处理普通 ctx.call 结果，无需差量。详见 `docs/RESPONSE_EXTRACTION.md`。
 
@@ -108,7 +112,7 @@ start 已返回 `value.result` 时直接检查断言和持久化状态；仅在�
 从 `command -v ai-app-bridge` 取得入口并解析符号链接；其 `bin/..` 是 CLI 发布包根目录。源码仓库中为 `desktop/ai-app-bridge-cli`。以下路径均相对此包根目录，不相对本技能；先查标题或关键词，只读相关章节。
 
 - `docs/COMMAND_CONTRACT.md`：入口与 Runtime 看 **Discovery and entrypoints**；Intent 看 **Execution operation contracts**；目标看 **Target and dispatch** 及对应 iOS/H5/Web 章节；安装/权限看 **Installation is an Intent operation** / **Runtime permission requests use Intent**。
-- `docs/SCRIPT_AUTHORING.md`：首次写脚本看 **Start and observe**、**Lifecycle: start, wait, result**（含可运行的 JS/Python 回归范例）、**Calls and assertions**；命令准入看 **Capability selection**；采集或暂停需求再读对应章节。
+- `docs/SCRIPT_AUTHORING.md`：首次写脚本看 **Start and observe**（Web 直接看 **Web first use**）、**Lifecycle: start, wait, result**（含可运行的 JS/Python 回归范例）、**Calls and assertions**；命令准入看 **Capability selection**；采集或暂停需求再读对应章节。
 - `docs/EVIDENCE_ARCHIVE.md`：需要记录、导出或离线校验时读取，包含文件范围与 coverage 的具体边界。
 
 - `docs/RESPONSE_EXTRACTION.md`：单次提取、两语言源码、正文预算、失败后原 ref 重读及退出码。

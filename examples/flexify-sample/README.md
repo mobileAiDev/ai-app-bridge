@@ -73,6 +73,27 @@ the visible page. Its first-frame value comes from Android; the deliberate
 Replace the APK with `install -r` to preserve the same package and business data
 when comparing pinned upstream and Bridge builds.
 
+On macOS, `python3 validation/run-awake-startup.py SERIAL NEW_OUTPUT_DIRECTORY
+--count 2 --keep-display-awake` records independent IOKit lock, CGSession,
+display-sleep and frontmost-App observations throughout the runs. It compiles a
+small Swift probe before measuring. A positive frontmost process ID also identifies
+an observed unbundled app; its missing bundle ID stays null. Missing identity
+remains unknown; a false
+`IOConsoleLocked` value alone does not certify an active display or full emulator
+CPU availability. Environment warnings never prevent App execution or change its
+functional result. Inspect the separate `environment` report before comparing
+timings, and retain slow samples. The optional process-scoped `caffeinate -di`
+assertion prevents idle sleep until this runner exits; it neither unlocks the Mac
+nor disables App Nap or changes system settings. Pass `--emulator-pid` with the
+verified qemu host PID to retain active/hidden state, cumulative CPU time, scheduler
+priority and RunningBoard's recorded App Nap / CPU-throttling transitions. A
+missing initial scheduling state remains unknown. Showing the existing emulator
+window and rechecking its state is an available recovery action; the runner does
+not move windows or change system App Nap settings. `--passive-ms 45000` provides the same observation-free
+control described above. Use `AAB_VALIDATION_CLI_PATH` to select an installed CLI
+and independent `AI_APP_BRIDGE_FACT_STORE_DIR` / `AI_APP_BRIDGE_RUNTIME_HOME`
+directories to keep the run separate from existing work.
+
 The latest Android SDK and Dart plugin complete the workout, editing, cancelled
 deletion, History and Volume graph in **41.764 s**, with 50 commands, one external
 call and 1499 response bytes. This process-cold run includes **23.327 s** for

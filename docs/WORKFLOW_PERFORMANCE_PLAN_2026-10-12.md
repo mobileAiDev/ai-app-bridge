@@ -2,6 +2,9 @@
 
 Status: **in progress**. Small prepared-flow results do not establish whole-product acceptance.
 
+For the post-0.4.7 first-use comparison, response-delivery corrections and Native
+startup diagnosis, see [the current candidate report](WORKFLOW_PERFORMANCE_0.4.8_CANDIDATE_2026-10-13.md).
+
 ## Complex-app reference and platform matrix
 
 The acceptance target is the complexity of a local-services super-app, not a

@@ -82,6 +82,33 @@ test('fresh references and small UI edits reconstruct exactly with no second dev
   assert(Buffer.byteLength(JSON.stringify(second)) < Buffer.byteLength(JSON.stringify(after)) * 0.4);
 });
 
+test('optional diagnostic fields do not force a large homogeneous delta baseline into a reference', async () => {
+  const f = fixture(), before = page();
+  before.nodes = Array.from({ length: 400 }, (_, index) => ({ ...before.nodes[index % 80], index,
+    text: 'A complete observed control with its current identity and state. '.repeat(3) }));
+  before.diagnostics = Array.from({ length: 4 }, (_, index) => ({
+    message: 'A diagnostic retained next to the full observed controls. '.repeat(4),
+    ...(index === 0 ? { detail: null } : { [`optional${index}`]: { value: index } }),
+  }));
+  assert(Buffer.byteLength(JSON.stringify(before)) > 96 * 1024);
+  const first = await f.run(before);
+  assert.equal(first.delivery.status, 'inline', 'the complete initial delta must fit the default budget');
+  assert.equal(first.value.encoding, 'columns');
+  assert.equal(first.value.data.format, 'aab.response-columns/v1');
+  assert.deepEqual(first.value.data.data.diagnostics, before.diagnostics);
+  assert.deepEqual(expand(first.value.data), before);
+  const after = structuredClone(before);
+  after.nodes[3].checked = true;
+  delete after.diagnostics[0].detail;
+  after.diagnostics[1].optional1 = null;
+  const second = await f.run(after, first.control.source.ref);
+  assert.equal(second.delivery.status, 'delta');
+  const reconstructed = applyPatch(first.value.data, second.value.operations);
+  assert.equal(checksumOf(reconstructed), second.value.sha256);
+  assert.deepEqual(expand(reconstructed), after);
+  assert.deepEqual(f.store.read(second.control.source.ref).snapshot.value, after);
+});
+
 test('unchanged data, reorders, deleted and added rows, new runtime and capture loss are never hidden', async () => {
   const f = fixture(), first = await f.run(page());
   const same = f.store.read(first.control.source.ref).snapshot.value;
