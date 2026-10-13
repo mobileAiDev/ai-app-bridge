@@ -41,7 +41,8 @@ test('native longPress sends a bound target and action ID to the SDK', async () 
     const result = await dispatch(device, action({ selector }));
     assert.equal(result.ok, true);
     const payload = { action: 'longPress', selector, targetRef: nativeTargetRef(), actionId: 'host:longpress', durationMs: 700 };
-    assert.deepEqual(calls, [[{ serial: target.serial, packageName: target.packageName, adb: target.adb, port: target.port, runtimeActionId: 'host:longpress' }, payload]]);
+    assert.deepEqual(calls, [[{ serial: target.serial, packageName: target.packageName, adb: target.adb, port: target.port, runtimeActionId: 'host:longpress' }, payload,
+      { foregroundFeedback: { foregroundObservations: [], warnings: [] } }]]);
     assert.deepEqual(result.providerResult, { ok: true, transport: 'bridge', ...payload });
   }
 });

@@ -4,6 +4,7 @@ const { compileScriptSpec, scriptHash } = require('./script-spec');
 const { scriptError } = require('./script-errors');
 const { readScriptResult } = require('./script-result');
 const { verifyChecksum, checksumOf } = require('../shared-kernel/evidence-schema');
+const { planRecovery, recoveryRequired } = require('./script-recovery');
 
 const RESTORE_CONTEXT = Symbol('scriptRestoreContext');
 
@@ -17,7 +18,7 @@ function unmatchedPreparedAction(store, operationId, boundary = 0) {
   });
 }
 
-function loadDurableCheckpoint(store, operationId) {
+function loadDurableCheckpoint(store, operationId, { allowUnsettled = false } = {}) {
   if (!store || typeof store.latest !== 'function' || typeof store.list !== 'function' || !operationId) {
     return scriptError('unknown_operation', { operationId: operationId || null });
   }
@@ -27,8 +28,8 @@ function loadDurableCheckpoint(store, operationId) {
   }
   const checkpoint = records.filter((item) => item.kind === 'checkpoint').at(-1);
   if (!checkpoint) return scriptError('unknown_operation', { operationId });
-  if (unmatchedPreparedAction(store, operationId, checkpoint.checkpointActionSequence || 0)) {
-    return scriptError('ambiguous', { operationId, status: 'ambiguous', pauseReason: 'ambiguous' });
+  if (!allowUnsettled && unmatchedPreparedAction(store, operationId, checkpoint.checkpointActionSequence || 0)) {
+    return recoveryRequired(checkpoint, records, 'ambiguous');
   }
   const actionSequence = records.reduce((maximum, item) => Math.max(maximum, item.actionSequence || 0), checkpoint.actionSequence || 0);
   return { ok: true, checkpoint, records, actionSequence };
@@ -52,7 +53,7 @@ function planCodeRestore({ checkpoint, script } = {}) {
     input = { schemaVersion: 'aab.code-script/v1' };
     // The durable record owns the frozen program. Omit absent optional fields
     // instead of injecting undefined or mixing it with a caller's program.
-    for (const field of ['name', 'language', 'source', 'target', 'permissions', 'policy', 'inputs', 'entrypoint']) {
+    for (const field of ['name', 'language', 'source', 'cwd', 'target', 'permissions', 'policy', 'inputs', 'entrypoint']) {
       if (Object.hasOwn(checkpoint, field)) input[field] = checkpoint[field];
     }
   }
@@ -81,6 +82,7 @@ function codeStartCheckpoint(compiled, operationId) {
     hash: compiled.hash,
     language: spec.language,
     sourcePath: spec.sourcePath,
+    cwd: spec.cwd,
     name: spec.name,
     target: spec.target,
     permissions: spec.permissions,
@@ -113,6 +115,7 @@ function specFromCompiled(compiled) {
     name: spec.name,
     language: spec.language,
     source: spec.source,
+    cwd: spec.cwd,
     target: spec.target,
     permissions: spec.permissions,
     policy: spec.policy,
@@ -125,8 +128,7 @@ function restartGate(checkpoint, records = []) {
   if (checkpoint.policy?.restartPolicy !== 'checkpoint' || !checkpoint.checkpoint) {
     return scriptError('not_resumable', { restartPolicy: checkpoint.policy?.restartPolicy || 'none' });
   }
-  if (checkpoint.status === 'completed' || checkpoint.status === 'cancelled'
-      || (checkpoint.status === 'failed' && !['child_crashed', 'runtime_lost'].includes(checkpoint.error))) {
+  if (checkpoint.status === 'completed' || checkpoint.status === 'cancelled') {
     return scriptError('not_resumable', { status: checkpoint.status });
   }
   // A receipt can confirm an effect while the language state still precedes it.
@@ -134,20 +136,27 @@ function restartGate(checkpoint, records = []) {
   const boundary = checkpoint.checkpointActionSequence || 0;
   if (records.some((item) => item.kind === 'action-receipt'
       && item.actionSequence > boundary && item.dispatched !== false)) {
-    return scriptError('ambiguous', { status: 'ambiguous', pauseReason: 'checkpoint_precedes_action' });
+    return recoveryRequired(checkpoint, records, 'checkpoint_precedes_action');
+  }
+  if (checkpoint.status === 'failed' && !['child_crashed', 'runtime_lost'].includes(checkpoint.error)) {
+    return scriptError('not_resumable', { status: checkpoint.status,
+      message: 'Automatic checkpoint reentry is unavailable. Inspect the failed result and pass recovery.checkpoint to choose an explicit continuation.' });
   }
   return { ok: true };
 }
 
 async function restoreUnknownOperation(args = {}) {
   const { store, operationId, script, supervisor } = args;
-  const loaded = loadDurableCheckpoint(store, operationId);
-  if (!loaded.ok) return loaded;
-  const checkpoint = loaded.checkpoint;
-  if (checkpoint.script && Array.isArray(checkpoint.script.steps)) return scriptError('script_format_removed');
   const op = args.operation || 'status';
-  const gate = restartGate(checkpoint, loaded.records);
-  if (op === 'status' || op === 'wait') {
+  const readOnly = op === 'status' || op === 'wait';
+  const explicitRecovery = args.operation === 'resume' && args.recovery !== undefined;
+  const loaded = loadDurableCheckpoint(store, operationId, { allowUnsettled: explicitRecovery || readOnly });
+  if (!loaded.ok) return loaded;
+  let checkpoint = loaded.checkpoint;
+  if (checkpoint.script && Array.isArray(checkpoint.script.steps)) return scriptError('script_format_removed');
+  const gate = unmatchedPreparedAction(store, operationId, checkpoint.checkpointActionSequence || 0)
+    ? recoveryRequired(checkpoint, loaded.records, 'ambiguous') : restartGate(checkpoint, loaded.records);
+  if (readOnly) {
     const terminal = ['completed', 'cancelled', 'failed'].includes(checkpoint.status);
     const result = checkpoint.status === 'completed' && checkpoint.resultRef
       ? readScriptResult({ store, operationId }) : null;
@@ -163,14 +172,26 @@ async function restoreUnknownOperation(args = {}) {
       restored: true,
       resumeMode: gate.ok ? 'checkpoint' : 'none',
       resumable: gate.ok,
+      ...(!gate.ok && gate.error === 'ambiguous' ? { recovery: gate } : {}),
       hash: checkpoint.hash || null,
       resultRef: checkpoint.resultRef ?? null,
+      ...(op === 'wait' && result?.ok ? { result: result.result } : {}),
     };
   }
   if (op !== 'resume') return scriptError('not_resumable', { operationId });
-  if (!gate.ok) return { ...gate, operationId };
+  if (!explicitRecovery && !gate.ok) return { ...gate, operationId };
   const planned = planCodeRestore({ checkpoint, script });
   if (!planned.ok) return planned;
+  if (explicitRecovery) {
+    const recovered = planRecovery({ base: codeStartCheckpoint(planned.compiled, operationId),
+      previous: checkpoint, actionSequence: loaded.actionSequence, recovery: args.recovery });
+    if (!recovered.ok) return recovered;
+    let persisted;
+    try { persisted = await store.persist('checkpoint', recovered.checkpoint); }
+    catch (error) { return scriptError(error.code || error.message || 'checkpoint_not_persisted', { operationId }); }
+    if (!persisted?.ok) return scriptError(persisted?.error || 'checkpoint_not_persisted', { operationId });
+    checkpoint = recovered.checkpoint;
+  }
   return supervisor.handle({
     ...args,
     operation: 'start',

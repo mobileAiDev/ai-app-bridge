@@ -1,0 +1,80 @@
+'use strict';
+module.exports.main = async ctx => {
+  const path = require('node:path');
+  const lab = require(ctx.inputs.helperPath)(ctx);
+  const { call, check, wait, tapNative: tap, inputNative: input } = lab;
+  let error;
+  try {
+    await call('launch-activity', { activity: '.WorkflowLabActivity', clearTask: true,
+      extra: [`lab_base_url=${ctx.inputs.deviceBase}`, `lab_run=${ctx.inputs.runId}`] });
+    await wait('native', '巡检协作平台');
+    lab.phase('real-login');
+    await tap('lab_login_entry');
+    await input('lab_account', 'bridge@example.test');
+    await input('lab_password', 'fixture-password');
+    await tap('lab_agreement');
+    await tap('lab_login_submit');
+    await wait('native', '协作工作台');
+    lab.phase('query-and-form');
+    await tap('lab_sites');
+    await input('lab_query', 'SITE-002');
+    await tap('lab_search');
+    await wait('native', '查询完成 1 项 · 第 1 页');
+    await tap('open_SITE-002');
+    await tap('lab_edit');
+    await tap('lab_preview');
+    await wait('native', '负责人和记录不能为空');
+    await input('lab_assignee', '测试员');
+    await input('lab_note', '实际 HTTP 跨端复核');
+    await tap('lab_priority');
+    lab.phase('draft-recreation');
+    await tap('lab_recreate');
+    await wait('native', '协作工作台');
+    await tap('lab_resume_draft');
+    await tap('lab_preview');
+    await call('tap-native', { selector: { text: '返回修改', className: 'android.widget.Button' } });
+    await tap('lab_preview');
+    await call('tap-native', { selector: { text: '确认', className: 'android.widget.Button' } });
+    lab.phase('network-recovery');
+    if (ctx.inputs.config.firstSave === 'lost-response') {
+      await wait('native', '结果未确认，先查询服务端');
+      await tap('lab_reconcile');
+    } else {
+      await wait('native', '提交失败 503：service_temporarily_unavailable');
+      await tap('lab_retry');
+    }
+    await wait('native', '工单已保存');
+    await call('screenshot', { outFile: path.join(ctx.inputs.outDir, 'native-saved.png') });
+    lab.phase('embedded-h5');
+    await tap('lab_h5');
+    await call('h5-wait', { selector: { text: '预览审核', tag: 'button' }, timeoutMs: 10000, intervalMs: 50 });
+    await call('h5-input', { selector: { ariaLabel: '审核意见' }, text: '服务端记录已核对' });
+    await call('h5-scroll', { selector: { ariaLabel: '同意审核结果' } });
+    await call('h5-click', { selector: { ariaLabel: '同意审核结果' } });
+    await call('h5-scroll', { selector: { text: '预览审核', tag: 'button' } });
+    await call('h5-click', { selector: { text: '预览审核', tag: 'button' } });
+    await call('h5-click', { selector: { text: '返回修改', tag: 'button' } });
+    await call('h5-click', { selector: { text: '预览审核', tag: 'button' } });
+    await call('h5-click', { selector: { text: '确认', tag: 'button' } });
+    await call('h5-wait', { selector: { text: '审核已完成', tag: 'p' }, timeoutMs: 10000, intervalMs: 50 });
+    await call('screenshot', { outFile: path.join(ctx.inputs.outDir, 'h5-approved.png') });
+    await tap('lab_close_h5');
+    lab.phase('flutter-handoff');
+    await tap('lab_flutter');
+    lab.app('io.github.mobileaidev.bridge_workflow_lab');
+    await wait('flutter', 'H5 审核：true');
+    await lab.flutterInput('复核记录', 'Flutter 现场复核完成');
+    await lab.tapFlutter('确认现场复核完成');
+    await lab.tapFlutter('提交复核');
+    await lab.tapFlutter('确认操作');
+    await wait('flutter', '复核成功');
+    await call('screenshot', { outFile: path.join(ctx.inputs.outDir, 'flutter-verified.png') });
+    lab.phase('independent-verification');
+    const state = await (await fetch(`${ctx.inputs.hostBase}/__state?run=${encodeURIComponent(ctx.inputs.runId)}`)).json();
+    await check('Native, H5 and Flutter each committed exactly once', Object.keys(state.orders).length === 1 && state.approvals === 1 && state.flutterUpdates === 1);
+    await check('Correct record and form survived activity recreation', state.orders['ORDER-1'].siteId === 'SITE-002' && state.orders['ORDER-1'].assignee === '测试员' && state.orders['ORDER-1'].note === '实际 HTTP 跨端复核' && state.orders['ORDER-1'].priority === true);
+    await check('Unknown submit was reconciled without replay', state.saveAttempts === (ctx.inputs.config.firstSave === 'lost-response' ? 1 : 2));
+    await check('Cross-provider final revision', state.orders['ORDER-1'].revision === 3 && state.orders['ORDER-1'].approved && state.orders['ORDER-1'].checked);
+  } catch (e) { error = e; }
+  return lab.report(error);
+};

@@ -199,7 +199,10 @@ test('public MCP Intent and continuous Script execute the exact H5 renderer and 
   advertisedSchema = schema;
   result = await run('script', { operation: 'start', script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', target,
     source: `module.exports.main = async ctx => {
-      const action=await ctx.call('ios-h5-click',{selector:{text:'Article opened'},feedback:'off'});
+      const before=await ctx.call('ios-h5-dom',{feedback:'off'});
+      if (!before.ok) throw new Error(JSON.stringify(before));
+      const action=await ctx.call('ios-h5-click',{selector:{text:'Article opened'},feedback:'off',
+        expectedTarget:{pageRef:{...before.result.pageRef,observedAt:123},element:before.result.dom.controls[0]}});
       if (!action.ok) throw new Error(JSON.stringify(action));
       const observed=await ctx.call('ios-h5-dom',{feedback:'off'});
       await ctx.assert({name:'article content',condition:observed.result.dom.bodyText==='Independent article body',requiredEvidence:['tree'],evidence:observed.evidence});
@@ -211,5 +214,7 @@ test('public MCP Intent and continuous Script execute the exact H5 renderer and 
   }
   assert.equal(result.status, 'completed', JSON.stringify(result));
   assert.deepEqual(result.rollingSummary.assertions, { passed: 1, failed: 0, inconclusive: 0 });
+  assert.deepEqual(Object.keys(actions[1].payload.pageRef), Object.keys(tree(p).pageRef));
+  assert.deepEqual(Object.keys(actions[1].payload.element), ['elementId', 'tag', 'id', 'name', 'type', 'text', 'ariaLabel', 'href']);
   assert.deepEqual(p.events, ['click:article', 'click:article']);
 });

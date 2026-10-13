@@ -1,10 +1,9 @@
 'use strict';
 
 const h5Target = require('../shared-kernel/android-h5-target');
-const { isDeepStrictEqual } = require('node:util');
 const { androidAppTargetKey, getProcessTargetLease } = require('../shared-kernel/target-lease-protocol');
 const { validBounds, selectNativeNode, nativeTargetRequest } = require('../shared-kernel/native-target');
-const { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest } = require('../shared-kernel/flutter-target');
+const { selectFlutterNode, flutterTargetRequest } = require('../shared-kernel/flutter-target');
 const { selectUiaNode } = require('../shared-kernel/uia-target');
 const { observedTarget: observedUiaTarget } = require('../shared-kernel/uia-protocol');
 const { checkExecution } = require('../shared-kernel/execution-scope');
@@ -63,27 +62,28 @@ function createProductionIntentDeviceAdapter({
     adbTimings: [],
     get maxActive() { return maxActive; },
     get callCount() { return calls.length; },
-    async observe({ serial, packageName, provider, rawTreeId, port, adb: targetAdb, foregroundPackages, observationTarget }) {
+    async observe({ serial, packageName, provider, rawTreeId, port, adb: targetAdb, foregroundPackages, observationTarget, previousForeground }) {
       return withDevice(serial, packageName, `observe:${provider}`, async () => {
         const selectedPackage = observationTarget?.packageName ?? packageName;
         const ctx = context({ serial, packageName: selectedPackage, port, adb: targetAdb });
-        const feedback = await readForegroundFeedback(ctx, impl.foregroundWindow);
+        let feedback;
         try {
           let rawTree;
           if (provider === 'uia') rawTree = await impl.uiaTreeOnce(ctx);
           else if (provider === 'flutter') rawTree = await impl.flutterNodes(ctx);
           else if (provider === 'h5') rawTree = await impl.h5Dom(ctx, observationTarget?.webViewId === undefined ? {} : { webViewId: observationTarget.webViewId });
           else rawTree = await impl.bridgeTree(ctx);
+          feedback = await readForegroundFeedback(ctx, impl.foregroundWindow, previousForeground);
           if (rawTree?.ok === false) return withForeground(rawTree, feedback);
-          const after = await readForegroundFeedback(ctx, impl.foregroundWindow, feedback.foregroundObservations[0]);
           return withForeground({ ok: true, provider, rawTreeId, rawTree,
-            foregroundTarget: after.foregroundObservations[0].actual?.packageName ?? null,
+            foregroundTarget: feedback.foregroundObservations[0].actual?.packageName ?? null,
             route: { provider, targetPackageName: selectedPackage,
-              foreground: after.foregroundObservations[0].actual,
-              observation: after.foregroundObservations[0] },
-          }, feedback, after);
+              foreground: feedback.foregroundObservations[0].actual,
+              observation: feedback.foregroundObservations[0] },
+          }, feedback);
         } catch (error) {
-          return withForeground({ ok: false, error: error.code || error.message || String(error) }, feedback);
+          return withForeground({ ok: false, error: error.code || error.message || String(error) },
+            feedback || await readForegroundFeedback(ctx, impl.foregroundWindow, previousForeground));
         }
       });
     },
@@ -92,23 +92,26 @@ function createProductionIntentDeviceAdapter({
       return withDevice(serial, targetPackageName, 'action', async () => {
         const ctx = context({ serial, packageName: route?.targetPackageName ?? targetPackageName, port, adb: targetAdb, runtimeActionId: actionId });
         let dispatchAttempted = false;
-        const feedback = await readForegroundFeedback(ctx, impl.foregroundWindow, route?.observation);
+        let feedback;
         const finish = result => withForeground(shapeAction(require('../shared-kernel/action-guidance').withActionGuidance('intent', ctx, result)), feedback);
-        if (route && spec.provider !== route.provider) return finish({ ok: false, error: 'observation_provider_mismatch', dispatched: false });
         const actionPorts = { ...impl };
         for (const name of ['tap', 'uiaTap', 'inputText', 'nativeGesture', 'swipe', 'keyevent', 'flutterAction', 'h5Control']) {
           if (typeof impl[name] !== 'function') continue;
           actionPorts[name] = async (...args) => {
             checkExecution();
-            const current = await readForegroundFeedback(ctx, impl.foregroundWindow, feedback.foregroundObservations.at(-1));
-            feedback.foregroundObservations.push(...current.foregroundObservations);
-            feedback.warnings.push(...current.warnings);
-            checkExecution();
             dispatchAttempted = true;
+            // The outer action already captured the advice. Native executors
+            // still perform their atomic target/epoch validation on the device.
+            if (['tap', 'inputText', 'nativeGesture', 'flutterAction'].includes(name)) {
+              args.push({ foregroundFeedback: { foregroundObservations: [], warnings: [] },
+                ...(name === 'flutterAction' ? { observedTree: rawTree } : {}) });
+            }
             return impl[name](...args);
           };
         }
         try {
+          feedback = await readForegroundFeedback(ctx, impl.foregroundWindow, route?.observation);
+          if (route && spec.provider !== route.provider) return finish({ ok: false, error: 'observation_provider_mismatch', dispatched: false });
           if (!['native', 'uia', 'flutter', 'h5'].includes(spec.provider)) return finish({ ok: false, error: 'unsupported_provider', dispatched: false });
           if (!['tap', 'inputText', 'back', 'keyevent', 'scroll', 'scrollBy', 'swipe', 'longPress', 'hideKeyboard'].includes(spec.action)) {
             return finish({ ok: false, error: 'unsupported_action', dispatched: false });
@@ -254,16 +257,12 @@ async function scrollHost(impl, ctx, spec, rawTree) {
 async function actionFromFlutterObservedTree(impl, ctx, spec, rawTree, actionId) {
   const observed = selectFlutterNode(rawTree, spec);
   if (!observed.ok) return observed;
-  const current = selectFlutterNode(await impl.flutterNodes(ctx), spec);
   checkExecution();
-  if (!current.ok) return current;
-  if (!isDeepStrictEqual(flutterNodeIdentity(observed.node), flutterNodeIdentity(current.node))) {
-    return { ok: false, error: 'reobserve_required', dispatched: false };
-  }
-  const guarded = flutterTargetRequest(current.node, spec.selector);
+  const guarded = flutterTargetRequest(observed.node, spec.selector);
   if (!guarded.ok) return guarded;
   const payload = spec.action === 'tap' ? { action: 'tapTarget' }
-    : spec.action === 'inputText' ? { action: 'inputText', text: spec.value }
+    : spec.action === 'inputText' ? { action: 'inputText', text: spec.value,
+      ...Object.fromEntries(['focus', 'hideKeyboard'].filter(key => spec[key] !== undefined).map(key => [key, spec[key]])) }
       : { action: 'scrollBy', delta: spec.delta };
   return impl.flutterAction(ctx, { ...payload, ...guarded.request }, { runtimeActionId: actionId });
 }

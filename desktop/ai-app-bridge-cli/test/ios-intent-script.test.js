@@ -32,7 +32,7 @@ async function fixture(t) {
   const server = http.createServer(async (req, res) => {
     let bytes = ''; for await (const chunk of req) bytes += chunk;
     const send = value => res.end(JSON.stringify({ ...value, runtimeBinding: device.binding }));
-    if (['/v1/status', '/v1/flutter/snapshot'].includes(req.url)) return send({ ok: true,
+    if (['/v1/status', '/v1/flutter/snapshot', '/v1/flutter/snapshot?scope=operable'].includes(req.url)) return send({ ok: true,
       debugBridge: { flutterExecutionSchema: 'aab.flutter-execution/v1' }, flutter: { layout: { operable: tree() } } });
     if (req.url === '/v1/flutter/action') {
       const body = JSON.parse(bytes);
@@ -44,7 +44,7 @@ async function fixture(t) {
       }
       actions.push(body);
       if (body.action === 'tapTarget') page = 'Settings';
-      else if (body.action === 'inputText') { name = body.text; keyboardVisible = true; }
+      else if (body.action === 'inputText') { name = body.text; if (body.focus !== false) keyboardVisible = true; }
       else if (body.action === 'hideKeyboard') keyboardVisible = false;
       else if (body.action === 'scrollBy') scroll += body.delta;
       else if (body.action === 'back') page = 'Receive';
@@ -79,7 +79,7 @@ test('public iOS Intent observes, taps, replaces input, scrolls and returns with
   const operationId = result.operationId;
   const steps = [
     { action: 'tap', selector: { text: 'Settings' } },
-    { action: 'inputText', selector: { text: 'Device name' }, value: '收发设备' },
+    { action: 'inputText', selector: { text: 'Device name' }, value: '收发设备', focus: false },
     { action: 'hideKeyboard' },
     { action: 'scrollBy', selector: { nodeId: 'settings-list' }, delta: 250 },
     { action: 'back' },
@@ -90,7 +90,7 @@ test('public iOS Intent observes, taps, replaces input, scrolls and returns with
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(h.actions[index].actionId, `${operationId}:step-${index}`);
     assert.equal(h.actions[index].execution.runtimeEpoch, 'engine-1');
-    if (action.action === 'inputText') assert.equal(h.tree().keyboardVisible, true);
+    if (action.action === 'inputText') { assert.equal(h.tree().keyboardVisible, false); assert.equal(h.actions[index].focus, false); }
     if (action.action === 'hideKeyboard') assert.equal(h.tree().keyboardVisible, false);
   }
   assert.equal(h.tree().page, 'Receive');
@@ -108,7 +108,7 @@ for (const language of ['javascript', 'python']) {
       await ctx.assert({name:'receive', condition:first.result.page==='Receive', requiredEvidence:['tree'], evidence:first.evidence});
       for (const [command,args] of [
         ['ios-tap-flutter',{selector:{text:'Settings'}}],
-        ['ios-input-flutter-text',{selector:{text:'Device name'},text:'收发设备'}],
+        ['ios-input-flutter-text',{selector:{text:'Device name'},text:'收发设备',focus:false}],
         ['ios-flutter-hide-keyboard',{}],
         ['ios-scroll-flutter',{selector:{nodeId:'settings-list'},delta:250}]
       ]) { const result = await ctx.call(command,{...args,feedback:'off'}); if(!result.ok) throw new Error(JSON.stringify(result)); }
@@ -124,7 +124,7 @@ for (const language of ['javascript', 'python']) {
     ctx.assert_({'name':'receive','condition':first['result']['page']=='Receive','requiredEvidence':['tree'],'evidence':first['evidence']})
     for command,args in [
         ('ios-tap-flutter',{'selector':{'text':'Settings'}}),
-        ('ios-input-flutter-text',{'selector':{'text':'Device name'},'text':'收发设备'}),
+        ('ios-input-flutter-text',{'selector':{'text':'Device name'},'text':'收发设备','focus':False}),
         ('ios-flutter-hide-keyboard',{}),
         ('ios-scroll-flutter',{'selector':{'nodeId':'settings-list'},'delta':250})
     ]:
@@ -150,6 +150,7 @@ for (const language of ['javascript', 'python']) {
     assert.equal(result.status, 'completed', JSON.stringify(result));
     assert.deepEqual(result.rollingSummary.assertions, { passed: 3, failed: 0, inconclusive: 0 });
     assert.equal(h.actions.length, 5);
+    assert.equal(h.actions[1].focus, false);
     assert.equal(h.actions[2].action, 'hideKeyboard');
     assert.equal(h.actions[2].targetRef, undefined);
     assert.equal(h.tree().keyboardVisible, false);

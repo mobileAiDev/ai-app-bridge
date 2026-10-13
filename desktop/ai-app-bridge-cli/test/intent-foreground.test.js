@@ -107,16 +107,49 @@ test('unlisted actual foreground remains a warning, with the original app tree a
   assert.deepEqual(h.calls, [['native', home]]);
 });
 
-test('a foreground change during capture returns the tree with both observations and a warning', async () => {
-  let h;
-  h = harness({ bridgeTree: async () => { h.setForeground(picker); return native; } });
+test('Intent can use known bound controls without a new tree after every action', async () => {
+  const h = harness();
+  let state = await h.worker.start();
+  for (const decisionId of ['first', 'second']) {
+    state = await h.worker.decide({ decisionId, basedOnRevision: state.revision, agentDecision: 'act',
+      action: { action: 'tap', selector: { text: '导入' }, observeAfter: false } });
+    assert.equal(state.ok, true, JSON.stringify(state));
+    assert.equal(state.uiObservation.stale, true);
+    assert.equal(state.revision, 1);
+  }
+  assert.equal(h.calls.filter(c => c[0] === 'native').length, 1);
+  assert.equal(h.calls.filter(c => c[0] === 'tap').length, 2);
+  state = await h.worker.observe();
+  assert.equal(state.uiObservation.stale, false);
+  assert.equal(h.calls.filter(c => c[0] === 'native').length, 2);
+});
+
+test('large foreground diagnostics never consume the actionable Intent page summary', async () => {
+  const h = harness();
+  const diagnostic = 'raw WindowManager transition details\n'.repeat(4000);
+  h.setWindow({ ok: false, error: 'foreground_window_identity_missing', evidence: { dump: diagnostic }, ownershipVerified: false });
   const result = await h.worker.start();
+  assert.equal(result.ok, true);
+  assert.ok(result.summary.nodes.some(n => n.text === '导入'));
+  assert.ok(Buffer.byteLength(JSON.stringify(result.summary)) < 16000);
+  const original = h.worker.context.store.read(result.evidenceId);
+  assert.equal(original.record.foregroundObservations[0].actual.evidence.dump, diagnostic);
+  assert.equal(result.summary.foreground.diagnostics[0].evidenceId, result.evidenceId);
+});
+
+test('a foreground change between captures returns current advice and the previous observation warning', async () => {
+  let h;
+  let reads = 0;
+  h = harness({ bridgeTree: async () => { if (reads++) h.setForeground(picker); return native; } });
+  await h.worker.start();
+  const result = await h.worker.observe();
   assert.equal(result.ok, true);
   assert.equal(result.status, 'waiting_for_decision');
   assert.equal(result.summary.provider, 'native');
   assert.ok(result.summary.warnings.some(w => w.code === 'foreground_changed'));
-  assert.equal(result.summary.foregroundObservations[0].actual.packageName, home);
-  assert.equal(result.summary.foregroundObservations[1].actual.packageName, picker);
+  assert.equal(result.summary.foregroundObservations.length, 1);
+  assert.equal(result.summary.foregroundObservations[0].actual.packageName, picker);
+  assert.equal(result.summary.warnings.find(w => w.code === 'foreground_changed').previous.packageName, home);
 });
 
 test('a UIA tree belonging to another app is reported as observed; the explicit target selector does not migrate', async () => {

@@ -82,7 +82,7 @@ test('public Script agent decisions preserve JSON values and retry structured an
   const deadline = Date.now() + 20000;
   for (let index = 0; index < answers.length; index++) {
     let question;
-    while (!(question = state.events.find(event => event.type === 'agent_question_created' && event.request.context.index === index))) {
+    while ((question = state.pendingQuestion)?.request.context.index !== index) {
       assert(Date.now() < deadline, JSON.stringify(state));
       assert(!['completed', 'failed', 'cancelled'].includes(state.status), JSON.stringify(state));
       state = await script({ operation: 'wait', afterSequence: state.eventSequence, waitMs: 1000 });
@@ -110,7 +110,7 @@ test('public Script agent decisions preserve JSON values and retry structured an
     assert(Date.now() < deadline, JSON.stringify(state));
     state = await script({ operation: 'wait', afterSequence: state.eventSequence, waitMs: 1000 });
   }
-  state = await script({ operation: 'status' });
+  state = await script({ operation: 'status', limit: 1000, eventLimit: 1000 });
   assert.equal(state.status, 'completed', JSON.stringify(state));
   assert.deepEqual((await script({ operation: 'result' })).result, { answers });
   assert.equal(state.events.filter(event => event.type === 'agent_decision').length, answers.length);

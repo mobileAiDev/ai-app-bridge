@@ -13,6 +13,7 @@ const { createUiaRuntimeFixture } = require('../../test-support/uia-runtime-fixt
 const { runCli } = require('../../test-support/cli-client');
 
 async function main(directory) {
+  if (typeof directory !== 'string' || !directory.trim()) throw new Error('Usage: npm run verify:package -- /absolute/path/to/new-evidence-directory');
   const out = path.resolve(directory);
   fs.mkdirSync(out); // Refuse to overwrite a previous validation run.
   const source = path.resolve(__dirname, '../..');
@@ -182,24 +183,31 @@ if (call.args.includes('logcat')) process.stdout.write('10-12 09:00:00.001  123 
     const deadline = Date.now() + 20000;
     while (!['completed', 'failed', 'cancelled'].includes(state.status) && Date.now() < deadline) {
       if (state.status === 'waiting_for_agent') {
-        const question = state.events.findLast(event => event.type === 'agent_question_created');
+        const question = state.pendingQuestion;
         assert(question, JSON.stringify(state));
         const owner = await run('runtime', { operation: 'status' });
         await client.close({ stopRuntime: false, stdinEof: true });
         assert.equal((await cli('script', { operation: 'status', operationId: start.operationId })).status, 'waiting_for_agent');
         state = await cli('script', { operation: 'decide', operationId: start.operationId,
-          requestId: question.requestId, revision: question.revision, decision: answer });
+          requestId: question.requestId, revision: question.revision, decision: answer, waitMs: 10000 });
         assert.equal(state.ok, true, JSON.stringify(state));
+        assert.equal(state.status, 'completed', 'waiting decide delivers completion without a second wait');
+        assert.equal(state.persisted, true);
+        assert.deepEqual(state.result, { verified: true, answer });
+        write('controlled-script-decision-result.json', state);
         client = createMcpClient({ serverPath: path.join(installed, 'bin/mcp-server.js'), cwd: install, env,
           transcriptPath: path.join(out, 'reconnected-mcp.jsonl'), stderrPath: path.join(out, 'reconnected-stderr.log') });
         await client.initialize();
         assert.equal((await run('runtime', { operation: 'status' })).runtimeId, owner.runtimeId);
         report.entrypoints = { runtimeId: owner.runtimeId, cliStart: true, mcpWait: true,
-          mcpDisconnectPreservedTask: true, cliDecision: true, reconnectedMcpSameRuntime: true };
+          mcpDisconnectPreservedTask: true, cliDecision: true, cliDecisionWaitInline: true, reconnectedMcpSameRuntime: true };
       } else state = await run('script', { operation: 'wait', operationId: start.operationId, afterSequence: state.eventSequence, waitMs: 1000 });
     }
-    state = await run('script', { operation: 'status', operationId: start.operationId });
+    state = await run('script', { operation: 'status', operationId: start.operationId, eventLimit: 100 });
     write('controlled-script.json', state); assert.equal(state.status, 'completed');
+    assert(Number.isSafeInteger(state.rollingSummary.startedAtMs));
+    assert(state.rollingSummary.decisionWaitMs > 0, 'completed summary retains the actual Agent wait');
+    assert.equal(state.rollingSummary.elapsedMs, state.rollingSummary.activeMs + state.rollingSummary.decisionWaitMs);
     const completedEvent = state.events.find(event => event.type === 'script_completed');
     assert.ok(completedEvent, 'Completed event must reference the separately stored result');
     assert.equal(Object.hasOwn(state, 'result'), false);
@@ -215,6 +223,19 @@ if (call.args.includes('logcat')) process.stdout.write('10-12 09:00:00.001  123 
     assert.equal(actions.filter(row => row.includes('uiautomator')).length, 0);
     assert.equal(uia.requests.filter(row => row.op === 'observe').length, 4);
     report.controlledScript = { operationId: start.operationId, status: state.status, adbCalls: actions.length, structuredAgentReply: 'verified' };
+    const interrupted = await cli('script', { operation: 'start', waitMs: 10000, script: {
+      schemaVersion: 'aab.code-script/v1', language: 'javascript', permissions: [],
+      source: 'module.exports.main = ctx => { const state = ctx.resume(); if (!state) process.exit(31); return state; };',
+      policy: { restartPolicy: 'checkpoint', timeoutMs: 15000 },
+    } });
+    assert.equal(interrupted.status, 'failed'); assert.equal(interrupted.error, 'child_crashed');
+    const recoveryState = { phase: 'query-original-result', selectedBy: 'agent' };
+    const recovered = await run('script', { operation: 'resume', operationId: interrupted.operationId, waitMs: 10000,
+      recovery: { checkpoint: { name: 'agent-continuation', state: recoveryState } } });
+    assert.equal(recovered.status, 'completed'); assert.deepEqual(recovered.result, recoveryState);
+    assert.equal(recovered.operationId, interrupted.operationId);
+    write('explicit-script-recovery.json', { interrupted, recovered });
+    report.explicitScriptRecovery = { cliStart: true, mcpResume: true, operationId: interrupted.operationId, persisted: recovered.persisted };
     report.permissionContract = await require('./verify-permission-contract').verifyPermissionContract({ out, run });
     const shutdownScripts = await require('./verify-script-shutdown').startShutdownScripts({ out, run });
     const shutdownIntents = await require('./verify-intent-shutdown').startShutdownIntents({ out, run });

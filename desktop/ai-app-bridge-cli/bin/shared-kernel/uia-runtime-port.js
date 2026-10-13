@@ -157,7 +157,11 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
   async function startRuntime(previous, asset, destination) {
     destination ??= await installAsset(asset);
     await shell(`CLASSPATH=${quote(destination)} setsid nohup app_process /system/bin ${mainClass} ${quote(root)} ${asset.manifest.sha256} >${quote(root + '/startup.log')} 2>&1 </dev/null &`);
-    const deadline = Date.now() + Math.min(timeoutMs, 7000);
+    return waitForRuntime(previous, asset);
+  }
+
+  async function waitForRuntime(previous, asset) {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       checkExecution();
       const current = await readJson(`${root}/runtime.json`);
@@ -174,7 +178,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
     try { rejection = JSON.parse(log.trim().split(/\r?\n/).at(-1)); } catch { /* Non-JSON VM startup diagnostics remain below. */ }
     if (rejection?.ok === false && typeof rejection.error === 'string' && rejection.error.startsWith('uia_'))
       throw failure(rejection.error, 'The phone runtime refused to start. Original session records were retained.', { startupLog: log });
-    throw failure('uia_runtime_start_failed', 'The phone did not publish a ready UIA runtime.', { startupLog: log });
+    throw failure('uia_runtime_not_ready', 'UIA readiness was not confirmed within the requested wait. The process may still be starting; query status or start again to inspect it before resetting.', { startupLog: log, waitMs: timeoutMs });
   }
 
   async function removeForwards(peer) {
@@ -423,7 +427,7 @@ function createUiaRuntimePort({ adb, serial, timeoutMs = 10000, root = protocol.
           const asset = bundle(), owner = await inspectOwner(asset);
           let peer = value === null ? null : descriptor(value);
           if (owner.owned) {
-            if (peer === null || !peer.running) throw failure('uia_runtime_already_running', 'The original runtime still owns its process lock. Wait for it to finish starting or stopping.');
+            if (peer === null || !peer.running) peer = await waitForRuntime(peer, asset);
             if (peer.dexSha256 !== asset.manifest.sha256) throw failure('uia_runtime_version_mismatch', 'Stop the existing UIA runtime before starting this installed bundle.');
           } else {
             peer = await startRuntime(peer, asset, owner.destination);

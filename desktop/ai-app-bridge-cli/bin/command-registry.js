@@ -23,7 +23,7 @@ const commandDefinitions = [
   { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start, stop or force-reset the Android API 25+ UIA node runtime. Start checks the process lock; force-reset archives UIA sessions with unknown outcomes without stopping the Bridge Host or SDK apps.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
-  { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator XML for the current foreground window.', options: ['serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
+  { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator accessibility windows. Optional packageFilter returns compact nodes for that exact app before applying the node budget, including controls without resource IDs.', options: ['serial', 'packageFilter', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
   { command: 'screenshot', domain: 'core', summary: 'Capture a screenshot, with foreground package verification when packageName is supplied.', options: ['serial', 'packageName', 'outFile', 'artifactDir'] },
   { command: 'logs', domain: 'core', summary: 'Read in-app log records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'network', domain: 'core', summary: 'Read in-app network records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'urlFilter', 'method', 'statusCode', 'noBodies', 'bodyMaxBytes', 'sinceId', 'sinceMs', 'limit'] },
@@ -34,8 +34,8 @@ const commandDefinitions = [
   { command: 'clear-app-data', domain: 'app', summary: 'Clear app data once through explicit method: pm-clear (default) or runtime. No fallback on failure.', targetApp: true, options: ['serial', 'packageName', 'method'] },
   { command: 'freeze-app', domain: 'app', summary: 'Stop target App processes with SIGSTOP, including the SDK socket. Capture first; thaw before SDK reads or actions.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
   { command: 'thaw-app', domain: 'app', summary: 'Resume target app processes with SIGCONT before reads, waits, captures, actions, or final handoff.', targetApp: true, options: ['serial', 'packageName', 'pid'] },
-  { command: 'launch-app', domain: 'app', summary: 'Launch the target package LAUNCHER Activity and report launcher candidates.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra', 'clearTask'] },
-  { command: 'launch-activity', domain: 'app', summary: 'Launch an explicit Android Activity component with optional string extras.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra'] },
+  { command: 'launch-app', domain: 'app', summary: 'Request launch of the target LAUNCHER Activity and report candidates. Returns after the start request without a foreground probe by default; use wait-text for business readiness. waitForLaunch:true waits for Android launch completion.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra', 'clearTask', 'waitForLaunch'] },
+  { command: 'launch-activity', domain: 'app', summary: 'Request an explicit Android Activity launch with optional string extras. Returns after the start request without a foreground probe by default; waitForLaunch:true waits for Android launch completion. Neither proves business readiness.', targetApp: true, options: ['serial', 'packageName', 'activity', 'component', 'action', 'category', 'data', 'extra', 'clearTask', 'waitForLaunch'] },
   { command: 'permission-state', domain: 'app', summary: 'Read live PackageManager runtime permission state for an explicit package and Android user.', targetApp: true, options: ['serial', 'packageName', 'permission', 'userId', 'adb', 'adbTimeoutMs', 'timeoutMs'] },
   { command: 'permission-grant', domain: 'app', summary: 'Grant a runtime permission as a fixture and verify the resulting PackageManager state.', targetApp: true, options: ['serial', 'packageName', 'permission', 'userId', 'adb', 'adbTimeoutMs', 'timeoutMs'] },
   { command: 'permission-revoke', domain: 'app', summary: 'Revoke a runtime permission as a fixture and verify the resulting PackageManager state.', targetApp: true, options: ['serial', 'packageName', 'permission', 'userId', 'adb', 'adbTimeoutMs', 'timeoutMs'] },
@@ -46,7 +46,7 @@ const commandDefinitions = [
   { command: 'tap-uia-text', domain: 'action', summary: 'Revalidate one exact UIAutomator text match; report foreground observations separately from execution.', options: ['serial', 'targetText', 'exact'] },
   { command: 'tap-uia', domain: 'action', summary: 'Tap one UIAutomator node by an exact semantic selector or an observed targetRef. Revalidate the original node before dispatch; foreground changes are warnings.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetRef'] },
   { command: 'tap-native', domain: 'action', summary: 'Tap one exact Native selector, optionally scoped to an observed row. Revalidate the original View, then send a bound SDK action with foreground observations. Shared by CLI, MCP and Script.', targetApp: true, options: ['serial', 'packageName', 'selector'] },
-  { command: 'wait-text', domain: 'action', summary: 'Wait for exact visible labels, retrying read failures within one deadline. Absence requires complete coverage by default; absenceScope:observed checks only the returned portion. Defaults to native. Uses milliseconds.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider', 'timeoutMs', 'intervalMs', 'requireText', 'absentText', 'requireActivity', 'absenceScope'] },
+  { command: 'wait-text', domain: 'action', summary: 'Wait for exact visible labels; anyText returns as soon as one alternative outcome appears. Read failures retry within one deadline. Absence requires complete coverage by default; absenceScope:observed checks only the returned portion. Defaults to native. Uses milliseconds.', targetApp: true, options: ['serial', 'packageName', 'targetText', 'provider', 'timeoutMs', 'intervalMs', 'requireText', 'anyText', 'absentText', 'requireActivity', 'absenceScope'] },
   { command: 'input-text', domain: 'action', summary: 'Replace native Android text, including empty or Unicode text. An exact selector binds the original editor; coordinates or the SDK focused-editor contract are separate targeting modes.', targetApp: true, options: ['serial', 'packageName', 'text', 'selector', 'tapX', 'tapY', 'hideKeyboard'] },
   { command: 'keyboard-state', domain: 'action', summary: 'Read Android soft keyboard visibility.', options: ['serial'] },
   { command: 'hide-keyboard', domain: 'action', summary: 'Hide the Android soft keyboard.', options: ['serial', 'force', 'intervalMs'] },
@@ -58,7 +58,7 @@ const commandDefinitions = [
   { command: 'flutter-action', domain: 'flutter', summary: 'Dispatch an explicit typed Flutter SDK action object. SDK actions remain expert primitives; use Intent for observed decisions.', targetApp: true, options: ['serial', 'packageName', 'payload'] },
   { command: 'tap-flutter', domain: 'flutter', summary: 'Tap a bound Flutter selector, or explicit logical coordinates. Supply selector or tapX/tapY; logical coordinates must not be multiplied by devicePixelRatio.', targetApp: true, options: ['serial', 'packageName', 'selector', 'tapX', 'tapY'] },
   { command: 'tap-flutter-text', domain: 'flutter', summary: 'Revalidate one exact Flutter label in the foreground activity, then tap in logical coordinates.', targetApp: true, options: ['serial', 'packageName', 'targetText'] },
-  { command: 'input-flutter-text', domain: 'flutter', summary: 'Type into one bound EditableText selected by selector, coordinates, or the focused/unique editor. Revalidate the original editor and focus after frames; never redirect input.', targetApp: true, options: ['serial', 'packageName', 'text', 'selector', 'tapX', 'tapY', 'hideKeyboard'] },
+  { command: 'input-flutter-text', domain: 'flutter', summary: 'Replace text in one bound EditableText. Default taps and focuses; focus:false updates that exact editor with formatters/callbacks without opening the keyboard or invoking tap/focus callbacks.', targetApp: true, options: ['serial', 'packageName', 'text', 'selector', 'tapX', 'tapY', 'hideKeyboard', 'focus'] },
   { command: 'scroll-flutter', domain: 'flutter', summary: 'Scroll a bound Flutter container by delta or until exact unique text is visible. Supply selector when several containers exist.', targetApp: true, options: ['serial', 'packageName', 'selector', 'targetText', 'delta', 'maxSwipes'] },
   { command: 'h5-dom', domain: 'webview', summary: 'Observe one visible Android WebView with stable page and element identities; ambiguity returns candidates.', targetApp: true, options: ['serial', 'packageName', 'port', 'webViewId'] },
   { command: 'h5-eval', domain: 'webview', summary: 'Execute synchronous expert JavaScript in the explicitly observed Android H5 page.', targetApp: true, options: ['serial', 'packageName', 'script', 'expectedPage'] },
@@ -70,7 +70,7 @@ const commandDefinitions = [
   { command: 'flutter-h5-eval', domain: 'webview', summary: 'Execute synchronous expert JavaScript in an explicitly observed Flutter H5 adapter document.', targetApp: true, options: ['serial', 'packageName', 'script', 'expectedPage'] },
   { command: 'flutter-h5-click', domain: 'webview', summary: 'Click one exact Flutter H5 element with adapter, document, geometry and DOM occlusion checks.', targetApp: true, options: ['serial', 'packageName', 'adapterId', 'selector', 'expectedTarget'] },
   { command: 'flutter-h5-input', domain: 'webview', summary: 'Replace text in one bound Flutter H5 editor; revalidate the original element after focus callbacks.', targetApp: true, options: ['serial', 'packageName', 'adapterId', 'selector', 'text', 'expectedTarget'] },
-  { command: 'flutter-h5-wait', domain: 'webview', summary: 'Observe an exact selector in the same Flutter H5 adapter document; never switch pages or execute an eval mutation.', targetApp: true, options: ['serial', 'packageName', 'adapterId', 'selector', 'timeoutMs', 'intervalMs'] },
+  { command: 'flutter-h5-wait', domain: 'webview', summary: 'Wait for a visible exact selector, including disabled controls, in the same Flutter H5 adapter across document loading. Performs no mutation.', targetApp: true, options: ['serial', 'packageName', 'adapterId', 'selector', 'timeoutMs', 'intervalMs'] },
   { command: 'flutter-h5-scroll', domain: 'webview', summary: 'Scroll a bound Flutter H5 element into view or scroll its page by explicit CSS deltas.', targetApp: true, options: ['serial', 'packageName', 'adapterId', 'selector', 'expectedTarget', 'expectedPage', 'deltaX', 'deltaY'] },
   { command: 'webview-pages', domain: 'webview', summary: 'List attachable Android WebView DevTools/CDP pages.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'keepForward'] },
   { command: 'webview-network', domain: 'webview', summary: 'Capture WebView Network events through CDP.', targetApp: true, options: ['serial', 'packageName', 'webviewPort', 'socketName', 'targetId', 'pageUrlFilter', 'urlFilter', 'durationMs', 'script', 'includeResponseBody', 'bodyMaxBytes', 'maxEvents'] },
@@ -96,7 +96,7 @@ const commandDefinitions = [
   { command: 'ios-flutter-nodes', domain: 'ios', summary: 'Read Flutter iOS operable nodes from the runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl'] },
   { command: 'ios-flutter-action', domain: 'ios', summary: 'Dispatch a Flutter iOS action through the runtime.', targetKind: 'ios-app', options: ['deviceId', 'bundleId', 'iosHost', 'iosPort', 'runtimeUrl', 'payload'] },
   { command: 'ios-tap-flutter', domain: 'ios', summary: 'Tap one exact Flutter iOS node using a live Element reference.', targetKind: 'ios-app', options: ['selector'] },
-  { command: 'ios-input-flutter-text', domain: 'ios', summary: 'Replace text in one exact Flutter iOS editor.', targetKind: 'ios-app', options: ['selector', 'text'] },
+  { command: 'ios-input-flutter-text', domain: 'ios', summary: 'Replace text in one exact Flutter iOS editor. focus:false preserves focus and avoids opening IME; formatters and onChanged still run.', targetKind: 'ios-app', options: ['selector', 'text', 'focus', 'hideKeyboard'] },
   { command: 'ios-scroll-flutter', domain: 'ios', summary: 'Scroll one exact Flutter iOS container by a logical-pixel delta.', targetKind: 'ios-app', options: ['selector', 'delta'] },
   { command: 'ios-flutter-back', domain: 'ios', summary: 'Ask the bound Flutter iOS navigator to go back once.', targetKind: 'ios-app', options: [] },
   { command: 'ios-flutter-hide-keyboard', domain: 'ios', summary: 'Unfocus the bound Flutter iOS app and request keyboard dismissal. Reobserve viewport.viewInsets to verify dismissal.', targetKind: 'ios-app', options: [] },
@@ -136,7 +136,7 @@ const isolatedCommandDefinitions = [
   {
     command: 'script',
     domain: 'execution',
-    summary: 'Run a trusted-local-code JavaScript or Python Script. Operations: start, status, wait, result, pause, resume, decide, cancel, runtime-status, recipes. Read editable recipes locally before running or customizing them. Commands and assertions return results for Script code to handle; uncaught errors fail execution. Script source is not an OS sandbox.',
+    summary: 'Run real JavaScript or Python, including local observation, condition waits and branches on unfamiliar pages. Use start, resume or decide with waitMs to receive the completed result or an Agent question in the same call; without waitMs they return immediately. Ask the Agent when new judgment is needed, and otherwise keep known steps in local code. A timeout leaves execution running under the same operationId. Stopped checkpoint programs accept recovery.checkpoint for Agent-selected reentry while retaining past receipts. Control replies default to the latest event/history entry; request explicit limits or a cursor for history. Other operations: status, wait, result, pause, cancel, runtime-status, recipes. Trusted local code is not an OS sandbox.',
     options: ['operation', 'waitMs', 'afterSequence', 'recordingDir'],
     runtime: 'trusted-local-code',
   },
@@ -206,6 +206,7 @@ function define(names, schema) {
 }
 define('wdaRunnerBundleId wdaTestBundleId', { type: 'string', minLength: 1, maxLength: 255, pattern: '^[A-Za-z0-9_.-]+$' });
 define('adapterId webViewId', { type: 'string', minLength: 1 });
+define('packageFilter', { type: 'string', minLength: 1, description: 'Exact observed Android package to retain in a compact UIA tree. Omit for all windows; it never inherits the Script target.' });
 define('expectedPage', require('./shared-kernel/ios-h5-target').pageSchema);
 define('expectedTarget', require('./shared-kernel/ios-h5-target').expectedTargetSchema);
 define('expectedSession', require('./shared-kernel/ios-native-target').expectedSessionSchema);
@@ -213,10 +214,10 @@ define('orientation', require('./shared-kernel/ios-native-target').orientationSc
 define('selector', { type: 'string', minLength: 1 });
 define('spec', { type: 'object', additionalProperties: true });
 define('targetRef', require('./shared-kernel/uia-protocol').targetRefSchema);
-define('adb serial packageName artifactDir deviceId bundleId iosHost runtimeUrl wdaUrl wdaSessionId devicectl xcodebuild host path token setupResultPath appPath apkPath activity component action data initialRoute outFile permission op mode targetText requireText absentText requireActivity resourceId textFilter resourceIdFilter classFilter urlFilter method pageUrlFilter socketName targetId sessionId accessibilityId elementId wdaProjectPath wdaBundleId teamId displayUniqueId tag level grep since factCursor cursor runtimeEpoch afterActionId mobileFactId targetKey requestId deviceLogScope logcatFormat format agentModule pythonPath goal intent operationId recordingDir namespace outputDir archiveDir manifestSha256 name reason provider adapter', { type: 'string', minLength: 1 });
+define('adb serial packageName artifactDir deviceId bundleId iosHost runtimeUrl wdaUrl wdaSessionId devicectl xcodebuild host path token setupResultPath appPath apkPath activity component action data initialRoute outFile permission op mode targetText requireText anyText absentText requireActivity resourceId textFilter resourceIdFilter classFilter urlFilter method pageUrlFilter socketName targetId sessionId accessibilityId elementId wdaProjectPath wdaBundleId teamId displayUniqueId tag level grep since factCursor cursor runtimeEpoch afterActionId mobileFactId targetKey requestId deviceLogScope logcatFormat format agentModule pythonPath goal intent operationId recordingDir namespace outputDir archiveDir manifestSha256 name reason provider adapter', { type: 'string', minLength: 1 });
 define('text value script payload', { type: 'string' });
 define('aaptPath apksignerPath', { type: 'string', minLength: 1 });
-define('full compact visibleOnly clear follow appPid force hideKeyboard noAutoHideKeyboard allowDowngrade clearTask exact skipFlutterLaunch includeResponseBody keepForward noBodies startWda terminateExisting clearFirst refresh includeActions history includeRecordedPayloads grepCaseSensitive includeCatalog', { type: 'boolean' });
+define('full compact visibleOnly clear follow appPid force focus hideKeyboard noAutoHideKeyboard allowDowngrade clearTask waitForLaunch exact skipFlutterLaunch includeResponseBody keepForward noBodies startWda terminateExisting clearFirst refresh includeActions history includeRecordedPayloads grepCaseSensitive includeCatalog', { type: 'boolean' });
 define('tapX tapY startX startY endX endY', { type: 'number', minimum: 0, maximum: 2147483647, description: 'Finite non-negative coordinate. Space is specified by the command.' });
 define('delta deltaX deltaY', { type: 'number', minimum: -2147483647, maximum: 2147483647 });
 define('port iosPort webviewPort webPort', { type: 'integer', minimum: 1, maximum: 65535 });
@@ -483,7 +484,7 @@ function commandSchema(command) {
     properties.provider = { type: 'string', enum: ['auto', 'native', 'flutter', 'uia'], default: 'native' };
     properties.absenceScope = { type: 'string', enum: ['complete', 'observed'], default: 'complete', description: 'complete requires provider coverage; observed tests only the returned labels and retains partial/unknown coverage.' };
     properties.timeoutMs = { ...properties.timeoutMs, default: 10000 };
-    for (const name of ['requireText', 'absentText']) properties[name] = { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1 } };
+    for (const name of ['requireText', 'anyText', 'absentText']) properties[name] = { type: 'array', maxItems: 64, items: { type: 'string', minLength: 1 } };
   }
   const schema = { type: 'object', additionalProperties: false, properties, required };
   if (command === 'tap-uia') schema.oneOf = [
@@ -527,6 +528,11 @@ function validateCommandArguments(command, args = {}) {
   }
   if (isMutationCommand(command, normalized) && normalized.history === true) throw invalid('history', 'A mutation cannot be requested as a history read.');
   if (isAndroidMutation(command, normalized) && !normalized.serial) throw new CommandError('missing_argument', `${command}: serial is required for device mutation.`, { field: 'serial' });
+  if (['flutter-action', 'ios-flutter-action'].includes(command) && normalized.payload.action === 'h5Control'
+      && normalized.payload.expectedTarget !== undefined) {
+    normalized.payload = { ...normalized.payload,
+      expectedTarget: require('./shared-kernel/flutter-h5-target').projectTarget(normalized.payload.expectedTarget) };
+  }
   return normalized;
 }
 
@@ -538,15 +544,18 @@ function parseCliOptions(command, options) {
   for (const [name, value] of Object.entries(options)) {
     const property = schema.properties[name];
     if (!property || typeof value !== 'string') continue;
-    if (property.type === 'array' && ['category', 'extra'].includes(name)) {
+    const alternatives = property.anyOf || property.oneOf || [];
+    const type = property.type || (alternatives.length && alternatives.every(rule => rule.type === alternatives[0].type)
+      ? alternatives[0].type : undefined);
+    if (type === 'array' && ['category', 'extra'].includes(name)) {
       parsed[name] = [value];
     } else if (jsonCliValue(property)) {
       try { parsed[name] = JSON.parse(value); }
       catch { throw invalid(name, `${name} must be valid JSON matching its input schema.`); }
-    } else if (property.type === 'integer' || property.type === 'number') {
+    } else if (type === 'integer' || type === 'number') {
       if (!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim())) throw invalid(name, `${name} must be a number.`);
       parsed[name] = Number(value);
-    } else if (property.type === 'boolean' && (value === 'true' || value === 'false')) {
+    } else if (type === 'boolean' && (value === 'true' || value === 'false')) {
       parsed[name] = value === 'true';
     }
   }

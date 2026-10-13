@@ -31,21 +31,26 @@ test('Intent Flutter input and scroll bind the observed Element instead of coord
   }
 });
 
-test('same label and traversal ID with a replaced Flutter Element is rejected by Host', async () => {
+test('same label and traversal ID cannot rebind an Intent to a replacement Flutter Element', async () => {
   let calls = 0;
   const observed = flutterNode();
   const current = { ...observed, targetRef: flutterRef('replacement') };
   const adapter = createProductionIntentDeviceAdapter({ ports: {
     createBridgeContext: args => args,
     bridgeTree: async () => ({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }),
-    flutterNodes: async () => ({ nodes: [current] }),
-    flutterAction: async () => { calls++; return { ok: true }; },
+    flutterNodes: async () => assert.fail('no Host reobservation'),
+    flutterAction: async (_ctx, payload) => {
+      calls++;
+      assert.deepEqual(payload.targetRef, observed.targetRef);
+      assert.notDeepEqual(payload.targetRef, current.targetRef);
+      return { ok: false, error: 'flutter_target_replaced', dispatched: false, ambiguous: false };
+    },
   } });
   const result = await adapter.action({ serial: 'device', packageName: 'example.app', rawTree: { nodes: [observed] }, actionId: 'intent:1',
     spec: { provider: 'flutter', action: 'tap', selector: { text: 'Settings' } } });
-  assert.equal(result.error, 'reobserve_required');
+  assert.equal(result.error, 'flutter_target_replaced');
   assert.equal(result.dispatched, false);
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
 });
 
 test('old SDK observations cannot downgrade semantic actions to coordinates', () => {

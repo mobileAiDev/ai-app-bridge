@@ -336,7 +336,7 @@ test('P7 Node child does not proceed until its user checkpoint is durably commit
   });
   await offered;
   await new Promise((resolve) => setTimeout(resolve, 30));
-  const blocked = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const blocked = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(blocked.events.some((event) => event.type === 'checkpoint'), false);
   assert.equal(blocked.events.some((event) => event.type === 'progress'), false);
   assert.equal(blocked.events.some((event) => event.type === 'script_completed'), false);
@@ -375,11 +375,11 @@ async function waitForTerminal(supervisor, operationId, afterSequence) {
       waitMs: 500,
     });
     if (result.status === 'completed' || result.status === 'failed' || result.status === 'cancelled') {
-      return supervisor.handle({ operation: 'status', operationId });
+      return supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId });
     }
     after = result.eventSequence;
   }
-  return supervisor.handle({ operation: 'status', operationId });
+  return supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId });
 }
 
 test('an explicit checkpoint can move past a retained unknown action without rewriting its receipt', async () => {

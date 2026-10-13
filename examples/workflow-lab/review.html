@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>巡检审核</title>
+<style>body{font:17px system-ui;padding:20px;background:#f5f7fa;color:#172635}label,button,textarea{display:block;margin:16px 0}textarea{width:95%;min-height:70px}button{padding:12px 24px}#message{min-height:28px}dialog{max-width:80%}.muted{color:#607080}</style>
+<h1>巡检审核</h1><p class="muted">审核说明包含“确认”和“同意”，只有实际表单操作才能提交。</p>
+<div id="detail">正在加载工单…</div><p id="message" role="status"></p>
+<label>审核意见<textarea id="review" aria-label="审核意见"></textarea></label>
+<label><input id="agreement" aria-label="同意审核结果" type="checkbox">同意审核结果</label>
+<button id="preview">预览审核</button><button id="help">同意说明</button>
+<dialog id="confirmation"><h2>确认审核</h2><p id="preview-text"></p><button id="cancel">返回修改</button><button id="confirm">确认</button></dialog>
+<script>
+const query = new URLSearchParams(location.search), run = query.get('run'), id = query.get('order');
+let order;
+const message = document.querySelector('#message');
+async function api(path, body) {
+  const response = await fetch(path + '?run=' + encodeURIComponent(run), {method:body?'POST':'GET',
+    headers:{'content-type':'application/json',authorization:'Bearer '+query.get('session'),'x-lab-source':'h5'}, ...(body?{body:JSON.stringify(body)}:{})});
+  const result = await response.json();
+  if (!response.ok) throw Object.assign(new Error(result.error), {result});
+  return result;
+}
+async function load() {
+  try { ({order}=await api('/api/orders/'+id)); document.querySelector('#detail').textContent = order.siteId+' · '+order.assignee+' · '+order.note; }
+  catch(error) { message.textContent='加载失败：'+error.message; }
+}
+document.querySelector('#help').onclick=()=>{message.textContent='说明已展开，尚未审核';};
+document.querySelector('#preview').onclick=()=>{
+  if(!document.querySelector('#review').value || !document.querySelector('#agreement').checked){message.textContent='请填写审核意见并同意结果';return;}
+  document.querySelector('#preview-text').textContent=document.querySelector('#review').value;
+  document.querySelector('#confirmation').showModal();
+};
+document.querySelector('#cancel').onclick=()=>document.querySelector('#confirmation').close();
+document.querySelector('#confirm').onclick=async()=>{
+  document.querySelector('#confirmation').close();message.textContent='正在提交审核…';
+  try {({order}=await api('/api/orders/'+id+'/approve',{revision:order.revision,agreement:true,review:document.querySelector('#review').value}));message.textContent='审核已完成';}
+  catch(error){message.textContent='审核失败：'+error.message;if(error.result?.order)order=error.result.order;}
+};
+load();
+</script></html>

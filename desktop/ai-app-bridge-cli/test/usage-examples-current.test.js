@@ -71,7 +71,7 @@ async function runDocumentedScript(language, source, adapter = createMemoryEvide
     // Reading the result while the run is still finishing is the mistake the loop avoids.
     if (page.status === 'finishing' && !earlyResult) earlyResult = await scriptHandle(resultArguments);
   }
-  const result = await scriptHandle(resultArguments);
+  const result = Object.hasOwn(page, 'result') ? { ok: true, persisted: page.persisted, result: page.result } : await scriptHandle(resultArguments);
   await store.close();
   return { started, page, events, statuses, earlyResult, result, commands };
 }

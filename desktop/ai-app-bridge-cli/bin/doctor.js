@@ -117,7 +117,14 @@ async function doctor(args = {}, dependencies = {}) {
         check('android.device', async () => {
           const raw = await run(['shell', 'getprop']);
           const properties = Object.fromEntries([...raw.matchAll(/^\[([^\]]+)\]: \[(.*)\]$/gm)].map(match => [match[1], match[2]]));
+          const drawingDisabled = ['0', 'false'].includes(properties['debug.hwui.drawing_enabled']);
+          if (drawingDisabled) nextActions.push(hint('adb-exec', { serial: args.serial, adb, readOnly: true,
+            argv: ['shell', 'getprop', 'debug.hwui.drawing_enabled'] },
+          'Hardware drawing is disabled, as on ATD images. Native/H5 screenshots may be blank or stale. Use a full Android image for visual acceptance; command execution is still available.'));
           return { serial: args.serial, properties: select(properties, ['ro.product.model', 'ro.product.manufacturer', 'ro.build.version.release', 'ro.build.version.sdk', 'sys.boot_completed']),
+            rendering: { drawingEnabled: drawingDisabled ? false : ['1', 'true'].includes(properties['debug.hwui.drawing_enabled']) ? true : null,
+              renderer: properties['debug.hwui.renderer'] || null,
+              ...(drawingDisabled ? { warning: 'hardware_drawing_disabled', message: 'Native/H5 screenshots may be blank or stale; this environment is unsuitable for visual acceptance.' } : {}) },
             ...(args.full ? { raw } : {}) };
         }),
         check('android.forwards', async () => ({ entries: (await run(['forward', '--list'], false)).split(/\r?\n/).filter(Boolean)

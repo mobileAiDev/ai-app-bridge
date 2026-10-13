@@ -7,11 +7,11 @@ discovery. Every request checks the mapping before dispatch. Mutating requests
 are never replayed after a missing route or uncertain result. For manual cleanup,
 pass the exact serial and returned Host port to `remove-forward`.
 
-This source version is `0.4.6`; registry publication is a separate release step.
+This source version is `0.4.7`; registry publication is a separate release step.
 Android foreground facts and warnings are separate from action execution. Window
 formatting, mismatch or changes do not veto an explicit action or switch its target.
 The SDK and UIA executors retain exact node/reference validation and original receipts.
-Device and Web SDKs share version `0.4.6`.
+Device and Web SDKs share version `0.4.7`.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
 and Playwright executors use the existing `capabilities + run` and Python/JS Script contracts.
@@ -66,7 +66,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # Install the current stable release; see docs/RELEASE.md for packaging.
-npm install -g @mobileaidev/ai-app-bridge@0.4.6
+npm install -g @mobileaidev/ai-app-bridge@0.4.7
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
@@ -151,10 +151,10 @@ and stops an opted-in log stream when its last target expires. Its limit,
 expirations, evictions, failures, and dropped-log counters are visible in
 `_feedback.observer`. Android targets report `backgroundPolling: false`; null
 poll timestamps and runtime epochs do not represent a successful health check.
-For `launch-app` and `launch-activity`, full feedback runs the launch first,
-then captures a system UIA tree and optional screenshot. It does not require
-an active App SDK before launch. These snapshots show the current screen;
-without an event baseline, they do not establish a semantic UI change.
+`launch-app` and `launch-activity` send the launch request first, then attach one
+foreground observation. They do not require an active App SDK or a drawn first
+frame. The observation may still show the previous screen during a transition.
+Use `wait-text` for the actual page or business outcome.
 
 Facts are stored once in an authoritative segmented mmap store. A bounded
 SQLite WAL index is only a rebuildable query projection; it is not a second
@@ -222,6 +222,8 @@ Script/Intent history to inspect execution records separately:
 ## Intent, Script and evidence
 
 Intent supports daily observation and decisions; Script supports repeatable regression.
+For a known sequence, Intent's existing autonomous module runs successive local
+decisions in one start call; see [the autonomous module contract](docs/COMMAND_CONTRACT.md#run-a-known-sequence-in-one-intent-call).
 Individual `run` calls remain useful. A Script can be authored directly or from
 observed Intent evidence. The duplicate batch executor has been removed. Start a Script
 through CLI or MCP with `operation: "start"` and a `script`
@@ -231,11 +233,18 @@ object containing `schemaVersion: "aab.code-script/v1"`, `language`, one of
 Each platform retains its own provider requirements and business acceptance evidence.
 
 Read progress with `status`/`wait`; completion exposes a small `resultRef`.
-Use `script --operation result --operation-id ID` to read the persisted final
+Start/resume with `waitMs` and ready attention waits return the result inline.
+When it is absent, use `script --operation result --operation-id ID` to read the persisted final
 JSON independently of event retention, including after runtime restart. Password
 and token redaction is declared by the reference's `representation`; missing or
 evicted results return an error. Full result storage is required before a Script
 can report `completed`.
+
+A script that catches a command failure and returns a diagnostic report keeps
+that report even if an uncertain mutation makes the execution status `failed`.
+`result` then returns the report with `status: "failed"` and `executionError`;
+successful retrieval does not convert the unknown effect into success. Start
+with `waitMs` also returns this persisted report when the operation terminates.
 
 See [Script authoring](docs/SCRIPT_AUTHORING.md) for the executable source shape,
 call envelope, assertion results, bounded UI waits and evidence reuse boundaries.
@@ -409,6 +418,13 @@ debug dependency exposes multiple launcher entries, it returns
 `launcher_ambiguous` with the candidates instead of guessing. Use
 `launch-activity` or `launch-app --activity/--component` to choose the intended
 entry point explicitly.
+
+Both launch commands return `completionScope: "activity-start-request"` by
+default, without Android's `am start -W` or a foreground polling loop. To request
+the previous blocking launch behavior, pass `--wait-for-launch true`; the
+completion scope becomes `activity-launch`. This still does not establish
+login, loaded data, or another business outcome. Follow the request with a
+bounded `wait-text` inside the same Intent or Script to handle cold startup.
 
 ### Upgrading the running CLI and MCP
 

@@ -25,7 +25,7 @@ async function execute({ requests, actions, permissions = ['app.read', 'app.inte
     } },
   });
   await supervisor.registry.get(started.operationId).running;
-  const state = wire(supervisor.handle({ operation: 'status', operationId: started.operationId, afterSequence: 0 }));
+  const state = wire(supervisor.handle({ operation: 'status', operationId: started.operationId, afterSequence: 0, limit: 1000, eventLimit: 1000 }));
   assert.equal(state.status, 'completed');
   return { envelopes, assertions, events: state.events, history: state.history.items };
 }

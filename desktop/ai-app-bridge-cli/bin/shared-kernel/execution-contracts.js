@@ -37,7 +37,9 @@ function exactlyOne(properties, keys, required = []) {
 
 const nativeSelector = require('./native-target').selectorSchema;
 const uiaSelector = require('./uia-target').intentSelectorSchema;
-const flutterSelector = exactlyOne({ text, nodeId: text }, ['text', 'nodeId']);
+const flutterSelector = { ...object({ text, nodeId: text, label: text, hint: text,
+  role: { enum: ['input', 'control', 'scrollable'] }, widgetType: text }), minProperties: 1,
+  allOf: [{ if: { required: ['nodeId'] }, then: { maxProperties: 1 } }] };
 
 function nativeGestureBranches(make) {
   const selector = nativeSelector;
@@ -59,7 +61,8 @@ function intentActionSchema(activeProvider, platform) {
       description: 'Optional fresh UI observation after this command. Default false returns its result directly; existing UI evidence retains its original revision.' },
   }, ['action', 'command'])];
   for (const name of activeProvider ? [activeProvider] : provider.enum) {
-    const make = (action, properties = {}, required = []) => object({ action: { const: action }, provider: { const: name }, ...properties }, ['action', ...required]);
+    const make = (action, properties = {}, required = []) => object({ action: { const: action }, provider: { const: name },
+      observeAfter: { type: 'boolean', default: true, description: 'Set false to continue using already observed controls. The executor still validates their live identity; uiObservation.stale marks the older page until observe or the next observed action.' }, ...properties }, ['action', ...required]);
     if (name === 'h5') {
       const webSelector = require('./web-dom-target').intentSelectorSchema;
       if (platform === 'web' || platform === undefined) {
@@ -92,7 +95,7 @@ function intentActionSchema(activeProvider, platform) {
       branches.push(...nativeGestureBranches(make));
     }
     if (name === 'flutter') {
-      branches.push(make('inputText', { selector, value: { type: 'string' } }, ['selector', 'value']));
+      branches.push(make('inputText', { selector, value: { type: 'string' }, focus: { type: 'boolean' }, hideKeyboard: { type: 'boolean' } }, ['selector', 'value']));
       branches.push(make('scrollBy', { selector, delta: number }, ['selector', 'delta']));
       branches.push(make('hideKeyboard'));
     }
@@ -140,22 +143,32 @@ function executionCommandSchema(command, permissionNames) {
     limit: { ...pageLimit, description: 'History entries per page; it bounds entries, not response bytes.' },
   };
   const scriptRead = {
-    afterSequence: { ...afterSequence, description: 'Continuation cursor: the previous status/wait response\'s eventSequence; events and history after it are returned. Not history.lastSequence.' },
-    limit: pageLimit, eventLimit: pageLimit, includeCatalog: boolean,
+    afterSequence: { ...afterSequence, description: 'Sequence lower bound. For progress waits use the previous eventSequence. To audit every bounded page, use history.lastSequence for history, or the last returned events[].sequence for events; eventSequence is the live watermark and can skip unread records.' },
+    limit: { ...pageLimit, default: 1, description: 'History entries per page; defaults to one. With no cursor or explicit limits, returns only the latest record and marks omittedBefore. Use afterSequence:0 and a larger limit to audit history.' },
+    eventLimit: { ...pageLimit, default: 1, description: 'Event entries per page; defaults to limit or one. Does not increase the history limit.' }, includeCatalog: boolean,
   };
   const operation = (name, properties, required = []) => object({ operation: { const: name }, ...properties }, ['operation', ...required]);
   const control = (name, properties = {}) => operation(name, { operationId: text, ...properties }, ['operationId']);
   if (command === 'script') return variants('operation', [
-    { ...operation('start', { script: scriptSpecSchema(permissionNames), operationId: text, recordingDir: text, pythonPath: text }, ['script']),
+    { ...operation('start', { script: scriptSpecSchema(permissionNames), operationId: text, recordingDir: text, pythonPath: text,
+      waitMs: { ...integer(0, 60000), default: 0, description: 'Optionally wait for completion or an Agent question in this same call. Zero starts asynchronously; a timeout returns the running operationId.' } }, ['script']),
       allOf: [
         { if: { required: ['pythonPath'] }, then: { properties: { script: { properties: { language: { const: 'python' } } } } } },
         { if: { required: ['recordingDir'] }, then: { properties: { script: { properties: { policy: { properties: { restartPolicy: { const: 'none' } } } } } } } },
       ] },
     control('result'),
-    control('status', scriptRead), control('wait', { ...scriptRead, waitMs: { ...integer(0, 60000), default: 30000,
+    control('status', scriptRead), control('wait', { ...scriptRead,
+      until: { enum: ['attention', 'event'], default: 'attention', description: 'By default wait for completion, failure, cancellation, pause, or an Agent question. Select event for progress streaming.' },
+      waitMs: { ...integer(0, 60000), default: 30000,
       description: 'Upper bound of one wait call in milliseconds. To keep waiting, call wait again with the same operationId and afterSequence set to the last eventSequence.' } }),
-    ...['pause', 'resume', 'cancel'].map(name => control(name, scriptRead)),
-    operation('decide', { operationId: text, requestId: text, revision, decision: { contentMediaType: 'application/json', description: 'JSON answer to the current ctx.askAgent request; business data is preserved.' }, ...scriptRead }, ['operationId', 'requestId', 'revision', 'decision']),
+    control('pause', scriptRead),
+    control('resume', { ...scriptRead, recovery: require('../script/script-recovery').recoverySchema,
+      waitMs: { ...integer(0, 60000), default: 0,
+      description: 'Optionally resume and wait for completion or an Agent question in the same call, returning a ready result inline.' } }),
+    control('cancel', scriptRead),
+    operation('decide', { operationId: text, requestId: text, revision, decision: { contentMediaType: 'application/json', description: 'JSON answer to the current ctx.askAgent request; business data is preserved.' }, ...scriptRead,
+      waitMs: { ...integer(0, 60000), default: 0,
+        description: 'Optionally answer and wait for completion or the next Agent question in the same call. A timeout leaves the answered operation running; continue with wait, without submitting another decision.' } }, ['operationId', 'requestId', 'revision', 'decision']),
     operation('runtime-status', {}),
     operation('recipes', { name: { type: 'string', enum: require('../script/recipes').names } }),
   ]);

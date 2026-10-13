@@ -155,27 +155,43 @@ async function executeAndroidShell({ adb, serial, argv, actionId, timeoutMs=1500
   return runExecution({timeoutMs,mutation:true},()=>executeWithinScope({adb,serial,argv,actionId,port}));
 }
 async function executeWithinScope({adb,serial,argv,actionId,port}) {
+  const began = performance.now();
   const prepared = await port.prepare(argv,actionId);
   const identity=prepared;
+  const preparationMs = Math.round(performance.now() - began);
+  let phase = 'prepared', phaseBegan = performance.now(), queryCount = 0;
+  const diagnostics = () => ({ shellExecution: { identity, phase, preparationMs, queryCount,
+    phaseDurationMs: Math.round(performance.now() - phaseBegan), elapsedMs: Math.round(performance.now() - began) } });
   let failure;
+  let failureDetails;
   const result = await runDeviceEffect({kind:'android-shell',...identity,target:{adb,serial}},async()=>{
+    // Preparation only writes an inert job. If its budget expired before start,
+    // the Host can prove that it never submitted this command.
+    try { checkExecution(); }
+    catch (error) {
+      throw new CommandError(error.code, 'The shell command was prepared but not submitted.', {
+        dispatched: false, ambiguous: false, settled: true, details: diagnostics(),
+      });
+    }
     try {
-      checkExecution(); markExecutionDispatched();
+      markExecutionDispatched(); phase = 'start'; phaseBegan = performance.now();
       const submitted=await port.start(prepared);
       if (!submitted.ok) throw new Error(submitted.error);
+      phase = 'query'; phaseBegan = performance.now();
       while(true){
-        checkExecution();const receipt=await port.query(identity);
+        checkExecution(); queryCount++; const receipt=await port.query(identity);
         if(terminalReceipt(receipt,identity)) return { ...receipt,executionReceipt:settlementProof(receipt,identity) };
         if(receipt?.ok!==true||receipt.settled!==false) throw new Error(receipt?.error||'invalid_shell_execution_receipt');
         await executionSleep(60);
       }
-    } catch(error){failure=error.code||'shell_action_response_lost';}
+    } catch(error){failure=error.code||'shell_action_response_lost'; failureDetails=diagnostics();}
     let receipt;
     try{receipt=await withoutExecution(()=>port.cancel(identity));}catch(_){/* Missing cancellation remains unresolved. */}
     if(terminalReceipt(receipt,identity))return {...receipt,executionReceipt:settlementProof(receipt,identity)};
     return {ok:false,error:failure, ...identity,settled:false,dispatched:null,ambiguous:true,executionReceipt:null};
   },value=>settlementProof(value,identity));
-  if(!result.executionReceipt)throw Object.assign(new CommandError(result.error,'The original Android shell command has not confirmed completion.',{dispatched:null,ambiguous:true}),{settled:false,executionReceipt:null});
+  if(!result.executionReceipt)throw new CommandError(result.error,'The original Android shell command has not confirmed completion.',{
+    dispatched:null,ambiguous:true,settled:false,executionReceipt:null,details:failureDetails||diagnostics()});
   let output;
   try { output=await withoutExecution(()=>port.output(identity)); }
   catch (error) {

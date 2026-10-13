@@ -41,17 +41,25 @@ function createFlutterH5Port(invoke, { actionId } = {}) {
     const timeoutMs = options.timeoutMs ?? 5000, intervalMs = options.intervalMs ?? 250;
     const deadline = Date.now() + timeoutMs;
     let page, selected;
+    try {
     do {
       const tree = await snapshot(page?.adapterId ?? options.adapterId);
-      if (tree.ok !== true) return tree;
-      if (page && !isDeepStrictEqual(page, tree.pageRef)) return reject('reobserve_required');
-      page = tree.pageRef;
-      selected = h5.selectH5Node(tree, options.selector);
-      if (selected.ok || selected.error !== 'flutter_h5_selector_not_found') return selected;
+      if (tree.ok === true) {
+        if (page && (page.adapterGeneration !== tree.pageRef.adapterGeneration || page.runtimeEpoch !== tree.pageRef.runtimeEpoch)) return reject('reobserve_required');
+        page = tree.pageRef;
+        selected = h5.selectH5Node(tree, options.selector, undefined, { requireEnabled: false });
+        if (selected.ok || selected.error !== 'flutter_h5_selector_not_found') return selected;
+      } else {
+        selected = tree;
+        if (!['flutter_h5_adapter_not_found', 'flutter_h5_adapter_hidden', 'flutter_observation_busy'].includes(tree.error)) return tree;
+      }
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
       await executionSleep(Math.min(intervalMs, remaining));
     } while (Date.now() < deadline);
+    } catch (error) {
+      if (error.code !== 'deadline_exceeded') throw error;
+    }
     return { ...reject('flutter_h5_wait_timeout'), timeoutMs, lastResult: selected };
   }
   return { snapshot, control, wait,

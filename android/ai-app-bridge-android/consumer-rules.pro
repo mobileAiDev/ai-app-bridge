@@ -6,9 +6,11 @@
     public static final io.github.mobileaidev.aiappbridge.android.AiAppBridge INSTANCE;
     public static final void start(android.content.Context);
     public static final void setFlutterActionHandler(io.github.mobileaidev.aiappbridge.android.AiAppBridge$FlutterActionHandler);
+    public static final void registerFlutterActionHandler(android.app.Activity, io.github.mobileaidev.aiappbridge.android.AiAppBridge$FlutterActionHandler);
     public static final boolean clearFlutterActionHandler(io.github.mobileaidev.aiappbridge.android.AiAppBridge$FlutterActionHandler);
     public static final java.lang.String checkFlutterAction(java.lang.String);
     public static final void updateFlutterSnapshot(java.lang.String);
+    public static final boolean updateFlutterSnapshot(io.github.mobileaidev.aiappbridge.android.AiAppBridge$FlutterActionHandler, java.lang.String);
     public static final void recordFlutterCapture(java.lang.String, java.lang.String);
 }
 

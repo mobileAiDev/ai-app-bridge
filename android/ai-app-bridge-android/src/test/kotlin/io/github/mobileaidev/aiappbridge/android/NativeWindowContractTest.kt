@@ -29,6 +29,16 @@ class NativeWindowContractTest {
             window("hidden", "app", visible = false), window("presentation", "app", display = 1)), 0))
     }
 
+    @Test fun nonTouchableNoticesDoNotHideTheInteractiveWindow() {
+        val activity = window("activity", "app")
+        val notice = window("notice", "activity", 1000).copy(touchable = false)
+        val toast = window("toast", null, 2005).copy(touchable = false)
+        assertEquals(0, NativeWindowContract.foregroundIndex(listOf(activity, notice), 0))
+        assertEquals(0, NativeWindowContract.foregroundIndex(listOf(activity, toast), 0))
+        assertEquals(1, NativeWindowContract.foregroundIndex(listOf(activity, window("dialog", "app"), notice), 0))
+        assertEquals(2, NativeWindowContract.foregroundIndex(listOf(activity, notice, window("popup", "activity", 1000)), 0))
+    }
+
     @Test fun unknownOwnershipCannotExposeTheBackgroundOrGuessFromFocus() {
         for (overlay in listOf(window("missing-token", null), window("missing-parent", "absent", 1000),
             window("system-window", "app", 2038), window("cycle", "cycle", 1000))) {

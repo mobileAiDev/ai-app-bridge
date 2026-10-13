@@ -232,6 +232,25 @@ test('P4 explicit read-only permissions reject mutations', async () => {
   assert.equal(host.actionCallCount, 0);
 });
 
+test('P4 unknown action exposes executable recovery guidance without retrying or replacing the original result', async () => {
+  const raw = { ok: false, error: 'command_failed', ambiguous: true, dispatched: null,
+    executionReceipt: null, recovery: { error: 'uia_runtime_unreachable' },
+    guidance: { message: 'The original outcome is unknown.', nextActions: [
+      { command: 'uia-runtime', arguments: { serial: 'script-uia-loss', operation: 'start' } },
+    ] } };
+  let calls = 0;
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'script-uia-loss', packageName: 'pkg' },
+    actions: async () => { calls++; return raw; } });
+  const reply = await host.call('tap-uia', { selector: { text: 'Save' } });
+  assert.equal(calls, 1);
+  assert.equal(reply.result, raw);
+  assert.deepEqual(reply.guidance, raw.guidance);
+  assert.equal(reply.ok, false);
+  assert.equal(reply.ambiguous, true);
+  assert.equal(reply.dispatched, null);
+  assert.equal(reply.executionReceipt, null);
+});
+
 test('P4 transport error and ambiguous action do not retry', async () => {
   let throws = 0;
   const throwing = createScriptHostPort({

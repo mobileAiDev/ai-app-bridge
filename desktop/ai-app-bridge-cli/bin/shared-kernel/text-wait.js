@@ -8,7 +8,7 @@ const { runExecution, checkExecution, executionSleep } = require('./execution-sc
 const { readForegroundFeedback, withForeground } = require('./android-foreground-feedback');
 const { observationCoverage } = require('./observation-coverage');
 
-function validateTextConditions({ targetText, requireText = [], absentText = [], requireActivity, provider = 'native', absenceScope = 'complete' }) {
+function validateTextConditions({ targetText, requireText = [], anyText = [], absentText = [], requireActivity, provider = 'native', absenceScope = 'complete' }) {
   const invalid = (field, message) => { throw new CommandError('invalid_argument', message, { field }); };
   if (!['auto', 'native', 'flutter', 'uia'].includes(provider)) invalid('provider', 'provider must be auto, native, flutter, or uia.');
   if (!['complete', 'observed'].includes(absenceScope)) invalid('absenceScope', 'absenceScope must be complete or observed.');
@@ -18,10 +18,11 @@ function validateTextConditions({ targetText, requireText = [], absentText = [],
     if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || !value)) invalid(field, `${field} must be an array of non-empty exact labels.`);
   }
   const present = [...new Set([...(targetText === undefined ? [] : [targetText]), ...requireText])];
-  if (!present.length && !absentText.length && !requireActivity) invalid('targetText', 'Supply targetText, requireText, absentText, or requireActivity.');
-  if (!present.length && provider === 'auto') invalid('provider', 'Waiting for absence or Activity alone requires an explicit provider.');
+  if (!present.length && !anyText.length && !absentText.length && !requireActivity) invalid('targetText', 'Supply targetText, requireText, anyText, absentText, or requireActivity.');
+  if (!present.length && !anyText.length && provider === 'auto') invalid('provider', 'Waiting for absence or Activity alone requires an explicit provider.');
   if (present.some(value => absentText.includes(value))) invalid('absentText', 'The same label cannot be both required and absent.');
-  return { present, absent: [...new Set(absentText)], requireActivity, provider, absenceScope };
+  if (anyText.length && anyText.every(value => absentText.includes(value))) invalid('anyText', 'At least one alternative must not be required absent.');
+  return { present, ...(anyText.length ? { any: [...new Set(anyText)] } : {}), absent: [...new Set(absentText)], requireActivity, provider, absenceScope };
 }
 
 function visibleObservation(provider, rawTree) {
@@ -32,7 +33,8 @@ function visibleObservation(provider, rawTree) {
     if (node[`${key}Truncated`] === true) coverage = { ...coverage, status: 'partial', reason: 'label_truncated' };
     else add(node[key]);
   };
-  const unavailable = () => { throw new CommandError(rawTree?.error || 'observation_unavailable', rawTree?.message || `A valid ${provider} foreground tree is required.`); };
+  const unavailable = () => { throw new CommandError(rawTree?.error || 'observation_unavailable', rawTree?.message || `A valid ${provider} foreground tree is required.`,
+    { details: { observation: rawTree?.observation } }); };
   if (rawTree?.ok === false) unavailable();
   if (provider === 'native') {
     const window = foregroundNativeWindow(rawTree);
@@ -71,7 +73,9 @@ function checkTextConditions(labels, activity, conditions, coverage = { status: 
   const unexpected = conditions.absent.filter(value => labels.has(value));
   const activityMatches = !conditions.requireActivity || activity === conditions.requireActivity;
   const absenceProven = !conditions.absent.length || conditions.absenceScope === 'observed' || coverage.status === 'complete';
-  return { ok: !missing.length && !unexpected.length && activityMatches && absenceProven,
+  const anyMatched = conditions.any?.filter(value => labels.has(value));
+  return { ok: !missing.length && !unexpected.length && activityMatches && absenceProven && (!anyMatched || anyMatched.length > 0),
+    ...(anyMatched ? { anyMatched } : {}),
     missing, unexpected, activity, activityMatches, absenceProven, coverage,
     ...(conditions.absent.length ? { absenceScope: conditions.absenceScope } : {}) };
 }
@@ -84,11 +88,13 @@ async function waitForText({ options, readTree, readForeground }) {
   const deadline = Date.now() + timeoutMs;
   const startedAtMs = Date.now();
   let lastCheck = null;
+  let lastObservedLabels;
   let feedback;
   let rounds = 0, attempts = 0, successfulReads = 0, failedReads = 0;
   const failures = new Map();
   const foreground = previous => readForegroundFeedback(options,
-    () => conditions.requireActivity ? readForeground() : runExecution({ timeoutMs: Math.max(1, Math.min(500, Math.floor(timeoutMs / 4))) }, readForeground), previous);
+    (ctx, probe) => conditions.requireActivity ? readForeground(ctx, probe)
+      : runExecution({ timeoutMs: Math.max(1, Math.min(500, Math.floor(timeoutMs / 4))) }, () => readForeground(ctx, probe)), previous);
   const progress = () => ({ rounds, attempts, successfulReads, failedReads, elapsedMs: Date.now() - startedAtMs,
     failures: [...failures.values()] });
   try {
@@ -105,6 +111,7 @@ async function waitForText({ options, readTree, readForeground }) {
             const { labels, coverage } = visibleObservation(provider, rawTree);
             checkExecution();
             successfulReads++;
+            lastObservedLabels = labels;
             lastCheck = { ...checkTextConditions(labels, null, conditions, coverage), provider, observedAtMs: Date.now() };
             // Poll the requested evidence, not two WindowManager dumps on every
             // failed text check. Keep the initial and latest foreground facts.
@@ -121,7 +128,8 @@ async function waitForText({ options, readTree, readForeground }) {
           } catch (error) {
             checkExecution();
             failedReads++;
-            failures.set(provider, { provider, error: error.code || 'observation_unavailable', message: String(error.message).split('\n')[0], observedAtMs: Date.now() });
+            failures.set(provider, { provider, error: error.code || 'observation_unavailable', message: String(error.message).split('\n')[0], observedAtMs: Date.now(),
+              ...(error.details?.observation !== undefined ? { observation: error.details.observation } : {}) });
           }
         }
         await executionSleep(Math.min(intervalMs, Math.max(1, deadline - Date.now())));
@@ -129,8 +137,13 @@ async function waitForText({ options, readTree, readForeground }) {
     });
   } catch (error) {
     if (error.code !== 'deadline_exceeded') throw error;
+    const texts = lastObservedLabels ? [...lastObservedLabels] : [];
+    const preview = texts.slice(0, 12);
     return withForeground({ ok: false, error: successfulReads ? 'deadline_exceeded' : 'observation_unavailable',
-      deadlineExceeded: true, dispatched: false, ambiguous: false, timeoutMs, conditions, lastCheck, ...progress() }, feedback);
+      deadlineExceeded: true, dispatched: false, ambiguous: false, timeoutMs, conditions, lastCheck,
+      ...(lastObservedLabels ? { observedText: { labels: preview.map(text => text.slice(0, 160)),
+        truncated: texts.length > preview.length || preview.some(text => text.length > 160) } } : {}),
+      ...progress() }, feedback);
   }
 }
 

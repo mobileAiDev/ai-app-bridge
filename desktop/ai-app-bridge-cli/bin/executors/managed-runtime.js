@@ -58,7 +58,7 @@ async function preparePackage(browser = 'chromium', { home = executorHome(), run
   let locked = false;
   const startedAtMs = Date.now();
   try {
-    try { lock.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE'); locked = true; }
+    try { lock.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE'); locked = true; }
     catch (error) { if (error.errcode === 5) throw new CommandError('executor_preparing', 'This exact executor package is being prepared by another process.'); throw error; }
     const status = packageStatus(browser, home);
     if (status.available) return { ...status, reused: true, elapsedMs: Date.now() - startedAtMs };

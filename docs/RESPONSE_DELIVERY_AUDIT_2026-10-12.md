@@ -53,11 +53,11 @@
 
 最新 v2 回放中，归档有 21,888 份保持原形状、3,931 份为完整表示、26 份为部分视图；归档回包总字节下降 35.20%。完整对话样本 2,915 份全部首轮完整，其中 1 份使用 compact。所有 compact 均通过独立解码器逐字段与原始 JSON 对比；部分视图的范围与原始切片一致。3,958 条生成的原文读取提示均实际读取保存源并在预算内返回，但它们不是必须执行的额外步骤。此前 v1 回放的 29 份部分视图保留为历史基线，不覆盖原报告。
 
-最新真实组合流程的 45 份公开响应回放为 31 inline + 14 compact，45/45 首轮完整。此前唯一需要补读的 161,711 字节嵌套 Intent 响应现在为 72,198 字节，完整还原成功。观察恢复流程 13 份为 12 inline + 1 compact，也全部完整。这两组单独报告，不能当作无偏整体成功率或替代设备操作验收；没有为回放重跑设备动作。报告路径分别是 `/tmp/aab-response-delivery-shared-replay.json` 和 `/tmp/aab-scheduling-flow-replay.json`。
+最新真实组合流程的 45 份公开响应回放为 31 inline + 14 compact，45/45 首轮完整。此前唯一需要补读的 161,711 字节嵌套 Intent 响应现在为 72,198 字节，完整还原成功。观察恢复流程 13 份为 12 inline + 1 compact，也全部完整。这两组单独报告，不能当作无偏整体成功率或替代设备操作验收；没有为回放重跑设备动作。两份完整原始回放报告已从 `/tmp` 原字节归档，稳定路径与 SHA-256 见下面的 v2 计量摘要。
 
 这些是可回放样本中的交付保证，不是未来所有 App 的任务成功率，也没有证明所有任务都无需额外观察。它们证明“为了拿到同一条命令已经返回的内容而机械补读”不再是常态。采集时间、UI 动作正确性和业务覆盖另行验证。
 
-机器可读计量与测试状态见 [response-delivery-2026-10-12.json](validation/response-delivery-2026-10-12.json)。当前变更见 [public-reply.js](../desktop/ai-app-bridge-cli/bin/public-reply.js)、[tables.js](../desktop/ai-app-bridge-cli/bin/extraction/tables.js)、[overview.js](../desktop/ai-app-bridge-cli/bin/extraction/overview.js)。
+当前 v2 计量见 [response-delivery-v2-2026-10-12.json](validation/response-delivery-v2-2026-10-12.json)，对应 26 份部分视图；[response-delivery-2026-10-12.json](validation/response-delivery-2026-10-12.json) 保留 v1 的 29 份部分视图和当时测试状态。2026-10-13 只校正索引、校验计数并归档原始报告，没有重跑历史样本或设备动作。当前变更见 [public-reply.js](../desktop/ai-app-bridge-cli/bin/public-reply.js)、[tables.js](../desktop/ai-app-bridge-cli/bin/extraction/tables.js)、[overview.js](../desktop/ai-app-bridge-cli/bin/extraction/overview.js)。
 
 ## 整体任务继续跟踪
 
@@ -89,12 +89,12 @@ Web 状态为 2,705 bytes。它们是本次模拟器与本地 Runtime 的实际�
 
 结果为 25 份 inline、4 份完整无损表格、0 份部分预览。6 份 Intent 回复中 4 份表格化，最大原公开回复 115,774 bytes，最大交付 97,859 bytes；5 份 Native 点击最大 62,347 bytes，3 份 UIA 点击最大 46,587 bytes。8 份 Native 树最大 29,055 bytes。该特定流程没有因 auto 需要补读；它仍然是一个小型回归样本，不并入历史总体比例或称为新的独立使用者分布。明细保存在本机 `/tmp/aab-compound-device-20261012/response-replay.json`。
 
-## 工作流组合批次的新流程回放
+## 工作流组合批次的新流程回放（v1 历史结果）
 
 Script 托管安装 → 后台 Intent → Bridge/ADB 命令 → 子 Script → 原任务继续的 API 36 模拟器流程保存了 45 份完整公开回复。以原 envelope 重放默认 auto，没有重发设备动作：43 份 inline、1 份完整无损表格、1 份部分预览，44/45 首次完整交付。表格独立解码与原文深比较通过，inline 值也与原文一致，没有跳过找不到原文的回包。
 
 超预算的是 Intent 读取包含全部诊断的子 Script result，原正文 161,711 bytes，默认交付 43,723 bytes；该子 Script 的直接 result 为 104,411 bytes，可无损表格化为 73,388 bytes。control 保留子操作 ID/resultRef，原文只在 value.lastAction.result 保留一次，避免再复制到 control.lastAction。剩余 1 份在需要完整细节时仍需补读，不能写成全面消除往返。45 份是新流程的小型回归样本，不并入原 28,760 份历史口径；明细见本机 `/tmp/aab-composition-device-20261012/response-replay.json`。
 
-## 观察范围与恢复批次
+## 观察范围与恢复批次（v1 历史结果）
 
 深层 Native 树、300 字符长标签、部分范围断言、完整范围恢复和 Intent summary 的新模拟器流程另有 13 份完整公开回包。默认 auto 回放均为 inline，13/13 的 value 与原文深比较一致，缺失原文为 0。该样本独立于组合流程和历史总体；明细见本机 `/tmp/aab-observation-device-20261012/response-replay.json`。

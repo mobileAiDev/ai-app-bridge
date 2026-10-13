@@ -93,10 +93,6 @@ public final class UiaConnection implements AutoCloseable {
         }
     }
 
-    public void waitForIdle(long idleMs, long timeoutMs) throws Exception {
-        automation.waitForIdle(idleMs, timeoutMs);
-    }
-
     /** Clear the local window/node cache before querying the platform's current window inventory. */
     public List<AccessibilityWindowInfo> windows() throws Exception {
         if (Build.VERSION.SDK_INT >= 33) clearCache.invoke(interactionClient, automationConnectionId);

@@ -303,7 +303,15 @@ class AiAppBridge {
     final body = call.arguments?.toString() ?? '{}';
     switch (call.method) {
       case 'readSnapshot':
-        return _readSnapshot();
+        final request = jsonDecode(body);
+        if (request is! Map<String, dynamic>) {
+          return {'ok': false, 'error': 'invalid_flutter_snapshot_request'};
+        }
+        final scope = request['scope'] ?? 'full';
+        if (scope != 'full' && scope != 'operable') {
+          return {'ok': false, 'error': 'invalid_flutter_snapshot_scope'};
+        }
+        return _readSnapshot(operableOnly: scope == 'operable');
       case 'uiObservation':
         final request = jsonDecode(body);
         if (request is! Map<String, dynamic>)
@@ -719,7 +727,10 @@ class AiAppBridge {
       var textCount = 0;
       var actionCount = 0;
       final Set<Element> visited = HashSet<Element>.identity();
-      final Set<String> emittedTargets = <String>{};
+      final Map<String, Map<String, Object?>> emittedTargets = {};
+      // This traversal is synchronous. Several Elements often describe the
+      // same control/point; reuse that hit path only within this observation.
+      final hitTestPaths = <Offset, HitTestResult>{};
 
       void collectNode({
         required int depth,
@@ -728,6 +739,8 @@ class AiAppBridge {
         required Rect? bounds,
         required _ActionTarget? tapTarget,
         required _ActionTarget? scrollTarget,
+        required Map<String, Object?> controlState,
+        required bool isStateNode,
       }) {
         final String widgetType = widget.runtimeType.toString();
         if (sampleWidgetTypes.length < 40) {
@@ -771,7 +784,7 @@ class AiAppBridge {
         final bool isStandaloneScrollNode =
             widget is Scrollable && currentScrollTarget != null;
 
-        if (isActionNode || isStandaloneScrollNode) {
+        if (isActionNode || isStandaloneScrollNode || isStateNode) {
           // Text, RichText and Semantics can describe the same hit region.
           // Keep one observed target per label/value, action set and region.
           final String targetKey = jsonEncode(<Object?>[
@@ -782,7 +795,15 @@ class AiAppBridge {
           ]);
           // Equal rectangles do not identify a Scrollable: a PageView and its
           // nested list commonly cover the same viewport.
-          if (!isStandaloneScrollNode && !emittedTargets.add(targetKey)) return;
+          final existing = isStandaloneScrollNode ? null : emittedTargets[targetKey];
+          if (existing != null) {
+            // Semantics can add state below an already observed label. Preserve
+            // that information without creating a second tap target for it.
+            for (final entry in controlState.entries) {
+              existing.putIfAbsent(entry.key, () => entry.value);
+            }
+            return;
+          }
           final node = <String, Object?>{
             'id': _targets.identity(element),
             'widgetType': widgetType,
@@ -819,10 +840,12 @@ class AiAppBridge {
                 'bounds': _rectToJson(currentScrollTarget.bounds),
               },
             'depth': depth,
+            ...controlState,
           };
           _targets.observe(
               element, node, currentTapTarget, currentScrollTarget);
           nodes.add(node);
+          if (!isStandaloneScrollNode) emittedTargets[targetKey] = node;
         }
       }
 
@@ -831,6 +854,7 @@ class AiAppBridge {
         required int depth,
         _ActionTarget? tapTarget,
         _ActionTarget? scrollTarget,
+        Map<String, Object?> inheritedState = const {},
       }) {
         if (depth > _maxOperableDepth) {
           truncated = true;
@@ -847,12 +871,16 @@ class AiAppBridge {
         visitedCount += 1;
         final Widget widget = element.widget;
         final String widgetType = widget.runtimeType.toString();
+        final ownState = _widgetControlState(widget);
+        final controlState = ownState.isEmpty ? inheritedState : {...inheritedState, ...ownState};
+        final isStateNode = ownState.isNotEmpty;
         final bool needsBounds = _isTapWidget(widgetType) ||
             _isScrollWidget(widgetType) ||
             _isInputWidget(widgetType) ||
             _widgetText(element).isNotEmpty ||
-            _widgetValue(widget).isNotEmpty;
-        final Rect? bounds = needsBounds ? _visibleGlobalBounds(element) : null;
+            _widgetValue(widget).isNotEmpty || isStateNode;
+        final Rect? bounds = needsBounds
+            ? _visibleGlobalBounds(element, hitTestPaths: hitTestPaths) : null;
         final _ActionTarget? currentTapTarget =
             _isTapWidget(widgetType) && bounds != null
                 ? _ActionTarget(
@@ -871,6 +899,8 @@ class AiAppBridge {
           bounds: bounds,
           tapTarget: tapTarget,
           scrollTarget: scrollTarget,
+          controlState: controlState,
+          isStateNode: isStateNode,
         );
 
         element.visitChildren((Element child) {
@@ -879,6 +909,7 @@ class AiAppBridge {
             depth: depth + 1,
             tapTarget: currentTapTarget,
             scrollTarget: currentScrollTarget,
+            inheritedState: controlState,
           );
         });
       }
@@ -1173,7 +1204,7 @@ class AiAppBridge {
 
   Future<Map<String, Object?>> _runHideKeyboard() async {
     await _hideKeyboard();
-    return <String, Object?>{'ok': true};
+    return <String, Object?>{'ok': true, 'dismissalRequested': true};
   }
 
   Future<void> _hideKeyboard() async {
@@ -1181,6 +1212,15 @@ class AiAppBridge {
     _markActionDispatched();
     FocusManager.instance.primaryFocus?.unfocus();
     await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      // Android can finish hiding IME before Flutter receives updated insets.
+      // Ask the real window to redispatch them; do not assume a zero inset.
+      try {
+        await _channel.invokeMethod<Object?>('refreshWindowInsets');
+      } on MissingPluginException {
+        recordEvent(category: 'ui.interaction', name: 'keyboard.insetsRefreshUnavailable');
+      }
+    }
     await _waitForFrame();
   }
 
@@ -1488,7 +1528,7 @@ class AiAppBridge {
     );
   }
 
-  Rect? _visibleGlobalBounds(Element? element) {
+  Rect? _visibleGlobalBounds(Element? element, {Map<Offset, HitTestResult>? hitTestPaths}) {
     if (element == null || _hasNonInteractiveAncestor(element)) {
       return null;
     }
@@ -1504,7 +1544,7 @@ class AiAppBridge {
     }
     // A keyboard can cover the center of a large Scrollable while its editor
     // remains visible. Keep that live container and use its exposed geometry.
-    return _isHitTestReachable(renderObject, visibleBounds.center)
+    return _isHitTestReachable(renderObject, visibleBounds.center, hitTestPaths: hitTestPaths)
         ? visibleBounds
         : null;
   }
@@ -1540,14 +1580,18 @@ class AiAppBridge {
     return blocked;
   }
 
-  bool _isHitTestReachable(RenderObject? renderObject, Offset point) {
+  bool _isHitTestReachable(RenderObject? renderObject, Offset point, {Map<Offset, HitTestResult>? hitTestPaths}) {
     if (renderObject == null || !renderObject.attached) {
       return false;
     }
     try {
-      final HitTestResult result = HitTestResult();
-      // ignore: deprecated_member_use
-      GestureBinding.instance.hitTest(result, point);
+      var result = hitTestPaths?[point];
+      if (result == null) {
+        result = HitTestResult();
+        // ignore: deprecated_member_use
+        GestureBinding.instance.hitTest(result, point);
+        hitTestPaths?[point] = result;
+      }
       return result.path.any(
         (HitTestEntry entry) => identical(entry.target, renderObject),
       );
@@ -1783,18 +1827,27 @@ class AiAppBridge {
     return fields;
   }
 
-  Future<Map<String, Object?>> _readSnapshot() async {
+  Future<Map<String, Object?>> _readSnapshot({bool operableOnly = false}) async {
     if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
     if (_snapshotInFlight || _actionInFlight || _shortPointerInFlight) {
       return {'ok': false, 'error': 'flutter_observation_busy'};
     }
     _snapshotInFlight = true;
     final runtimeEpoch = _targets.runtimeEpoch;
-    final semantics = SemanticsBinding.instance.ensureSemantics();
+    // The operable tree comes from live Elements and hit testing. Generating
+    // diagnostic Widget/RenderObject/Semantics dumps is a separate read scope.
+    final semantics = operableOnly ? null : SemanticsBinding.instance.ensureSemantics();
     try {
-      await SchedulerBinding.instance.endOfFrame
-          .timeout(const Duration(milliseconds: 800));
-      await _refreshH5Snapshot();
+      final scheduler = SchedulerBinding.instance;
+      // Between frames, the live render tree describes the displayed layout.
+      // Reading it must not request another frame or wait for an animation to
+      // advance. A read during build/layout waits for that frame to finish;
+      // full diagnostics still need a frame to produce their Semantics tree.
+      if (!operableOnly || (scheduler.schedulerPhase != SchedulerPhase.idle &&
+          scheduler.schedulerPhase != SchedulerPhase.postFrameCallbacks)) {
+        await scheduler.endOfFrame.timeout(const Duration(milliseconds: 800));
+      }
+      if (!operableOnly) await _refreshH5Snapshot();
       if (!_enabled) return {'ok': false, 'error': 'flutter_runtime_shutdown'};
       if (_targets.runtimeEpoch != runtimeEpoch)
         return {'ok': false, 'error': 'flutter_runtime_changed'};
@@ -1803,14 +1856,22 @@ class AiAppBridge {
       return {
         'ok': true,
         'snapshot': {
-          ..._snapshot(),
+          if (operableOnly) ...{
+            'app': _app, 'route': _route, 'scope': 'operable',
+            'layout': {'operable': _operableTree()},
+            'updatedAtMs': DateTime.now().millisecondsSinceEpoch,
+          } else ..._snapshot(),
           'uiObservation': uiObservation({'operation': 'status'}),
         }
       };
     } on TimeoutException {
-      return {'ok': false, 'error': 'flutter_observation_timeout'};
+      final scheduler = SchedulerBinding.instance;
+      return {'ok': false, 'error': 'flutter_observation_timeout',
+        'observation': {'phase': 'frame', 'scope': operableOnly ? 'operable' : 'full',
+          'lifecycleState': scheduler.lifecycleState?.name, 'schedulerPhase': scheduler.schedulerPhase.name,
+          'framesEnabled': scheduler.framesEnabled, 'hasScheduledFrame': scheduler.hasScheduledFrame}};
     } finally {
-      semantics.dispose();
+      semantics?.dispose();
       _snapshotInFlight = false;
       // JSON snapshots need no live Element bindings between requests.
       if (!_actionInFlight) _targets.beginObservation();

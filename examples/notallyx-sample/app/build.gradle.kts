@@ -24,6 +24,12 @@ android {
     }
     buildTypes {
         debug { resValue("string", "app_name", "NotallyX AAB Sample") }
+        create("uia") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".uia"
+            resValue("string", "app_name", "NotallyX UIA Sample")
+            matchingFallbacks += listOf("debug")
+        }
         release { isMinifyEnabled = true; isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

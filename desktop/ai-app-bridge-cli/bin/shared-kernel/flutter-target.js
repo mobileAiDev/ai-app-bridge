@@ -2,7 +2,7 @@
 
 const { validBounds } = require('./native-target');
 const { selectionFailure } = require('./action-guidance');
-const flutterCandidates = nodes => nodes.map(node => ({ text: node.text, value: node.value, role: node.role,
+const flutterCandidates = nodes => nodes.map(node => ({ text: node.text, value: node.value, label: node.label, hint: node.hint, role: node.role,
   ...(node.textTruncated ? { textTruncated: true } : {}), ...(node.valueTruncated ? { valueTruncated: true } : {}),
   enabled: node.enabled, visible: node.visible, bounds: node.tap?.bounds || node.input?.bounds || node.scroll?.bounds,
   selector: { nodeId: String(node.id) } }));
@@ -12,14 +12,16 @@ function selectFlutterNode(rawTree, spec) {
   if (!Array.isArray(rawTree?.nodes) || rawTree.ok === false) return reject('observed_flutter_tree_required');
   const selector = spec.selector || (typeof spec.text === 'string' ? { text: spec.text } : null);
   const keys = Object.keys(selector || {});
-  if (keys.length !== 1 || !['text', 'nodeId'].includes(keys[0])
-    || typeof selector[keys[0]] !== 'string' || !selector[keys[0]]
+  if (!keys.length || keys.some(key => !['text', 'nodeId', 'label', 'hint', 'role', 'widgetType'].includes(key)
+    || typeof selector[key] !== 'string' || !selector[key]) || (keys.includes('nodeId') && keys.length !== 1)
     || spec.exact === false || (spec.selector && spec.text != null)) return reject('explicit_exact_flutter_selector_required');
   const action = spec.action === 'inputText' ? 'input' : ['scrollBy', 'scrollUntilText'].includes(spec.action) ? 'scroll' : 'tap';
   const operable = node => node.enabled !== false && node.visible !== false && node.offstage !== true && validBounds(node[action]?.bounds);
   const matches = rawTree.nodes.filter(node => keys[0] === 'nodeId'
     ? node.id != null && String(node.id) === selector.nodeId
-    : (node.textTruncated !== true && node.text === selector.text || node.valueTruncated !== true && node.value === selector.text) && operable(node));
+    : keys.every(key => key === 'text'
+      ? (node.textTruncated !== true && node.text === selector.text || node.valueTruncated !== true && node.value === selector.text)
+      : node[`${key}Truncated`] !== true && node[key] === selector[key]) && operable(node));
   if (rawTree.truncated === true && selector?.nodeId === undefined) return incompleteSelection(matches);
   if (matches.length !== 1) return selectionFailure(matches.length ? 'flutter_selector_not_unique' : 'flutter_selector_not_found', flutterCandidates(matches));
   const node = matches[0];

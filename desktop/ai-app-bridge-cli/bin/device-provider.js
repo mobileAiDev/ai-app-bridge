@@ -9,7 +9,7 @@ const path = require('path');
 const { runExecution, checkExecution, executionSleep, withoutExecution } = require('./shared-kernel/execution-scope');
 const { execFileBounded, httpRequestBounded } = require('./shared-kernel/execution-io');
 const { nativeWindow, nativeTargetRequest, selectNativeNode, explicitlyHidden, pointInsideBounds, validBounds } = require('./shared-kernel/native-target');
-const { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest, bindFlutterAction } = require('./shared-kernel/flutter-target');
+const { selectFlutterNode, flutterTargetRequest, bindFlutterAction } = require('./shared-kernel/flutter-target');
 const { executeFlutterAction, settlementProof: flutterSettlementProof } = require('./shared-kernel/flutter-execution');
 const { executeNativeAction, settlementProof: nativeSettlementProof } = require('./shared-kernel/native-execution');
 const { executeAndroidShell } = require('./shared-kernel/android-shell-execution');
@@ -24,6 +24,8 @@ const { runDeviceEffect } = require('./shared-kernel/device-mutation-lease');
 const { IOSBridgeProvider } = require('./ios-provider');
 const { discoverAndroidSdkEndpoint } = require('./shared-kernel/android-sdk-endpoint');
 const { createBridgeForward, verifyBridgeForward, removeBridgeForward } = require('./bridge-forward');
+const { ConnectionCache } = require('./connection-cache');
+const sdkConnections = new ConnectionCache();
 const { decodeXmlAttribute, parseXmlAttributes } = require('./shared-kernel/xml-attributes');
 const { visitAndroidUiHierarchyTags } = require('./android-uia-xml');
 const { readForegroundFeedback, withForeground, foregroundProbeFailure } = require('./shared-kernel/android-foreground-feedback');
@@ -112,12 +114,11 @@ async function runCommand(command, options, ctx) {
       const result = await flutterAction(ctx, {
         action: 'inputText',
         text: requiredInputString(options.text, 'text'),
+        ...(options.hideKeyboard === undefined ? {} : { hideKeyboard: booleanOption(options.hideKeyboard) }),
+        ...(options.focus === undefined ? {} : { focus: booleanOption(options.focus) }),
         ...(options.selector ? { selector: options.selector } : {}),
         ...(options.tapX !== undefined && options.tapY !== undefined ? { x: Number(options.tapX), y: Number(options.tapY) } : {}),
       }, options);
-      if (result.ok && booleanOption(options.hideKeyboard)) {
-        result.keyboard = await hideKeyboard(ctx, options);
-      }
       return result;
     }
     case 'scroll-flutter':
@@ -263,15 +264,24 @@ function adbArgs(ctx, args) {
 }
 
 async function ensureForward(ctx) {
-  // Resolve the device before reading its App-private endpoint. Every request observes
-  // the current runtime; no cached port or retry can select a previous App process.
+  // Cache discovery, not route authority. The current ADB mapping is checked for
+  // every request; a runtime socket is unique to its package/process generation.
   if (!ctx.serial) ctx.serial = (await adb(ctx, ['get-serialno'])).stdout.trim();
   ctx.endpoint = null;
   ctx.hostPort = null;
-  const endpoint = await discoverAndroidSdkEndpoint(ctx, adb);
+  ctx.sdkConnectionKey = JSON.stringify([ctx.adb, ctx.serial, ctx.packageName, ctx.explicitPort ? ctx.port : null]);
+  let discovered = false;
+  const connection = await sdkConnections.getOrCreate(ctx.sdkConnectionKey, async () => {
+    const endpoint = await discoverAndroidSdkEndpoint(ctx, adb);
+    const forward = { ...await createBridgeForward(ctx, endpoint, adb), endpoint };
+    // Reused mappings were already verified by createBridgeForward's listing.
+    if (!forward.reused) await verifyBridgeForward(ctx, forward, adb);
+    discovered = true;
+    return forward;
+  });
+  if (!discovered) await verifyBridgeForward(ctx, connection, adb);
+  const { endpoint } = connection;
   ctx.endpoint = endpoint;
-  const connection = { ...await createBridgeForward(ctx, endpoint, adb), endpoint };
-  await verifyBridgeForward(ctx, connection, adb);
   ctx.hostPort = connection.hostPort;
   return {
     ok: true,
@@ -479,7 +489,7 @@ async function bridgeGet(ctx, requestPath) {
     const payload = JSON.parse(body);
     verifyBridgeTargetPackage(ctx, payload, requestPath);
     return payload;
-  });
+  }, { readOnly: true });
 }
 
 async function bridgePost(ctx, requestPath, payload) {
@@ -492,12 +502,27 @@ async function bridgePost(ctx, requestPath, payload) {
   }));
 }
 
-async function bridgeRequest(ctx, request, { ensureForward: prepare = ensureForward } = {}) {
-  checkExecution();
-  try { await prepare(ctx); }
-  catch (error) { error.aiAppBridgeRequestNotStarted = true; throw error; }
-  checkExecution();
-  return request();
+async function bridgeRequest(ctx, request, { ensureForward: prepare = ensureForward, readOnly = false } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    checkExecution();
+    try { await prepare(ctx); }
+    catch (error) {
+      if (ctx.sdkConnectionKey) sdkConnections.invalidate(ctx.sdkConnectionKey);
+      error.aiAppBridgeRequestNotStarted = true;
+      throw error;
+    }
+    checkExecution();
+    try {
+      const result = await request();
+      return attempt && result && typeof result === 'object'
+        ? { ...result, transportRecovery: { code: 'sdk_connection_rediscovered', readAttempts: attempt + 1 } } : result;
+    } catch (error) {
+      if (ctx.sdkConnectionKey) sdkConnections.invalidate(ctx.sdkConnectionKey);
+      // Only a disconnected read is repeated, once, after fresh discovery.
+      // A submitted action, timeout or cancellation must keep its original receipt.
+      if (!readOnly || attempt || !['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'provider_disconnected'].includes(error.code)) throw error;
+    }
+  }
 }
 
 function bridgeUrl(ctx, requestPath) {
@@ -1387,7 +1412,7 @@ async function bridgeTree(ctx, options = {}) {
 
 async function uiaTreeCommand(ctx, options = {}) {
   const xml = await uiaTree(ctx);
-  return wantsCompactTree(options) ? compactUiaTree(xml, options) : xml;
+  return options.packageFilter || wantsCompactTree(options) ? compactUiaTree(xml, options) : xml;
 }
 
 function wantsCompactTree(options = {}) {
@@ -1546,7 +1571,7 @@ function compactBridgeNode(node, extra) {
 }
 
 function compactUiaTree(xml, options = {}) {
-  const compactOptions = compactTreeOptions(options);
+  const compactOptions = { ...compactTreeOptions(options), packageFilter: options.packageFilter };
   const text = String(xml || '');
   const snapshot = uiaSnapshotIdentity(text);
   const hierarchy = parseXmlAttributes(text.match(/<hierarchy\b[^>]*>/)?.[0] || '');
@@ -1567,6 +1592,8 @@ function compactUiaTree(xml, options = {}) {
     ...(hierarchy['aab-warnings'] ? { warnings: JSON.parse(hierarchy['aab-warnings']) } : {}),
     updatedAtMs: Date.now(),
   };
+
+  if (compactOptions.packageFilter) result.coverage.projection.filtered = true;
 
   const ancestors = [];
   visitAndroidUiHierarchyTags(text, ({ tag, tagName, closing, selfClosing }) => {
@@ -1627,6 +1654,7 @@ function compactUiaNode(attrs, depth, sequence) {
 }
 
 function uiaNodeMatchesCompactFilters(node, options, viewport) {
+  if (options.packageFilter && node.packageName !== options.packageFilter) return false;
   if (options.visibleOnly && (node.effectiveVisible === false || !boundsInViewport(node.bounds, viewport))) return false;
   return compactFiltersMatch({
     text: compactString(node.text || node.contentDescription || ''),
@@ -1644,6 +1672,7 @@ function compactFiltersMatch(values, options) {
 
 function compactTreeResultOptions(options) {
   return {
+    packageFilter: options.packageFilter,
     textFilter: options.textFilter || undefined,
     resourceIdFilter: options.resourceIdFilter || undefined,
     classFilter: options.classFilter || undefined,
@@ -1772,6 +1801,10 @@ async function foregroundWindow(ctx, dependencies = {}) {
     };
     const window = observed = await readWindow();
     if (!window.ok) return window;
+    // Advisory UI feedback needs a current window snapshot, not five ADB
+    // calls proving process ownership. Explicit ownership queries keep the
+    // full verification below; native executors validate their own targets.
+    if (dependencies.verification === 'window') return { ...window, verification: 'window', observedAtMs: Date.now() };
     const processArgs = ['shell', 'cat', '/proc/sys/kernel/random/boot_id',
       `/proc/${window.ownerPid}/stat`, `/proc/${window.ownerPid}/status`];
     source = '/proc boot_id stat status';
@@ -1891,7 +1924,7 @@ async function tap(ctx, x, y, options, dependencies = {}) {
     return { ok: true, transport: 'adb', x, y, ...executionFields(result) };
   }
 
-  const feedback = await readForegroundFeedback(ctx, readForeground);
+  const feedback = dependencies.foregroundFeedback ?? await readForegroundFeedback(ctx, readForeground);
   try {
 
     if (options?.scope === 'device') {
@@ -1965,14 +1998,17 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
           coordinateSpace: 'physical-pixels' };
       }
       if (provider === 'flutter') {
-        const selected = selectFlutterNode(await (dependencies.flutterNodes || flutterNodes)(ctx), { text: targetText });
+        const observedTree = await (dependencies.flutterNodes || flutterNodes)(ctx);
+        if (observedTree?.ok === false) throw new CommandError(observedTree.error || 'observation_unavailable',
+          observedTree.message || 'The Flutter observation failed.', { details: { observation: observedTree } });
+        const selected = selectFlutterNode(observedTree, { text: targetText });
         if (selected.error === 'flutter_selector_not_unique') throw new CommandError('target_ambiguous', selected.message,
           { details: { matched: selected.matched, candidates: selected.candidates } });
         if (!selected.ok) {
           if (selected.error === 'flutter_selector_not_found') return null;
           throw new CommandError(selected.error, 'The Flutter target could not be observed.');
         }
-        return { ...selected, guarded: flutterTargetRequest(selected.node, { text: targetText }), identity: flutterNodeIdentity(selected.node), coordinateSpace: 'flutter-logical-pixels' };
+        return { ...selected, observedTree, guarded: flutterTargetRequest(selected.node, { text: targetText }), coordinateSpace: 'flutter-logical-pixels' };
       }
       const xml = await (dependencies.uiaTree || uiaTree)(ctx);
       const node = findUiaNodeByAny(xml, { texts: [targetText], exact: options.exact !== false, requireUnique: true, packageName: ctx.packageName });
@@ -1991,30 +2027,22 @@ async function tapText(ctx, targetText, options = {}, dependencies = {}) {
       }
       observations.push({ provider, status: match ? 'matched' : 'not-found', observedAtMs: Date.now() });
       if (!match) continue;
-      // A selected provider owns this attempt. Fresh selection may reject it but
-      // cannot trigger an input through another provider.
-      let currentMatch = match;
-      try {
-        if (provider === 'flutter') currentMatch = await readMatch(provider);
-      } catch (error) {
-        checkExecution();
-        return reject(error.code || 'observation_unavailable', error.message, error.details);
-      }
-      if (!currentMatch || provider === 'flutter' && JSON.stringify(match.identity) !== JSON.stringify(currentMatch.identity)) return reject('reobserve_required', 'The selected target changed before dispatch.');
-      match = currentMatch;
+      // The selected SDK validates this exact reference against its live target.
+      // Repeated Host captures add latency without closing the dispatch race.
       if (['native', 'flutter'].includes(provider) && !match.guarded.ok) return withForeground({ ...match.guarded, targetText, provider, observations }, feedback);
       if (provider !== 'uia' && (!Number.isFinite(match.x) || !Number.isFinite(match.y) || match.x < 0 || match.y < 0)) return reject('invalid_observed_coordinates');
-      const current = await readForegroundFeedback(ctx, readForeground, feedback.foregroundObservations[0]);
       checkExecution();
       const revalidatedAtMs = Date.now();
+      const actionDependencies = { foregroundFeedback: { foregroundObservations: [], warnings: [] },
+        ...(provider === 'flutter' ? { observedTree: match.observedTree } : {}) };
       const result = provider === 'uia'
         ? await (dependencies.uiaTap || uiaTap)(ctx, match.binding, options)
         : provider === 'flutter'
-        ? await (dependencies.flutterAction || flutterAction)(ctx, { action: 'tapTarget', ...match.guarded.request }, options)
+        ? await (dependencies.flutterAction || flutterAction)(ctx, { action: 'tapTarget', ...match.guarded.request }, options, actionDependencies)
         : await (dependencies.tap || tap)(ctx, Math.round(match.x), Math.round(match.y), { ...options,
-          nativeTarget: match.guarded.request, scope: 'app' });
+          nativeTarget: match.guarded.request, scope: 'app' }, actionDependencies);
       return withForeground({ ...result, targetText, provider, source: provider === 'native' ? 'bridge-tree' : provider === 'flutter' ? 'flutter-operable-tree' : 'uia-node-runtime',
-        ...(provider === 'uia' ? {} : { coordinateSpace: match.coordinateSpace }), selected: match.node, ...(provider === 'native' ? { boundAtMs: revalidatedAtMs } : { revalidatedAtMs }), observations }, feedback, current);
+        ...(provider === 'uia' ? {} : { coordinateSpace: match.coordinateSpace }), selected: match.node, boundAtMs: revalidatedAtMs, observations }, feedback);
     }
     return reject('target_not_found', 'No observed provider has a unique operable match.');
   } catch (error) {
@@ -2126,9 +2154,8 @@ async function bindNativeCommandTarget(ctx, selector, editable, dependencies) {
     if (!selected.ok) return withForeground({ ...selected, ambiguous: false }, feedback);
     const binding = nativeTargetRequest(selected.node, selector);
     if (!binding.ok) return withForeground(binding, feedback);
-    const current = await readForegroundFeedback(ctx, readForeground, feedback.foregroundObservations[0]);
     checkExecution();
-    return withForeground({ ok: true, selected, nativeTarget: binding.request }, feedback, current);
+    return withForeground({ ok: true, selected, nativeTarget: binding.request }, feedback);
   } catch (error) {
     Object.assign(error, withForeground({}, feedback, error));
     throw error;
@@ -2139,8 +2166,9 @@ async function tapNative(ctx, options = {}, dependencies = {}) {
   const binding = await bindNativeCommandTarget(ctx, options.selector, false, dependencies);
   if (!binding.ok) return binding;
   const { selected } = binding;
-  const result = await tap(ctx, selected.x, selected.y, { ...options, nativeTarget: binding.nativeTarget, scope: 'app' }, dependencies);
-  return withForeground({ ...result, provider: 'native', source: 'bridge-tree', selector: options.selector }, binding);
+  const result = await tap(ctx, selected.x, selected.y, { ...options, nativeTarget: binding.nativeTarget, scope: 'app' },
+    { ...dependencies, foregroundFeedback: binding });
+  return { ...result, provider: 'native', source: 'bridge-tree', selector: options.selector };
 }
 
 async function inputNativeText(ctx, text, options = {}, dependencies = {}) {
@@ -2148,8 +2176,8 @@ async function inputNativeText(ctx, text, options = {}, dependencies = {}) {
     throw new CommandError('invalid_argument', 'A Native selector and input coordinates are mutually exclusive.', { field: 'selector' });
   const binding = await bindNativeCommandTarget(ctx, options.selector, true, dependencies);
   if (!binding.ok) return binding;
-  const result = await inputText(ctx, text, { ...options, nativeTarget: binding.nativeTarget }, dependencies);
-  return withForeground({ ...result, provider: 'native', source: 'bridge-tree', selector: options.selector }, binding);
+  const result = await inputText(ctx, text, { ...options, nativeTarget: binding.nativeTarget }, { ...dependencies, foregroundFeedback: binding });
+  return { ...result, provider: 'native', source: 'bridge-tree', selector: options.selector };
 }
 
 async function tapUia(ctx, options = {}) {
@@ -2165,11 +2193,10 @@ async function tapUia(ctx, options = {}) {
         message: selected.message || `UIAutomator could not resolve this selector: ${selected.error}.`, selector: options.selector }, feedback);
       binding = observedUiaTarget(xml, selected.node, options.selector, ctx.packageName);
     }
-    const current = await readForegroundFeedback(ctx, foregroundWindow, feedback.foregroundObservations[0]);
     checkExecution();
     const result = await uiaTap(ctx, binding, options);
     return withForeground({ ...result, provider: 'uia', source: 'uia-node-runtime',
-      ...(options.targetRef ? { targetRef: options.targetRef } : { selector: options.selector }) }, feedback, current);
+      ...(options.targetRef ? { targetRef: options.targetRef } : { selector: options.selector }) }, feedback);
   } catch (error) {
     Object.assign(error, withForeground({}, feedback, error));
     throw error;
@@ -2244,15 +2271,15 @@ function escapeRegExp(value) {
 async function waitText(ctx, targetText, options = {}, dependencies = {}) {
   return require('./shared-kernel/text-wait').waitForText({
     options: { ...options, targetText, packageName: ctx.explicitPackageName ? ctx.packageName : undefined },
-    readForeground: () => (dependencies.foregroundWindow || foregroundWindow)(ctx),
+    readForeground: (_, probe) => (dependencies.foregroundWindow || foregroundWindow)(ctx, probe),
     readTree: provider => provider === 'native' ? (dependencies.bridgeTree || bridgeTree)(ctx)
       : provider === 'flutter' ? (dependencies.flutterNodes || flutterNodes)(ctx) : (dependencies.uiaTreeOnce || uiaTreeOnce)(ctx),
   });
 }
 
 async function flutterNodes(ctx) {
-  const status = await bridgeGet(ctx, '/v1/flutter/snapshot');
-  if (status.ok === false) return status;
+  const status = await bridgeGet(ctx, '/v1/flutter/snapshot?scope=operable');
+  if (status.ok === false) return { ...status, dispatched: false, ambiguous: false };
   return status.flutter?.layout?.operable || { ok: false, error: 'no_flutter_operable_tree' };
 }
 
@@ -2269,10 +2296,11 @@ function flutterTapPayload(options) {
   return { action: 'tapAt', ...point };
 }
 
-async function flutterAction(ctx, payload, options = {}) {
-  const feedback = await readForegroundFeedback(ctx, foregroundWindow);
+async function flutterAction(ctx, payload, options = {}, dependencies = {}) {
+  const feedback = dependencies.foregroundFeedback ?? await readForegroundFeedback(ctx, foregroundWindow);
   try {
-    const tree = await flutterNodes(ctx);
+    const tree = dependencies.observedTree ?? await flutterNodes(ctx);
+    if (tree.ok === false) return withForeground({ ...tree, dispatched: false, ambiguous: false }, feedback);
     if (['tapText', 'tapTarget', 'inputText', 'scrollBy', 'scrollUntilText'].includes(payload.action) && !payload.targetRef) {
       const bound = bindFlutterAction(tree, payload);
       if (!bound.ok) return withForeground(bound, feedback);
@@ -2368,19 +2396,28 @@ const h5Scroll = (ctx, options) => h5Control(ctx, 'scroll', options);
 async function h5Wait(ctx, options) {
   const timeoutMs = options.timeoutMs ?? 10000, intervalMs = options.intervalMs ?? 500;
   const deadline = Date.now() + timeoutMs;
-  let webViewId = options.webViewId, lastResult;
+  let webViewId = options.webViewId, lastResult, attempts = 0;
+  try {
   do {
     checkExecution();
+    attempts++;
     const tree = await h5Dom({ ...ctx, httpTimeoutMs: Math.max(1, Math.min(ctx.httpTimeoutMs, deadline - Date.now())) }, { webViewId });
-    if (tree.ok !== true) return tree;
-    webViewId = tree.pageRef.webViewId;
-    lastResult = h5Target.selectH5Node(tree, options.selector);
-    if (lastResult.ok || lastResult.error !== 'android_h5_selector_not_found') return lastResult;
+    if (tree.ok === true) {
+      webViewId = tree.pageRef.webViewId;
+      lastResult = h5Target.selectH5Node(tree, options.selector, undefined, { requireEnabled: false });
+      if (lastResult.ok || lastResult.error !== 'android_h5_selector_not_found') return { ...lastResult, attempts };
+    } else {
+      lastResult = tree;
+      if (!['android_h5_webview_not_found', 'no_current_activity', 'h5_eval_timeout', 'main_thread_timeout'].includes(tree.error)) return { ...tree, attempts };
+    }
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
     await sleep(Math.min(intervalMs, remaining));
   } while (Date.now() < deadline);
-  return { ok: false, error: 'h5_wait_timeout', timeoutMs, lastResult, dispatched: false, ambiguous: false };
+  } catch (error) {
+    if (error.code !== 'deadline_exceeded') throw error;
+  }
+  return { ok: false, error: 'h5_wait_timeout', timeoutMs, attempts, lastResult, dispatched: false, ambiguous: false };
 }
 
 function flutterH5Port(ctx) {
@@ -2548,7 +2585,7 @@ function shouldDismissKeyboardForPoint({ point, viewport, keyboardVisible }) {
 
 async function inputText(ctx, text, options = {}, dependencies = {}) {
   const request = inputTextBridgePayload(text, options);
-  const feedback = await readForegroundFeedback(ctx, dependencies.foregroundWindow || foregroundWindow);
+  const feedback = dependencies.foregroundFeedback ?? await readForegroundFeedback(ctx, dependencies.foregroundWindow || foregroundWindow);
   try {
     let result;
     try { result = await nativeAction(ctx, options.nativeTarget ? '/v1/action/input-target' : '/v1/action/input-text', request, dependencies); }
@@ -2615,7 +2652,7 @@ async function gestureNative(ctx, payload, options = {}, dependencies = {}) {
 async function nativeGesture(ctx, payload, dependencies = {}) {
   checkExecution();
   if (!ctx.explicitPackageName) return { ok: false, error: 'native_target_requires_app_scope', dispatched: false, ambiguous: false };
-  const feedback = await readForegroundFeedback(ctx, dependencies.foregroundWindow || foregroundWindow);
+  const feedback = dependencies.foregroundFeedback ?? await readForegroundFeedback(ctx, dependencies.foregroundWindow || foregroundWindow);
   try {
     const result = await nativeAction({ ...ctx, httpTimeoutMs: payload.durationMs + 3500 }, '/v1/action/gesture-target', payload, dependencies);
     return withForeground({ ...result, transport: 'bridge' }, feedback);
@@ -2828,16 +2865,18 @@ async function startActivity(ctx, component, options = {}, extraResult = {}, dep
     ok: true,
     transport: 'adb',
     component,
+    completionScope: booleanOption(options.waitForLaunch) ? 'activity-launch' : 'activity-start-request',
+    waitedForLaunch: booleanOption(options.waitForLaunch),
     ...extraResult,
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
     ...executionFields(result),
   };
-  if (!ctx.packageName) return launched;
+  if (!ctx.packageName || !booleanOption(options.waitForLaunch)) return launched;
   const deadline = Date.now() + Number(options.foregroundTimeoutMs || 8000);
   let foreground = null;
   while (Date.now() < deadline) {
-    foreground = await readForeground(ctx);
+    foreground = await readForeground(ctx, { verification: 'window' });
     if (foreground && foreground.ok && foreground.packageName === ctx.packageName) {
       return withForeground({ ...launched, foreground }, await readForegroundFeedback(ctx, async () => foreground));
     }
@@ -2847,7 +2886,8 @@ async function startActivity(ctx, component, options = {}, extraResult = {}, dep
 }
 
 function buildAmStartArgs(component, options = {}) {
-  const args = ['shell', 'am', 'start', '-W'];
+  const args = ['shell', 'am', 'start'];
+  if (booleanOption(options.waitForLaunch)) args.push('-W');
   if (booleanOption(options.clearTask)) args.push('--activity-clear-task');
   if (options.action) args.push('-a', options.action);
   for (const category of optionList(options.category)) {

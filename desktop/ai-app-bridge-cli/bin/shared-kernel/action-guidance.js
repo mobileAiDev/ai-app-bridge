@@ -45,15 +45,38 @@ function withActionGuidance(command, args, value) {
     if (value.details?.candidateQuery) calls.push(call('web-dom', value.details.candidateQuery));
   }
   const code = value.error;
+  const managedProvider = { 'aab.flutter-execution/v1': 'flutter', 'aab.h5-execution/v1': 'h5' }[value.request?.execution?.schemaVersion];
   let message;
-  if (command === 'wait-text' && code && value.lastCheck?.absenceProven === false
+  if (code && value.source === 'uia-node-runtime' && value.ambiguous === true
+    && value.recovery?.error === 'uia_runtime_unreachable') {
+    message = 'UIA disconnected during this action; its outcome is unknown. Check for a retained original receipt, restart UIA and inspect the screen before deciding whether to repeat it. If startup remains stuck, force-reset archives the history. These suggestions do not replay the action.';
+    calls.push(call('device-ownership', { operation: 'receipt', runtimeEpoch: value.runtimeEpoch, actionId: value.actionId }),
+      call('uia-runtime', { operation: 'start' }), call('uia-tree', { compact: true, maxNodes: 200 }),
+      call('uia-runtime', { operation: 'force-reset' }));
+  } else if (code && managedProvider && args?.serial && value.ambiguous === true && value.settled === false) {
+    message = `${managedProvider === 'flutter' ? 'Flutter' : 'WebView'} did not confirm this action. Its outcome stays unknown. Inspect the original archive and current UI; launch the app if it exited. If stuck, force-stop stops related Host tasks. These suggestions do not replay the action.`;
+    calls.push(call('device-ownership', { operation: 'status' }),
+      call('device-ownership', { operation: 'archives', actionId: value.actionId }),
+      call(managedProvider === 'flutter' ? 'flutter-nodes' : 'h5-dom'), call('launch-app'),
+      call('device-ownership', { operation: 'force-stop' }));
+  } else if (code && value.details?.shellExecution && value.ambiguous === true) {
+    message = 'Shell completion is unknown. Inspect the current screen and the original action record before choosing whether to retry. No command was replayed.';
+    calls.push(call('device-ownership', { operation: 'status' }));
+    calls.push(call('device-ownership', { operation: 'archives', actionId: value.details.shellExecution.identity.actionId }));
+    calls.push(call('uia-tree', { compact: true, maxNodes: 200 }));
+  } else if (command === 'wait-text' && code && value.lastCheck?.absenceProven === false
     && !value.lastCheck.missing?.length && !value.lastCheck.unexpected?.length && value.lastCheck.activityMatches) {
     message = 'No forbidden label was found in the returned portion, but the provider did not establish complete coverage. Inspect the tree or choose absenceScope:observed to test only that portion.';
     const observe = { native: 'tree', uia: 'uia-tree', flutter: 'flutter-nodes' }[value.lastCheck.provider];
     if (observe) calls.push(call(observe));
     calls.push(call('wait-text', { ...args, absenceScope: 'observed' }));
   } else if (command === 'wait-text' && code === 'observation_unavailable') {
-    message = 'Observation reads were retried within the original deadline. Check failures for the provider cause, diagnose the connection, or choose another provider; no action was replayed.';
+    message = 'Observation reads failed within the deadline. Inspect failures, use UIA to check system dialogs, or diagnose the app connection; no action was replayed.';
+    calls.push(call('uia-tree', { compact: true, maxNodes: 200 }));
+    calls.push(call('doctor', { platform: 'android', serial: args.serial, packageName: args.packageName }));
+  } else if (command === 'wait-text' && code === 'deadline_exceeded') {
+    message = 'Expected text did not appear before the deadline. observedText summarizes the last successful read. Inspect current system/app windows before choosing recovery or a longer wait; no action was replayed.';
+    calls.push(call('uia-tree', { compact: true, maxNodes: 200 }));
     calls.push(call('doctor', { platform: 'android', serial: args.serial, packageName: args.packageName }));
   } else if (['runtime_owner_unidentified', 'runtime_owner_invalid', 'runtime_owner_mismatch'].includes(code)) {
     message = 'Inspect the Host paths and OS process identity with doctor. If both owner records are lost, runtime --operation force-stop --owner-pid <PID> selects the intended Bridge Host; it does not depend on a working endpoint.';
@@ -83,12 +106,25 @@ function withActionGuidance(command, args, value) {
     && ['invalid_argument', 'unsupported_argument'].includes(code) && /^selector(?:\.|$)/.test(value.field || '')) {
     message = 'The app SDK did not accept this selector. Older SDKs support one exact text, resourceName or contentDescription condition; update the app SDK for compound queries and direct container scopes.';
     calls.push(call('tree', { compact: true }));
+  } else if (['flutter_observation_timeout', 'flutter_observation_busy', 'flutter_runtime_changed',
+    'flutter_action_handler_absent', 'flutter_runtime_shutdown'].includes(code)) {
+    const ios = command.startsWith('ios-');
+    message = 'Flutter controls are not currently available. Read them again after app readiness, or inspect the app connection and system dialogs. The original action was not replayed; an unknown action outcome still needs verification.';
+    calls.push(call(ios ? 'ios-flutter-nodes' : 'flutter-nodes'));
+    calls.push(ios ? call('doctor', { platform: 'ios' }) : call('uia-tree', { compact: true, maxNodes: 200 }));
   } else if (['uia_stale_reference', 'uia_stale_runtime', 'uia_reobserve_required', 'uia_bound_observation_required', 'uia_tree_changed',
+    'uia_reference_selector_mismatch',
     'uia_focused_window_unavailable', 'uia_focused_root_unavailable', 'uia_target_not_found', 'uia_selector_not_found',
     'uia_scope_not_found', 'uia_scope_anchor_not_found', 'uia_scope_ancestor_not_found'].includes(code)) {
     message = 'The stored UIA target is unavailable. Read current nodes and choose a new targetRef; screenshot and coordinate tap are also available.';
     calls.push(call('uia-tree', { compact: true }));
-  } else if (['uia_runtime_unreachable', 'uia_runtime_start_failed', 'uia_runtime_version_mismatch', 'uia_action_capacity_exhausted'].includes(code)) {
+  } else if (code === 'uia_runtime_not_ready' || code === 'uia_runtime_already_running') {
+    message = 'UIA readiness is not confirmed. Check status; start can wait for the same process without replaying actions. If it remains stuck, force-reset archives the UIA history and releases its process.';
+    calls.push(call('uia-runtime', { operation: 'status' }), call('uia-runtime', { operation: 'start', timeoutMs: 30000 }), call('uia-runtime', { operation: 'force-reset' }));
+  } else if (code === 'uia_runtime_version_mismatch') {
+    message = 'The installed UIA bundle differs from the running process. Check status, stop the old runtime after its actions settle, then start this bundle. A normal stop retains the action history.';
+    calls.push(call('uia-runtime', { operation: 'status' }), call('uia-runtime', { operation: 'stop' }), call('uia-runtime', { operation: 'start' }));
+  } else if (['uia_runtime_unreachable', 'uia_runtime_start_failed', 'uia_action_capacity_exhausted'].includes(code)) {
     message = 'Inspect or restart the UIA runtime. If it remains stuck, force-reset archives its history with unknown outcomes and starts fresh on the next observation.';
     calls.push(call('uia-runtime', { operation: 'start' }), call('uia-runtime', { operation: 'force-reset' }));
   } else if (['target_busy', 'device_ownership_unresolved', 'device_ownership_corrupt', 'device_reset_required', 'uia_owned_by_test_executor'].includes(code)) {
@@ -97,8 +133,9 @@ function withActionGuidance(command, args, value) {
     else message = 'Another operation is active or has an unknown outcome. Inspect its operation status and use the platform execution controls to cancel or reconcile it.';
   } else if (code === 'runtime_code_mismatch') {
     const side = value.details?.outdatedSide;
-    message = value.message || 'The client and shared runtime load different code. Compare their versions and reconnect the outdated side.';
-    if (side === 'runtime') calls.push(call('runtime', { operation: 'stop' }), call('runtime', { operation: 'start' }));
+    message = 'The client and Runtime load different builds. Inspect runtime status; stop/start explicitly loads this client build and stops existing Runtime tasks. Fingerprints do not establish which build is newer.';
+    calls.push(call('runtime', { operation: 'status' }));
+    if (side !== 'client') calls.push(call('runtime', { operation: 'stop' }), call('runtime', { operation: 'start' }));
     else if (side === 'client') message = 'Update and reconnect this MCP client; the shared runtime is newer. Its active tasks can stay running.';
   } else if (command !== 'doctor' && ['bridge_not_ready', 'bridge_connection_refused', 'bridge_forward_mismatch',
     'bridge_endpoint_discovery_failed', 'adb_timeout', 'runtime_connection_lost', 'runtime_connection_timeout',

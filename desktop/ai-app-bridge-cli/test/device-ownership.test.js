@@ -47,11 +47,41 @@ test('simultaneous OS processes admit exactly one owner and allow another serial
   const children = Array.from({ length: 5 }, () => child(directory, 'same-phone'));
   t.after(async () => { await Promise.all(children.map(c => c.stop())); });
   const replies = await Promise.all(children.map(c => c.ready));
-  assert.equal(replies.filter(r => r.ok).length, 1);
+  assert.equal(replies.filter(r => r.ok).length, 1, JSON.stringify(replies));
   assert(replies.filter(r => !r.ok).every(r => r.error === 'target_busy'));
   const other = lease.acquire('different-phone'); assert.equal(other.ok, true); other.release();
   const winner = children[replies.findIndex(r => r.ok)]; winner.proc.send('release'); await winner.closed;
   const after = lease.acquire('same-phone'); assert.equal(after.ok, true); after.release();
+});
+
+test('SQLite readers of the lock file do not masquerade as a device owner', t => {
+  const { DatabaseSync } = require('node:sqlite');
+  const { createOwnershipStore } = require('../bin/shared-kernel/device-ownership-store');
+  const { directory, lease } = fixture(t), store = createOwnershipStore(directory);
+  const reader = new DatabaseSync(store.paths('observed-phone').lock);
+  t.after(() => reader.close());
+  reader.exec('BEGIN; SELECT * FROM sqlite_schema');
+  const owner = lease.acquire('observed-phone');
+  assert.equal(owner.ok, true, JSON.stringify(owner));
+  try {
+    assert.equal(createDeviceMutationLease({ directory }).acquire('observed-phone').error, 'target_busy');
+  } finally { owner.release(); reader.exec('ROLLBACK'); }
+});
+
+test('device ownership remains exclusive with the previous SQLite lock mode', t => {
+  const { DatabaseSync } = require('node:sqlite');
+  const { createOwnershipStore } = require('../bin/shared-kernel/device-ownership-store');
+  const { directory, lease } = fixture(t), store = createOwnershipStore(directory);
+  const previous = new DatabaseSync(store.paths('mixed-version-phone').lock);
+  t.after(() => previous.close());
+  previous.exec('BEGIN EXCLUSIVE');
+  assert.equal(lease.acquire('mixed-version-phone').error, 'target_busy');
+  previous.exec('ROLLBACK');
+  const owner = lease.acquire('mixed-version-phone');
+  assert.equal(owner.ok, true);
+  try { assert.throws(() => previous.exec('BEGIN EXCLUSIVE'), error => error.errcode === 5); }
+  finally { owner.release(); }
+  previous.exec('BEGIN EXCLUSIVE; ROLLBACK');
 });
 
 test('process death releases an idle owner without PID guesses or expiry', async t => {

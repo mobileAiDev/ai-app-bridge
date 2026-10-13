@@ -1,5 +1,7 @@
 'use strict';
 
+const { projectForegroundDiagnostics } = require('./shared-kernel/foreground-diagnostics');
+
 const { commandFailure } = require('./command-errors');
 const { encodeReply } = require('./runtime-protocol');
 const { randomUUID } = require('node:crypto');
@@ -97,8 +99,8 @@ function controlFacts(command, value, history) {
   const control = {};
   if (isRecord(value)) {
     for (const key of ['warnings', 'foregroundObservations', 'guidance', 'selectionRequired']) {
-      if (value[key] !== undefined) control[key] = value[key];
-      else if (intentCommands.has(command) && value.summary?.[key] !== undefined) control[key] = value.summary[key];
+      if (value[key] !== undefined) control[key] = projectForegroundDiagnostics(value[key], { path: `/${key}` });
+      else if (intentCommands.has(command) && value.summary?.[key] !== undefined) control[key] = projectForegroundDiagnostics(value.summary[key], { path: `/summary/${key}` });
     }
     if (command === 'script') Object.assign(control, pick(value, scriptControlKeys));
     else if (intentCommands.has(command)) Object.assign(control, pick(value, intentControlKeys));
@@ -113,6 +115,7 @@ function controlFacts(command, value, history) {
         ...(isRecord(result) ? { resultControl: pick(result, ['command', 'operationId', 'status', 'revision', 'eventSequence',
           'resultRef', 'pendingQuestion', 'controlAccepted', 'controlId', 'resultPath', 'completionScope', 'accepted', 'background']) } : {}) };
     }
+    if (isRecord(control.lastAction)) control.lastAction = projectForegroundDiagnostics(control.lastAction, { path: '/lastAction' });
     const selection = Array.isArray(value.candidates) ? [value, '/candidates']
       : Array.isArray(value.details?.candidates) ? [value.details, '/details/candidates']
         : Array.isArray(value.summary?.candidates) ? [value.summary, '/summary/candidates'] : null;
@@ -128,7 +131,7 @@ function controlFacts(command, value, history) {
     if (control.pendingQuestion === null) delete control.pendingQuestion;
     // Script/Intent history is source content; only its page cursor is control.
     if ((command === 'script' || intentCommands.has(command)) && isRecord(value.history)) {
-      control.history = pick(value.history, ['lastSequence', 'hasMore', 'gap']);
+      control.history = pick(value.history, ['lastSequence', 'hasMore', 'gap', 'window', 'omittedBefore']);
     }
   }
   if (history) control.history = history;
@@ -195,7 +198,8 @@ function boundedReply(body, limitBytes = DEFAULT_OUTPUT_BYTES) {
   const source = pick(body.control.source, ['responseId', 'capturedAtMs', 'persisted', 'ref', 'reason']);
   if (body.control.source.error) source.error = 'source_unavailable';
   return { command: typeof body.command === 'string' && body.command.length < 256 ? body.command : null,
-    execution: minimalExecution(body.execution), control: { source, controlComplete: false },
+    execution: minimalExecution(body.execution), control: { ...pick(body.control,
+      ['operationId', 'status', 'revision', 'eventSequence', 'lastDecisionId', 'deadlineMs', 'timedOut']), source, controlComplete: false },
     extraction: pick(body.extraction, ['status', 'mode', 'language', 'durationMs', 'error']),
     delivery: { status: source.persisted ? 'reference' : 'unavailable', reason: 'control_over_budget', attemptedBytes, limitBytes },
     kind: body.kind, failureStage: body.failureStage };
@@ -207,7 +211,8 @@ async function finishReply({ body, extract, output, frozen, getStore, sourceReas
   if (body.delivery.reason === 'response_serialization_failed') return boundedReply(body, limitBytes);
   const { freezeResponse, MAX_SNAPSHOT_BYTES } = require('./response-store');
   const automatic = extract?.mode === 'auto';
-  const extracting = extract !== null && !automatic;
+  const comparing = extract?.mode === 'delta';
+  const extracting = extract !== null && !automatic && !comparing;
   const valueBytes = body.value === undefined ? 0 : Buffer.byteLength(JSON.stringify(body.value));
   const previewing = automatic && replyBytes(body) > limitBytes;
   const retained = Boolean(frozen);
@@ -220,11 +225,16 @@ async function finishReply({ body, extract, output, frozen, getStore, sourceReas
     compact = require('./extraction/tables').tableView(frozen.snapshot.value, valueBytes, body.control.source);
     if (!previewing && compact && Buffer.byteLength(JSON.stringify(compact)) > valueBytes * 0.7) compact = null;
   }
-  const needsSource = extracting || previewing || compact || replyBytes(body) > limitBytes;
+  const needsSource = comparing || extracting || previewing || compact || replyBytes(body) > limitBytes;
   if (!needsSource) return body;
   if (!frozen) {
     try { frozen = freezeResponse(body); }
     catch { return boundedReply(serializationFailure(body), limitBytes); }
+  }
+  let base, baseError;
+  if (comparing && extract.base) {
+    try { base = getStore?.().read(extract.base).snapshot; }
+    catch (error) { baseError = error.code || 'response_read_failed'; }
   }
   if (!retained) {
     if (getStore && body.kind !== 'bytes') {
@@ -232,7 +242,13 @@ async function finishReply({ body, extract, output, frozen, getStore, sourceReas
       catch (error) { body.control.source = { ...body.control.source, reason: undefined, error: error.code || 'snapshot_save_failed' }; }
     } else body.control.source = { ...body.control.source, reason: body.kind === 'bytes' ? 'binary_snapshot_unsupported' : sourceReason };
   }
-  if (previewing || compact) {
+  if (comparing && frozen.snapshot.kind !== 'bytes') {
+    body.value = require('./extraction/delta').deltaView(frozen.snapshot, base, extract.base, baseError);
+    body.kind = 'json';
+    body.extraction = { status: 'succeeded', mode: 'delta', partial: false };
+    body.delivery = { status: body.value.mode === 'patch' ? 'delta' : 'inline', originalValueBytes: valueBytes,
+      valueBytes: Buffer.byteLength(JSON.stringify(body.value)), limitBytes };
+  } else if (previewing || compact) {
     const original = { value: body.value, kind: body.kind, extraction: body.extraction, delivery: body.delivery };
     body.kind = 'json';
     body.extraction = { status: 'succeeded', mode: 'auto', partial: true };

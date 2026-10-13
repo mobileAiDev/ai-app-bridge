@@ -14,10 +14,18 @@ function fixture(platform, change = {}, nodeChange = {}) {
       runtimeEpoch: 'engine-1', elementId: 'weight', guard: 'guard-1' } };
   // Swift dictionaries do not preserve the key order of the Dart JSON payload.
   const current = { ...original, ...nodeChange, targetRef: Object.fromEntries(
-    Object.entries({ ...original.targetRef, ...change }).reverse()) };
-  const calls = [];
+    Object.entries({ ...original.targetRef,
+      ...(nodeChange.label || nodeChange.hint ? { guard: 'changed-editor-semantics' } : {}), ...change }).reverse()) };
+  const calls = [], effects = [];
   const fresh = () => ({ ok: true, truncated: false, nodes: [current] });
-  const action = payload => { calls.push(payload); return { ok: true }; };
+  const action = payload => {
+    calls.push(payload);
+    const error = payload.targetRef.runtimeEpoch !== current.targetRef.runtimeEpoch ? 'flutter_runtime_changed'
+      : payload.targetRef.elementId !== current.targetRef.elementId ? 'flutter_target_replaced'
+        : payload.targetRef.guard !== current.targetRef.guard ? 'flutter_target_changed' : null;
+    if (error) return { ok: false, error, dispatched: false, ambiguous: false };
+    effects.push(payload); return { ok: true };
+  };
   const adapter = platform === 'ios'
     ? createIOSIntentDeviceAdapter({ provider: { async run(command, args) {
       return command === 'ios-flutter-nodes' ? fresh() : action(args.payload);
@@ -28,7 +36,7 @@ function fixture(platform, change = {}, nodeChange = {}) {
       flutterNodes: async () => fresh(),
       flutterAction: async (_ctx, payload) => action(payload),
     } });
-  return { calls, current, act: () => adapter.action({ deviceId: 'phone', bundleId: 'sample',
+  return { calls, effects, current, act: () => adapter.action({ deviceId: 'phone', bundleId: 'sample',
     serial: 'phone', packageName: 'sample', actionId: 'intent:weight',
     rawTree: { ok: true, truncated: false, nodes: [original] },
     spec: { provider: 'flutter', action: 'inputText', selector: { nodeId: 'weight' },
@@ -44,18 +52,26 @@ for (const platform of ['ios', 'android']) {
   });
 
   for (const [field, value] of [['runtimeEpoch', 'engine-2'], ['elementId', 'replacement'], ['guard', 'guard-2']]) {
-    test(`${platform} Flutter Intent rejects a changed ${field} before dispatch`, async () => {
+    test(`${platform} Flutter Intent rejects a changed ${field} before input`, async () => {
       const h = fixture(platform, { [field]: value });
-      assert.equal((await h.act()).error, 'reobserve_required');
-      assert.deepEqual(h.calls, []);
+      const result = await h.act();
+      assert.equal(result.error, platform === 'ios' ? 'reobserve_required' : {
+        runtimeEpoch: 'flutter_runtime_changed', elementId: 'flutter_target_replaced', guard: 'flutter_target_changed',
+      }[field]);
+      assert.equal(result.dispatched, false);
+      assert.equal(h.calls.length, platform === 'ios' ? 0 : 1);
+      assert.deepEqual(h.effects, []);
     });
   }
 
   for (const [field, value] of [['label', 'Weight (lb)'], ['hint', 'Load in lb']]) {
-    test(`${platform} Flutter Intent rejects a changed field ${field} before dispatch`, async () => {
+    test(`${platform} Flutter Intent rejects a changed field ${field} before input`, async () => {
       const h = fixture(platform, {}, { [field]: value });
-      assert.equal((await h.act()).error, 'reobserve_required');
-      assert.deepEqual(h.calls, []);
+      const result = await h.act();
+      assert.equal(result.error, platform === 'ios' ? 'reobserve_required' : 'flutter_target_changed');
+      assert.equal(result.dispatched, false);
+      assert.equal(h.calls.length, platform === 'ios' ? 0 : 1);
+      assert.deepEqual(h.effects, []);
     });
   }
 

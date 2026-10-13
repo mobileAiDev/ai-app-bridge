@@ -15,6 +15,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     private var activity: Activity? = null
     private var applicationContext: Context? = null
     private var bridgeActionCallback: Any? = null
+    private var registrationError: String? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         applicationContext = binding.applicationContext
@@ -28,6 +29,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
         unregisterFlutterActionBridge()
         channel?.setMethodCallHandler(null)
         channel = null
+        activity = null
         applicationContext = null
     }
 
@@ -52,6 +54,16 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
+            if (registrationError != null && call.method in setOf("updateSnapshot", "checkAction")) {
+                result.error("flutter_activity_binding_api_missing", registrationError, null)
+                return
+            }
+            if (call.method == "refreshWindowInsets") {
+                val decor = activity?.window?.decorView
+                decor?.requestApplyInsets()
+                result.success(mapOf("ok" to (decor != null), "requested" to (decor != null)))
+                return
+            }
             if (call.method == "checkAction") {
                 val bridgeClass = Class.forName(androidBridgeClassName)
                 result.success(bridgeClass.getMethod("checkFlutterAction", String::class.java)
@@ -80,18 +92,30 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
     }
 
     private fun startBridge(context: Context) {
+        val bridgeClass = try {
+            Class.forName(androidBridgeClassName)
+        } catch (_: ClassNotFoundException) {
+            // The Android SDK is optional so this Flutter plugin can stay reusable.
+            return
+        }
         try {
-            val bridgeClass = Class.forName(androidBridgeClassName)
             val startMethod = bridgeClass.getMethod("start", Context::class.java)
             startMethod.invoke(null, context)
             // A background service also creates an engine and registers plugins.
             // Only an engine attached to an Activity owns the UI action channel.
             if (context is Activity) registerFlutterActionBridge(bridgeClass)
-        } catch (_: ClassNotFoundException) {
-            // The Android SDK is optional so this Flutter plugin can stay reusable.
+        } catch (error: ClassNotFoundException) {
+            reportMissingBindingApi(error)
+        } catch (error: NoSuchMethodException) {
+            reportMissingBindingApi(error)
         } catch (error: Throwable) {
             Log.w(tag, "failed to start Android AI app bridge", error)
         }
+    }
+
+    private fun reportMissingBindingApi(error: ReflectiveOperationException) {
+        registrationError = "Android AI App Bridge SDK lacks the Activity-bound Flutter API. Update the Android SDK and Flutter plugin to the matching release."
+        Log.w(tag, "flutter_activity_binding_api_missing: $registrationError", error)
     }
 
     private fun registerFlutterActionBridge(bridgeClass: Class<*>) {
@@ -99,6 +123,7 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
             return
         }
         val currentChannel = channel ?: return
+        val currentActivity = activity ?: return
         val callbackClass = Class.forName("$androidBridgeClassName\$FlutterActionHandler")
         val callback = java.lang.reflect.Proxy.newProxyInstance(
             callbackClass.classLoader,
@@ -114,8 +139,10 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
                 null
             }
         }
-        bridgeClass.getMethod("setFlutterActionHandler", callbackClass).invoke(null, callback)
+        bridgeClass.getMethod("registerFlutterActionHandler", Activity::class.java, callbackClass)
+            .invoke(null, currentActivity, callback)
         bridgeActionCallback = callback
+        registrationError = null
     }
 
     private fun unregisterFlutterActionBridge() {
@@ -173,9 +200,10 @@ class AiAppBridgeFlutterPlugin : FlutterPlugin, ActivityAware, MethodChannel.Met
         } catch (_: ClassNotFoundException) {
             return false
         }
-        val updateMethod = bridgeClass.getMethod("updateFlutterSnapshot", String::class.java)
-        updateMethod.invoke(null, snapshotJson)
-        return true
+        val callback = bridgeActionCallback ?: return false
+        val updateMethod = bridgeClass.getMethod("updateFlutterSnapshot",
+            Class.forName("$androidBridgeClassName\$FlutterActionHandler"), String::class.java)
+        return updateMethod.invoke(null, callback, snapshotJson) as Boolean
     }
 
     private fun recordCapture(method: String, payloadJson: String): Boolean {

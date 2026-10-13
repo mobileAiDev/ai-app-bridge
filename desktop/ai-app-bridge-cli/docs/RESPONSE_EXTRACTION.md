@@ -82,6 +82,53 @@ Retention/8 MiB source limits still apply; explicit `outFile` is available for
 large binary ADB output. These views are deterministic and do not infer business
 relevance or reduce device collection time.
 
+## Repeated observations without repeating the whole response
+
+Use `extract:{"mode":"delta"}` on the first observation. Keep its
+`control.source.ref` and pass it as `extract:{"mode":"delta","base":REF}`
+on the next observation of the same command. This uses the existing command;
+there is no preliminary discovery call and no shared implicit "last page" that
+another client can overwrite. Each observation still executes normally.
+
+The value has `format:aab.response-delta/v1`, `originalKind`, and one of:
+
+- `mode:full`: `data` is the complete baseline and `sha256` identifies it.
+- `mode:patch`: `operations` is an [RFC 6902 JSON Patch](https://www.rfc-editor.org/rfc/rfc6902.html)
+  against the previous reconstructed **data**, identified by `base` and
+  `baseSha256`. Apply all operations in order and verify the resulting `sha256`.
+
+Hashes cover canonical JSON: recursively sort object keys, preserve array order,
+and encode compact UTF-8 JSON. Patches never omit timestamps, new node references,
+capture coverage or error fields. Empty operations mean the represented value is
+identical, not that a page with changing metadata has been declared unchanged.
+Current execution and continuation controls are always returned outside the delta.
+
+For repetitive JSON, `encoding:columns` means `data` is a complete
+`aab.response-columns/v1` value. `encoding:json` means data is the original JSON
+value or string; do not interpret any similarly named application fields.
+It has `data` with null table placeholders and `tables` keyed by JSON Pointer.
+Each table has `rowCount`, `constants` keyed by leaf JSON Pointer, and `columns`
+keyed by leaf JSON Pointer whose arrays hold the row values. To expand a table,
+build `rowCount` objects, assigning its constants and each column's value at the
+row index. Replace the corresponding null placeholder with these objects. This
+retains duplicate rows, empty values and all action bindings. Columns are keyed
+by path so one checkbox changing does not shift every other column. Keep this
+unexpanded representation for the next patch; expand it for normal command data.
+
+A missing, evicted, corrupt or incompatible base returns a fresh complete
+baseline with a short `reason`; it does not reject or repeat the device command.
+If a patch would be larger than the complete baseline, the complete baseline is
+returned. Source retention and output budgets still apply. A patch is never cut
+in half to fit the budget; use the saved response if delivery is `reference`.
+Saved response reads and `select` always address the original command value,
+independent of delta or table formatting. Use a prior **delta** reply as the base;
+switching from `auto`/`null` should start with an omitted base.
+
+Delta saves returned/context bytes, not fresh capture time. Script `ctx.call`
+already keeps intermediate data inside the program; it continues to return
+ordinary complete results. Its program can inspect many observations and return
+only the final checks instead of exposing each tree to the Agent.
+
 ## One query, one extraction
 
 Regex requires a string at `inputPath` (JSON Pointer). Empty path selects a text

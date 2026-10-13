@@ -264,6 +264,109 @@ test('snapshotDom shapes controls from a supplied document', () => {
   assert.equal(JSON.stringify(dom).includes('snapshot-secret-marker'), false);
 });
 
+function contextTree(tagName, children = [], overrides = {}) {
+  const element = Object.assign(fakeElement({ tagName, ...overrides }), { nodeType: 1 });
+  element.firstChild = children[0] ?? null;
+  children.forEach((child, index) => {
+    child.parentNode = element; child.parentElement = element; child.nextSibling = children[index + 1] ?? null;
+  });
+  return element;
+}
+
+test('unlabelled controls expose fresh bounded ancestor context without changing action identity', async t => {
+  const first = contextTree('BUTTON'), second = contextTree('BUTTON');
+  const firstText = { nodeType: 3, nodeValue: 'Shared prefix FIRST-123 original' };
+  const row = (button, content, id) => contextTree('ARTICLE', [
+    contextTree('DIV', [{ nodeType: 3, nodeValue: 'now' }, button]),
+    contextTree('P', [content]),
+  ], { id });
+  const body = contextTree('BODY', [row(first, firstText, 'first-row'),
+    row(second, { nodeType: 3, nodeValue: 'Shared prefix SECOND-123 unchanged' }, 'second-row')]);
+  installDocument(t, [first, second], 'https://example.test/notes');
+  for (const button of [first, second]) for (let parent = button.parentElement; parent; parent = parent.parentElement)
+    parent.ownerDocument = document;
+  let clicks = 0; first.click = () => { clicks++; };
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'context', WebSocket }).start();
+  t.after(() => bridge.stop()); const socket = WebSocket.instances[0]; socket.open();
+  const before = bridge.snapshotDom();
+  assert.deepEqual(before.controls[0].context.ancestors.map(item => item.text), ['now', 'now Shared prefix FIRST-123 original']);
+  assert.deepEqual(before.controls[1].context.ancestors.map(item => item.text), ['now', 'now Shared prefix SECOND-123 unchanged']);
+  assert.equal(before.controls[0].context.ancestors[1].id, 'first-row');
+  assert.equal(before.controls[0].context.truncated, false);
+  firstText.nodeValue = 'Shared prefix FIRST-123 updated';
+  const after = bridge.snapshotDom();
+  assert.equal(after.controls[0].elementId, before.controls[0].elementId);
+  assert.equal(after.controls[0].context.ancestors[1].text, 'now Shared prefix FIRST-123 updated');
+  const element = Object.fromEntries(['elementId', 'tag', 'id', 'name', 'type', 'role', 'ariaLabel', 'placeholder', 'href', 'text']
+    .map(key => [key, before.controls[0][key]]));
+  const clicked = await socket.command('click', { selector: { elementId: element.elementId },
+    expectedTarget: { pageRef: before.pageRef, element } });
+  assert.equal(clicked.ok, true); assert.equal(clicks, 1); assert.equal(clicked.warnings, undefined);
+  assert.equal(JSON.stringify(before.controls[0].context).includes('SECOND-123'), false);
+  assert.equal(body.tagName, 'BODY');
+});
+
+test('ancestor context skips labelled controls and hidden or sensitive branches, and deduplicates wrappers', t => {
+  const button = contextTree('BUTTON'), labelled = contextTree('BUTTON', [], { innerText: 'Save' });
+  const hidden = contextTree('DIV', [{ nodeType: 3, nodeValue: 'hidden-marker' }]); hidden.hidden = true;
+  const cssHidden = contextTree('DIV', [{ nodeType: 3, nodeValue: 'css-hidden-marker' }]);
+  const exclusions = ['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'INPUT', 'TEXTAREA', 'SELECT'].map(tag =>
+    contextTree(tag, [{ nodeType: 3, nodeValue: tag + '-secret-marker' }], { value: 'input-value-secret-marker' }));
+  const wrapper = contextTree('DIV', [button, ...exclusions, hidden, cssHidden,
+    contextTree('DIV', [{ nodeType: 3, nodeValue: 'aria-hidden-marker' }], { attrs: { 'aria-hidden': 'true' } }),
+    { nodeType: 3, nodeValue: 'Row marker' }]);
+  const outer = contextTree('SECTION', [wrapper, labelled]); contextTree('BODY', [outer]);
+  installDocument(t, [button, labelled], 'https://example.test/context');
+  window.getComputedStyle = element => ({ display: element === cssHidden ? 'none' : 'block', visibility: 'visible', opacity: '1' });
+  const attach = node => { if (node.nodeType === 1) node.ownerDocument = document;
+    for (let child = node.firstChild; child; child = child.nextSibling) attach(child); };
+  attach(outer);
+  const result = snapshotDom();
+  assert.equal(result.controls[1].context, undefined);
+  assert.equal(result.controls[0].context.ancestors.length, 1);
+  assert.equal(result.controls[0].context.ancestors[0].text, 'Row marker');
+  assert.equal(JSON.stringify(result.controls[0].context).includes('secret-marker'), false);
+  assert.equal(JSON.stringify(result.controls[0].context).includes('hidden-marker'), false);
+});
+
+test('ancestor context bounds text and visited nodes and caches shared ancestors only within one snapshot', t => {
+  const first = contextTree('BUTTON'), second = contextTree('BUTTON');
+  let reads = 0;
+  const sharedText = { nodeType: 3, get nodeValue() { reads++; return 'x'.repeat(1000); } };
+  const row = contextTree('DIV', [first, second, sharedText]); contextTree('BODY', [row]);
+  Object.defineProperty(row, 'innerText', { get() { assert.fail('context must not read unbounded ancestor innerText'); } });
+  installDocument(t, [first, second], 'https://example.test/context-budget'); row.ownerDocument = document;
+  const result = snapshotDom();
+  assert.equal(reads, 1);
+  assert.equal(result.controls[0].context.ancestors[0].text.length, 160);
+  assert.equal(result.controls[0].context.ancestors[0].textTruncated, true);
+  assert.equal(result.controls[0].context.truncated, true);
+  snapshotDom(); assert.equal(reads, 2);
+  const emptyNodes = Array.from({ length: 100 }, () => contextTree('SPAN'));
+  const limited = contextTree('SECTION', [first, { nodeType: 3, nodeValue: 'known prefix' }, ...emptyNodes,
+    { nodeType: 3, get nodeValue() { assert.fail('node budget exceeded'); } }]);
+  contextTree('BODY', [limited]); limited.ownerDocument = document;
+  const bounded = snapshotDom();
+  assert.equal(bounded.controls[0].context.ancestors[0].text, 'known prefix');
+  assert.equal(bounded.controls[0].context.ancestors[0].textTruncated, true);
+});
+
+test('ancestor context normalizes bounded indentation before limiting readable text', t => {
+  const button = contextTree('BUTTON');
+  const content = { nodeType: 3, nodeValue: '\n' + ' '.repeat(200) + 'Row marker' };
+  const row = contextTree('DIV', [button, content]);
+  contextTree('BODY', [row]);
+  installDocument(t, [button], 'https://example.test/context-whitespace'); row.ownerDocument = document;
+  const result = snapshotDom();
+  assert.equal(result.controls[0].context?.ancestors[0].text, 'Row marker');
+  assert.equal(result.controls[0].context.ancestors[0].textTruncated, false);
+  content.nodeValue = 'Row marker' + ' '.repeat(2000);
+  const truncated = snapshotDom();
+  assert.equal(truncated.controls[0].context.ancestors[0].text, 'Row marker');
+  assert.equal(truncated.controls[0].context.ancestors[0].textTruncated, true);
+});
+
 test('DOM checked state reads live native properties and explicit ARIA state without inventing unchecked values', t => {
   const native = fakeElement({ tagName: 'INPUT', attrs: { type: 'checkbox', checked: 'checked' } });
   native.checked = false; native.indeterminate = false;
@@ -329,6 +432,75 @@ test('password input command returns only length metadata', async (t) => {
   bridge.stop();
 });
 
+test('clearing a rich editor reports its observed value when the input collapses its layout', async t => {
+  const editor = fakeElement({ tagName: 'DIV', id: 'editor', innerText: 'Saved draft' });
+  editor.isContentEditable = true;
+  installDocument(t, [editor], 'https://example.test/editor');
+  document.createRange = () => ({ selectNodeContents() {} });
+  window.getSelection = () => ({ removeAllRanges() {}, addRange() {} });
+  document.execCommand = (command, showUi, value) => {
+    assert.equal(command, 'insertText'); assert.equal(showUi, false);
+    editor.innerText = value;
+    editor.getBoundingClientRect = () => ({ left: 10, top: 20, right: 110, bottom: 20, width: 100, height: 0 });
+    return true;
+  };
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'clear-editor', WebSocket }).start();
+  t.after(() => bridge.stop()); const socket = WebSocket.instances[0]; socket.open();
+  const result = await socket.command('input', { selector: { css: '#editor' }, value: '' });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.dispatched, true); assert.equal(result.inputDispatched, true);
+  assert.equal(result.valueState, 'observed'); assert.equal(result.value, ''); assert.equal(result.valueLength, 0);
+  assert.equal(result.targetState.connected, true); assert.equal(result.targetState.visible, false);
+  assert.equal(result.targetState.bounds.height, 0);
+  assert.equal(result.warnings.at(-1).code, 'target_state_changed_after_input');
+});
+
+test('a final change event may disable the original input without invalidating its completed value', async t => {
+  const input = fakeElement({ tagName: 'INPUT', id: 'code' });
+  installDocument(t, [input], 'https://example.test/form');
+  let events = 0;
+  input.dispatchEvent = () => { if (++events === 2) input.disabled = true; };
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'disable-after-input', WebSocket }).start();
+  t.after(() => bridge.stop()); const socket = WebSocket.instances[0]; socket.open();
+  const result = await socket.command('input', { selector: { css: '#code' }, value: '1234' });
+  assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(events, 2);
+  assert.equal(result.value, '1234'); assert.equal(result.valueState, 'observed');
+  assert.equal(result.targetState.disabled, true); assert.equal(result.targetState.editable, false);
+});
+
+test('input still checks focus before dispatching its remaining change event', async t => {
+  const input = fakeElement({ tagName: 'INPUT', id: 'code' });
+  installDocument(t, [input], 'https://example.test/form');
+  let events = 0;
+  input.dispatchEvent = () => { events++; document.activeElement = null; };
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'focus-before-change', WebSocket }).start();
+  t.after(() => bridge.stop()); const socket = WebSocket.instances[0]; socket.open();
+  const result = await socket.command('input', { selector: { css: '#code' }, value: '1234' });
+  assert.equal(result.ok, false); assert.equal(result.error, 'web_element_changed'); assert.equal(events, 1);
+});
+
+test('input cannot confirm its result using a same-label replacement after final dispatch', async t => {
+  const original = fakeElement({ tagName: 'INPUT', id: 'code' });
+  const replacement = fakeElement({ tagName: 'INPUT', id: 'code', value: 'replacement value' });
+  installDocument(t, [original], 'https://example.test/form');
+  let events = 0;
+  original.dispatchEvent = () => { if (++events === 2) {
+    original.isConnected = false;
+    document.querySelectorAll = () => [replacement];
+  } };
+  const WebSocket = createFakeWebSocket();
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'replace-after-input', WebSocket }).start();
+  t.after(() => bridge.stop()); const socket = WebSocket.instances[0]; socket.open();
+  const result = await socket.command('input', { selector: { css: '#code' }, value: '1234' });
+  assert.equal(result.ok, false); assert.equal(result.error, 'web_element_changed');
+  assert.equal(result.dispatched, true); assert.equal(result.inputDispatched, true);
+  assert.equal(result.valueState, 'unconfirmed'); assert.equal(result.value, undefined);
+  assert.equal(result.targetState.connected, false); assert.equal(events, 2);
+});
+
 test('click command returns the component that received the click', async (t) => {
   const button = fakeElement({
     id: 'save-order',
@@ -366,14 +538,34 @@ test('large Web pages can click an observed ID without rescanning or rejecting c
   t.after(() => bridge.stop()); bridge.start(); const socket = WebSocket.instances[0]; socket.open();
   const observed = bridge.snapshotDom();
   assert.equal(observed.truncated, true);
-  const element = Object.fromEntries(['elementId', 'tag', 'id', 'name', 'type', 'role', 'ariaLabel', 'placeholder', 'href', 'text']
-    .map(key => [key, observed.controls[0][key]]));
+  const element = observed.controls[0];
   button.innerText = 'Save (1)';
   document.querySelectorAll = () => assert.fail('an observed ID should not rescan the document');
-  const result = await socket.command('click', { selector: { elementId: element.elementId }, expectedTarget: { pageRef: observed.pageRef, element } });
+  const result = await socket.command('click', { selector: { elementId: element.elementId },
+    expectedTarget: { pageRef: { ...observed.pageRef, observedAt: 123 }, element } });
   assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(clicks, 1);
   assert.equal(result.resolved.element.text, 'Save (1)');
   assert.deepEqual(result.warnings[0].fields, ['text']);
+});
+
+test('complete Web observation metadata does not admit a replaced element or another document', async t => {
+  for (const change of ['element', 'document']) await t.test(change, async t => {
+    const original = fakeElement({ id: 'save', innerText: 'Save' }); let clicks = 0;
+    original.click = () => { clicks++; };
+    installDocument(t, [original], 'https://example.test/original');
+    const WebSocket = createFakeWebSocket();
+    const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'full-observation', WebSocket });
+    t.after(() => bridge.stop()); bridge.start(); const socket = WebSocket.instances[0]; socket.open();
+    const observed = bridge.snapshotDom(), expectedTarget = { pageRef: { ...observed.pageRef, viewport: { width: 1280 } }, element: observed.controls[0] };
+    if (change === 'document') expectedTarget.pageRef.navigationId = 'different-document';
+    else {
+      const replacement = fakeElement({ id: 'save', innerText: 'Save' }); replacement.ownerDocument = document; replacement.isConnected = true;
+      replacement.click = original.click; original.isConnected = false;
+      document.querySelectorAll = () => [replacement];
+    }
+    const result = await socket.command('click', { selector: { text: 'Save' }, expectedTarget });
+    assert.equal(result.error, 'reobserve_required'); assert.equal(result.dispatched, false); assert.equal(clicks, 0);
+  });
 });
 
 test('Web text and role can be combined; duplicate matches return selectors within the receipt limit', async t => {

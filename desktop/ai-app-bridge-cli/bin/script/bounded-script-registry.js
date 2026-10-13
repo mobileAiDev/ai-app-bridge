@@ -52,10 +52,10 @@ function createBoundedScriptRegistry({
   };
 }
 
-function createBoundedEventLog({ maxEvents = 256, maxEventBytes = 256 * 1024 } = {}) {
+function createBoundedEventLog({ maxEvents = 256, maxEventBytes = 256 * 1024, initialSequence = 0 } = {}) {
   const events = [];
   const waiters = new Set();
-  let sequence = 0;
+  let sequence = initialSequence;
   let bytes = 0;
 
   function emit(type, extra = {}, now = Date.now) {

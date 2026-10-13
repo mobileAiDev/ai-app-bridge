@@ -13,7 +13,7 @@ const maxJournalBytes = 4 * 1024 * 1024;
 const defaultDirectory = () => path.resolve(process.env.AI_APP_BRIDGE_DEVICE_OWNERSHIP_DIR
   || path.join(os.homedir(), '.ai-app-bridge', 'device-ownership', 'v1'));
 
-// SQLite supplies an OS-managed exclusive file lock, with no heartbeat expiry.
+// SQLite supplies an OS-managed single-writer lock, with no heartbeat expiry.
 // Process death releases the lock; the separately committed journal survives.
 // Lock files are never unlinked, which would split ownership by inode.
 function createOwnershipStore(directory = defaultDirectory()) {
@@ -60,7 +60,9 @@ function createOwnershipStore(directory = defaultDirectory()) {
     try {
       db = new DatabaseSync(file);
       fs.chmodSync(file, 0o600);
-      db.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE');
+      // The lock database has no payload to write. Reserve its sole writer slot
+      // without an EXCLUSIVE upgrade that can lose to readers opening the file.
+      db.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE');
     } catch (error) {
       db?.close();
       if (error.errcode === 5) return null;

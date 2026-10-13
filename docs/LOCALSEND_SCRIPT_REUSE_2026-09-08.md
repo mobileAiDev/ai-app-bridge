@@ -22,7 +22,7 @@
 
 时间采用现有 `p9-timings` 的 Host 事件分类。`activeMs` 与 provider/evidence 等子项有重叠，不能相加；`businessWaitMs` 只计明确的 wait 命令，不涵盖 JavaScript 的轮询间隔。墙钟时间包含截图、轮询和外部设置检查。core 的 5 分钟与 acceptance 的 10 分钟阈值只对应各自冻结清单，不能换算成全 App 或整机耗时。
 
-当前 Host 的 `rollingSummary.decisionWaitMs` 表示尚未回答的问题，终态会归零，不能当作累计等待。控制器另外按实际 `agent_question_created` 与 `agent_decision`/取消终态的时间戳配对，保存 `observedControllerWaitMs`。本轮没有把旧聚合值当成“零等待”，也没有调整运行时计时实现。
+本次 2026-09-08 历史验收使用的 Host 中，`rollingSummary.decisionWaitMs` 表示尚未回答的问题，终态会归零，不能当作累计等待。控制器另外按实际 `agent_question_created` 与 `agent_decision`/取消终态的时间戳配对，保存 `observedControllerWaitMs`。本轮没有把旧聚合值当成“零等待”，也没有调整运行时计时实现。2026-10-13 的后续实现改为累计未答问题等待，并增加执行段 `startedAtMs`；它不追溯修改这里的历史回执。
 
 ### 最终冻结矩阵
 

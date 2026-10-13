@@ -412,11 +412,12 @@ test('P3 handshake and empty RPC stay within the published budgets', async () =>
         operationId: started.operationId,
         waitMs: 50,
         afterSequence,
+        eventLimit: 100,
       });
       if (snapshot.events.some((event) => event.type === 'child_started')) {
         childStartedAt = Date.now();
       }
-      afterSequence = snapshot.eventSequence;
+      afterSequence = snapshot.events.at(-1)?.sequence ?? afterSequence;
     }
     assert.equal(childStartedAt != null, true);
     handshake.push(childStartedAt - startedAt);
@@ -442,11 +443,12 @@ test('P3 handshake and empty RPC stay within the published budgets', async () =>
         operationId: started.operationId,
         waitMs: 50,
         afterSequence,
+        eventLimit: 100,
       });
       if (snapshot.events.some((event) => event.type === 'child_started')) {
         childStartedAt = Date.now();
       }
-      afterSequence = snapshot.eventSequence;
+      afterSequence = snapshot.events.at(-1)?.sequence ?? afterSequence;
     }
     assert.equal(childStartedAt != null, true);
     pythonHandshake.push(childStartedAt - startedAt);

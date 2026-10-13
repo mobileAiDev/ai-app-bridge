@@ -1,3 +1,8 @@
+## 0.4.7
+
+- Align the optional executor identity with the coordinated 0.4.7 release. The WidgetTester execution contract is unchanged.
+- The matching Host supports waiting for the next Script question or result in `decide`, explicit checkpoint recovery, and concise execution feedback.
+
 ## 0.4.6
 
 - Align the optional executor identity with the coordinated 0.4.6 release. The WidgetTester execution contract is unchanged.

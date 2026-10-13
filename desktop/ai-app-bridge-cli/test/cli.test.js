@@ -92,7 +92,7 @@ test('launch-app waits until the launched package is the foreground window', asy
   const result = await startActivity(
     { packageName: 'org.videolan.vlc' },
     'org.videolan.vlc/.StartActivity',
-    { foregroundTimeoutMs: 1000 },
+    { foregroundTimeoutMs: 1000, waitForLaunch: true },
     {},
     {
       adb: async (_ctx, args) => {
@@ -115,12 +115,30 @@ test('launch-app waits until the launched package is the foreground window', asy
   assert.deepEqual(startArgs.slice(0, 4), ['shell', 'am', 'start', '-W']);
 });
 
+test('an accepted launch request returns without depending on the foreground service', async () => {
+  let argv, probes = 0;
+  const result = await startActivity({ packageName: 'example.app' }, 'example.app/.Main', {}, {}, {
+    adb: async (_ctx, args) => { argv = args; return { stdout: 'Starting: Intent {}', stderr: '' }; },
+    foregroundWindow: async () => {
+      probes++;
+      throw Object.assign(new Error('Window manager observation timed out after launch'), { code: 'provider_timeout' });
+    },
+    sleep: async () => assert.fail('fast launch polled for foreground'),
+  });
+  assert.deepEqual(argv, ['shell', 'am', 'start', '-n', 'example.app/.Main']);
+  assert.equal(probes, 0);
+  assert.equal(result.ok, true);
+  assert.equal(result.completionScope, 'activity-start-request');
+  assert.equal(result.waitedForLaunch, false);
+  assert.equal(result.foreground, undefined);
+});
+
 test('launch-app clearTask adds activity-clear-task before the component', async () => {
   let startArgs = null;
   await startActivity(
     { packageName: 'org.wikipedia.dev' },
     'org.wikipedia.dev/org.wikipedia.DefaultIcon',
-    { clearTask: true, foregroundTimeoutMs: 1000 },
+    { clearTask: true, foregroundTimeoutMs: 1000, waitForLaunch: true },
     {},
     {
       adb: async (_ctx, args) => {
@@ -138,7 +156,7 @@ test('launch-app retains the launch result and warns when the package never beco
   const result = await startActivity(
     { packageName: 'org.videolan.vlc' },
     'org.videolan.vlc/.StartActivity',
-    { foregroundTimeoutMs: 1 },
+    { foregroundTimeoutMs: 1, waitForLaunch: true },
     {},
     {
       adb: async () => ({ stdout: 'Starting: Intent { cmp=org.videolan.vlc/.StartActivity }\n', stderr: '' }),
@@ -1672,6 +1690,17 @@ test('status compacts large Flutter layout dumps by default', () => {
   assert.equal(status.flutter.layout.operable.nodes.length, 12);
   assert.equal(status.flutter.layout.operable.sampleWidgetTypes.length, 20);
   assert.equal(Object.prototype.hasOwnProperty.call(status.flutter.layout.operable.nodes[0], 'noisy'), false);
+});
+
+test('UIA package filtering happens before the node budget and retains controls without resource IDs', () => {
+  const keyboard = Array.from({ length: 100 }, (_, i) => `<node package="keyboard" text="Key ${i}"/>`).join('');
+  const xml = `<hierarchy aab-truncated="false">${keyboard}<node package="app" text="Title"/><node package="app" content-desc="Menu"/></hierarchy>`;
+  const result = compactUiaTree(xml, { packageFilter: 'app', maxNodes: 2 });
+  assert.deepEqual(result.nodes.map(n => n.packageName), ['app', 'app']);
+  assert.equal(result.nodes[1].contentDescription, 'Menu');
+  assert.equal(result.truncated, false);
+  assert.equal(result.coverage.projection.filtered, true);
+  assert.equal(result.coverage.source.status, 'complete');
 });
 
 test('network output can be filtered and compacted without bodies', () => {

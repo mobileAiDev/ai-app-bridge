@@ -1,3 +1,9 @@
+## 0.4.7
+
+- Bind Android Flutter handlers and observations to their owning Activity so retained engines cannot redirect actions to a background screen.
+- Refresh operable snapshots at dispatch and keep target identity, partial coverage and action outcomes explicit across navigation and recovery.
+- Include native/H5 observation and target fixes, and align the Android dependency and iOS runtime identity with 0.4.7.
+
 ## 0.4.6
 
 - Allow actions on explicitly observed nodes in partial widget snapshots; preserve coverage and text truncation diagnostics.

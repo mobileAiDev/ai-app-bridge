@@ -109,7 +109,8 @@ function acquireRuntimeLock(location) {
   try {
     db = new DatabaseSync(location.lockFile);
     fs.chmodSync(location.lockFile, 0o600);
-    db.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE');
+    // Reserve the one writer slot; this lock-only database never stores data.
+    db.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE');
   } catch (error) {
     db?.close();
     if (error.errcode === 5) return null;

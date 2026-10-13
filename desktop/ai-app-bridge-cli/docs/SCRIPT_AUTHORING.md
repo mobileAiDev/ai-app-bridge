@@ -7,7 +7,23 @@ An installed server can differ from a development checkout.
 
 ## Start and observe
 
-Call MCP `run` with this shape, replacing the target and source path:
+Call the existing MCP `run` directly. For a short sequence, put ordinary code
+in `source` and set `waitMs`; no separate RPC controller or workflow interpreter
+is needed. The following reads a connected Web page in one call. Replace the
+target with the session identity actually returned by `web-sessions`:
+
+```json
+{"command":"script","arguments":{"operation":"start","waitMs":60000,"script":{"schemaVersion":"aab.code-script/v1","language":"javascript","target":{"platform":"web","sessionId":"<sessionId>","runtimeEpoch":"<runtimeEpoch>","targetId":"main"},"source":"module.exports.main = async ctx => { const read = await ctx.call('web-dom', {}); if (!read.ok) return {error: read.error, detail: read}; return read.result; };"}}}
+```
+
+Continue the currently understood steps in the same program, including local
+observations, waits and branches on an unfamiliar page. Return a focused question
+with `ctx.askAgent` when new judgment is needed; return the result when done.
+You do not need to discover the entire App before using Script. See
+[Web steps and local waiting](#web-steps-and-local-waiting) below.
+
+For reuse, save the code and use `sourcePath`. This Android example shows the
+expanded shape; supply the actual target and source path:
 
 ```json
 {
@@ -15,6 +31,7 @@ Call MCP `run` with this shape, replacing the target and source path:
   "extract": null,
   "arguments": {
     "operation": "start",
+    "waitMs": 60000,
     "script": {
       "schemaVersion": "aab.code-script/v1",
       "name": "observed-flow",
@@ -44,7 +61,7 @@ Call MCP `run` with this shape, replacing the target and source path:
 The same request is available through CLI:
 
 ```sh
-ai-app-bridge script --extract null --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./flow.js","permissions":["app.read","app.interact","capture.read"]}'
+ai-app-bridge script --operation start --wait-ms 60000 --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./flow.js"}'
 ai-app-bridge script --extract null --operation status --operation-id RETURNED_ID
 ai-app-bridge script --extract null --operation result --operation-id RETURNED_ID
 ```
@@ -55,8 +72,8 @@ pauses or cancels the task. Both must select the same FactStore/runtime namespac
 
 Local source paths resolve from the initiating client's directory. `script.cwd`
 defaults to that directory; set it explicitly to select the child working directory.
-It is frozen into Script identity together with source and target. Resume with the
-original `cwd` when connecting from another directory. Relative transport paths
+It is frozen into Script identity together with source and target. Checkpoint
+recovery retains that directory even when called from another client directory. Relative transport paths
 in a target also bind to the originating request, rather than a later caller.
 
 Use exactly one of `sourcePath` and `source`. JavaScript is loaded as CommonJS
@@ -66,6 +83,19 @@ operations so the Host can apply permissions and record receipts.
 `ctx.target` is a copy of the declared default target (or null); changing it does
 not change Host routing defaults. `ctx.sourcePath` is the declared source file
 (or null for inline source). Python exposes `ctx.target` and `ctx.source_path`.
+
+Local imports work from the declared source file: CommonJS `require('./helper')`,
+parent `node_modules`, `__dirname` and `__filename`; Python sibling modules and
+packages, `__file__` and normal module metadata (including dataclasses).
+Inline code resolves imports from `script.cwd`, with a virtual entry named
+`__ai_app_bridge_inline__.js` or `.py` in that directory; no file is written there.
+The declared working directory still controls relative file I/O.
+
+The entry's source bytes are frozen into the operation, including after a worker
+restart. Imported modules and assets remain ordinary filesystem dependencies;
+each new child loads the versions currently at those paths. Copy or pin those
+dependencies when a replayable test needs a fixed environment. Script does not
+snapshot the whole project or silently substitute missing modules.
 
 ## Editable recipes and fewer round trips
 
@@ -93,8 +123,8 @@ or unknown launch stops that recipe without replay. For a custom short batch,
 write sequential `ctx.call` statements, handle each returned envelope, then
 observe once where the next decision needs fresh state. Use read commands for
 condition polling; code decides whether a failed mutation should be tried again.
-`wait` already holds until events/state change or its deadline and returns a
-terminal `resultRef`; use `result` to read the saved final value, without replay.
+`wait` already holds until events/state change or its deadline. Use an inline
+`result` directly; only read `resultRef` when the value has not been returned.
 The launch/wait recipe keeps execution, matched conditions, foreground identity,
 timestamps and warnings, while omitting repeated raw dumpsys evidence. Choose
 `fullResult:true` when those diagnostic dumps are part of the task. Its result
@@ -140,9 +170,23 @@ this handling with Reader navigation, chapter restoration and captured events.
 It expects its documented book, chapters and font-size fixture; it records the
 installed SDK version without requiring an exact release number.
 
-`start` returns an operation ID without waiting for completion. Query `status`
-or `wait` with that `operationId`; `waitMs` bounds one wait and `afterSequence`
-pages execution events. Preserve every returned event page and inspect gaps.
+`start`, `resume` and `decide` return without waiting by default. Set `waitMs` (up to
+60000) to receive completion or an Agent question in that same call. A ready
+result is returned inline. `wait` with `until:attention` also includes a ready
+result, so do not issue `result` when it is already present.
+
+Query `status` or `wait` with the same `operationId`; `waitMs` bounds one wait
+and `afterSequence` selects records after that sequence. Control replies default to one
+event and one ledger entry. With no explicit cursor or limits this is the
+latest entry, marked `history.window:latest` and `omittedBefore` when older
+entries exist. For a history audit, start with `afterSequence:0` and an explicit
+`limit`, then use `history.lastSequence` until `history.hasMore` is false. For
+event pages, use the last returned `events[].sequence` and an explicit
+`eventLimit` until the captured live `eventSequence` is reached. Read those
+streams separately if their limits differ. `eventSequence` is the live
+watermark, not the last delivered record: using it to page an audit can skip
+unread records. `eventLimit` does not enlarge the independent history limit.
+Preserve every requested event page and inspect gaps.
 Track sequence continuity across the event pages you receive. `history.gap`
 reports eviction from the bounded in-process history ring; it can be true even
 when a continuously polling client has already retained every earlier event.
@@ -154,13 +198,48 @@ and SIGINT/SIGTERM to the runtime perform this cleanup for active Scripts,
 including those waiting for an Agent. MCP EOF or a signal to a CLI/MCP client
 disconnects that client without cancelling the task. Cancellation closes owned local subprocesses and HTTP requests;
 it cannot undo an effect already accepted by a device. A submitted effect without
-a confirmed result remains `ambiguous`, and cannot be replayed from an old
-checkpoint. The script may inspect an unknown receipt, make an explicit new decision
+a confirmed result remains `ambiguous`; ordinary resume does not replay an old
+checkpoint across it. The script may inspect an unknown receipt, make an explicit new decision
 and commit a later checkpoint; restore uses that boundary and retains the old
 unknown receipt. Uncommitted durable writes still prevent a valid checkpoint.
 Permission and lifecycle mutations use the same dispatch ledger as
 UI actions. `policy.timeoutMs` is the whole runtime budget; command arguments may
 set a shorter `timeoutMs`, but never extend it.
+
+### Recover a stopped Script
+
+Enable `policy.restartPolicy:"checkpoint"` when the program needs durable reentry.
+If a child exits after an action but before its next checkpoint, inspect the
+original operation and current App result. Then use the same `operationId` and
+explicitly select the continuation state understood by that frozen program:
+
+```json
+{
+  "operation": "resume",
+  "operationId": "script-existing-id",
+  "waitMs": 60000,
+  "recovery": {
+    "checkpoint": {"name": "query-original-payment", "state": {"phase": "query-payment"}},
+    "reason": "Query the submitted payment before deciding the next action."
+  }
+}
+```
+
+The program receives `state` through `ctx.resume()`. It owns the query, branch
+and subsequent actions; the runtime does not infer a successful business result.
+The new checkpoint is saved before reentry. Existing receipts, missing receipts
+and unknown outcomes remain in the history, and new action IDs continue after
+the old ones. `reason` is optional. A live program uses ordinary pause/resume;
+recovery replaces the entry state of a stopped program. A completed operation or
+a program without checkpoint recovery starts a new Script instead. A failed
+checkpoint write starts no child and reports the storage error for correction.
+
+After Host loss, `status` and `wait` can still read the retained operation even
+when an action lacks its completion receipt. A successful read has `ok:true`;
+the returned execution status and `recovery` describe the interrupted program,
+checkpoint and unresolved actions. Reading does not restart the child, fill in
+missing receipts or make ordinary resume safe. Use those facts and the current
+App result to choose an explicit continuation.
 
 An execution status of `completed` means the child returned and its final JSON
 and terminal checkpoint were persisted; it does not imply that assertions passed.
@@ -190,12 +269,14 @@ referenced screenshots before bounded events are evicted. With
 `includeRecordedPayloads: true`, then offline `evidence verify` with the
 saved manifest hash. See [the recording and archive contract](EVIDENCE_ARCHIVE.md).
 
-For successive event waits, set `afterSequence` to the previous response's
+For successive progress waits, set `afterSequence` to the previous response's
 **`eventSequence`**. `history.lastSequence` belongs to the history page; there
 is no top-level `lastSequence`. Repeatedly passing zero re-delivers old events
-immediately. Status, wait responses and terminal events carry a small `resultRef`,
-not the child's complete return value. Read it with
-`script {operation:"result",operationId:"…"}` after completion. The response
+immediately. Progress waits can omit intermediate records; use the audit cursors
+above when every record is required. Status and terminal events carry a small
+`resultRef`. Ready attention waits and `start`/`resume` with `waitMs` include the
+result inline. If it is absent, use
+`script {operation:"result",operationId:"…"}` after completion. That response
 contains `result`, `resultRef` and `persisted:true`, read from the retained
 FactStore record even after a runtime restart. Event eviction does not determine
 result availability.
@@ -209,25 +290,48 @@ and supports up to 64 MiB, subject to full storage capacity. A result write
 failure fails the Script with `result_not_persisted`.
 
 Read failures distinguish `result_not_ready` while running, `result_unavailable`
-after failure/cancellation, `result_not_persisted`, `result_not_retained` when the
+after failure/cancellation without a returned value, `result_not_persisted`, `result_not_retained` when the
 referenced result has been evicted, and checksum/read errors. If the whole
 operation is gone it may be `unknown_operation`. Persist the returned value or
 export its evidence before store retention expires; `completed` is not an
 unlimited retention promise.
 
-Terminal rolling summaries freeze elapsed and active durations at the terminal
-event. Later status queries do not add idle time. For end-to-end measurement,
-retain the public start timestamp and terminal event timestamp separately.
+If the program catches an execution problem and returns diagnostics, that value
+is retained even when the operation remains `failed` (for example, an unknown
+dispatched effect). Reading it succeeds with `status:"failed"` and
+`executionError`; inspect both the operation status and the returned checks.
+A readable report does not convert the original failed/unknown action to success.
+
+`rollingSummary.startedAtMs` is the beginning of the execution segment held by
+this Host. `elapsedMs` is wall-clock time from that point; `decisionWaitMs`
+accumulates time with at least one unanswered Agent question. `activeMs` excludes
+the union of Agent waits, explicit pauses, and stopped time before an explicit
+same-Host resume. It includes local code, provider/network waits and persistence;
+it is not CPU time or a sum of command durations. Overlapping Agent waits are not
+counted twice. Terminal durations freeze until an explicit resume.
+
+After a new Host restores a checkpoint, its new execution segment has a new
+`startedAtMs`; these fields do not claim to accumulate across Host restarts.
+Durable terminal retrieval without a live summary does not invent one. For the
+whole user workflow, retain the outer start/end timestamps and decision events,
+including preparation, authoring, recovery and verification time. Historical
+releases reported only the currently unanswered question in `decisionWaitMs`,
+which returned to zero after a decision; do not compare that old value as a
+cumulative metric.
 
 ## Lifecycle: start, wait, result
 
-A fixed regression is one start, a wait loop and one result read. The caller
-drives these three `run` calls; the program owns observation, actions and
-assertions. The repository test suite runs the two sources below against the
+A sequence can finish in one start call: pass `waitMs:60000` to wait
+until completion or a request for agent input. The default `waitMs:0` returns
+immediately. A completed return value is delivered inline. If it is
+still running, use the same operation ID with the wait/result lifecycle below;
+do not read the result again when start already supplied it. The program owns
+observation, actions and assertions. The repository test suite runs the two sources below against the
 current contract with an injected device, so they match the installed package.
 
-1. Start with `sourcePath` for repeated runs (or `source`), a platform-qualified
-   `target`, and the run's values in `inputs`:
+1. The following shows the asynchronous lifecycle for callers that need it.
+   Use `source` for inline code or `sourcePath` for repeated runs, a
+   platform-qualified `target`, and the run's values in `inputs`:
 
 ```json lifecycle-example
 {"command":"script","extract":null,"arguments":{"operation":"start","script":{"schemaVersion":"aab.code-script/v1","name":"labels-regression","language":"javascript","sourcePath":"./regression.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"},"inputs":{"entryText":"Labels","expectedText":"New label"}}}}
@@ -238,17 +342,23 @@ current contract with an injected device, so they match the installed package.
    previous response's `eventSequence` as `afterSequence`:
 
 ```json lifecycle-example
-{"command":"script","extract":null,"arguments":{"operation":"wait","operationId":"<operationId>","waitMs":30000,"afterSequence":0}}
+{"command":"script","extract":null,"arguments":{"operation":"wait","operationId":"<operationId>","waitMs":30000,"afterSequence":0,"limit":100,"eventLimit":100}}
 ```
 
    `finishing` means the program has returned and the result is still being
    persisted; `result` answers `result_not_ready` until the status is terminal.
-   `waiting_for_agent` means the program called `ctx.askAgent`; the question is
-   the `agent_question_created` event with `requestId`, `revision` and `request`.
-   Answer it with `decide` or end the run with `cancel`. Keep every event page:
-   a later `afterSequence` no longer returns that event. Do not wait it out.
+   This example requests up to 100 records for inspection; omit both limits for
+   concise control replies. A complete audit must also drain any remaining
+   history pages using `history.lastSequence`, independently of progress waits.
+   `waiting_for_agent` means the program called `ctx.askAgent`;
+   the current `pendingQuestion` contains `requestId`, `revision` and `request`,
+   independently of event filtering. Answer it with `decide` and `waitMs:60000`
+   to receive the next question or result in that call, or end the run with
+   `cancel`. Outside `waiting_for_agent` the question may be absent or null.
+   Keep every requested event page; do not wait out an Agent question.
 
-3. When `status` is `completed`, `failed` or `cancelled`, read the value:
+3. Use an inline `result` immediately. If a terminal reply has a `resultRef` but
+   no inline value, read the saved result:
 
 ```json lifecycle-example
 {"command":"script","extract":null,"arguments":{"operation":"result","operationId":"<operationId>"}}
@@ -256,8 +366,9 @@ current contract with an injected device, so they match the installed package.
 
    `completed` only states that the program returned and its value was
    persisted; the verdicts inside `result` decide each case. `failed` and
-   `cancelled` return `result_unavailable`; the terminal event and `error`
-   carry the reason.
+   `cancelled` without a retained return value produce `result_unavailable`.
+   A failed program that returned diagnostics can still have a `resultRef` and
+   readable value; the terminal event and `executionError` preserve the reason.
 
 The JavaScript program. Each case records a device assertion against the
 observation it judges, and the run stops at the first case that is not `passed`:
@@ -332,6 +443,13 @@ Use `capabilities` to inspect each command's `inputSchema` and `entrypoints.scri
 Script supports the Android, iOS and Web commands listed in the catalog. An Android target requires
 `platform: "android"` and `serial`; `packageName` is needed only for App commands. Optional `adb` and `port`
 are retained in the frozen spec and passed to commands that accept them.
+For Flutter form preparation, `input-flutter-text` / `ios-input-flutter-text`
+can use `{selector:{label:"Account",role:"input"},text:"example",focus:false}`
+after observing that editor. This runs its formatters and `onChanged` without
+tapping, taking focus or opening the keyboard. Use the default tapped input when
+testing keyboard, tap or focus behavior; `hideKeyboard:true` requests dismissal
+after that input. The same optional fields are accepted by Flutter Intent
+`inputText` actions. Both modes retain live target validation.
 Installation and permission workflows can be started with `ctx.call('install-apk', ...)`
 and `ctx.call('permission-dialog', ...)`; their returned Intent operationId supports
 the same status/observe/decide/cancel operations inside the Script.
@@ -369,30 +487,40 @@ For Flutter iOS use `ios-tap-flutter` with an exact `selector`,
 Selector actions use live Flutter Element references. Keyboard dismissal uses
 the same managed execution receipt as other actions; observe
 `viewport.viewInsets.bottom === 0` before interacting with controls it covered.
-Raw `ios-flutter-action` and `ios-h5-eval` remain outside the
-Script catalog. Use `ios-flutter-nodes` for fresh observations and device
+Raw `ios-flutter-action` and `ios-h5-eval` are also available through `ctx.call`;
+explicit permission lists can restrict them. Use `ios-flutter-nodes` for fresh observations and device
 assertions, and `ios-logs/network/state/events` for mobile evidence.
 
 Web uses `platform: "web"`, `sessionId`, `runtimeEpoch` and optional
-`targetId: "main"`. `app.read` admits `web-status` and `web-dom`;
-`app.interact` admits `web-click`, `web-input`, `web-key`, `web-scroll` and
-`web-wait`. The existing serving Web provider owns the connected session and
-mutation lease. Raw `web-command` is outside the Script catalog.
+`targetId: "main"`. `app.read` admits `web-status`, `web-dom` and `web-wait`;
+`app.interact` admits `web-click`, `web-input`, `web-key` and `web-scroll`.
+The existing serving Web provider owns the connected session and mutation lease.
+Raw `web-command` is available through `ctx.call` under `app.expert`, enabled by
+default; an explicit permissions list can restrict it.
 
 Read `web-dom`, choose exactly one observed control, and send its `elementId`
-with `expectedTarget: { pageRef, element }`. The element projection contains
+with `expectedTarget: { pageRef, element: observedControl }`. Pass the complete
+observed control directly; extra observation metadata is accepted on both
+`element` and `pageRef`. Element identity still requires
 `elementId`, `tag`, `id`, `name`, `type`, `role`, `ariaLabel`, `placeholder`,
 `href` and `text` from that observation. `interaction.status` explains whether
 the control is ready, disabled, hidden, outside the viewport or obscured.
-Reobserve after an action. Wait by observing the required state; a completed
-input or click is not evidence that an asynchronous business operation finished.
+Reobserve when the next step needs new state, a replaced control's identity, or
+an asynchronous completion condition. Known controls on the current page can
+be handled consecutively. A completed input or click is not evidence that an
+asynchronous business operation finished.
 
 Web DOM reads issue Host tree observations usable by `ctx.assert` with
-`requiredEvidence: ["tree"]`. Web logs/network/state/events are currently
-ordinary MCP Host-FactStore reads; their Script/Intent capture-window adapter
-and automatic action correlation remain open. They are not advertised as
-Script capture evidence. The Memos validation source and independent SQLite
-oracle are in `examples/memos-sample/validation`.
+`requiredEvidence: ["tree"]`. `web-logs/network/state/events` read committed
+Host FactStore records under `capture.read`; their evidence is available to
+Script capture assertions and Intent `require.streams`. Before an action, retain
+`evidence.capture.watermarkCursor`, then pass it as `factCursor` to the post-action
+read. `afterActionId` additionally filters associated records using the original
+action ID. Capture barriers bound the window; incomplete capture remains partial,
+and temporal proximity alone does not establish action causality. See the
+[Web capture contract](COMMAND_CONTRACT.md#web-dom-intent-and-script) for coverage and
+pagination. The Memos validation source and independent SQLite oracle are in
+`examples/memos-sample/validation`.
 
 A missing target, or `target: null`, is permitted for pure code and
 `page-summary`. Device calls still need a complete identity.
@@ -552,10 +680,9 @@ database, file or network business oracles in the report when applicable.
 
 ## Flutter snapshot freshness and coordinate actions
 
-`flutter-nodes` returns the SDK's published snapshot. A new Host
-`evidence.observationId` can contain the same `result.updatedAtMs` and node
-geometry as the previous response. Two equal responses from that one snapshot
-do not demonstrate that a route animation or scroll has settled. Keep the
+`flutter-nodes` requests a fresh operable capture from the current SDK. Older
+SDKs can return a previously published snapshot. Two equal responses from one
+snapshot do not demonstrate that a route animation or scroll has settled. Keep the
 provider snapshot timestamp separate from the Host call identity. For a
 stability predicate, require matching relevant geometry across distinct,
 advancing SDK snapshot timestamps, with a bounded read deadline. Missing or
@@ -586,7 +713,7 @@ requires one unique container or an explicit container selector. At a boundary,
 `tap-flutter` also retains its explicit `tapX`/`tapY` primitive in **logical
 pixels**; do not combine coordinates with a selector or multiply them by DPR.
 The Host supplies the action ID for all these paths. Raw `flutter-action`
-remains outside the Script catalog. See [the command contract](COMMAND_CONTRACT.md)
+is available through `ctx.call`, subject to any explicit permission list. See [the command contract](COMMAND_CONTRACT.md)
 for target errors and the remaining Flutter transport cancellation boundary.
 
 The Dart runtime preserves this ID within the dispatched action's async zone,
@@ -680,6 +807,75 @@ window can start in a fixed toolbar; verify that the list actually moved.
 Preserve the returned artifact path/hash and the nearby tree. A separately
 requested screenshot and tree are sequential captures, not an atomic pair;
 animations or other intervening changes require fresh observations.
+
+## Web steps and local waiting
+
+`web-session-start` starts the connection service. A browser must already load
+the Web SDK and connect before a Web Script can use it; the command does not
+open, inject or reload an arbitrary page. Reuse the application's integration
+or the supplied browser harness for that setup.
+
+For example, after observing a login page, pass its exact field/button bindings
+as `accountTarget`, `passwordTarget` and `submitTarget` in `inputs` (each contains
+`selector` and `expectedTarget` as described above). This is ordinary JavaScript,
+which can be supplied as `source` in the first example. Success/failure text must
+be the actual result conditions for that App:
+
+```javascript
+module.exports.main = async ctx => {
+  async function call(command, args) {
+    const reply = await ctx.call(command, args);
+    if (!reply.ok) throw new Error(JSON.stringify({ command, reply }));
+    return reply;
+  }
+  const i = ctx.inputs;
+  await call('web-input', { ...i.accountTarget, value: i.account });
+  await call('web-input', { ...i.passwordTarget, value: i.password });
+  await call('web-click', i.submitTarget);
+  const deadline = Date.now() + 15000;
+  let read = await call('web-dom', {});
+  while (true) {
+    const text = read.result.dom.bodyText;
+    if (text.includes(i.successText)) return { outcome: 'success', evidence: read.evidence };
+    if (text.includes(i.failureText)) return { outcome: 'rejected', evidence: read.evidence };
+    if (Date.now() >= deadline) return {
+      outcome: 'unresolved', url: read.result.dom.url, evidence: read.evidence,
+      message: 'Submitted once; neither expected result appeared. Inspect before choosing the next action.'
+    };
+    await new Promise(resolve => setTimeout(resolve, 150));
+    read = await call('web-dom', {});
+  }
+};
+```
+
+This evaluates the first observation before requesting another and keeps empty
+loading states and network waits inside the Script. It does not resubmit a
+mutation when the outcome is unknown. `web-wait {targetText,timeoutMs}` is shorter
+when text/selector presence alone is the condition; use ordinary code for
+disappearance, competing success/error states, or another predicate. Likewise,
+an initially empty page can be polled locally until relevant controls appear.
+
+If an unfamiliar state needs judgment, `ctx.askAgent` can return just the issue
+and relevant observed candidates. For example:
+
+```javascript
+const choice = await ctx.askAgent({
+  question: 'Which of these observed controls is the intended record?',
+  candidates: candidates.map(({ elementId, text, ariaLabel }) => ({ elementId, text, ariaLabel })),
+});
+// Use the answer with the retained page/element bindings; observe again if they changed.
+```
+
+An unlabelled Web control can include `context.ancestors`: bounded text samples
+from its actual DOM ancestors. These can distinguish two record menus without
+another screenshot. Inspect the samples and their truncation flags, then use the
+chosen control's observed `elementId`; context is not an action selector or
+binding. Controls remain a flat list, and ancestor text can cover multiple records.
+If the association is still unclear, filter to the intended record or inspect
+current visual evidence.
+Keep full call/observation receipts in `recordingDir` when required, and return
+the checks/results needed by the caller. Completed work should `return` directly
+instead of asking for an empty final confirmation.
 
 ## Progress and deliberate control points
 

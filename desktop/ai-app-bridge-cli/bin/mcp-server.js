@@ -10,8 +10,8 @@ const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
 const defaultProtocolVersion = supportedProtocolVersions[0];
 const serverInstructions = [
   'Intent, Script and individual commands share one runtime across CLI and MCP. Disconnecting a client leaves operations running; explicit task cancel or runtime stop owns cancellation. Platform capabilities do not imply full complex-App acceptance.',
-  'Use script status/wait for progress and resultRef; read the final output with script operation=result and the same operationId, including after runtime restart. A completed execution is separate from the business verdict.',
-  'run requires extract: null delivers the command\'s own result. Every run reply is {command, execution, control, extraction, delivery, kind, value, failureStage?}: execution holds the command\'s ok/error and dispatch facts, control the fields needed to continue (operationId, status, eventSequence, history cursor), and value the original result including _feedback. Read failureStage first when isError is set.',
+  'Script runs ordinary JavaScript or Python with local observations, condition waits and branches. Keep known steps in one call; use ctx.askAgent only when new judgment is needed. Set waitMs on script start, resume or decide to receive a ready result or the next Agent question in the same call. If result is already present, use it directly; otherwise read resultRef with operation=result and the same operationId, including after runtime restart. A completed execution is separate from the business verdict.',
+  'run uses auto delivery when extract is omitted; explicit extract:null preserves the command\'s own result shape. Every run reply is {command, execution, control, extraction, delivery, kind, value, failureStage?}: execution holds the command\'s ok/error and dispatch facts, control the fields needed to continue (operationId, status, eventSequence, history cursor), and value the delivered result. Read failureStage first when isError is set.',
   'For large UI/network/log results, choose a focused regex or JS/Python extraction; scripts receive ctx.inputs={kind,response,execution,control} without ctx.call. Default final-body budget is 96 KiB. On extraction failure or overflow, only a persisted control.source.ref can be read with response operation=read and a new extract. Never repeat the original action to repair extraction. control.pendingQuestion retains a current Script question even when events are filtered.',
   supportedTargetsText,
   discoveryText,
@@ -33,7 +33,7 @@ MCP surface:
 Discovery:
   1. Call capabilities with optional domain or command filters.
   2. Call run with a command name from capabilities.
-  3. Put command-specific options in arguments; pass extract (null for the command's own result).
+  3. Put command-specific options in arguments; extract is optional (auto by default, null for the command's own result shape).
 
 Target ids:
   Android app commands require packageName; port selects only the host forwarding port.

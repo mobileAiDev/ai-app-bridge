@@ -58,11 +58,11 @@ function selectUiaNode(rawTree, spec, packageName) {
     && (!roots || roots.some(root => item.node === root || item.ancestors.includes(root))));
   if (selected.length !== 1) return selectionFailure(selected.length ? 'uia_selector_not_unique' : 'uia_selector_not_found', uiaCandidates(rawTree, selected.map(item => item.node)));
   const { node } = selected[0];
-  const bounds = /^\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]$/.exec(node.bounds || '');
-  if (!bounds || node.enabled !== 'true' || (spec.requireClickable === true && node.clickable !== 'true')) return reject('uia_node_not_operable');
-  const [left, top, right, bottom] = bounds.slice(1).map(Number);
-  if (left < 0 || top < 0 || right <= left || bottom <= top) return reject('uia_node_not_operable');
-  return { ok: true, node, x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) };
+  if (node.enabled !== 'true' || (spec.requireClickable === true && node.clickable !== 'true')) return reject('uia_node_not_operable');
+  // ACTION_CLICK targets an accessibility node, not a screen coordinate. Layout
+  // transitions can expose empty or clipped bounds on an otherwise live control.
+  // The device revalidates node identity, visibility and the clickable ancestor.
+  return { ok: true, node };
 }
 
 module.exports = { selectUiaNode, selectorSchema, intentSelectorSchema, uiaCandidates };

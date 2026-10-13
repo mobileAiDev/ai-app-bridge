@@ -7,10 +7,15 @@ const { validateValue } = require('./shared-kernel/argument-schema');
 // The public run request shared by MCP and the CLI. Business arguments stay
 // under `arguments`; `extract` and `output` never reach a device action.
 const extractSchema = {
-  description: 'Optional; omitted uses auto: return the complete result whenever it fits output.maxBytes (96 KiB by default). Over-budget JSON first tries a complete table representation; only results that still do not fit become partial views with complete records or text ranges and a saved response ref. Explicit null requests the original shape without automatic formatting. Select a JSON Pointer/slice or use regex/script for precise extraction. Execution/control facts remain separate; do not repeat the action to read more.',
+  description: 'Optional; omitted uses auto: return the complete result whenever it fits output.maxBytes (96 KiB by default). Over-budget JSON first tries a complete table representation; only results that still do not fit become partial views with complete records or text ranges and a saved response ref. Explicit null requests the original shape without automatic formatting. Delta returns a complete baseline, then lossless changes against an explicit saved base for repeated observations. Select a JSON Pointer/slice or use regex/script for precise extraction. Execution/control facts remain separate; do not repeat the action to read more.',
   oneOf: [
     { type: 'null' },
     { type: 'object', additionalProperties: false, required: ['mode'], properties: { mode: { const: 'auto' } } },
+    { type: 'object', additionalProperties: false, required: ['mode'], properties: {
+      mode: { const: 'delta' },
+      base: { ...require('./response-store').responseSchema().properties.ref,
+        description: 'Optional control.source.ref of a previous delta reply. Omit for a complete baseline. Fresh observations still execute; only delivery is differenced. Missing/expired bases return a new complete baseline without failing the command.' },
+    } },
     { type: 'object', additionalProperties: false, required: ['mode', 'path'], properties: {
       mode: { const: 'select' }, path: { type: 'string', description: 'JSON Pointer into the original response. Empty string selects the root.' },
       offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1 },

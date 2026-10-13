@@ -7,7 +7,7 @@ import WebKit
 public final class AiAppBridge {
     public static let shared = AiAppBridge()
 
-    private let bridgeVersion = "0.4.6"
+    private let bridgeVersion = "0.4.7"
     private let runtimeEpoch = UUID().uuidString
     private lazy var h5Bridge = IOSH5Bridge(runtimeEpoch: runtimeEpoch)
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")
@@ -328,7 +328,8 @@ public final class AiAppBridge {
         case ("GET", "/v1/flutter/snapshot"):
             runOnMain {
                 if self.captureQueue.sync(execute: { self.flutterActionHandler != nil }) {
-                    self.flutterObservationCall(method: "readSnapshot", body: "{}") { response in
+                    let body = String(data: try! JSONSerialization.data(withJSONObject: ["scope": request.query["scope"] ?? "full"]), encoding: .utf8)!
+                    self.flutterObservationCall(method: "readSnapshot", body: body) { response in
                         guard response["ok"] as? Bool == true, let snapshot = response["snapshot"] as? [String: Any] else {
                             completion(200, response); return
                         }

@@ -46,7 +46,7 @@ test('native swipe passes exact text/resource/description and a reference with r
     assert.equal(result.ok, true);
     assert.equal(result.mechanicalStatus, 'ok');
     const payload = { action: 'swipe', selector, targetRef: nativeTargetRef(), actionId: 'gesture:decision-1', deltaX: 150, deltaY: 0, durationMs: 500 };
-    assert.deepEqual(calls, [[{ serial: target.serial, packageName: target.packageName, adb: target.adb, port: target.port, runtimeActionId: 'gesture:decision-1' }, payload]]);
+    assert.deepEqual(calls, [[{ serial: target.serial, packageName: target.packageName, adb: target.adb, port: target.port, runtimeActionId: 'gesture:decision-1' }, payload, { foregroundFeedback: { foregroundObservations: [], warnings: [] } }]]);
     assert.deepEqual(result.providerResult, { ok: true, transport: 'bridge', ...payload });
   }
   const calls = [];

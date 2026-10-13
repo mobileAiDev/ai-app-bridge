@@ -59,7 +59,7 @@ async function waitDone(supervisor, operationId, waitMs = 5000) {
     }
     afterSequence = snapshot.eventSequence;
   }
-  return supervisor.handle({ operation: 'status', operationId, afterSequence: 0 });
+  return supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId, afterSequence: 0 });
 }
 
 test('P7 G4-A observe-tap-assert fixture completes on JavaScript', async () => {
@@ -72,7 +72,7 @@ test('P7 G4-A observe-tap-assert fixture completes on JavaScript', async () => {
   assert.equal(started.ok, true);
   await waitDone(supervisor, started.operationId);
   const status = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -98,7 +98,7 @@ test('P7 G4-A observe-tap-assert fixture completes on Python', async () => {
   assert.equal(started.ok, true);
   await waitDone(supervisor, started.operationId);
   const status = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -123,7 +123,7 @@ test('P7 S17 history pages afterSequence on the code runtime', async () => {
   });
   assert.equal(first.history.items.length <= 2, true);
   const next = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: first.history.lastSequence,
   });
@@ -174,7 +174,7 @@ test('P7 G4-A ambiguous host action is not retried', async () => {
   });
   await waitDone(supervisor, started.operationId);
   const status = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -243,7 +243,7 @@ module.exports = { main };
   });
   assert.equal(next.ok, true);
   await waitDone(supervisor, next.operationId);
-  const intent = await intentHandle({ operation: 'status' });
+  const intent = await intentHandle({ operation: 'status', limit: 1000, eventLimit: 1000 });
   assert.equal(intent.command, 'intent');
 });
 
@@ -363,7 +363,7 @@ module.exports = { main };
   });
   await waitDone(supervisor, started.operationId);
   const first = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -377,7 +377,7 @@ module.exports = { main };
   assert.equal(resumed.ok, true);
   await waitDone(supervisor, started.operationId);
   const second = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -418,7 +418,7 @@ test('P7 command-router starts a code script without loading Intent or Legacy', 
   assert.equal(router.loads.intent, 0);
   await waitDone({ handle }, started.operationId);
   const status = payloadOf(await router.route('script', {
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   }));

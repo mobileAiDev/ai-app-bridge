@@ -10,11 +10,11 @@ import java.util.concurrent.TimeUnit
 // editor/scroll write). Revocation prevents another mutation, and an admitted
 // sequence retains ownership until its original completion confirms settlement.
 internal class FlutterActionExecutor(
-    private val handler: () -> AiAppBridge.FlutterActionHandler?,
-    private val runtimeEpoch: () -> String?,
+    private val currentRuntime: () -> Runtime?,
     private val cleanupGraceMs: Long = 1500,
     private val now: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
+    internal data class Runtime(val handler: AiAppBridge.FlutterActionHandler, val epoch: String?, val identity: Any)
     private val lock = Any()
     private val timers = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "aab-flutter-lifetime").apply { isDaemon = true }
@@ -36,13 +36,14 @@ internal class FlutterActionExecutor(
             body.opt("actionId") != execution.opt("actionId")) {
             reply(failure("invalid_flutter_execution")); return
         }
-        val channel = handler()
-        if (channel == null) { reply(failure("flutter_action_handler_absent")); return }
-        if (runtimeEpoch() != execution.getString("runtimeEpoch")) {
+        val runtime = currentRuntime()
+        if (runtime == null) { reply(failure("flutter_action_handler_absent")); return }
+        val channel = runtime.handler
+        if (runtime.epoch != execution.getString("runtimeEpoch")) {
             reply(failure("flutter_runtime_changed")); return
         }
         val op = Operation(execution.getString("actionId"), execution.getString("runtimeEpoch"),
-            now() + execution.getLong("timeoutMs"), channel, reply)
+            now() + execution.getLong("timeoutMs"), channel, runtime.identity, reply)
         synchronized(lock) {
             if (active != null) { reply(failure("flutter_action_busy")); return }
             if (lastResult?.optString("actionId") == op.actionId && lastResult?.optString("runtimeEpoch") == op.epoch) {
@@ -65,7 +66,8 @@ internal class FlutterActionExecutor(
         synchronized(lock) {
             val op = active
             if (op == null || !matches(op, body)) return failure("flutter_action_not_active")
-            if (runtimeEpoch() != op.epoch) return failure("flutter_runtime_changed")
+            val runtime = currentRuntime()
+            if (runtime?.identity != op.runtimeIdentity || runtime?.epoch != op.epoch) return failure("flutter_runtime_changed")
             if (op.stopReason != null || now() >= op.deadline) return failure(op.stopReason ?: "flutter_action_timeout")
             op.permissionIssued = true
             return identity(op).put("ok", true).put("remainingMs", (op.deadline - now()).coerceAtLeast(0))
@@ -164,7 +166,7 @@ internal class FlutterActionExecutor(
     private fun failure(error: String) = JSONObject().put("ok", false).put("error", error).put("dispatched", false).put("ambiguous", false)
 
     private class Operation(val actionId: String, val epoch: String, val deadline: Long,
-        val channel: AiAppBridge.FlutterActionHandler, var reply: ((JSONObject) -> Unit)?) {
+        val channel: AiAppBridge.FlutterActionHandler, val runtimeIdentity: Any, var reply: ((JSONObject) -> Unit)?) {
         var stopReason: String? = null
         var permissionIssued = false
         var timeout: ScheduledFuture<*>? = null

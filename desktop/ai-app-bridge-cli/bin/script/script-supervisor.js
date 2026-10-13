@@ -23,6 +23,7 @@ const {
   restartGate,
 } = require('./script-durable-restore');
 const { scriptError } = require('./script-errors');
+const { planRecovery } = require('./script-recovery');
 const { createEvidenceRecording } = require('../shared-kernel/evidence-recording');
 const { prepareScriptResult, resultReference, readScriptResult } = require('./script-result');
 
@@ -45,7 +46,7 @@ function createScriptSupervisor({
 
   function handle(args = {}) {
     const operation = args.operation || 'start';
-    if (operation === 'start') return start(args);
+    if (operation === 'start') return args.waitMs > 0 ? runAndWait(args, start) : start(args);
     if (operation === 'result') return readScriptResult({ ...args, store: registry.get(args.operationId)?.store || args.store });
     if (operation === 'status') {
       const limitGate = rejectBadLimit(args);
@@ -58,17 +59,29 @@ function createScriptSupervisor({
       return wait(args);
     }
     if (operation === 'pause') return control(args, 'pause_requested');
-    if (operation === 'resume') return resume(args);
-    if (operation === 'decide') return decide(args);
+    if (operation === 'resume') return args.waitMs > 0 ? runAndWait(args, resume) : resume(args);
+    if (operation === 'decide') return args.waitMs > 0 ? runAndWait(args, decide) : decide(args);
     if (operation === 'cancel') return control(args, 'cancelled');
     if (operation === 'runtime-status') return { ok: true, command: 'script', runtimes: inspectRuntimes() };
     return scriptError('invalid_operation', { operation });
   }
 
+  async function runAndWait(args, run) {
+    const resolved = resolveWaitMs(args.waitMs);
+    if (!resolved.ok) return resolved;
+    const started = await run(args);
+    if (!started.ok) return started;
+    const current = await wait({ operationId: started.operationId, waitMs: resolved.waitMs,
+      until: 'attention', afterSequence: started.eventSequence, limit: 1, eventLimit: 1 });
+    if (current.status === 'completed' || current.resultRef) return handle({ operation: 'result', operationId: started.operationId });
+    return current;
+  }
+
   function start(args) {
     const compiled = args[RESTORE_CONTEXT]?.compiled || compileScriptSpec(args.script);
     if (!compiled.ok) return compiled;
-    if (args.operationId && knownOperation(args.operationId)) {
+    if (args.operationId && knownOperation(args.operationId)
+        && (!args[RESTORE_CONTEXT] || registry.get(args.operationId))) {
       return scriptError('operation_exists', { operationId: args.operationId });
     }
     sequence += 1;
@@ -91,6 +104,7 @@ function createScriptSupervisor({
     const events = createBoundedEventLog({
       maxEvents: registry.maxEvents,
       maxEventBytes: registry.maxEventBytes,
+      initialSequence: args[RESTORE_CONTEXT] ? scriptLedger.ledger.snapshot(operationId).lastSequence : 0,
     });
     const agent = args.agent || createAgent();
     let host;
@@ -175,6 +189,7 @@ function createScriptSupervisor({
       decisionRevision: 0,
       currentRequestId: null,
       pendingQuestion: null,
+      pendingQuestions: new Map(),
       questionRevisions: new Map(),
       decisions: new Map(),
       ledger: scriptLedger,
@@ -247,10 +262,22 @@ function createScriptSupervisor({
     const resolved = resolveWaitMs(args.waitMs);
     if (!resolved.ok) return resolved;
     const waitMs = resolved.waitMs;
+    const until = args.until ?? 'attention';
+    if (!['attention', 'event'].includes(until)) return scriptError('invalid_argument', { field: 'until' });
     const after = Number(args.afterSequence) || 0;
+    const readySnapshot = extra => {
+      const current = snapshotOf(record, args, extra);
+      if (until === 'attention' && record.finished && record.resultRef) {
+        const saved = readScriptResult({ store: record.store, operationId: record.operationId });
+        if (saved.ok) Object.assign(current, { result: saved.result, persisted: true,
+          ...(saved.executionError ? { executionError: saved.executionError } : {}) });
+        else current.resultError = saved.error;
+      }
+      return current;
+    };
     if (waitMs === 0) {
-      return snapshotOf(record, args, {
-        timedOut: !hasWaitSignal(record, after),
+      return readySnapshot({
+        timedOut: !hasWaitSignal(record, after, until),
         waitMs,
       });
     }
@@ -262,12 +289,12 @@ function createScriptSupervisor({
         settled = true;
         unsubscribe();
         if (timer) clearTimeout(timer);
-        resolve(snapshotOf(record, args, { timedOut, waitMs }));
+        resolve(readySnapshot({ timedOut, waitMs }));
       };
       const unsubscribe = record.events.subscribe(() => {
-        if (hasWaitSignal(record, after)) finish(false);
+        if (hasWaitSignal(record, after, until)) finish(false);
       });
-      if (hasWaitSignal(record, after)) {
+      if (hasWaitSignal(record, after, until)) {
         finish(false);
         return;
       }
@@ -303,11 +330,7 @@ function createScriptSupervisor({
       eventSequence: snap.lastSequence,
       events: [],
       rollingSummary: null,
-      history: scriptLedger.ledger.query(
-        operationId,
-        args.afterSequence == null ? 0 : args.afterSequence,
-        args.limit,
-      ),
+      history: historyPage(scriptLedger.ledger, operationId, args),
       ...extra,
     };
   }
@@ -350,27 +373,53 @@ function createScriptSupervisor({
     return snapshotOf(record, args);
   }
 
-  function resume(args) {
+  async function resume(args) {
     const record = registry.get(args.operationId);
     if (!record) return scriptError('unknown_operation', { operationId: args.operationId || null });
-    if (record.cancelling) return scriptError('runtime_stopped', { operationId: record.operationId });
+    if (record.cancelling && !(record.finished && args.recovery !== undefined)) return scriptError('runtime_stopped', { operationId: record.operationId });
+    if (record.recovering) return scriptError('operation_busy', { operationId: record.operationId, status: record.status });
     if (record.status === 'finishing') return scriptError('not_resumable', { operationId: record.operationId });
     if (record.inFlightMutations > 0) {
       return scriptError('operation_busy', { operationId: record.operationId, status: record.status });
     }
+    if (args.recovery !== undefined && !record.finished) {
+      return scriptError('operation_busy', { operationId: record.operationId, status: record.status,
+        message: 'Explicit recovery replaces the entry state of a stopped program. Pause/resume controls the current live program.' });
+    }
     if (record.finished) {
-      const gate = restartGate({
+      const previous = {
+        operationId: record.operationId,
+        revision: record.checkpointRevision,
         policy: record.spec.policy,
         checkpoint: record.lastCheckpoint,
         checkpointActionSequence: record.checkpointActionSequence,
         status: record.status,
         error: record.error,
-      }, record.actionsSinceCheckpoint);
-      if (!gate.ok) return { ...gate, operationId: record.operationId };
+      };
+      if (args.recovery !== undefined) {
+        const recovered = planRecovery({ base: codeStartCheckpoint({ spec: record.spec, hash: record.hash }, record.operationId),
+          previous, actionSequence: record.actionSequence, recovery: args.recovery });
+        if (!recovered.ok) return recovered;
+        record.recovering = true;
+        const persisted = await persistRecord(record, 'checkpoint', recovered.checkpoint);
+        record.recovering = false;
+        if (!persisted.ok) return scriptError(persisted.error || 'checkpoint_not_persisted', { operationId: record.operationId });
+        record.lastCheckpoint = recovered.checkpoint.checkpoint;
+        record.checkpointRevision = recovered.checkpoint.revision;
+        record.checkpointActionSequence = record.actionSequence;
+        record.actionsSinceCheckpoint = [];
+        record.durableError = null;
+        record.resultRef = null;
+        record.diagnostics = undefined;
+        emitRecord(record, 'checkpoint', { ...record.lastCheckpoint, recovery: recovered.checkpoint.recovery }, now);
+      } else {
+        const gate = restartGate(previous, record.actionsSinceCheckpoint);
+        if (!gate.ok) return { ...gate, operationId: record.operationId };
+      }
       record.finished = false;
       record.status = 'running';
       record.error = null;
-          record.pauseReason = null;
+      record.pauseReason = null;
       record.mutationUnknown = false;
       emitRecord(record, 'resumed', { status: 'running' }, now);
       startHeartbeat(record, now);
@@ -378,9 +427,9 @@ function createScriptSupervisor({
       pushControl(record);
       return snapshotOf(record, args);
     }
-    record.status = 'running';
+    record.status = record.pendingQuestions.size === 0 ? 'running' : 'waiting_for_agent';
     record.pauseReason = null;
-    emitRecord(record, 'resumed', { status: 'running' }, now);
+    emitRecord(record, 'resumed', { status: record.status }, now);
     pushControl(record);
     return snapshotOf(record, args);
   }
@@ -410,7 +459,10 @@ function createScriptSupervisor({
     const decided = record.agent.decide(args.requestId, args.decision);
     if (!decided.ok) return scriptError(decided.error, { operationId: record.operationId });
     record.decisions.set(args.requestId, decided.decision);
-    if (record.status === 'waiting_for_agent') record.status = 'running';
+    record.pendingQuestions.delete(args.requestId);
+    record.pendingQuestion = record.pendingQuestions.size === 0 ? null : [...record.pendingQuestions.values()].at(-1);
+    record.currentRequestId = record.pendingQuestion === null ? null : record.pendingQuestion.requestId;
+    if (record.status === 'waiting_for_agent' && record.pendingQuestion === null) record.status = 'running';
     emitRecord(record, 'agent_decision', { requestId: args.requestId, decision: decided.decision }, now);
     return snapshotOf(record, args);
   }
@@ -437,13 +489,9 @@ function createScriptSupervisor({
       ...(record.diagnostics ? { diagnostics: record.diagnostics } : {}),
       resultRef: record.resultRef ?? null,
       eventSequence: record.events.sequence,
-      events: record.events.after(args.afterSequence, args.eventLimit ?? args.limit),
+      events: record.events.after(pageStart(record.events.sequence, args), args.eventLimit ?? args.limit ?? 1),
       rollingSummary: record.summary.snapshot(now()),
-      history: record.ledger.ledger.query(
-        record.operationId,
-        args.afterSequence == null ? 0 : args.afterSequence,
-        args.limit,
-      ),
+      history: historyPage(record.ledger.ledger, record.operationId, args),
       ...(record.recording ? { recording: record.recording.info() } : {}),
       catalog: args.includeCatalog ? catalogPayload() : undefined,
       ...extra,
@@ -473,8 +521,9 @@ function resolveWaitMs(value) {
   return { ok: true, waitMs };
 }
 
-function hasWaitSignal(record, after) {
-  return record.events.sequence > after || isTerminal(record.status);
+function hasWaitSignal(record, after, until) {
+  return isTerminal(record.status) || record.status === 'waiting_for_agent' || isLivePause(record.status)
+    || until === 'event' && record.events.sequence > after;
 }
 
 function isTerminal(status) {
@@ -487,6 +536,21 @@ function statusFromFact(fact) {
   if (fact.kind === 'script_failed') return 'failed';
   if (fact.payloadSummary && fact.payloadSummary.status) return fact.payloadSummary.status;
   return fact.kind;
+}
+
+function pageStart(sequence, args) {
+  if (args.afterSequence != null) return args.afterSequence;
+  return args.limit == null && args.eventLimit == null ? Math.max(0, sequence - 1) : 0;
+}
+
+function historyPage(ledger, operationId, args) {
+  const after = pageStart(ledger.snapshot(operationId).lastSequence, args);
+  const page = ledger.query(operationId, after, args.limit ?? 1);
+  if (args.afterSequence == null && args.limit == null && args.eventLimit == null) {
+    page.window = 'latest';
+    page.omittedBefore = after > 0;
+  }
+  return page;
 }
 
 function rejectBadLimit(args) {
@@ -522,7 +586,7 @@ async function commitTerminal(record, status, error, now, result) {
   record.diagnostics = status === 'failed' ? result?.diagnostics : undefined;
   let revision = record.checkpointRevision + 1;
   let resultRef = null;
-  if (status === 'completed' && record.store) {
+  if ((status === 'completed' || Object.hasOwn(result || {}, 'result')) && record.store) {
     const prepared = prepareScriptResult(result?.result, record.spec.policy.maxOutputBytes);
     const saved = prepared.ok ? await persistRecord(record, 'result', {
       operationId: record.operationId, revision, target: record.spec.target,
@@ -548,7 +612,7 @@ async function commitTerminal(record, status, error, now, result) {
   let persisted = await persistRecord(record, 'checkpoint', checkpoint);
   // The terminal write shares a bounded partition with its result. A successful
   // second write must not conceal eviction of the first one at a quota boundary.
-  if (persisted.ok && status === 'completed' && record.store) {
+  if (persisted.ok && resultRef && record.store) {
     const verified = readScriptResult({ store: record.store, operationId: record.operationId });
     if (!verified.ok) {
       status = 'failed';
@@ -561,6 +625,9 @@ async function commitTerminal(record, status, error, now, result) {
     }
   }
   record.checkpointRevision = revision;
+  record.pendingQuestions.clear();
+  record.pendingQuestion = null;
+  record.currentRequestId = null;
   record.finished = true;
   record.status = persisted.ok ? status : 'failed';
   record.error = persisted.ok ? error : 'terminal_not_persisted';
@@ -786,6 +853,7 @@ function trackAgent(agent, record, now) {
       // The unanswered question stays on the record so a filtered event page
       // cannot hide it from status/wait.
       record.pendingQuestion = { requestId, revision: record.decisionRevision, request };
+      record.pendingQuestions.set(requestId, record.pendingQuestion);
       record.status = 'waiting_for_agent';
       emitRecord(record, 'agent_question_created', {
         request,
@@ -893,6 +961,7 @@ function projectEvent(record, type, extra, timestampMs) {
     name: extra.name,
     scope: extra.scope,
     request: extra.request,
+    requestId: extra.requestId,
   });
 }
 
@@ -926,6 +995,9 @@ function maybeHeartbeat(record, now) {
   }
   const atMs = now();
   if (atMs - record.lastMaterialAtMs < 2000) return;
+  // Status reads must not turn an idle operation into a heartbeat flood.
+  if (record.lastHeartbeatAtMs != null && atMs - record.lastHeartbeatAtMs < 2000) return;
+  record.lastHeartbeatAtMs = atMs;
   emitRecord(record, 'heartbeat', record.summary.heartbeat(atMs, record.finished ? record.status : 'alive'), now);
 }
 

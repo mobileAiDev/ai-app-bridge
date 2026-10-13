@@ -107,28 +107,34 @@ test('deadline or cancellation during the final foreground observation never dis
     const controller = new AbortController(); let observations = 0;
     const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,
       foregroundWindow: async () => {
-        if (++observations > 1) {
-          if (reason === 'cancelled') controller.abort({ code: 'cancelled' });
-          await executionSleep(1000);
-        }
+        observations++;
+        if (reason === 'cancelled') controller.abort({ code: 'cancelled' });
+        await executionSleep(1000);
         return { ok: true, packageName: target.packageName };
       }, tap: async () => { effects++; return { ok: true }; } } });
     const result = await runExecution({ timeoutMs: 30, signal: controller.signal, mutation: true }, () => adapter.action({
       ...target, rawTree: nativeTree([control()]), spec: { provider: 'native', action: 'tap', selector: { text: 'Name' } },
     }));
     assert.equal(result.error, reason); assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.equal(effects, 0);
+    assert.equal(observations, 1, 'one foreground read still honors cancellation before dispatch');
   }
 });
 
-test('Flutter node ID reuse with different text fails revalidation', async () => {
+test('Flutter Intent carries the original reference and preserves the SDK target-change rejection', async () => {
   let effects = 0;
-  const flutterNode = { id: 12, text: 'Name', tap: { bounds: { left: 10, top: 20, right: 80, bottom: 60 } } };
+  const { flutterRef } = require('../test-support/flutter-target-fixture');
+  const flutterNode = { id: 'e12', text: 'Name', targetRef: flutterRef('e12'), tap: { bounds: { left: 10, top: 20, right: 80, bottom: 60 } } };
+  const rawTree = { nodes: [flutterNode] };
   const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,
     bridgeTree: async () => nativeTree([control()]),
-    flutterNodes: async () => ({ nodes: [{ ...flutterNode, text: 'Delete account' }] }),
-    flutterAction: async () => { effects++; return { ok: true }; } } });
-  const result = await adapter.action({ ...target, rawTree: { nodes: [flutterNode] }, spec: { provider: 'flutter', action: 'tap', selector: { nodeId: '12' } } });
-  assert.equal(result.error, 'reobserve_required'); assert.equal(result.dispatched, false); assert.equal(effects, 0);
+    flutterNodes: async () => assert.fail('the observed Element is validated by the SDK'),
+    flutterAction: async (_ctx, payload, _options, dependencies) => {
+      effects++; assert.deepEqual(payload.targetRef, flutterNode.targetRef);
+      assert.equal(dependencies.observedTree, rawTree);
+      return { ok: false, error: 'flutter_target_changed', dispatched: false, ambiguous: false };
+    } } });
+  const result = await adapter.action({ ...target, rawTree, spec: { provider: 'flutter', action: 'tap', selector: { nodeId: 'e12' } } });
+  assert.equal(result.error, 'flutter_target_changed'); assert.equal(result.dispatched, false); assert.equal(effects, 1);
 });
 
 test('the former text-only UIA Intent path now requires a unique exact match', async () => {
@@ -156,4 +162,21 @@ test('a pinned Flutter text command reports its own observation failure', async 
     flutterAction: async () => { effects++; return { ok: true }; },
   });
   assert.equal(result.error, 'observation_unavailable'); assert.equal(result.dispatched, false); assert.equal(effects, 0);
+});
+
+test('a Flutter observation timeout remains actionable without a second tree request', async () => {
+  let reads = 0;
+  let effects = 0;
+  const observation = { ok: false, error: 'flutter_observation_timeout',
+    message: 'The Flutter frame did not complete.', phase: 'frame' };
+  const result = await tapText({ ...target, explicitPackageName: true }, 'Graphs', { provider: 'flutter' }, {
+    foregroundWindow: async () => ({ ok: true, packageName: target.packageName }),
+    flutterNodes: async () => { reads++; return observation; },
+    flutterAction: async () => { effects++; return { ok: true }; },
+  });
+  assert.equal(result.error, 'flutter_observation_timeout');
+  assert.equal(result.message, observation.message);
+  assert.deepEqual(result.observation, observation);
+  assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false);
+  assert.equal(reads, 1); assert.equal(effects, 0);
 });

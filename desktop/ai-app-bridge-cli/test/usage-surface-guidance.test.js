@@ -33,6 +33,80 @@ test('H5 and Web stale targets get valid provider-specific observation hints wit
   }
 });
 const scriptSpec = target => ({ schemaVersion: 'aab.code-script/v1', name: 't', language: 'javascript', source: 'exports.main = async () => {};', target, permissions: ['app.read'] });
+test('same-version code mismatch offers explicit Runtime recovery commands', () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  const result = withActionGuidance('adb-exec', { serial: 'd', argv: ['devices'] }, {
+    ok: false, error: 'runtime_code_mismatch', details: { outdatedSide: 'undetermined' }, dispatched: false, ambiguous: false,
+  });
+  assert.deepEqual(result.guidance.nextActions.map(action => action.arguments.operation), ['status', 'stop', 'start']);
+  assert.match(result.guidance.message, /stops existing Runtime tasks/);
+  for (const action of result.guidance.nextActions) validateCommandArguments(action.command, action.arguments);
+});
+test('UIA bundle mismatch offers a normal stop before restarting and retains history', () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  const result = withActionGuidance('uia-runtime', { serial: 'device-a', operation: 'start' }, {
+    ok: false, error: 'uia_runtime_version_mismatch', dispatched: false, ambiguous: false,
+  });
+  assert.deepEqual(result.guidance.nextActions.map(action => action.arguments), [
+    { serial: 'device-a', operation: 'status' },
+    { serial: 'device-a', operation: 'stop' },
+    { serial: 'device-a', operation: 'start' },
+  ]);
+  assert.match(result.guidance.message, /retains the action history/);
+  for (const action of result.guidance.nextActions) validateCommandArguments(action.command, action.arguments);
+});
+
+test('Flutter observation failures preserve the outcome and offer valid read-only recovery calls', () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  for (const error of ['flutter_observation_timeout', 'flutter_observation_busy', 'flutter_runtime_changed', 'flutter_action_handler_absent', 'flutter_runtime_shutdown']) {
+    for (const [command, args, observe, diagnose] of [
+      ['tap-flutter-text', { serial: 'device-a', packageName: 'a.b', targetText: 'Save' }, 'flutter-nodes', 'uia-tree'],
+      ['ios-flutter-action', { deviceId: 'device-i', bundleId: 'a.b', payload: { action: 'tapText', text: 'Save' } }, 'ios-flutter-nodes', 'doctor'],
+    ]) {
+      // Guidance cannot turn an unknown action outcome into a safe replay.
+      const value = { ok: false, error, dispatched: true, ambiguous: true, details: { observation: { phase: 'frame' } } };
+      const result = withActionGuidance(command, args, value);
+      assert.deepEqual(result.guidance?.nextActions.map(action => action.command), [observe, diagnose]);
+      assert.equal(result.dispatched, true);
+      assert.equal(result.ambiguous, true);
+      assert.equal(result.error, error);
+      assert.equal(result.details, value.details);
+      assert.match(result.guidance.message, /not replayed/);
+      for (const action of result.guidance.nextActions) validateCommandArguments(action.command, action.arguments);
+    }
+  }
+});
+
+test('a UIA selector change before dispatch includes an executable fresh-observation hint', () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  const result = withActionGuidance('tap-uia', { serial: 'device-a', selector: { text: 'Restore' } }, {
+    ok: false, error: 'uia_reference_selector_mismatch', dispatched: false, ambiguous: false,
+  });
+  assert.equal(result.guidance?.nextActions[0]?.command, 'uia-tree');
+  validateCommandArguments(result.guidance.nextActions[0].command, result.guidance.nextActions[0].arguments);
+  assert.equal(result.dispatched, false);
+});
+
+test('an interrupted UIA click offers original receipt and runtime recovery without inventing completion', () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  const value = { ok: false, error: 'command_failed', message: 'socket hang up',
+    source: 'uia-node-runtime', runtimeEpoch: '17b67215-07b6-496f-89bf-1350fc350636', actionId: 'script-fixture:action-5',
+    settled: false, dispatched: null, ambiguous: true, executionReceipt: null,
+    recovery: { ok: false, settled: false, dispatched: null, ambiguous: true, error: 'uia_runtime_unreachable' } };
+  const result = withActionGuidance('tap-uia', { serial: 'device-a', packageName: 'notes.app',
+    selector: { contentDescription: 'Save' } }, value);
+  assert.deepEqual(result.guidance?.nextActions.map(action => [action.command, action.arguments.operation]), [
+    ['device-ownership', 'receipt'], ['uia-runtime', 'start'], ['uia-tree', undefined], ['uia-runtime', 'force-reset'],
+  ]);
+  assert.deepEqual(result.guidance.nextActions[0].arguments, { serial: 'device-a', operation: 'receipt',
+    runtimeEpoch: value.runtimeEpoch, actionId: value.actionId });
+  for (const action of result.guidance.nextActions) validateCommandArguments(action.command, action.arguments);
+  const { guidance, ...unchanged } = result;
+  assert.deepEqual(unchanged, value);
+  assert.match(guidance.message, /unknown/);
+  assert.match(guidance.message, /not replay/);
+});
+
 const rejection = (command, args) => {
   try { validateCommandArguments(command, args); }
   catch (error) { return { code: error.code, field: error.field, message: error.message }; }
@@ -121,7 +195,8 @@ test('range violations quote the documented meaning, including how to keep waiti
 test('the two continuation cursors are documented in the exposed schemas', () => {
   const wait = commandInputSchema('script', { operation: 'wait' }).properties;
   assert.match(wait.afterSequence.description, /eventSequence/);
-  assert.match(wait.afterSequence.description, /Not history\.lastSequence/);
+  assert.match(wait.afterSequence.description, /history\.lastSequence for history/);
+  assert.match(wait.afterSequence.description, /live watermark and can skip unread records/);
   assert.match(wait.waitMs.description, /afterSequence set to the last eventSequence/);
   const status = commandInputSchema('intent', { operation: 'status' }).properties;
   assert.match(status.afterSequence.description, /history\.lastSequence/);

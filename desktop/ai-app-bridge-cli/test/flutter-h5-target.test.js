@@ -63,11 +63,25 @@ test('ambiguous/hidden adapters and stale expected page cannot dispatch a typed 
   assert.equal(calls.length, 1);
 });
 
-test('wait performs observations only and refuses document replacement while retaining adapter selection', async () => {
+test('wait observes a new document in the same registered adapter, including disabled completion controls', async () => {
   const { snapshot } = fixture(), calls = [];
-  const port = createFlutterH5Port(async payload => { calls.push(payload); const tree = snapshot(); if (calls.length > 1) tree.pageRef.documentId = tree.dom.documentId = 'replacement'; return tree; });
-  assert.equal((await port.wait({ selector: { text: 'Absent' }, timeoutMs: 100, intervalMs: 1 })).error, 'reobserve_required');
+  const port = createFlutterH5Port(async payload => { calls.push(payload); const tree = snapshot();
+    if (calls.length > 1) { tree.pageRef.documentId = tree.dom.documentId = 'replacement'; tree.dom.controls[1].text = 'Loaded'; tree.dom.controls[1].disabled = true; }
+    return tree; });
+  const result = await port.wait({ selector: { text: 'Loaded' }, timeoutMs: 100, intervalMs: 1 });
+  assert.equal(result.ok, true); assert.equal(result.node.disabled, true); assert.equal(result.targetRef.pageRef.documentId, 'replacement');
   assert.deepEqual(calls, [{ action: 'h5Dom' }, { action: 'h5Dom', adapterId: 'article' }]);
+});
+
+test('wait polls adapter creation but retains a replacement-registration error', async () => {
+  const { snapshot } = fixture(); let reads = 0;
+  const port = createFlutterH5Port(async () => {
+    reads++;
+    if (reads === 1) return { ok: false, error: 'flutter_h5_adapter_not_found' };
+    const tree = snapshot(); if (reads === 3) tree.pageRef.adapterGeneration = 'g2'; return tree;
+  });
+  assert.equal((await port.wait({ selector: { text: 'Absent' }, timeoutMs: 100, intervalMs: 1 })).error, 'reobserve_required');
+  assert.equal(reads, 3);
 });
 
 test('Flutter renderer rejects navigation back to the same URL, replacement and changed geometry', () => {

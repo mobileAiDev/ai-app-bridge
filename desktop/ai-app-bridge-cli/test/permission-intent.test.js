@@ -3,6 +3,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readPermissionState, changePermission, parsePermissionState, parsePermissionRequest } = require('../bin/android-permissions');
+
+test('Android numeric permission flags preserve the grant and expose unmapped bits as information', () => {
+  const dump = packageDump.replace('USER_SET| USER_SENSITIVE_WHEN_DENIED', 'USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|524288');
+  const state = parsePermissionState(dump, params);
+  assert.equal(state.granted, false);
+  assert.ok(state.flags.includes('524288'));
+  assert.deepEqual(state.warnings, [{ code: 'permission_flag_unmapped', flags: ['524288'], blocking: false }]);
+});
 const { createPermissionIntent } = require('../bin/intent/permission-intent');
 const { createMemoryEvidenceAdapter } = require('../bin/shared-kernel/evidence-adapters');
 const { createIntentEvidenceStore } = require('../bin/intent/intent-evidence-store');

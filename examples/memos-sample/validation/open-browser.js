@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
+const { createHash } = require('node:crypto');
 const { parseArgs } = require('node:util');
 const root = path.resolve(__dirname, '../../..');
 const { createMcpClient, payloadOf } = require(path.join(root,
@@ -13,6 +14,7 @@ const { values } = parseArgs({ options: {
   output: { type: 'string' }, session: { type: 'string' },
   url: { type: 'string', default: 'http://127.0.0.1:18881/' },
   'storage-state': { type: 'string' }, headed: { type: 'boolean', default: false },
+  locale: { type: 'string' },
   'capture-bodies': { type: 'boolean', default: false },
 } });
 if (!values.output || !values.session || !process.env.AAB_PLAYWRIGHT_MODULE
@@ -26,6 +28,7 @@ if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(ur
 const { chromium } = require(process.env.AAB_PLAYWRIGHT_MODULE);
 const directory = path.resolve(values.output);
 fs.mkdirSync(directory, { mode: 0o700 });
+const preparationStartedAtMs = Date.now();
 const client = createMcpClient({ serverPath: path.join(root, 'desktop/ai-app-bridge-cli/bin/mcp-server.js'),
   transcriptPath: path.join(directory, 'mcp.jsonl'), stderrPath: path.join(directory, 'stderr.log'),
   timeoutMs: 180000, cwd: root,
@@ -52,8 +55,11 @@ async function main() {
   if (!server.ok) throw new Error(server.error);
   browser = await chromium.launch({ executablePath: process.env.AAB_CHROMIUM_EXECUTABLE, headless: !values.headed });
   context = await browser.newContext({ viewport: { width: 1280, height: 900 },
+    ...(values.locale ? { locale: values.locale } : {}),
     ...(values['storage-state'] ? { storageState: path.resolve(values['storage-state']) } : {}) });
-  await context.addInitScript({ path: path.join(root, 'web/ai-app-bridge-web/src/index.js') });
+  const sdkSource = fs.readFileSync(path.join(root, 'web/ai-app-bridge-web/src/index.js'), 'utf8');
+  const sdkSourceSha256 = createHash('sha256').update(sdkSource).digest('hex');
+  await context.addInitScript({ content: sdkSource });
   await context.addInitScript(config => document.addEventListener('DOMContentLoaded', () => {
     window.memosBridge = window.AiAppBridgeWeb.createAiAppBridge(config).start();
   }, { once: true }), { endpoint: server.endpoint, token: server.token, appName: 'Memos Bridge sample',
@@ -69,6 +75,9 @@ async function main() {
   const target = { platform: 'web', sessionId, runtimeEpoch, targetId };
   fs.writeFileSync(path.join(directory, 'target.json'), JSON.stringify(target, null, 2), { flag: 'wx', mode: 0o600 });
   await call('initial-dom', 'web-dom', { sessionId, runtimeEpoch, targetId });
+  const preparation = { startedAtMs: preparationStartedAtMs, readyAtMs: Date.now(),
+    elapsedMs: Date.now() - preparationStartedAtMs, browser: browser.version(), sdkSourceSha256, target };
+  fs.writeFileSync(path.join(directory, 'preparation.json'), JSON.stringify(preparation, null, 2), { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify({ ready: true, directory, browser: browser.version(), target }));
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   const lines = readline.createInterface({ input: process.stdin });
@@ -78,7 +87,36 @@ async function main() {
       const request = JSON.parse(line);
       if (request.close === true) break;
       if (!/^[A-Za-z0-9_-]+$/.test(request.name)) throw new Error('A unique alphanumeric evidence name is required.');
-      if (request.screenshot === true) {
+      if (request.fault !== undefined) {
+        // Controlled transport/document faults only; never business automation.
+        const startedAtMs = Date.now();
+        if (request.fault === 'reload') {
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await page.waitForFunction(() => window.memosBridge?.isConnected(), { timeout: 15000 });
+        } else if (request.fault === 'offline') await context.setOffline(true);
+        else if (request.fault === 'online') await context.setOffline(false);
+        else if (request.fault === 'lose-next-save-response') {
+          await page.route('**/memos.api.v1.MemoService/CreateMemo', async route => {
+            const began = Date.now();
+            const response = await route.fetch();
+            // The real server has processed the browser's original request;
+            // only its response is lost. Never synthesize a business result.
+            fs.writeFileSync(path.join(directory, `${request.name}-server.json`), JSON.stringify({
+              startedAtMs: began, completedAtMs: Date.now(), url: response.url(), status: response.status(),
+            }, null, 2), { flag: 'wx', mode: 0o600 });
+            await route.abort('failed');
+          }, { times: 1 });
+        }
+        else if (request.fault === 'sdk-stop') await page.evaluate(() => window.memosBridge.stop());
+        else if (request.fault === 'sdk-start') {
+          await page.evaluate(() => window.memosBridge.start());
+          await page.waitForFunction(() => window.memosBridge.isConnected(), { timeout: 15000 });
+        } else throw new Error(`Unknown fault: ${request.fault}`);
+        const output = path.join(directory, `${request.name}.json`);
+        fs.writeFileSync(output, JSON.stringify({ fault: request.fault, startedAtMs, completedAtMs: Date.now() }, null, 2),
+          { flag: 'wx', mode: 0o600 });
+        console.log(JSON.stringify({ fault: request.fault, output }));
+      } else if (request.screenshot === true) {
         const file = path.join(directory, `${request.name}.png`);
         if (fs.existsSync(file)) throw new Error(`Screenshot already exists: ${request.name}`);
         await page.screenshot({ path: file, fullPage: true });

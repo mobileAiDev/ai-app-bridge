@@ -323,9 +323,10 @@ function createIntentWorker({
     runtime.state.seenDecisionIds.add(decision.decisionId);
     runtime.state.lastDecisionId = decision.decisionId;
     runtime.state.error = null;
-    if (commandAction && decision.action.observeAfter !== true) {
+    if (commandAction ? decision.action.observeAfter !== true : decision.action.observeAfter === false) {
+      if (!commandAction) context.observationStale = true;
       runtime.state.status = 'waiting_for_decision';
-      runtime.emit('waiting_for_decision', { revision: runtime.state.revision, decisionId: decision.decisionId, reason: 'command_returned' });
+      runtime.emit('waiting_for_decision', { revision: runtime.state.revision, decisionId: decision.decisionId, reason: commandAction ? 'command_returned' : 'observation_deferred' });
       return snapshotResult(true);
     }
     context.revision += 1;

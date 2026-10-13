@@ -7,6 +7,10 @@
         android:label="AI App Bridge Sample"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
+        <activity android:name=".NativeCommerceActivity" android:exported="true" />
+        <activity android:name=".WorkflowLabActivity" android:exported="true" />
+        <activity android:name=".ComplexWorkflowFixtureActivity" android:exported="true" />
+        <activity android:name=".ComplexWorkflowHistoryActivity" android:exported="true" />
         <activity android:name=".AgentChoiceFixtureActivity" android:exported="true" />
         <activity android:name=".ObservationCoverageFixtureActivity" android:exported="true" />
         <activity android:name=".debugbridge.WindowContractFixtureActivity" android:exported="true" />

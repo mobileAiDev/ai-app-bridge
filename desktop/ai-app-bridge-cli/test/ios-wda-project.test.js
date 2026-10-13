@@ -37,7 +37,15 @@ test('managed WDA reuses intact source and rejects a changed cached integration'
   const home = temporary(t);
   const first = await prepareManagedWda({ home });
   assert.equal(first.reused, false);
-  assert.equal((await prepareManagedWda({ home })).reused, true);
+  const { DatabaseSync } = require('node:sqlite');
+  const reader = new DatabaseSync(path.join(path.dirname(path.dirname(first.projectPath)), 'prepare.sqlite'));
+  try {
+    reader.exec('BEGIN; SELECT * FROM sqlite_schema');
+    assert.equal((await prepareManagedWda({ home })).reused, true);
+    reader.exec('ROLLBACK; BEGIN IMMEDIATE');
+    await assert.rejects(prepareManagedWda({ home }), { code: 'executor_preparing' });
+    reader.exec('ROLLBACK');
+  } finally { reader.close(); }
   fs.appendFileSync(path.join(path.dirname(first.projectPath), 'WebDriverAgentLib/Routing/AABWDABinding.m'), '\n// changed fixture\n');
   await assert.rejects(prepareManagedWda({ home }), { code: 'ios_wda_prepared_source_changed' });
 });

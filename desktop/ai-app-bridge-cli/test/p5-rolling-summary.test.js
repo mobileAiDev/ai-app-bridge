@@ -26,6 +26,51 @@ test('cancellation while paused counts the wait only until the terminal event', 
   assert.equal(later.activeMs, 200);
 });
 
+test('decision wait accumulates across questions and does not restart at progress events', () => {
+  const summary = createRollingSummary({ operationId: 'decisions', startedAtMs: 1000 });
+  summary.apply({ kind: 'agent_question_created', timestampMs: 1200, requestId: 'ask-1', request: { question: 'one' } });
+  summary.apply({ kind: 'progress', timestampMs: 1300, stage: 'waiting' });
+  assert.equal(summary.snapshot(1500).decisionWaitMs, 300);
+  summary.apply({ kind: 'agent_decision', timestampMs: 1700, requestId: 'ask-1' });
+  summary.apply({ kind: 'agent_question_created', timestampMs: 2200, requestId: 'ask-2', request: { question: 'two' } });
+  summary.apply({ kind: 'agent_decision', timestampMs: 2800, requestId: 'ask-2' });
+  const terminal = summary.apply({ kind: 'script_completed', timestampMs: 3000 });
+  assert.equal(terminal.startedAtMs, 1000);
+  assert.equal(terminal.elapsedMs, 2000);
+  assert.equal(terminal.decisionWaitMs, 1100);
+  assert.equal(terminal.activeMs, 900);
+  assert.deepEqual(summary.snapshot(9000), terminal);
+});
+
+test('overlapping manual pause and Agent wait exclude their union from active time', () => {
+  for (const decideFirst of [true, false]) {
+    const summary = createRollingSummary({ operationId: 'overlap', startedAtMs: 0 });
+    summary.apply({ kind: 'agent_question_created', timestampMs: 100, requestId: 'ask-1', request: { question: 'go?' } });
+    summary.apply({ kind: 'paused', timestampMs: 200 });
+    summary.apply({ kind: decideFirst ? 'agent_decision' : 'resumed', timestampMs: 400, requestId: 'ask-1' });
+    summary.apply({ kind: decideFirst ? 'resumed' : 'agent_decision', timestampMs: 600, requestId: 'ask-1' });
+    const terminal = summary.apply({ kind: 'script_completed', timestampMs: 800 });
+    assert.equal(terminal.elapsedMs, 800);
+    assert.equal(terminal.activeMs, 300);
+    assert.equal(terminal.decisionWaitMs, decideFirst ? 300 : 500);
+  }
+});
+
+test('terminal Agent wait is frozen; explicit reentry excludes downtime and resumes accounting', () => {
+  const summary = createRollingSummary({ operationId: 'resume', startedAtMs: 1000 });
+  summary.apply({ kind: 'agent_question_created', timestampMs: 1200, requestId: 'ask-1', request: { question: 'go?' } });
+  const failed = summary.apply({ kind: 'script_failed', timestampMs: 1500 });
+  assert.equal(failed.decisionWaitMs, 300);
+  assert.equal(failed.activeMs, 200);
+  assert.deepEqual(summary.snapshot(4000), failed);
+  summary.apply({ kind: 'resumed', timestampMs: 4000 });
+  const completed = summary.apply({ kind: 'script_completed', timestampMs: 4500 });
+  assert.equal(completed.elapsedMs, 3500);
+  assert.equal(completed.activeMs, 700);
+  assert.equal(completed.decisionWaitMs, 300);
+  assert.deepEqual(summary.snapshot(9000), completed);
+});
+
 test('P5 RollingSummary merges call-level events and business progress', () => {
   const summary = createRollingSummary({ operationId: 'script-1', startedAtMs: 1000 });
   summary.apply({ kind: 'call_started', timestampMs: 1100, command: 'network' });
@@ -43,7 +88,7 @@ test('P5 RollingSummary merges call-level events and business progress', () => {
   assert.equal(view.message, 'waiting for results');
   assert.equal(view.latestEvidenceRefs[0], 'n1');
   assert.equal(view.elapsedMs, 300);
-  summary.apply({ kind: 'agent_question_created', timestampMs: 1400, request: { question: 'go?' } });
+  summary.apply({ kind: 'agent_question_created', timestampMs: 1400, requestId: 'ask-1', request: { question: 'go?' } });
   summary.apply({ kind: 'heartbeat', timestampMs: 3400 });
   const waiting = summary.snapshot(3600);
   assert.equal(waiting.agentRequest.question, 'go?');

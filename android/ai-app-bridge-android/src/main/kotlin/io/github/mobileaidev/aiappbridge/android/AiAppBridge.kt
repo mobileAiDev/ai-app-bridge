@@ -62,11 +62,9 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.4.6"
+    private const val bridgeVersion = "0.4.7"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
-    @Volatile
-    private var flutterActionHandler: FlutterActionHandler? = null
 
     fun interface FlutterActionHandler {
         fun handle(method: String, payloadJson: String, reply: FlutterActionReply)
@@ -74,9 +72,10 @@ object AiAppBridge {
 
     fun interface FlutterActionReply { fun reply(responseJson: String) }
 
+    private val foregroundActivities = ForegroundActivityTracker<Activity>()
+    private val flutterRuntimes = FlutterRuntimeRegistry<Activity, FlutterActionHandler>(foregroundActivities::current)
     private val flutterActions = FlutterActionExecutor(
-        { flutterActionHandler },
-        { JSONObject(flutterSnapshot).optJSONObject("layout")?.optJSONObject("operable")?.optString("runtimeEpoch") },
+        currentRuntime = { flutterRuntimes.current()?.let { FlutterActionExecutor.Runtime(it.handler, it.snapshot.epoch, it.identity) } },
     )
 
     interface WebViewAdapter {
@@ -89,15 +88,12 @@ object AiAppBridge {
     @Volatile
     private var server: DebugBridgeServer? = null
 
-    @Volatile
-    private var flutterSnapshot: String = "{}"
-    @Volatile
-    private var flutterStatusSnapshot: String = "{}"
+    private val flutterSnapshot: String get() = flutterRuntimes.snapshot().full
+    private val flutterStatusSnapshot: String get() = flutterRuntimes.snapshot().status
 
     @Volatile
     private var lifecycleRegistered = false
 
-    private val foregroundActivities = ForegroundActivityTracker<Activity>()
     private val explicitActivityStarts = FocusedActivityStart(
         foregroundActivities,
         usable = { !it.isFinishing && !it.isDestroyed && it.window?.decorView != null },
@@ -181,25 +177,29 @@ object AiAppBridge {
 
     @JvmStatic
     fun updateFlutterSnapshot(snapshotJson: String) {
-        val snapshot = JSONObject(snapshotJson)
-        flutterSnapshot = snapshot.toString()
-        snapshot.remove("layout")
-        snapshot.remove("uiObservation")
-        flutterStatusSnapshot = snapshot.toString()
+        flutterRuntimes.updateLegacySnapshot(FlutterRuntimeRegistry.Snapshot.parse(snapshotJson))
+    }
+
+    @JvmStatic
+    fun registerFlutterActionHandler(activity: Activity, handler: FlutterActionHandler) {
+        flutterRuntimes.register(activity, handler)
+    }
+
+    @JvmStatic
+    fun updateFlutterSnapshot(handler: FlutterActionHandler, snapshotJson: String): Boolean {
+        return flutterRuntimes.updateSnapshot(handler, FlutterRuntimeRegistry.Snapshot.parse(snapshotJson))
     }
 
     @JvmStatic
     @Synchronized
     fun setFlutterActionHandler(handler: FlutterActionHandler?) {
-        flutterActionHandler = handler
+        flutterRuntimes.setLegacyHandler(handler)
     }
 
     @JvmStatic
     @Synchronized
     fun clearFlutterActionHandler(handler: FlutterActionHandler): Boolean {
-        if (flutterActionHandler !== handler) return false
-        flutterActionHandler = null
-        return true
+        return flutterRuntimes.remove(handler)
     }
 
     @JvmStatic
@@ -364,18 +364,21 @@ object AiAppBridge {
                     override fun onActivityResumed(activity: Activity) {
                         explicitActivityStarts.cancel(activity)
                         foregroundActivities.onLifecycle(activity, ActivityPhase.RESUMED)
+                        flutterRuntimes.refreshSelection()
                         uiObserver?.onLifecycle(activity, "resumed")
                     }
 
                     override fun onActivityPaused(activity: Activity) {
                         explicitActivityStarts.cancel(activity)
                         foregroundActivities.onLifecycle(activity, ActivityPhase.PAUSED)
+                        flutterRuntimes.refreshSelection()
                         uiObserver?.onLifecycle(activity, "paused")
                     }
 
                     override fun onActivityStopped(activity: Activity) {
                         explicitActivityStarts.cancel(activity)
                         foregroundActivities.onLifecycle(activity, ActivityPhase.STOPPED)
+                        flutterRuntimes.refreshSelection()
                         uiObserver?.onLifecycle(activity, "stopped")
                     }
                     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
@@ -383,6 +386,7 @@ object AiAppBridge {
                     override fun onActivityDestroyed(activity: Activity) {
                         explicitActivityStarts.cancel(activity)
                         foregroundActivities.onLifecycle(activity, ActivityPhase.DESTROYED)
+                        flutterRuntimes.removeActivity(activity)
                         uiObserver?.onLifecycle(activity, "destroyed")
                     }
                 },
@@ -1030,6 +1034,9 @@ object AiAppBridge {
         private val actionReplies = java.util.concurrent.ThreadPoolExecutor(2, 2, 0L,
             java.util.concurrent.TimeUnit.MILLISECONDS, java.util.concurrent.ArrayBlockingQueue(16),
             { task -> Thread(task, "aab-action-reply").apply { isDaemon = true } })
+        private val observationTimeouts = Executors.newSingleThreadScheduledExecutor { task ->
+            Thread(task, "aab-observation-deadline").apply { isDaemon = true }
+        }
 
         fun start() {
             executor.execute {
@@ -1148,11 +1155,12 @@ object AiAppBridge {
                 return
             }
             if (request.method == "GET" && request.path == "/v1/flutter/snapshot") {
-                flutterObservationCall("readSnapshot", "{}") { response ->
+                val body = JSONObject().put("scope", request.query["scope"] ?: "full").toString()
+                flutterObservationCall("readSnapshot", body) { response ->
                     if (response.optBoolean("ok") && response.optJSONObject("snapshot") != null) {
-                        updateFlutterSnapshot(response.getJSONObject("snapshot").toString())
-                        enqueueActionReply(socket, buildStatus(includeFlutterTree = true))
-                    } else enqueueActionReply(socket, response)
+                        enqueueActionReply(socket, buildStatus(includeFlutterTree = true,
+                            observedFlutterSnapshot = response.getJSONObject("snapshot").toString()))
+                    } else enqueueActionReply(socket, response.put("dispatched", false).put("ambiguous", false))
                 }
                 return
             }
@@ -1243,30 +1251,51 @@ object AiAppBridge {
         }
 
         private fun flutterObservationCall(method: String, body: String, reply: (JSONObject) -> Unit) {
-            val handler = flutterActionHandler
-            if (handler == null) { reply(JSONObject().put("ok", false).put("error", "flutter_action_handler_absent")); return }
+            val selection = flutterRuntimes.current()
+            if (selection == null) { reply(JSONObject().put("ok", false).put("error", "flutter_action_handler_absent")); return }
+            val handler = selection.handler
             val settled = java.util.concurrent.atomic.AtomicBoolean(false)
-            val timeout = Runnable {
-                if (settled.compareAndSet(false, true)) reply(JSONObject().put("ok", false).put("error", "flutter_observation_timeout"))
+            val gate = MainThreadTaskGate()
+            var timeout: java.util.concurrent.ScheduledFuture<*>? = null
+            fun complete(response: JSONObject) {
+                if (settled.compareAndSet(false, true)) {
+                    timeout?.cancel(false)
+                    reply(response)
+                }
             }
-            mainHandler.postDelayed(timeout, 2000)
-            mainHandler.post {
-                if (settled.get()) return@post
+            val task = Runnable {
+                if (!gate.begin() || settled.get()) return@Runnable
+                if (!flutterRuntimes.isCurrent(selection)) {
+                    complete(JSONObject().put("ok", false).put("error", "flutter_runtime_changed")); return@Runnable
+                }
                 try {
                     handler.handle(method, body) { value ->
-                        if (settled.compareAndSet(false, true)) {
-                            mainHandler.removeCallbacks(timeout)
-                            val response = if (handler !== flutterActionHandler) JSONObject().put("ok", false).put("error", "flutter_runtime_changed")
+                        if (!settled.get()) {
+                            var response = if (!flutterRuntimes.isCurrent(selection)) JSONObject().put("ok", false).put("error", "flutter_runtime_changed")
                                 else try { JSONObject(value) } catch (_: org.json.JSONException) { JSONObject().put("ok", false).put("error", "invalid_flutter_observation_response") }
-                            reply(response)
+                            if (response.optBoolean("ok") && response.optJSONObject("snapshot") != null &&
+                                !flutterRuntimes.acceptObservation(selection, FlutterRuntimeRegistry.Snapshot.parse(response.getJSONObject("snapshot").toString()))) {
+                                response = JSONObject().put("ok", false).put("error", "flutter_runtime_changed")
+                            }
+                            complete(response)
                         }
                     }
                 } catch (error: Exception) {
-                    if (settled.compareAndSet(false, true)) {
-                        mainHandler.removeCallbacks(timeout)
-                        reply(JSONObject().put("ok", false).put("error", "flutter_observation_failed"))
-                    }
+                    complete(JSONObject().put("ok", false).put("error", "flutter_observation_failed"))
                 }
+            }
+            // A busy UI thread must not postpone its own observation deadline.
+            timeout = observationTimeouts.schedule({
+                if (settled.compareAndSet(false, true)) {
+                    val queued = gate.cancelQueued()
+                    if (queued) mainHandler.removeCallbacks(task)
+                    reply(JSONObject().put("ok", false).put("error", "flutter_observation_timeout")
+                        .put("observation", JSONObject().put("phase", if (queued) "android-main-queue" else "flutter-channel")
+                            .put("timeoutMs", 2000)))
+                }
+            }, 2000, TimeUnit.MILLISECONDS)
+            if (!mainHandler.post(task)) {
+                complete(JSONObject().put("ok", false).put("error", "flutter_main_thread_unavailable"))
             }
         }
 
@@ -1405,7 +1434,7 @@ object AiAppBridge {
             cleared.put(JSONObject().put("path", label).put("entries", deleted))
         }
 
-        private fun buildStatus(includeFlutterTree: Boolean = false): JSONObject {
+        private fun buildStatus(includeFlutterTree: Boolean = false, observedFlutterSnapshot: String? = null): JSONObject {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
             val debuggable =
                 context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
@@ -1453,7 +1482,7 @@ object AiAppBridge {
                 .put("capture", captureCounts())
                 .put("capturePersistence", capturePersistenceStatus())
                 .put("uiObservation", runOnMainThread { ensureUiObserver().status() })
-                .put("flutter", JSONObject(if (includeFlutterTree) AiAppBridge.flutterSnapshot else AiAppBridge.flutterStatusSnapshot))
+                .put("flutter", JSONObject(observedFlutterSnapshot ?: if (includeFlutterTree) AiAppBridge.flutterSnapshot else AiAppBridge.flutterStatusSnapshot))
                 .put("updatedAtMs", System.currentTimeMillis())
         }
 
@@ -2197,6 +2226,7 @@ object AiAppBridge {
                             type = params.type,
                             displayId = root.display?.displayId ?: throw NativeTargetFailure("native_window_metadata_unavailable"),
                             visible = root.isShown && root.alpha > 0f,
+                            touchable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0,
                         ),
                         focusable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE == 0,
                         touchable = params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0,

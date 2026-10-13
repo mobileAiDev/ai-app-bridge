@@ -196,11 +196,20 @@ The SDK listens on `localabstract:aab-sdk-<runtimeEpoch>` and atomically publish
 `files/ai_app_bridge_endpoint.json` in its App-private directory. The
 `ai-app-bridge.android-endpoint.v1` record contains `ok`, `packageName`,
 `runtimeEpoch`, `transport:"localabstract"`, `socketName`, `version`, `updatedAtMs`
-and `error` (null when ready). Each Host request reads that file through `run-as`
-on the resolved serial, validates its package and runtime socket, then creates or
-reuses the exact ADB mapping and checks it before HTTP dispatch. Reads and actions
-are each attempted once. No cached device port, port scan, TCP listener or old
-port-file fallback remains in the Android SDK path.
+and `error` (null when ready). The Host reads it through `run-as`, validates its
+package and runtime socket, and caches that endpoint identity for up to 15 seconds.
+Every request still verifies the exact serial/socket ADB mapping before HTTP
+dispatch. A disconnected read can invalidate the cache, rediscover and reconnect
+once. Mutations are never automatically replayed after a transport failure.
+There is no port scan, TCP listener or old port-file fallback.
+
+`launch-app` and `launch-activity` normally return after the Activity Manager
+accepts the start request, with `completionScope:"activity-start-request"` and
+`waitedForLaunch:false`, without an extra foreground-window query. Use a subsequent
+`wait-text` or other business condition within the same Intent/Script for page
+readiness. `waitForLaunch:true` explicitly requests Android `am start -W` and the
+foreground wait; even that is not a business-completion check. `clearTask:true`
+starts a new activity task without clearing app data.
 
 An older SDK without this endpoint must be rebuilt. Discovery failure is
 `bridge_endpoint_discovery_failed`; malformed identity is `bridge_endpoint_invalid`
@@ -584,6 +593,41 @@ or call budget prevents another Agent call. Malformed replies remain
 `waiting_for_decision` with a field error and require explicit correction; they
 neither dispatch nor trigger another Agent request automatically.
 
+### Run a known sequence in one Intent call
+
+When the relevant controls and outcome checks are known, a local autonomous
+module can make successive decisions inside one Intent start. These are local
+JavaScript calls; using a language model for each decision is optional. Choose
+supervised mode when the caller should supply each decision.
+
+```json
+{"command":"intent","arguments":{"operation":"start","mode":"autonomous","agentModule":"/absolute/known-flow.cjs","goal":"Complete the observed form and verify its result","target":{"platform":"web","sessionId":"OBSERVED_SESSION","runtimeEpoch":"OBSERVED_EPOCH","targetId":"main"},"provider":"h5","background":false,"budget":{"maxSteps":100,"maxAgentCalls":120,"maxDurationMs":60000}}}
+```
+
+Replace the target with the current connection and use a real module path.
+`agentModule` is a CommonJS module exporting `async function decide(input)`
+(as `exports.decide` or `module.exports`). It receives `goal`, current `revision`,
+`summary`, `evidenceId`, `lastAction`, `observationFailure`, `observationStale`,
+and `capture` when present. It returns the same decision used by supervised
+`decide`: a unique `decisionId`, the current `basedOnRevision`, and
+`agentDecision:"act"` with an action, or `complete/fail/inconclusive` with the
+observed reason and no action. Module calls are counted by `maxAgentCalls` even
+when no model request is made.
+
+Use `lastAction.result` for command outcomes. A command action can input several
+known fields over successive local decisions without collecting a tree after
+each field; request a fresh observation when its identities or outcome are
+needed. Wait for the actual page or network outcome before completing. A failed
+or ambiguous action remains available to the module for a new decision; inspect
+the original result before choosing whether to retry. Module state must remain
+scoped to the workflow: the Runtime caches required modules across starts.
+
+For direct CLI/MCP calls, `background:false` waits for the initial autonomous
+loop to return. A returned status may still require attention; it is not always
+completion. To keep the caller available during a longer operation, use
+`background:true` and wait on the same operation ID. Script `ctx.askAgent`
+remains available for programs needing an explicit external decision checkpoint.
+
 ### Compose commands and workflows
 
 Intent accepts `{action:"command", command, arguments}` alongside provider UI
@@ -712,19 +756,33 @@ action window; only that later read can establish complete coverage for new
 facts. Capture failures retain their machine code, field and message in the
 observation and portable recording.
 
-Script start accepts `script`, optional operation ID, `recordingDir`, and
-`pythonPath` for Python only. Supply `script.target` for device work. Language is
+Script start accepts `script`, optional operation ID, `recordingDir`, `waitMs`, and
+`pythonPath` for Python only. Start, resume and decide can wait up to 60000 ms and return
+a ready result or Agent question in the same call. Supply `script.target` for device work. Language is
 exactly `javascript` or `python`; source is exactly one of `source` or `sourcePath`.
 Policy supports `timeoutMs`, `restartPolicy`, `maxOutputBytes`, `maxProgressBytes`.
 `policy.onFailure` was unused and has been removed: source checks call results
 and assertion verdicts, uncaught exceptions fail execution, and pause is explicit.
 Recording currently requires `restartPolicy:"none"`. Frozen checkpoint recovery
 uses its saved program and never blends missing caller fields with stored fields.
+For a stopped checkpoint-enabled Script, `resume` also accepts
+`recovery:{checkpoint:{name,state},reason?}`. This explicitly commits the Agent's
+chosen reentry state before starting the same frozen program. Past receipts and
+unknown effects remain unchanged; action IDs continue forward. See
+[Recover a stopped Script](SCRIPT_AUTHORING.md#recover-a-stopped-script) for
+query-before-continuation and the storage-failure behavior.
 
-Script completion persists its returned JSON before exposing `completed`. Status,
-wait responses and terminal events carry only
-`resultRef:{evidenceId,bytes,sha256,originalSha256,representation}`; the full value
-is read with `script {operation:"result",operationId:"…"}`. This reads and checks
+Script timing summaries describe the current Host execution segment, beginning
+at `rollingSummary.startedAtMs`. `decisionWaitMs` accumulates unanswered-question
+time; `activeMs` excludes Agent waiting, explicit pauses and stopped intervals.
+These are wall-clock classifications, not CPU durations. A restored segment on
+a new Host has a new start time; retain outer timestamps for whole-workflow cost.
+
+Script completion persists its returned JSON before exposing `completed`. Status
+and terminal events carry a small
+`resultRef:{evidenceId,bytes,sha256,originalSha256,representation}`. Ready attention
+waits and waiting start/resume/decide calls include the full result inline. If absent,
+read it with `script {operation:"result",operationId:"…"}`. This reads and checks
 the retained FactStore record, including after runtime restart, independently of
 the bounded progress ring. `maxOutputBytes` defaults to 1 MiB and accepts at most
 64 MiB; the store must retain the whole result or report failure. A failed result
@@ -734,8 +792,9 @@ Results use the same password/token redaction as other persistent evidence.
 `representation` is `original-json` or `redacted-json`; `sha256` and `bytes`
 describe the persisted canonical JSON, and `originalSha256` describes the original
 canonical return value. Successful reads return `result`, `resultRef` and
-`persisted:true`. An unfinished operation returns `result_not_ready`; failed or
-cancelled work returns `result_unavailable`. Missing result persistence, retained
+`persisted:true`. An unfinished operation returns `result_not_ready`. Failed work
+can retain a returned diagnostic report with `executionError`; failed or cancelled
+work without such a report returns `result_unavailable`. Missing result persistence, retained
 checkpoint with evicted result, and inconsistent content return
 `result_not_persisted`, `result_not_retained` and `result_checksum_mismatch`
 respectively. An evicted or unknown operation may return `unknown_operation`;
@@ -945,6 +1004,14 @@ or expired deadline prevents the command from starting. After admission, the
 command drains naturally; cancelling or killing the Host does not stop it or
 release unknown ownership. Recovery checks this original job without replaying it.
 
+If cancellation or expiry is observed after preparation but before submission,
+the Host returns `dispatched:false`, `ambiguous:false`, `settled:true`: the
+prepared job was never started. Unknown shell failures retain the original job
+identity in `details.shellExecution`, together with the failure phase,
+preparation duration, phase duration and query count. Guidance links to device
+status, archives filtered by the original action ID, and the current UIA tree.
+These are diagnostic choices; failure formatting never repeats the command.
+
 The command process ending does not prove that navigation, PackageInstaller or
 another asynchronous Android service completed its business operation. A shell
 proof does not provide SDK target binding or App event correlation. UIA semantic
@@ -994,11 +1061,15 @@ target and permissions as well as source/policy.
 objects, arrays and primitive values such as null or false. Supply the question's
 requestId and revision. Repeating the same answer by canonical JSON content is
 idempotent; changing an already answered question's value is rejected. Omitting
-the answer is invalid and is distinct from explicitly answering null.
+the answer is invalid and is distinct from explicitly answering null. Optional
+`waitMs` (0–60000, default 0) waits after accepting the answer until the next
+question, completion, failure, pause or timeout, using the same operation ID.
+On timeout the answer remains accepted; continue with `wait`. When a result is
+already inline, use it without another `result` call.
 
-Default permissions are `app.read`, `capture.read`, `app.interact`. The trusted
-caller may explicitly include `app.lifecycle` for clear data and
-`app.permissions` for permission/app-op fixture changes. The host freezes this
+Omitting permissions enables every registered Script command. An explicit list
+restricts the run; include `app.lifecycle` for clear data and `app.permissions`
+for permission/app-op fixture changes when needed. The host freezes this
 selection into the operation; Script source cannot change it through `ctx.call`.
 These are capability declarations inside a trusted local execution model, not
 an OS sandbox or a multi-tenant authorization system. Raw eval and provider
@@ -1083,6 +1154,27 @@ For duplicate or unlabelled controls, `uia-tree` with `compact:true` exposes
 Pass that complete object as `tap-uia.targetRef`, mutually exclusive with
 `selector`. An Intent uses `selector:{nodeRef:node.targetRef.nodeRef}` from its
 current revision, which supplies the original observation identity.
+
+`uia-tree {packageFilter:"example.app"}` filters that exact package before applying
+`maxNodes` and returns compact nodes, including menus without resource IDs. This
+prevents keyboard/system nodes from consuming the app's node budget. Omit the
+filter to inspect all accessibility windows, or filter by the system dialog's package.
+The filter is explicit and does not inherit the Script target package.
+Coverage identifies the filtered projection separately from source completeness.
+Reads query the current accessibility windows after clearing the connection's
+node cache; they do not wait for all accessibility events to stop. A snapshot
+does not assert that navigation or a network request is finished. Use
+`wait-text {provider:"uia",targetText:"Expected result"}` or an explicit Script
+predicate when an operation depends on a particular state. Device-side action
+revalidation still checks the observed node immediately before dispatch.
+Semantic UIA clicks do not require nonempty, nonnegative screen bounds: the
+device's original-node validation and accessibility callback determine the result.
+
+UIA startup uses the requested readiness timeout. `uia_runtime_not_ready` means
+readiness was not confirmed, not that the process has exited. Query `uia-runtime
+--operation status`; `--operation start --timeout-ms 30000` can wait for the
+existing starting process. `force-reset` remains an explicit recovery choice and
+archives prior UIA records.
 
 Reference actions use the retained node from that exact snapshot. The phone
 locates the same accessibility source in its original window and checks current
@@ -1229,6 +1321,13 @@ lifecycle control. `status` reads state; normal stop requires terminal actions.
 `force-reset` ends the UIA process and archives sessions with unknown outcomes;
 it does not stop the Bridge Host or SDK apps. Fresh observation can start a new epoch.
 
+An interrupted UIA action also includes executable recovery hints when its
+transport error is generic (for example, `command_failed` / `socket hang up`).
+The hints carry the original action ID for retained-receipt lookup, UIA start,
+fresh observation and optional force-reset. A missing retained receipt does not
+prove non-dispatch. The error, uncertainty and original receipt remain unchanged;
+Script exposes the same guidance alongside its result. No hint runs automatically.
+
 When observation cannot reach the old runtime, the Host probes the real phone
 process lock. A live lock preserves the error; a free lock permits a new process.
 No old bound action is replayed. Startup history maintenance preserves unreadable
@@ -1277,7 +1376,8 @@ Flutter editor observations and Intent summaries preserve the standard field's
 optional `label`, `hint` and `errorText`. Material declarations come from that
 editor's InputDecorator; a Cupertino placeholder is a hint, not a label. Custom
 label/error widgets are not inferred from nearby text. Select the observed node
-by its metadata, then submit its exact `nodeId`; no label selector is implied.
+by `nodeId`, or combine exact `text`, `label`, `hint`, `role` and `widgetType`
+conditions. All supplied semantic conditions must match; `nodeId` is used alone.
 Label or hint changes invalidate the observed editor identity, while a validation
 message alone does not. Transparent TextSpan content and controls under
 zero-opacity Opacity/FadeTransition are excluded from the operable tree;
@@ -1287,8 +1387,18 @@ still needs App semantics.
 The diagnostic widget-inspector JSON is separately bounded to 64 levels and
 4000 entries and reports `truncated`. Its truncation does not imply that the
 operable tree is truncated or that unreported diagnostic widgets are absent.
+Routine `flutter-nodes`, Intent observations and action preflight use the SDK's
+`scope:"operable"` capture, which rebuilds current operable targets without
+serializing the diagnostic widget/render/semantics trees or H5 content. The
+full diagnostic tree remains available through `flutter-tree`.
+Operable reads between frames capture the current committed layout without
+requesting another frame. A pending state update appears after the App renders
+it; use `wait-text` or a Script predicate for a particular result. Reads during
+build/layout wait for that frame to finish. Actions still validate the live
+Element and its current geometry before dispatch. Frame-wait failures include
+the scheduler/lifecycle state; they do not imply that a tap was sent.
 
-`tap-flutter` accepts either `selector:{text|nodeId}` or the explicit logical
+`tap-flutter` accepts a semantic selector as above or the explicit logical
 coordinate pair `tapX/tapY`. `input-flutter-text` accepts an optional selector or
 coordinate pair; when both are omitted it selects one focused editor, or one
 unique visible editor. Several unfocused editors return
@@ -1296,6 +1406,19 @@ unique visible editor. Several unfocused editors return
 the original EditableText, controller and focus before addressing that exact
 TextInputClient. `flutter_input_focus_changed` never redirects text to the new
 focus. App input formatters and callbacks retain their normal behavior.
+`focus:false` instead updates that exact visible EditableText without a tap or
+focus change. Flutter's editor still applies input formatters and `onChanged`;
+tap/focus callbacks and IME behavior are outside this mode. Use it for known
+forms that only need field replacement. The default remains the tapped-input
+path for focus/keyboard testing. The receipt identifies `inputMode:direct|tap`;
+direct input does not claim tap coordinates. The option is shared by Android/iOS
+Flutter commands, Intent input actions and JavaScript/Python Script calls.
+With `hideKeyboard:true`, Flutter text input requests keyboard dismissal inside
+that same bound action; a separate ADB round trip is unnecessary. Android also
+redispatches actual window insets, avoiding a stale hidden-keyboard rectangle.
+The receipt reports `dismissalRequested`, not that the native hide animation has
+already finished. Fresh observations continue to respect current `viewInsets`;
+covered controls become available when those insets update.
 
 `scroll-flutter` accepts a container selector with `delta` or `targetText`.
 Omitting the selector requires one visible Scrollable. Scrolling until text
@@ -1468,7 +1591,13 @@ an explicit provider. Read failures are retried within the original deadline;
 `rounds`, `attempts`, `successfulReads`, `failedReads`, `elapsedMs` and the last
 failure per provider describe what happened. If no valid tree was obtained, the
 deadline returns `observation_unavailable` with `deadlineExceeded:true`; otherwise
-it returns `deadline_exceeded` and the last available check. Reads do not replay
+it returns `deadline_exceeded` and the last available check. A failed wait with
+a successful read also includes `observedText`: at most 12 labels of 160
+characters each, with an explicit truncation flag. This preview can expose an
+ANR dialog or another unexpected screen without repeating the device read;
+matching still uses the original complete labels. Successful waits omit it.
+Recovery hints include a compact UIA read of all packages so system dialogs are
+not filtered away, plus `doctor`; these hints execute nothing. Reads do not replay
 actions. Foreground diagnostics are sampled at entry and a matching text check,
 rather than twice per unsuccessful poll. Optional probes are bounded to at most
 500 ms and one quarter of the requested text deadline each; `requireActivity`
@@ -1520,6 +1649,11 @@ these Android commands. A truncated snapshot requires an explicit observed
 `elementId`; duplicate visible matches are rejected. `expectedTarget` on typed
 mutations binds the original `{ pageRef, element }`. Intent supplies this binding
 automatically from its committed observation.
+`element` may be the complete observed control and `pageRef` may retain extra
+observation metadata. Required identity fields are still validated; the Host
+projects only defined page/element identity fields before comparison and SDK
+dispatch, including raw Flutter `h5Control` actions. Selectors and action arguments
+remain strict.
 An unchanged page/DOM object remains actionable after its text or attributes
 change, with `target_attributes_changed` and the changed field names. The returned
 element describes the current target. A replaced element or changed document
@@ -1603,6 +1737,18 @@ navigation ID and URL. Navigation IDs change even when a page returns to the sam
 URL. Each control has an `elementId` tied to the actual DOM element in that
 document; replacing a node with identical HTML creates a different identity.
 
+Visible controls with no text, ARIA label or placeholder may include `context`
+from the Web SDK. Its `source:"ancestor-dom-text"` and `ancestors` describe up to
+two distinct nonempty ancestor text samples, searched within six parent levels.
+Each sample contains `depth`, `tag`, `id`, `role`, `text` (up to 160 characters),
+`textTruncated` and `identityTruncated`; `context.truncated` reports the bounded
+scope. Collection visits at most 64 DOM nodes per ancestor and samples at most
+1024 raw characters from each text node before normalizing whitespace. It excludes form values
+and hidden branches, and stops before BODY/HTML. Samples are refreshed on every
+observation. This is factual DOM context, not an inferred business-row identity;
+use it to choose an observed `elementId`. It is not a selector constraint or
+an identity field compared by `expectedTarget`.
+
 Every control includes `checked: true | false | "mixed" | null` and the raw
 `ariaChecked` attribute (`string | null`). Native checkbox/radio state comes
 from its live property, with an indeterminate checkbox reported as `"mixed"`.
@@ -1641,9 +1787,12 @@ explicit observed `elementId`. The SDK can resolve that ID directly, without a
 full document scan or a control-count refusal.
 
 An action may bind its original observation using
-`expectedTarget: { pageRef, element }`. Copy the element fields `elementId`,
-`tag`, `id`, `name`, `type`, `role`, `ariaLabel`, `placeholder`, `href` and `text`
-from that observation. Intent supplies this binding automatically. The SDK
+`expectedTarget: { pageRef, element: observedControl }`; pass the complete control
+from `dom.controls` directly. Extra observation fields on the control or pageRef
+are accepted without becoming identity constraints. The required element fields
+remain `elementId`, `tag`, `id`, `name`, `type`, `role`, `ariaLabel`, `placeholder`,
+`href` and `text`; selectors and action arguments remain strict.
+Intent supplies this binding automatically. The SDK
 rechecks the original page and element before dispatch, including after focus
 callbacks. Attribute changes on the same DOM object produce
 `target_attributes_changed`; a changed page or replaced element requires a new observation. It never selects
@@ -1667,9 +1816,10 @@ receipt and dispatch status, including `web_element_ambiguous`,
 and `reobserve_required`. Successful dispatch does not establish asynchronous
 business completion; observe and assert the actual resulting state.
 
-Script admits `web-status`/`web-dom` under `app.read` and these typed controls
-under `app.interact`. Raw `web-command` remains outside its catalog. DOM reads
-produce Host tree references for device assertions. Ordinary
+Script admits `web-status`, `web-dom` and `web-wait` under `app.read`, and typed
+mutations under `app.interact`. Raw `web-command` is available through `ctx.call`
+under `app.expert`, enabled by default; an explicit permissions list can restrict
+it. DOM reads produce Host tree references for device assertions. Ordinary
 `web-logs/network/state/events` query committed Host FactStore records. They are
 available under Script `capture.read` and Intent `require.streams`.
 The default `view: "decision-window"` requires the exact connected document.

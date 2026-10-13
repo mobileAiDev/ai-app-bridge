@@ -138,7 +138,7 @@ function createChildRuntimeAdapter({
         target: spec.target,
         sourcePath: spec.sourcePath,
         entrypoint: spec.entrypoint,
-        sourceName: spec.sourcePath || artifact,
+        sourceName: spec.sourcePath || path.join(requestDirectory(), `__ai_app_bridge_inline__${extension}`),
         control: readControl(),
       });
       while (true) {

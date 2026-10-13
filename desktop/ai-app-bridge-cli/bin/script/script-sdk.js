@@ -115,20 +115,29 @@ function holdIfPaused() {
   });
 }
 
+function loadFrozenModule(sourceName) {
+  const Module = require('node:module');
+  const path = require('node:path');
+  const filename = path.resolve(sourceName || artifactPath);
+  const loaded = new Module(filename, module);
+  loaded.filename = filename;
+  loaded.paths = Module._nodeModulePaths(path.dirname(filename));
+  // Resolve dependencies and cycles at the declared source location while the
+  // entry itself always comes from the frozen operation artifact.
+  require.cache[filename] = loaded;
+  loaded._compile(fs.readFileSync(artifactPath, 'utf8'), filename);
+  loaded.loaded = true;
+  return loaded.exports;
+}
+
 async function run(start, inputParseMs) {
   if (start.extraction) {
     const executionStarted = performance.now();
     let result;
     if (start.extraction.mode === 'regex') result = require('../extraction/regex').extractRegex(start.inputs.response, start.extraction);
     else {
-      const Module = require('node:module');
-      const path = require('node:path');
-      const filename = path.resolve(start.sourceName || artifactPath);
-      const loaded = new Module(filename, module);
-      loaded.filename = filename;
-      loaded.paths = Module._nodeModulePaths(path.dirname(filename));
-      loaded._compile(fs.readFileSync(artifactPath, 'utf8'), filename);
-      const main = typeof loaded.exports === 'function' ? loaded.exports : loaded.exports.main;
+      const loaded = loadFrozenModule(start.sourceName);
+      const main = typeof loaded === 'function' ? loaded : loaded.main;
       if (typeof main !== 'function') throw new TypeError('Extraction source must export main(ctx).');
       result = await main({ inputs: start.inputs });
     }
@@ -138,7 +147,7 @@ async function run(start, inputParseMs) {
     process.exit(0);
     return;
   }
-  const loaded = require(artifactPath);
+  const loaded = loadFrozenModule(start.sourceName);
   const entry = start.entrypoint || 'main';
   const main = typeof loaded === 'function' && entry === 'main' ? loaded : loaded[entry];
   if (typeof main !== 'function') {

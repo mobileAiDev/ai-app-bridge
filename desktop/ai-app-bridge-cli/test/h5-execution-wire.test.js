@@ -60,6 +60,21 @@ test('a DOM rejection retains its machine error and evaluation completion proof'
   assert.equal((await executeCommand('device-ownership', { serial: target.serial, operation: 'status' })).active, 0);
 });
 
+test('complete observed H5 controls and page metadata are projected before the Android wire', async t => {
+  const requests = [];
+  const target = await fixture(t, (_endpoint, body) => { requests.push(body); return terminal(body); });
+  for (const [command, id, tag, extra] of [['h5-click', 'one', 'button', {}], ['h5-input', 'editor', 'input', { text: 'next' }]]) {
+    const expectedTarget = { pageRef: { ...pageRef, observedAt: 123 },
+      element: { ...control(id, tag), checked: null, ariaChecked: null, context: { text: 'Nearby label' } } };
+    const result = await executeCommand(command, { ...target, selector: { elementId: id }, expectedTarget, ...extra });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(requests.at(-1).payload.pageRef, pageRef);
+    assert.deepEqual(Object.keys(requests.at(-1).payload.element), ['elementId', 'tag', 'id', 'name', 'type', 'text', 'ariaLabel', 'href']);
+    assert.equal(expectedTarget.element.context.text, 'Nearby label');
+  }
+  assert.equal(requests.length, 2);
+});
+
 test('missing execution capability cannot send an old H5 request', async t => {
   let calls = 0; const target = await fixture(t, () => { calls++; return {}; }, false);
   const result = await executeCommand('h5-eval', { ...target, script: 'dangerous()', expectedPage: pageRef });
@@ -93,6 +108,36 @@ test('H5 waits only observe and keep the original WebView selection', async t =>
   const result = await executeCommand('h5-wait', { ...target, selector: { elementId: 'late' }, timeoutMs: 5000, intervalMs: 1 });
   assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.targetRef.pageRef.webViewId, 'webview-1');
   assert.deepEqual(reads, ['/v1/h5/dom','/v1/h5/dom?webViewId=webview-1','/v1/h5/dom?webViewId=webview-1']);
+});
+
+test('H5 wait includes asynchronous WebView creation in its observation deadline', async t => {
+  const reads = [];
+  const target = await fixture(t, () => { throw new Error('wait must not dispatch'); }, true, url => {
+    reads.push(url);
+    if (reads.length < 3) return { ok: false, error: 'android_h5_webview_not_found', dispatched: false };
+    const tree = snapshot(); tree.dom.controls = reads.length === 3 ? [] : [control('late', 'button')]; return tree;
+  });
+  const result = await executeCommand('h5-wait', { ...target, selector: { elementId: 'late' }, timeoutMs: 5000, intervalMs: 1 });
+  assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.attempts, 4);
+  assert.deepEqual(reads, ['/v1/h5/dom', '/v1/h5/dom', '/v1/h5/dom', '/v1/h5/dom?webViewId=webview-1']);
+});
+
+test('H5 wait timeout preserves the last missing-WebView diagnosis without writes', async t => {
+  const target = await fixture(t, () => { throw new Error('wait must not dispatch'); }, true,
+    () => ({ ok: false, error: 'android_h5_webview_not_found', webViews: [] }));
+  const result = await executeCommand('h5-wait', { ...target, selector: { elementId: 'late' }, timeoutMs: 1500, intervalMs: 1 });
+  assert.equal(result.error, 'h5_wait_timeout'); assert.equal(result.lastResult.error, 'android_h5_webview_not_found');
+  assert.equal(result.dispatched, false); assert.equal(result.ambiguous, false); assert.ok(result.attempts >= 1);
+});
+
+test('H5 can observe a disabled completion label while clicks still reject it', async t => {
+  const target = await fixture(t, () => { throw new Error('disabled control must not dispatch'); }, true, () => {
+    const tree = snapshot(); tree.dom.controls[0].disabled = true; return tree;
+  });
+  const observed = await executeCommand('h5-wait', { ...target, selector: { elementId: 'one' }, timeoutMs: 5000 });
+  assert.equal(observed.ok, true); assert.equal(observed.node.disabled, true);
+  const clicked = await executeCommand('h5-click', { ...target, selector: { elementId: 'one' } });
+  assert.equal(clicked.error, 'android_h5_target_disabled'); assert.equal(clicked.dispatched, false);
 });
 
 test('a stale expected page or element cannot dispatch even if the selector still matches', async t => {

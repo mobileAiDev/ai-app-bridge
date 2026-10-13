@@ -529,8 +529,8 @@ class IOSBridgeProvider {
       ...selected.targetRef, ...(command === 'ios-h5-input' ? { text: args.text } : {}) } }, context);
   }
 
-  async flutterTree(args = {}) {
-    const status = await this.runtimeGet(args, '/v1/flutter/snapshot');
+  async flutterTree(args = {}, { scope = 'full' } = {}) {
+    const status = await this.runtimeGet(args, scope === 'full' ? '/v1/flutter/snapshot' : '/v1/flutter/snapshot?scope=operable');
     if (status.ok === false) return status;
     return {
       ok: true,
@@ -543,7 +543,7 @@ class IOSBridgeProvider {
   }
 
   async flutterNodes(args = {}) {
-    const tree = await this.flutterTree(args);
+    const tree = await this.flutterTree(args, { scope: 'operable' });
     if (tree.ok === false) return tree;
     const operable = tree.layout?.operable || null;
     return {
@@ -561,14 +561,15 @@ class IOSBridgeProvider {
 
   async flutterControl(command, args, context = {}) {
     const port = await this.runtimePort(args, context);
-    const status = await port.get('/v1/flutter/snapshot');
+    const status = await port.get('/v1/flutter/snapshot?scope=operable');
     if (status.ok !== true) return { ...status, dispatched: false, ambiguous: false };
     const action = flutterControls.get(command);
     let payload = { action };
     if (!['back', 'hideKeyboard'].includes(action)) {
       const bound = bindFlutterAction(status.flutter?.layout?.operable, {
         action, selector: args.selector,
-        ...(action === 'inputText' ? { text: args.text } : {}),
+        ...(action === 'inputText' ? { text: args.text,
+          ...Object.fromEntries(['focus', 'hideKeyboard'].filter(key => args[key] !== undefined).map(key => [key, args[key]])) } : {}),
         ...(action === 'scrollBy' ? { delta: args.delta } : {}),
       });
       if (!bound.ok) return bound;

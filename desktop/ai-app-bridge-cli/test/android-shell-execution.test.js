@@ -79,7 +79,20 @@ test('an unknown response keeps its original durable identity; recovery cannot r
   f.port.query = async () => { throw new Error('response lost'); };
   let completion = { ok: true, settled: false };
   f.port.cancel = async () => completion;
-  await assert.rejects(f.execute(), error => error.settled === false && error.ambiguous && error.dispatched === null);
+  await assert.rejects(f.execute(), error => {
+    const result = commandFailure(error, 'launch-activity');
+    assert.equal(result.settled, false); assert.equal(result.ambiguous, true); assert.equal(result.dispatched, null);
+    assert.deepEqual(result.details.shellExecution.identity, f.identity);
+    assert.equal(result.details.shellExecution.phase, 'query');
+    assert.equal(result.details.shellExecution.queryCount, 1);
+    assert.equal(typeof result.details.shellExecution.elapsedMs, 'number');
+    const guided = require('../bin/shared-kernel/action-guidance').withActionGuidance('launch-activity',
+      { serial: 'phone', packageName: 'example.app', activity: '.MainActivity' }, result);
+    assert(guided.guidance.nextActions.some(call => call.command === 'device-ownership'
+      && call.arguments.operation === 'archives' && call.arguments.actionId === f.identity.actionId));
+    for (const call of guided.guidance.nextActions) require('../bin/command-registry').validateCommandArguments(call.command, call.arguments);
+    return true;
+  });
   const fresh = createDeviceMutationLease({ directory: f.directory });
   assert.equal(fresh.status('phone').unresolved, true);
   const reconcile = () => deviceOwnership({ operation: 'reconcile', serial: 'phone' }, {
@@ -94,6 +107,20 @@ test('an unknown response keeps its original durable identity; recovery cannot r
   assert.deepEqual(recovered.executionReceipt, settlementProof(f.receipt, f.identity));
   assert.equal(f.calls.filter(c => c === 'start').length, 1);
   assert.equal(fresh.status('phone').active, 0);
+});
+
+test('cancellation after preparation but before submission proves no command was sent', async t => {
+  const f = fixture(t), controller = new AbortController();
+  f.port.prepare = async () => { f.calls.push('prepare'); controller.abort({ code: 'cancelled' }); return f.identity; };
+  await assert.rejects(runExecution({ signal: controller.signal }, f.execute), error => {
+    const result = commandFailure(error, 'launch-activity');
+    assert.equal(result.error, 'cancelled'); assert.equal(result.dispatched, false);
+    assert.equal(result.ambiguous, false); assert.equal(result.settled, true);
+    assert.equal(result.details.shellExecution.phase, 'prepared');
+    return true;
+  });
+  assert.deepEqual(f.calls, ['prepare'], 'a never-submitted job needs no remote cancellation or output query');
+  assert.equal(f.lease.status('phone').unresolved, false);
 });
 
 test('cancellation keeps the original failure while an admission fence proves no command was sent', async t => {

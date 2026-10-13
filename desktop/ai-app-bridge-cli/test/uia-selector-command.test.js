@@ -34,6 +34,9 @@ test('explicit UIA fields distinguish a parent accessibility label from its chil
     assert.deepEqual(result.selector, selector);
     assert.deepEqual(result.request.target.selector, { kind: Object.keys(selector)[0], value: Object.values(selector)[0],
       exact: true, packageName: args.packageName });
+    const windowProbes = fs.readFileSync(path.join(peer.directory, 'adb.jsonl'), 'utf8').trim().split('\n')
+      .map(line => JSON.parse(line)).filter(argv => argv[2] === 'shell' && argv[3] === 'dumpsys' && argv[4] === 'window');
+    assert.equal(windowProbes.length, index + 1, 'one foreground advice probe per semantic UIA action');
   }
   assert.deepEqual(peer.dispatches, ['precise-uia:0', 'precise-uia:1', 'precise-uia:2']);
 });
@@ -65,4 +68,12 @@ test('precise UIA command is a shared CLI, MCP and Script interaction capability
   assert.equal(contract.script.permission, 'app.interact');
   assert.equal(contract.targetKind, 'android-app');
   assert.equal(contract.execution.mutation, true);
+});
+
+test('semantic UIA clicks reach the accessibility callback even when transition bounds are empty or clipped', async t => {
+  const xml = '<hierarchy><node package="example.uia" class="android.widget.Button" text="Open" enabled="true" visible-to-user="true" clickable="true" bounds="[0,0][0,0]"/></hierarchy>';
+  const { peer, args } = await fixture(t, xml);
+  const result = await executeCommand('tap-uia', { ...args, selector: { text: 'Open' }, requestId: 'semantic-empty-bounds' });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(peer.dispatches, ['semantic-empty-bounds']);
 });

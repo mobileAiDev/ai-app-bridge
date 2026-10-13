@@ -66,7 +66,7 @@ test('host and MCP adapter control one real Script and export the same durable o
     state = await mcp('script', { operation: 'wait', operationId: started.operationId, afterSequence: state.eventSequence, waitMs: 1000 });
   }
   assert.equal(state.status, 'waiting_for_agent', JSON.stringify(state));
-  const question = state.events.find(event => event.type === 'agent_question_created');
+  const question = state.pendingQuestion;
   assert(question);
   const filtered = (await host.run({ command: 'script', extract: null, arguments: {
     operation: 'status', operationId: started.operationId, afterSequence: state.eventSequence, eventLimit: 1,

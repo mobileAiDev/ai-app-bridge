@@ -41,6 +41,23 @@ async function waitFor(run, state, states) {
 const questionScript = { schemaVersion: 'aab.code-script/v1', language: 'javascript', permissions: [], policy: { timeoutMs: 20000 },
   source: "module.exports.main = async ctx => await ctx.askAgent({question:'Keep this task alive across connections'});" };
 
+test('MCP can explicitly recover a CLI Script from a new state after its child crashes', { timeout: 20000 }, async t => {
+  const f = fixture(t);
+  const initial = await f.cli('script', { operation: 'start', waitMs: 5000, script: {
+    ...questionScript, policy: { timeoutMs: 10000, restartPolicy: 'checkpoint' },
+    source: 'module.exports.main = ctx => { if (ctx.resume()) return ctx.resume(); process.exit(31); };',
+  } });
+  assert.equal(initial.value.status, 'failed'); assert.equal(initial.value.error, 'child_crashed');
+  const ordinary = await f.cli('script', { operation: 'resume', operationId: initial.value.operationId });
+  assert.equal(ordinary.value.error, 'not_resumable');
+  const mcp = await f.mcp();
+  const result = await mcp.run('script', { operation: 'resume', operationId: initial.value.operationId, waitMs: 5000,
+    recovery: { checkpoint: { name: 'agent-selected', state: { inspectOriginalResult: true } } } });
+  assert.equal(result.status, 'completed', JSON.stringify(result));
+  assert.deepEqual(result.result, { inspectOriginalResult: true });
+  assert.equal(result.operationId, initial.value.operationId);
+});
+
 test('a public Script can batch 64 runtime status calls with the same command contract as CLI', { timeout: 20000 }, async t => {
   const f = fixture(t), mcp = await f.mcp();
   let state = await mcp.run('script', { operation: 'start', script: { ...questionScript, permissions: undefined,
@@ -175,7 +192,7 @@ test('CLI PATH lookup and explicit MCP ADB share one runtime and Script result',
   const waiting = await waitFor(run, await run('script', { operation: 'status', operationId: started.value.operationId }),
     ['waiting_for_agent', 'failed', 'cancelled']);
   assert.equal(waiting.status, 'waiting_for_agent', JSON.stringify(waiting));
-  const question = waiting.events.find(event => event.type === 'agent_question_created');
+  const question = waiting.pendingQuestion;
   const decided = await run('script', { operation: 'decide', operationId: waiting.operationId,
     requestId: question.requestId, revision: question.revision, decision: 'same executable' });
   assert.equal((await waitFor(run, decided, ['completed', 'failed', 'cancelled'])).status, 'completed');
@@ -231,7 +248,7 @@ test('CLI starts a real Script, another directory answers through MCP, and a lat
   const runtime = await run('runtime', { operation: 'status' });
   const waiting = await waitFor(run, started.value, ['waiting_for_agent', 'failed', 'cancelled']);
   assert.equal(waiting.status, 'waiting_for_agent', JSON.stringify(waiting));
-  const question = waiting.events.find(event => event.type === 'agent_question_created');
+  const question = waiting.pendingQuestion;
   const decided = await run('script', { operation: 'decide', operationId: waiting.operationId,
     requestId: question.requestId, revision: question.revision, decision: false });
   await waitFor(run, decided, ['completed', 'failed', 'cancelled']);
@@ -252,7 +269,7 @@ test('MCP disconnect leaves its Script live for CLI decision/cancel; both entrie
   const runtime = await run('runtime', { operation: 'status' });
   await client.close({ stopRuntime: false });
   assert.equal((await f.cli('script', { operation: 'status', operationId: started.operationId })).value.status, 'waiting_for_agent');
-  const question = waiting.events.find(event => event.type === 'agent_question_created');
+  const question = waiting.pendingQuestion;
   const stale = await f.cli('script', { operation: 'decide', operationId: started.operationId,
     requestId: question.requestId, revision: question.revision + 1, decision: { should: 'reject' } });
   assert.equal(stale.code, 1); assert.equal(stale.value.error, 'stale_decide');
@@ -308,7 +325,7 @@ test('CLI decisions preserve structured JSON across a disconnected MCP and a sym
   fs.symlinkSync(path.join(f.directory, 'facts'), alias, 'dir');
   const options = { env: { AI_APP_BRIDGE_FACT_STORE_DIR: alias } };
   assert.equal((await f.cli('runtime', { operation: 'status' }, options)).value.runtimeId, owner.runtimeId);
-  const question = waiting.events.find(event => event.type === 'agent_question_created');
+  const question = waiting.pendingQuestion;
   const decision = { accepted: false, count: 0, empty: null, text: 'CLI 中文回答', values: [false, 0] };
   const decided = await f.cli('script', { operation: 'decide', operationId: started.operationId,
     requestId: question.requestId, revision: question.revision, decision }, options);

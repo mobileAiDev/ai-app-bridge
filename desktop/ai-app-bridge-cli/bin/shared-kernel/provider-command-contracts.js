@@ -14,7 +14,7 @@ function flutterActionSchema() {
     action('tapAt', { x: coordinate, y: coordinate }, ['x', 'y']),
     action('tapText', { text }, ['text']),
     action('tapTarget', { selector: flutterSelector }, ['selector']),
-    { ...action('inputText', { text: { type: 'string' }, selector: flutterSelector, x: coordinate, y: coordinate }, ['text']), allOf: [pairedCoordinates,
+    { ...action('inputText', { text: { type: 'string' }, hideKeyboard: { type: 'boolean' }, focus: { type: 'boolean' }, selector: flutterSelector, x: coordinate, y: coordinate }, ['text']), allOf: [pairedCoordinates,
       { not: { required: ['selector'], anyOf: [{ required: ['x'] }, { required: ['y'] }] } }] },
     action('swipe', { startX: coordinate, startY: coordinate, endX: coordinate, endY: coordinate }, ['startX', 'startY', 'endX', 'endY']),
     action('scrollBy', { delta, selector: flutterSelector }, ['delta']),

@@ -100,12 +100,10 @@ final class UiaNodes implements UiaActionEngine.Gateway {
     }
 
     JSONObject observe() throws Exception {
-        boolean idle = true;
-        try { connection.waitForIdle(100, 1000); }
-        catch (java.util.concurrent.TimeoutException error) { idle = false; }
+        // A snapshot describes the current UI. Unrelated accessibility events
+        // must not delay reads; callers wait for the specific state they need.
         Snapshot snapshot = read(null);
         for (int i = 0; i < startupWarnings.length(); i++) snapshot.warnings.put(startupWarnings.get(i));
-        if (!idle) snapshot.warnings.put(new JSONObject().put("code", "uia_idle_timeout").put("blocking", false));
         Iterator<Snapshot> existing = snapshots.values().iterator();
         while (existing.hasNext()) if (existing.next().expires <= snapshot.created) existing.remove();
         if (snapshots.size() == MAX_SNAPSHOTS) snapshots.remove(snapshots.keySet().iterator().next());

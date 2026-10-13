@@ -1,10 +1,11 @@
 import asyncio
 import json
+import os
 import sys
 import math
 import traceback
 import time
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 
 _real_stdout = sys.stdout
@@ -133,10 +134,15 @@ class HostContext:
 
 
 def load_namespace(path, source_name=None):
-    namespace = {}
+    filename = os.path.abspath(source_name or path)
+    module = ModuleType("__aab_script__")
+    module.__file__ = filename
+    module.__package__ = ""
+    sys.modules[module.__name__] = module
+    sys.path[0] = os.path.dirname(filename)
     with open(path, "r", encoding="utf-8") as handle:
-        exec(compile(handle.read(), source_name or path, "exec"), namespace, namespace)
-    return namespace
+        exec(compile(handle.read(), filename, "exec"), module.__dict__, module.__dict__)
+    return module.__dict__
 
 
 def validate_json(value, location="", parents=None):

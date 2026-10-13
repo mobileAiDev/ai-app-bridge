@@ -64,6 +64,30 @@ test('device inventory does not select another phone or require a package', asyn
   for (const action of result.nextActions) validateCommandArguments(action.command, action.arguments);
 });
 
+test('disabled hardware drawing is an advisory with a runnable probe, not an execution gate', async () => {
+  const calls = [];
+  const report = await doctor({ serial: 'phone' }, { inspectRuntime: async () => hostStatus,
+    execFile: async (_program, argv, options) => {
+      assert.equal(options.mutation, false); calls.push(argv);
+      const command = argv[0] === '-s' ? argv.slice(2).join(' ') : argv.join(' ');
+      return { stdout: command === 'devices -l' ? 'phone device\n'
+        : command === 'shell getprop' ? '[debug.hwui.drawing_enabled]: [0]\n[debug.hwui.renderer]: [skiagl]\n'
+          : command === 'shell dumpsys window -a' ? androidForegroundFixture('example.app').windowDump : '' };
+    },
+    lease: { status: () => ({ ok: true }) }, uiaStatus: async () => ({ ok: true, running: false }),
+  });
+  assert.equal(report.ok, true);
+  const device = report.checks.find(item => item.name === 'android.device');
+  assert.equal(device.status, 'observed');
+  assert.equal(device.facts.rendering.drawingEnabled, false);
+  assert.equal(device.facts.rendering.warning, 'hardware_drawing_disabled');
+  const action = report.nextActions.find(item => item.command === 'adb-exec');
+  validateCommandArguments(action.command, action.arguments);
+  assert.deepEqual(action.arguments.argv, ['shell', 'getprop', 'debug.hwui.drawing_enabled']);
+  assert.equal(action.arguments.readOnly, true);
+  assert.equal(calls.length, 4, 'reuse the existing getprop probe');
+});
+
 test('Android diagnosis passes the default ADB executable to the explicit UIA target', async () => {
   let seen;
   const report = await doctor({ serial: 'phone' }, { inspectRuntime: async () => hostStatus,

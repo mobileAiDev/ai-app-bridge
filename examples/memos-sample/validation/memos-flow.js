@@ -61,6 +61,14 @@ module.exports.main = async function main(ctx) {
     await check('wrong memo content must fail', observation, observation.result.dom.bodyText.includes(marker));
     return { verdicts };
   }
+  // Memos keeps an applied search filter after its search input is cleared.
+  // Start a new independent case by removing the observed active filter.
+  const filter = controls(observation).filter(node => node.tag === 'button' && node.text === 'Remove filter');
+  if (filter.length) {
+    await act(observation, one(observation, node => node.tag === 'button' && node.text === 'Remove filter', 'active filter'), 'web-click');
+    observation = await until('previous search filter is removed', undefined,
+      value => !controls(value).some(node => node.tag === 'button' && node.text === 'Remove filter'));
+  }
   observation = await until('home editor is ready', undefined, value => controls(value).some(node =>
     node.role === 'textbox' && node.editable && node.interaction.status === 'ready'));
   await check('fresh marker is absent before create', observation, !observation.result.dom.bodyText.includes(marker));

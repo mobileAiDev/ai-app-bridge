@@ -45,7 +45,7 @@ test('P6 Script supervisor writes Host facts into ExecutionLedger without mobile
   });
   await supervisor.registry.get(started.operationId).running;
   const status = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -96,7 +96,7 @@ test('P6 Script history pages by event afterSequence across heartbeat gaps', asy
   await new Promise((resolve) => setImmediate(resolve));
   nowMs = 3_000;
   const idle = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });
@@ -109,7 +109,7 @@ test('P6 Script history pages by event afterSequence across heartbeat gaps', asy
   await delay(20);
   nowMs = 3_100;
   const after = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: heartbeat.sequence,
   });
@@ -140,7 +140,7 @@ test('P6 Script status reads ExecutionLedger after the live registry evicts a te
     program: async () => new Promise(() => {}),
   });
   const evicted = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: first.operationId,
     afterSequence: 0,
   });
@@ -149,7 +149,7 @@ test('P6 Script status reads ExecutionLedger after the live registry evicts a te
   assert.equal(evicted.history.items.some((item) => item.kind === 'call_started'), true);
   assert.equal(evicted.history.items.some((item) => item.kind === 'script_completed'), true);
   const missing = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: 'never-started',
   });
   assert.equal(missing.error, 'unknown_operation');
@@ -182,7 +182,7 @@ test('P6 script-entry routes evicted code-script status and wait to the ledger',
   });
   const status = await handle({
     supervisor,
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: first.operationId,
     afterSequence: 0,
   });
@@ -230,7 +230,7 @@ test('P6 Script completed fact does not store returned capture items', async () 
   });
   await delay(20);
   const status = await supervisor.handle({
-    operation: 'status',
+    operation: 'status', limit: 1000, eventLimit: 1000,
     operationId: started.operationId,
     afterSequence: 0,
   });

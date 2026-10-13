@@ -1,4 +1,4 @@
-# Flexify iOS Bridge sample
+# Flexify Bridge sample
 
 This sample pins [Flexify 2.1.109](https://github.com/brandonp2412/Flexify/tree/9ae7a8b8f423cbd28fd5f22dc7ae14fded1fc604)
 using `source.json`. The upstream source, MIT license and lockfile remain in
@@ -20,6 +20,84 @@ Only synthetic test records are used.
 
 Build preparation does not establish business acceptance. Flutter coverage does
 not replace Kiwix native/H5, FreeOTP native or LocalSend transfer requirements.
+
+## Android preparation (2026-10-13)
+
+`prepare-android.py --source <fresh-source> --archive <pinned-tar.gz>
+--android-sdk <sdk> --flutter-sdk <sdk> --android-bridge-aar <current-debug.aar>
+--output <new-report.json>` verifies the same pinned archive and unmodified
+integration inputs. Build `:ai-app-bridge-android:assembleDebug` in the Bridge
+repository first and retain a copy of that AAR. The integration records its hash,
+adds it only to this sample's debug build and excludes the plugin's published
+Android dependency. The local Dart plugin, debug startup and navigator observer
+are also added. Using a built AAR keeps Flexify's AGP 9 build separate from the
+SDK's AGP 8 build; no global repository override is needed.
+
+Use the upstream build environment variables
+`FLEXIFY_APP_ID_SUFFIX=.bridge_sample` and
+`FLEXIFY_APP_LABEL="Flexify Bridge Sample"` to install the independent package
+`com.presley.flexify.bridge_sample`.
+
+The resolved Android checkout preserves all 160 upstream locked packages and
+adds only `ai_app_bridge_flutter`. Preparation does not establish Android
+business acceptance. The iOS results below are historical and must not be counted
+as current Android measurements.
+
+The first Android integration omitted the native dependency replacement. Its
+Gradle resolution used published Android SDK 0.4.6 alongside the local Dart
+plugin, so those measurements do not validate the current native observation
+path. CPU samples exposed full diagnostic-tree generation during operable reads.
+Both the failed integration and its measurements remain retained.
+
+Run the Android cases with a fresh evidence directory:
+
+```sh
+node examples/flexify-sample/validation/run-android.js SERIAL NEW_OUTPUT_DIRECTORY workout
+```
+
+The runner freezes the source and retains the original Script operation across
+wait/result calls. `discovery` measures startup and readable controls. `snapshot`
+stops only this sample, verifies process absence before and after copying, and
+copies the observed database and SQLite journals. Pass that database directory
+and the workout's exact title/time window to `validation/read-workout.py`.
+
+For process-cold startup comparisons, run `startup flutter` or `startup uia`
+after the output directory argument. Each uses the existing Script API, stops
+only this sample, verifies process absence, launches it and waits for the exact
+`Add` control observed in both providers. Launch and wait time are reported
+together; screenshots and the external call's total time remain separate.
+`startup-passive` is a diagnostic control: after launch it sends no observations
+for 45 seconds, then reads Android's `wm_activity_launch_time` event and verifies
+the visible page. Its first-frame value comes from Android; the deliberate
+45-second measurement window must not be quoted as App startup performance.
+Replace the APK with `install -r` to preserve the same package and business data
+when comparing pinned upstream and Bridge builds.
+
+The latest Android SDK and Dart plugin complete the workout, editing, cancelled
+deletion, History and Volume graph in **41.764 s**, with 50 commands, one external
+call and 1499 response bytes. This process-cold run includes **23.327 s** for
+launch and initial readiness. The independent stopped-process database snapshot
+passes all 13 checks, including exact per-plan values and the displayed day's
+5000 kg total. The earlier 48.352 s / 47-command pass after APK replacement,
+37.433 s / 47-command pass and 34.941 s / 50-command pass remain recorded
+separately. Their startup conditions and graph selections differ; they do not
+form a controlled whole-flow speed comparison.
+
+Repeated runs exposed an offscreen plan after the retained list grew. The
+harness now reveals the actual row with `scroll-flutter` before selecting it.
+Upstream's search matches days/exercises, not the title; a failed attempt using
+that search also matched the input's own text. Both failed runs are retained.
+An explicit continuation completed the already-saved plan and passed all 13
+database checks without creating it again. Its 44.835 s continuation is separate
+from the 46.673 s initial failure and 16.868 s failed search attempt. Including
+inspection and correction, first attempt through recovery took **420.038 s**;
+that recovery is not counted as a fast full-flow pass.
+
+Android performance/recovery acceptance remains **incomplete**. Earlier cold
+discovery failures, the actual notification dialog, Android selector differences
+and the Flutter observation timeout before Graphs are retained. The new light
+observation does not yet resolve slow first startup. The failure records and exact timing boundaries are in
+[the current performance plan](../../docs/WORKFLOW_PERFORMANCE_PLAN_2026-10-12.md).
 
 ## Current evidence (2026-09-11)
 

@@ -18,6 +18,26 @@ examples/memos-sample/build/memos \
 
 已运行的同一实例直接复用。新实例的首次账户通过 Intent 操作注册页面创建；服务不会由业务 Script 自动重置。
 
+## 一条命令验收全新环境
+
+[run-end-to-end.js](validation/run-end-to-end.js) 串起已经验证的 Memos 策略：新建服务器与 data、独立 Host/Chrome/SDK、Intent 注册新测试账户、JavaScript 连续五轮完整流程、Python 一轮完整流程，以及独立只读 SQLite 核对；结束后正常关闭本次资源。不需要中途模型决策，也不下载依赖。这是已知策略的新环境重跑，不包含陌生 App 的页面发现或策略编写。
+
+准备好按 `source.json` 校验的本地 Memos 二进制、Node、Python 3、Playwright 模块和 Chrome，然后从仓库根目录运行一条命令：
+
+```sh
+node examples/memos-sample/validation/run-end-to-end.js \
+  --memos-binary "$PWD/examples/memos-sample/build/memos" \
+  --playwright-module /absolute/path/to/node_modules/playwright \
+  --chromium-executable '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
+  --output "/tmp/memos-e2e-$(date +%s)"
+```
+
+输出目录必须不存在，父目录须已存在。控制器选择空闲 loopback 端口，固定测试上下文语言为英文，使用新生成的合法测试用户名；不会复用个人浏览器或账户。所有业务 UI 都经公共 Bridge；Playwright 只负责上下文、SDK 注入与截图，SQL 只读核对。
+
+`report.json` 给出从控制器进入到全部业务/核对结束的 `endToEndMs`，资源清理另列 `cleanup.elapsedMs`，两者合计为 `totalIncludingCleanupMs`。公共 RPC 按实际 MCP transcript 和 CLI replies 计数，包含连接准备、业务、关闭；另列 MCP initialize 和通知，不能只报告一个业务 Script RPC。`source-sha256.json` 固定全部相关源码/运行时文件，报告另记录实际 SDK、Host 和本地 Memos 二进制哈希。原始失败不会被重跑覆盖。
+
+2026-10-13 的唯一一轮全新环境控制首跑通过：准备、注册、JS 五轮、Python 一轮、各独立 SQLite 核对及最终截图/源码复核共 **10.382 秒**，清理 **0.255 秒**，控制器合计 **10.638 秒**；额外模型轮次 0，公共命令 RPC 7（另 MCP initialize 1）。系统外层进程时间单独保留于验收证据。这不覆盖或替换此前首次准备和故障恢复中的分钟级 Agent/控制器耗时。业务范围和已知编辑后 checkbox 刷新差异仍见本页末尾说明及验收报告。
+
 ## 打开隔离的 Bridge 浏览器
 
 需要 Node、Playwright 模块和已安装的 Chrome。显式指定模块及浏览器路径；本 harness 不下载浏览器、不使用用户的 Chrome profile，也不替代 Bridge 执行业务。
@@ -48,6 +68,21 @@ stdout 给出 `target`，相同内容保存在 `target.json`。保持该进程�
 
 流程为创建笔记→保存→搜索＋Enter→编辑→保存→删除确认→取消→验证仍保留。`case-js.json` 是已执行的冻结用例；复跑应复制为新文件，统一替换 marker、tag、原始和编辑内容中的标记，避免与已有笔记冲突。复跑前清空样本的 UI 搜索条件并确认无编辑/删除弹窗。Script 不会删除旧业务数据来制造“初始状态”。
 
+当前 JS/Python 流程会点击实际观察到的 `Remove filter`，移除上一轮搜索条件。Memos 清空搜索输入框后仍可能保留已应用的筛选器；只清输入会让下一条已保存笔记不可见，造成无意义的等待。不会因此重复点击保存。
+
+已连接的样本可以直接运行下面的控制器；每次使用新的输出目录。它们自动生成独立 marker、保存数据库基线、提交一次带 `waitMs:60000` 的 Script，并执行只读 SQLite 核对：
+
+```sh
+node examples/memos-sample/validation/run-current.js \
+  /absolute/browser-run /absolute/memos-data /absolute/new-js-run javascript
+node examples/memos-sample/validation/run-current.js \
+  /absolute/browser-run /absolute/memos-data /absolute/new-python-run python
+node examples/memos-sample/validation/run-long.js \
+  /absolute/browser-run /absolute/memos-data /absolute/new-long-run 5
+```
+
+`browser-run` 是仍在运行的 harness 输出目录，需要其当前 `target.json`，以及仅供本地测试账户使用的 `credentials.json`（权限 0600）。页面刷新后通过 `web-sessions` 取得新 document identity，再更新目标；恢复提示提供这一选择，不会重放旧动作。三个控制器只用于本样本的已知流程；连接、发现页面和编写策略的时间单独保留。
+
 向同一 harness 提交公开 Script start，完整合同见 [SCRIPT_AUTHORING](../../desktop/ai-app-bridge-cli/docs/SCRIPT_AUTHORING.md)。核心字段如下：
 
 ```json
@@ -57,6 +92,7 @@ stdout 给出 `target`，相同内容保存在 `target.json`。保持该进程�
   "name": "script-start",
   "arguments": {
     "operation": "start",
+    "waitMs": 60000,
     "recordingDir": "/absolute/new-recording-directory",
     "script": {
       "schemaVersion": "aab.code-script/v1",
@@ -91,7 +127,7 @@ stdout 给出 `target`，相同内容保存在 `target.json`。保持该进程�
 
 实际 stdin 请求写成单行 JSON；复制用例字段构造 `inputs`，不要把 `credentialsPath` 指向个人账户文件。凭据文件只用于已有样本账户的登录页，格式为 `{"username":"...","password":"..."}`，权限设为 0600。已登录状态不会重新登录。
 
-使用返回的 `operationId` 调用 `script wait`；保存每页事件，以前页 `eventSequence` 作为下页 `afterSequence`，直到 terminal。检查实际状态和 assertion verdict，再执行公开 `evidence export`（`includeRecordedPayloads:true`）与 `evidence verify`。`ok:true` 仅表示 wait 请求成功，不代表业务断言通过。
+`start` 已完成且带有结果时直接检查结果，不再补一次 `wait` 或 `result`。仍在执行时才使用原 `operationId` 调用 `script wait`，以前页 `eventSequence` 作为下页 `afterSequence`。需要 Agent 决策时处理当前问题并继续原操作。检查实际状态和 assertion verdict；`ok:true` 仅表示控制请求成功，不代表业务断言通过。需要移交完整记录时，再执行公开 `evidence export`（`includeRecordedPayloads:true`）与 `evidence verify`。
 
 ## 独立数据库核对
 
@@ -127,4 +163,4 @@ Python 固定业务和任务点击/恢复已取得真实 DOM 与独立 SQLite �
 
 流程通过当前 DOM 打开既有笔记、编辑和保存；使用保存前水位查询实际请求响应，核对 memoName 和完整 content，再核对同步 Save 事件和页面复选状态。在 `saved-completed-tasks` Agent checkpoint 由独立控制器执行 `read-task-state.py --state checked`，通过后回复 `{"restore":true}`；结束时另验 `--state restored`。
 
-当前真实结果为 8 项通过、1 项页面期望失败，Script 如实 failed，原文与其他笔记均保留。不能因数据库保存正确就将页面检查改为通过，也不能将缺失的 `aria-checked` 当作 false。这是用于验证 Bridge 能否操作、采证并识别真实差异的业务样本，不在本阶段修改 Memos 产品逻辑。
+9 月保存专项的历史结果为 8 项通过、1 项页面期望失败，Script 如实 failed，原文与其他笔记均保留。不能因数据库保存正确就将页面检查改为通过，也不能将缺失的 `aria-checked` 当作 false。这是用于验证 Bridge 能否操作、采证并识别真实差异的业务样本，不在本阶段修改 Memos 产品逻辑。当前工作树的完整流程、失败轮次与耗时另见 [WORKFLOW_PERFORMANCE_PLAN_2026-10-12.md](../../docs/WORKFLOW_PERFORMANCE_PLAN_2026-10-12.md)，不以新的成功记录覆盖旧失败。

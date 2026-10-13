@@ -18,7 +18,7 @@ async function fixture(t, options = {}) {
   const peer = await createUiaRuntimeFixture({ directory, capacity: 1, ...options });
   t.after(async () => { await peer.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   const root = protocol.rootDirectory, calls = [];
-  const state = { owned: true, launches: 0, probes: 0, launchError: null, afterProbe: null };
+  const state = { owned: true, launches: 0, probes: 0, launchError: null, afterProbe: null, publishAfterReads: 0, pendingLaunch: false, onPoll: null };
   const write = (remote, value) => { const file = peer.phoneFile(remote); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, value); };
   const read = remote => fs.existsSync(peer.phoneFile(remote)) ? fs.readFileSync(peer.phoneFile(remote), 'utf8') : 'null';
   const run = async (adb, args) => {
@@ -42,7 +42,13 @@ async function fixture(t, options = {}) {
     let match;
     if (script === 'getprop ro.build.version.sdk') return stdout('36');
     if (script.startsWith('umask 077\nmkdir -p ')) return stdout('');
-    if ((match = script.match(/^if \[ -f '([^']+)' \]; then cat '\1'; else printf '%s' null; fi$/))) return stdout(read(match[1]));
+    if ((match = script.match(/^if \[ -f '([^']+)' \]; then cat '\1'; else printf '%s' null; fi$/))) {
+      if (match[1] === `${root}/runtime.json` && state.pendingLaunch) {
+        state.onPoll?.();
+        if (--state.publishAfterReads <= 0) { peer.rotate(); state.pendingLaunch = false; }
+      }
+      return stdout(read(match[1]));
+    }
     if ((match = script.match(/^if \[ -f '([^']+)' \]; then sha256sum '\1'; else printf '%s' null; fi$/))) {
       const file = peer.phoneFile(match[1]); return stdout(fs.existsSync(file) ? protocol.digest(fs.readFileSync(file)) + '  ' + match[1] : 'null');
     }
@@ -62,7 +68,9 @@ async function fixture(t, options = {}) {
       try {
         if (state.launchError) throw new Error(state.launchError);
         if (state.owned && peer.peer.running) throw new Error('uia_runtime_already_running');
-        peer.rotate(); state.owned = true;
+        if (state.publishAfterReads > 0) state.pendingLaunch = true;
+        else peer.rotate();
+        state.owned = true;
       } catch (error) { write(`${root}/startup.log`, JSON.stringify({ ok: false, error: error.message }) + '\n'); }
       return stdout('');
     }
@@ -165,4 +173,35 @@ test('a corrupt content-addressed executable is exposed without overwrite or pro
   const f = await fixture(t); f.write(`${protocol.rootDirectory}/runtime-${f.peer.peer.dexSha256}.jar`, 'corrupted');
   await assert.rejects(f.port.control('start'), { code: 'uia_runtime_artifact_mismatch' });
   assert.equal(f.state.probes, 0); assert.equal(f.state.launches, 0); assert.equal(f.calls.some(args => args[2] === 'push'), false);
+});
+
+test('cold UIA startup uses the requested readiness budget instead of an internal seven second cutoff', async t => {
+  const f = await fixture(t);
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  f.state.owned = false; f.state.publishAfterReads = 9; f.state.onPoll = () => { now += 1000; };
+  const port = createUiaRuntimePort({ adb: f.peer.adb, serial: f.peer.serial, run: f.run, timeoutMs: 10000 });
+  const before = f.peer.peer.runtimeEpoch;
+  const result = await port.control('start');
+  assert.equal(result.running, true);
+  assert.notEqual(result.runtimeEpoch, before);
+  assert.equal(f.state.launches, 1);
+});
+
+test('a readiness timeout reports unconfirmed startup and preserves the process for a later observation', async t => {
+  const f = await fixture(t);
+  f.state.owned = false; f.state.publishAfterReads = 100;
+  await assert.rejects(f.port.control('start'), { code: 'uia_runtime_not_ready' });
+  assert.equal(f.state.owned, true);
+  assert.equal(f.state.launches, 1);
+  assert.equal(f.peer.requests.some(body => body.op === 'stop'), false);
+});
+
+test('explicit start waits for a lock-owning startup instead of spawning or rejecting another process', async t => {
+  const f = await fixture(t);
+  f.write(`${protocol.rootDirectory}/runtime.json`, JSON.stringify({ ...f.peer.peer, running: false }));
+  f.state.owned = true; f.state.pendingLaunch = true; f.state.publishAfterReads = 2;
+  const result = await f.port.control('start');
+  assert.equal(result.running, true);
+  assert.equal(f.state.launches, 0);
 });

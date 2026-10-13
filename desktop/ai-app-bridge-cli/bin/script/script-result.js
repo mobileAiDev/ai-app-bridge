@@ -31,7 +31,7 @@ function readScriptResult({ store, operationId }) {
     const checked = store.read(checkpoint.evidenceId);
     if (!checked.ok) return scriptError(checked.error, { operationId });
     checkpoint = checked.record;
-    if (checkpoint.status !== 'completed') {
+    if (checkpoint.status !== 'completed' && !(checkpoint.status === 'failed' && checkpoint.resultRef)) {
       return scriptError(['cancelled', 'failed'].includes(checkpoint.status) ? 'result_unavailable' : 'result_not_ready',
         { operationId, status: checkpoint.status, executionError: checkpoint.error ?? null });
     }
@@ -47,7 +47,8 @@ function readScriptResult({ store, operationId }) {
       || body.originalSha256 !== ref.originalSha256 || body.representation !== ref.representation) {
       return scriptError('result_checksum_mismatch', { operationId, resultRef: ref });
     }
-    return { ok: true, command: 'script', operationId, status: 'completed',
+    return { ok: true, command: 'script', operationId, status: checkpoint.status,
+      ...(checkpoint.error ? { executionError: checkpoint.error } : {}),
       result: body.result, resultRef: ref, persisted: true };
   } catch (error) {
     return scriptError(error.code || 'result_read_failed', { operationId });

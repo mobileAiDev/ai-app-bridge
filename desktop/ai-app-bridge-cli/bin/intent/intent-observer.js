@@ -1,6 +1,7 @@
 'use strict';
 
 const { summarizeTree } = require('../shared-kernel/summary-transformer');
+const { projectForegroundDiagnostics } = require('../shared-kernel/foreground-diagnostics');
 const { intentError } = require('./intent-errors');
 const { checkExecution } = require('../shared-kernel/execution-scope');
 const { capturePageMetadata } = require('../shared-kernel/live-capture-query');
@@ -12,6 +13,7 @@ async function observeAndCommit(context, provider = context.provider, observatio
     ...context.target,
     provider,
     observationTarget,
+    previousForeground: context.latestRoute?.observation,
     rawTreeId: `${context.operationId}:${context.revision}`,
   });
   checkExecution();
@@ -65,21 +67,24 @@ async function observeAndCommit(context, provider = context.provider, observatio
     checkExecution();
   }
   const summaryStarted = context.now();
+  const advice = projectForegroundDiagnostics({ foregroundObservations: observation.foregroundObservations, warnings: observation.warnings }, { evidenceId: persisted.evidenceId });
+  const foreground = routed ? projectForegroundDiagnostics(observation.route.foreground,
+    { path: '/route/foreground', evidenceId: persisted.evidenceId, diagnostic: true }) : undefined;
   const summary = summarizeTree({
     provider: activeProvider,
     rawTree: observation.rawTree,
     foregroundObservations: observation.foregroundObservations, warnings: observation.warnings,
     rawTreeId: observation.rawTreeId,
-    ...(routed ? { maxBytes: 64 * 1024 - Buffer.byteLength(JSON.stringify(observation.route), 'utf8') - 32 } : {}),
+    maxBytes: 64 * 1024 - Buffer.byteLength(JSON.stringify({ ...advice, foreground }), 'utf8') - 256,
   });
   timings.summaryMs = (timings.summaryMs || 0) + (context.now() - summaryStarted);
   if (!summary.ok) return intentError(summary.error || 'summary_failed');
   if (routed) {
-    summary.foreground = observation.route.foreground;
+    summary.foreground = foreground;
     summary.executionTarget = { packageName: observation.route.targetPackageName, provider: activeProvider };
   }
-  if (observation.foregroundObservations) summary.foregroundObservations = observation.foregroundObservations;
-  if (observation.warnings) summary.warnings = observation.warnings;
+  if (observation.foregroundObservations) summary.foregroundObservations = advice.foregroundObservations;
+  if (observation.warnings) summary.warnings = advice.warnings;
   const summaryPersist = await context.store.persist('summary', {
     operationId: context.operationId,
     revision: context.revision,

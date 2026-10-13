@@ -337,7 +337,9 @@ test('P2 pause resume decide and cancel stay on the supervisor', async () => {
   const paused = await supervisor.handle({ operation: 'pause', operationId: started.operationId });
   assert.equal(paused.status, 'paused_manual');
   const resumed = await supervisor.handle({ operation: 'resume', operationId: started.operationId });
-  assert.equal(resumed.status, 'running');
+  assert.equal(resumed.status, 'waiting_for_agent');
+  assert.equal(resumed.pendingQuestion.requestId, 'ask-1');
+  assert.equal(asked, null, 'resuming a manual pause does not answer the pending question');
   const pending = supervisor.handle({ operation: 'status', operationId: started.operationId });
   const decided = await supervisor.handle({
     operation: 'decide',
@@ -349,6 +351,7 @@ test('P2 pause resume decide and cancel stay on the supervisor', async () => {
   assert.equal(decided.ok, true);
   await pending;
   await delay(10);
+  assert.equal(asked, 'yes');
   const cancelled = await supervisor.handle({ operation: 'cancel', operationId: started.operationId });
   assert.equal(cancelled.status, 'cancelled');
 });

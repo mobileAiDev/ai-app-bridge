@@ -71,10 +71,14 @@ function parsePermissionState(text, { packageName, permission, userId }, definit
   if (!match) throw new CommandError('permission_state_unsupported', 'Android returned an unrecognized runtime permission record.');
   // Nougat separates flags with spaces; newer dumps use pipes.
   const flags = match[2] !== undefined && match[2].trim() ? match[2].trim().split(/\s*\|\s*|\s+/) : [];
-  if (flags.some(value => !/^[A-Z][A-Z0-9_]*$/.test(value)) || new Set(flags).size !== flags.length) {
+  if (flags.some(value => !/^(?:[A-Z][A-Z0-9_]*|[0-9]+|0x[0-9a-fA-F]+)$/.test(value)) || new Set(flags).size !== flags.length) {
     throw new CommandError('permission_state_unsupported', 'Android returned unrecognized permission flags.');
   }
-  return { packageName, permission, userId, uid: userId * 100000 + Number(appId[0][1]), granted: match[1] === 'true', flags: flags.sort() };
+  // New Android builds can print an unnamed bit as a number. Preserve it as
+  // diagnostic information; it does not make the explicit grant bit ambiguous.
+  const unmapped = flags.filter(value => /^[0-9]/.test(value));
+  return { packageName, permission, userId, uid: userId * 100000 + Number(appId[0][1]), granted: match[1] === 'true', flags: flags.sort(),
+    ...(unmapped.length ? { warnings: [{ code: 'permission_flag_unmapped', flags: unmapped, blocking: false }] } : {}) };
 }
 
 async function readPermissionState(args, run = execute) {

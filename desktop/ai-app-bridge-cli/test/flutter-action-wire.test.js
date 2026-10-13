@@ -12,18 +12,21 @@ const { flutterNode, flutterRef } = require('../test-support/flutter-target-fixt
 
 test('public Flutter actions carry the Host action ID through the real HTTP boundary', async t => {
   const requests = [];
+  let snapshots = 0, rejectTarget = false;
   const server = http.createServer(async (req, res) => {
     let body = '';
     for await (const chunk of req) body += chunk;
     res.setHeader('content-type', 'application/json');
+    if (req.url.startsWith('/v1/flutter/snapshot')) snapshots++;
     if (req.url === '/v1/view/tree') return res.end(JSON.stringify({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }));
-    if (['/v1/status', '/v1/flutter/snapshot'].includes(req.url)) return res.end(JSON.stringify({ flutter: { layout: { operable: {
+    if (['/v1/status', '/v1/flutter/snapshot', '/v1/flutter/snapshot?scope=operable'].includes(req.url)) return res.end(JSON.stringify({ flutter: { layout: { operable: {
       runtimeEpoch: 'flutter-fixture-runtime', executionSchema: 'aab.flutter-execution/v1', nodes: [
-      flutterNode(), flutterNode({ id: 'e2', text: '', action: 'input' }), flutterNode({ id: 'e3', text: '', action: 'scroll' }),
+      flutterNode(), { ...flutterNode({ id: 'e2', text: '', action: 'input' }), label: 'Account', role: 'input' }, flutterNode({ id: 'e3', text: '', action: 'scroll' }),
     ] } } } }));
     requests.push({ path: req.url, body: JSON.parse(body) });
     const request = JSON.parse(body);
-    res.end(JSON.stringify({ ok: true, dispatched: true, ambiguous: false, settled: true,
+    res.end(JSON.stringify({ ok: !rejectTarget, dispatched: !rejectTarget, ambiguous: false, settled: true,
+      ...(rejectTarget ? { error: 'flutter_target_changed' } : {}),
       actionId: request.actionId, runtimeEpoch: request.execution.runtimeEpoch,
       execution: { schemaVersion: request.execution.schemaVersion, actionId: request.actionId,
         runtimeEpoch: request.execution.runtimeEpoch, settled: true } }));
@@ -35,23 +38,39 @@ test('public Flutter actions carry the Host action ID through the real HTTP boun
   const port = server.address().port;
   const adb = createAdbHttpFixture({ directory, serial: 'flutter-wire', port, foregroundPackage: 'example.sample' });
   const options = { adb, port, serial: 'flutter-wire', packageName: 'example.sample' };
+  const h5Target = { pageRef: { schemaVersion: 'aab.flutter-h5-target/v1', runtimeEpoch: 'flutter-fixture-runtime',
+    adapterId: 'article', adapterGeneration: 'generation', documentId: 'document', url: 'https://example.test/', observedAt: 123 },
+  element: { elementId: 'e1', tag: 'button', id: '', name: '', type: '', text: 'Open', ariaLabel: '', href: '',
+    visible: true, bounds: { left: 0 }, context: { text: 'Article marker' } } };
   for (const [command, args, action] of [
     ['tap-flutter', { tapX: 0, tapY: 25.5 }, 'tapAt'],
     ['tap-flutter-text', { targetText: 'Settings' }, 'tapTarget'],
     ['tap-flutter', { selector: { nodeId: 'e1' } }, 'tapTarget'],
     ['input-flutter-text', { text: 'typed' }, 'inputText'],
     ['input-flutter-text', { text: 'typed', selector: { nodeId: 'e2' } }, 'inputText'],
+    ['input-flutter-text', { text: 'typed', selector: { nodeId: 'e2' }, hideKeyboard: true }, 'inputText'],
+    ['input-flutter-text', { text: 'typed', selector: { nodeId: 'e2' }, focus: false }, 'inputText'],
+    ['input-flutter-text', { text: 'typed', selector: { label: 'Account', role: 'input' }, hideKeyboard: true }, 'inputText'],
     ['scroll-flutter', { delta: 300 }, 'scrollBy'],
     ['scroll-flutter', { delta: 300, selector: { nodeId: 'e3' } }, 'scrollBy'],
     ['scroll-flutter', { targetText: 'About' }, 'scrollUntilText'],
     ['flutter-action', { payload: { action: 'back' } }, 'back'],
+    ['flutter-action', { payload: { action: 'h5Control', operation: 'click', expectedTarget: h5Target } }, 'h5Control'],
   ]) {
+    const beforeCapture = snapshots;
     const requestId = `host-owned-${requests.length}`;
     const result = await executeCommand(command, { ...options, ...args, requestId });
     assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(snapshots - beforeCapture, 1, `${command} binds one snapshot; the SDK validates the live target`);
     assert.deepEqual(requests.at(-1), { path: '/v1/flutter/action', body: {
       ...result.request, action, actionId: requestId,
     } });
+    if (args.hideKeyboard) assert.equal(requests.at(-1).body.hideKeyboard, true);
+    if (args.focus !== undefined) assert.equal(requests.at(-1).body.focus, args.focus);
+    if (action === 'h5Control') {
+      assert.deepEqual(requests.at(-1).body.expectedTarget, require('../bin/shared-kernel/flutter-h5-target').projectTarget(h5Target));
+      assert.equal(h5Target.pageRef.observedAt, 123);
+    }
     if (['tapTarget', 'inputText', 'scrollBy', 'scrollUntilText'].includes(action)) {
       const id = action === 'tapTarget' ? 'e1' : action === 'inputText' ? 'e2' : 'e3';
       assert.deepEqual(requests.at(-1).body.targetRef, flutterRef(id));
@@ -75,13 +94,28 @@ test('public Flutter actions carry the Host action ID through the real HTTP boun
   for (const spec of [
     { provider: 'flutter', action: 'tap', selector: { text: 'Settings' } },
     { provider: 'flutter', action: 'back' },
+    { provider: 'flutter', action: 'inputText', selector: { nodeId: 'e2' }, value: 'typed', focus: false, hideKeyboard: false },
   ]) {
-    const result = await adapter.action({ ...options, rawTree: { nodes: [flutterNode()] },
+    const beforeCapture = snapshots;
+    const result = await adapter.action({ ...options, rawTree: { runtimeEpoch: 'flutter-fixture-runtime',
+      executionSchema: 'aab.flutter-execution/v1', nodes: [flutterNode(), flutterNode({ id: 'e2', text: '', value: '', action: 'input' })] },
       actionId: 'intent:owned-action', spec });
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(requests.at(-1).body.actionId, 'intent:owned-action');
     assert.equal(requests.at(-1).body.execution.actionId, 'intent:owned-action');
+    if (spec.focus !== undefined) {
+      assert.equal(requests.at(-1).body.focus, false);
+      assert.equal(requests.at(-1).body.hideKeyboard, false);
+    }
+    assert.equal(snapshots, beforeCapture, 'Intent reuses its bound observation instead of fetching it again');
   }
+  rejectTarget = true;
+  const beforeReject = requests.length, beforeCapture = snapshots;
+  const stale = await executeCommand('tap-flutter-text', { ...options, targetText: 'Settings' });
+  assert.equal(stale.error, 'flutter_target_changed'); assert.equal(stale.dispatched, false);
+  assert.equal(stale.ambiguous, false); assert.equal(stale.settled, true);
+  assert.equal(requests.length, beforeReject + 1, 'a changed target is not reselected or retried');
+  assert.equal(snapshots, beforeCapture + 1);
 });
 
 test('typed Flutter tap is discoverable, permission gated, and rejects bad coordinates before dispatch', async () => {
@@ -113,7 +147,7 @@ test('public recovery uses the actual exported provider and HTTP receipt after a
     let body = ''; for await (const chunk of req) body += chunk;
     res.setHeader('content-type', 'application/json');
     if (req.url === '/v1/view/tree') return res.end(JSON.stringify({ root: { visible: true, bounds: { left: 0, top: 0, right: 400, bottom: 800 } } }));
-    if (['/v1/status', '/v1/flutter/snapshot'].includes(req.url)) return res.end(JSON.stringify({ flutter: { layout: { operable: {
+    if (['/v1/status', '/v1/flutter/snapshot', '/v1/flutter/snapshot?scope=operable'].includes(req.url)) return res.end(JSON.stringify({ flutter: { layout: { operable: {
       runtimeEpoch: 'wire-runtime', executionSchema: 'aab.flutter-execution/v1', nodes: [flutterNode()],
     } } } }));
     const request = JSON.parse(body);

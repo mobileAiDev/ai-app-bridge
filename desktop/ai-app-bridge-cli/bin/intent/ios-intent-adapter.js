@@ -72,7 +72,8 @@ function createIOSIntentDeviceAdapter({ provider = new IOSBridgeProvider() } = {
         const guarded = flutterTargetRequest(current.node, spec.selector);
         if (!guarded.ok) return guarded;
         payload = { ...guarded.request, ...(spec.action === 'tap' ? { action: 'tapTarget' }
-          : spec.action === 'inputText' ? { action: 'inputText', text: spec.value }
+          : spec.action === 'inputText' ? { action: 'inputText', text: spec.value,
+            ...Object.fromEntries(['focus', 'hideKeyboard'].filter(key => spec[key] !== undefined).map(key => [key, spec[key]])) }
           : { action: 'scrollBy', delta: spec.delta }) };
       }
       checkExecution();

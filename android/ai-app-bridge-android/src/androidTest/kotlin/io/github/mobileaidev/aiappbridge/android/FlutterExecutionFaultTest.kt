@@ -18,6 +18,7 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 // Real SDK HTTP admission and Android UI faults; the channel peer is controlled.
@@ -128,6 +129,36 @@ class FlutterExecutionFaultTest {
         assertEquals(actionId, result.getString("actionId"))
         assertTrue(AiAppBridge.clearFlutterActionHandler(current))
         assertEquals("flutter_action_handler_absent", request("/v1/flutter/action", body()).getString("error"))
+    }
+
+    @Test fun observationDeadlineReturnsWhileMainIsBlockedAndDropsQueuedDelivery() {
+        val deliveries = AtomicInteger()
+        AiAppBridge.setFlutterActionHandler { _, _, _ -> deliveries.incrementAndGet() }
+        blockedMain {
+            val start = SystemClock.uptimeMillis()
+            val result = request("/v1/flutter/snapshot?scope=operable")
+            assertTrue("observation timeout waited for blocked main", SystemClock.uptimeMillis() - start < 3000)
+            assertEquals("flutter_observation_timeout", result.getString("error"))
+            assertEquals("android-main-queue", result.getJSONObject("observation").getString("phase"))
+            assertFalse(result.getBoolean("dispatched")); assertFalse(result.getBoolean("ambiguous"))
+        }
+        assertEquals("timed-out reads must not execute when main resumes", 0, deliveries.get())
+        assertTrue(request("/v1/status").getBoolean("ok"))
+    }
+
+    @Test fun lateObservationCannotOverwriteTheNextSuccessfulSnapshot() {
+        val originalReply = AtomicReference<AiAppBridge.FlutterActionReply>()
+        AiAppBridge.setFlutterActionHandler { _, _, reply -> originalReply.set(reply) }
+        val timeout = request("/v1/flutter/snapshot?scope=operable")
+        assertEquals("flutter_observation_timeout", timeout.getString("error"))
+        assertEquals("flutter-channel", timeout.getJSONObject("observation").getString("phase"))
+        AiAppBridge.setFlutterActionHandler { _, _, reply ->
+            reply.reply("""{"ok":true,"snapshot":{"testMarker":"current"}}""")
+        }
+        assertEquals("current", request("/v1/flutter/snapshot?scope=operable").getJSONObject("flutter").getString("testMarker"))
+        originalReply.get().reply("""{"ok":true,"snapshot":{"testMarker":"expired"}}""")
+        assertEquals("current", request("/v1/status").getJSONObject("flutter").getString("testMarker"))
+        assertEquals("initial", onUi { activity.editor.text.toString() })
     }
 
     private fun installQueuedPeer(): CountDownLatch {

@@ -2,11 +2,11 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<Map<String, dynamic>> readBridgeResponse(WidgetTester tester) async {
+Future<Map<String, dynamic>> readBridgeResponse(WidgetTester tester, {String scope = 'full'}) async {
   const channel = MethodChannel('ai_app_bridge');
   final done = Completer<Map<String, dynamic>>();
   unawaited(TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
-    'ai_app_bridge', channel.codec.encodeMethodCall(const MethodCall('readSnapshot', '{}')),
+    'ai_app_bridge', channel.codec.encodeMethodCall(MethodCall('readSnapshot', '{"scope":"$scope"}')),
     (data) => done.complete(Map<String, dynamic>.from(channel.codec.decodeEnvelope(data!) as Map)),
   ));
   for (var i = 0; i < 100 && !done.isCompleted; i++) {

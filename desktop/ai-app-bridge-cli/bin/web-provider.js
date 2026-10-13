@@ -61,8 +61,27 @@ class WebBridgeProvider {
       }
     } catch (error) {
       return failure(error.code || 'web_provider_failed', { message: error.message,
-        dispatched: error.dispatched ?? false, ambiguous: error.ambiguous ?? false, ...(error.settled === undefined ? {} : { settled: error.settled }) });
+        dispatched: error.dispatched ?? false, ambiguous: error.ambiguous ?? false, ...(error.settled === undefined ? {} : { settled: error.settled }),
+        ...this.recoveryGuidance(error.code, args, error.details) });
     }
+  }
+
+  recoveryGuidance(code, args, details) {
+    if (!['web_target_disconnected', 'web_target_changed', 'web_session_not_found'].includes(code)) return {};
+    const call = (command, arguments_ = {}) => ({ command, arguments: arguments_, extract: null });
+    const nextActions = [call('web-provider-status'), call('web-sessions')];
+    let message, currentTarget;
+    if (code === 'web_target_disconnected') {
+      message = 'Reconnect the SDK in the same document to keep its runtimeEpoch. If the page reloaded, select its current target from web-sessions. The history read below is retained evidence, not the live page; no action was replayed.';
+      nextActions.push(call('web-dom', { ...targetOf(args), history: true, limit: 1 }));
+    } else if (code === 'web_target_changed') {
+      currentTarget = details.currentTarget;
+      message = 'The page now has a different document identity. Read the current target below and choose its controls before submitting a new action. The original action was not replayed.';
+      nextActions.push(call('web-dom', currentTarget));
+    } else {
+      message = 'No connected or retained session matches this sessionId. Inspect the Web provider and session list, reconnect the page SDK if needed, then explicitly select its target. No action was replayed.';
+    }
+    return { ...(currentTarget ? { currentTarget } : {}), guidance: { message, nextActions } };
   }
 
   async start(args = {}) {
@@ -155,7 +174,8 @@ class WebBridgeProvider {
     const session = this.sessions.get(args.sessionId);
     if (!session) throw new CommandError('web_session_not_found', 'No retained session metadata matches this sessionId.');
     if (requireEpoch && (args.runtimeEpoch !== session.runtimeEpoch || (args.targetId ?? 'main') !== session.targetId))
-      throw new CommandError('web_target_changed', 'Observe the session and use its exact document runtimeEpoch and targetId.');
+      throw new CommandError('web_target_changed', 'Observe the session and use its exact document runtimeEpoch and targetId.',
+        { details: { currentTarget: targetOf(session) } });
     return session;
   }
   connected(args) {

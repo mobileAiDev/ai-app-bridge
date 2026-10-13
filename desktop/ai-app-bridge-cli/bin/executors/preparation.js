@@ -55,7 +55,7 @@ async function withProject(projectDir, action, { home = executorHome() } = {}) {
   const lock = new DatabaseSync(path.join(locks, `${digest(project)}.sqlite`));
   let locked = false;
   try {
-    try { lock.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE'); locked = true; }
+    try { lock.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE'); locked = true; }
     catch (error) { if (error.errcode === 5) throw new CommandError('executor_preparing', 'This project is already being prepared.'); throw error; }
     const directory = path.join(project, 'build', 'ai-app-bridge', 'prepare', randomUUID());
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });

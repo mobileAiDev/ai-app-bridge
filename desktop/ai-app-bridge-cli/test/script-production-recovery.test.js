@@ -28,7 +28,8 @@ async function run(sup, args) {
   assert.equal(started.ok, true, JSON.stringify(started));
   await sup.registry.get(started.operationId).running;
   const result = await sup.handle({ operation: 'result', operationId: started.operationId, store: args.store });
-  return { result, status: await handle({ supervisor: sup, operation: 'status', operationId: started.operationId }) };
+  // These recovery tests audit the entire ledger, not the default latest view.
+  return { result, status: await handle({ supervisor: sup, operation: 'status', operationId: started.operationId, limit: 1000, eventLimit: 1000 }) };
 }
 const checkpointCrash = `module.exports.main = async ctx => {
   if (!ctx.resume()) {
@@ -252,6 +253,43 @@ test('recovery freezes sourcePath contents and permissions and rejects changing 
   assert.equal(done.ok,true,JSON.stringify(done));
   assert.equal(done.result,'permission_not_granted');
   assert.equal(dispatched,0);
+});
+
+for (const language of ['javascript', 'python']) test(`${language} recovery keeps the frozen entry location and reloads its ordinary filesystem dependencies`, async t => {
+  const { reopen } = fixture(t);
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'aab-recovery-imports-')));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const sourcePath = path.join(dir, language === 'javascript' ? 'flow.cjs' : 'flow.py');
+  const helper = path.join(dir, language === 'javascript' ? 'helper.cjs' : 'helper.py');
+  fs.writeFileSync(helper, language === 'javascript' ? 'exports.value = 42;' : 'VALUE = 42\n');
+  const source = language === 'javascript' ? `const helper = require('./helper.cjs');
+exports.main = async ctx => {
+  if (!ctx.resume()) { await ctx.checkpoint('saved', { value: helper.value }); process.exit(31); }
+  return { saved: ctx.resume().value, current: helper.value, entry: 'frozen', cwd: process.cwd() };
+};` : `from helper import VALUE
+import os
+def main(ctx):
+    if not ctx.resume():
+        ctx.checkpoint("saved", {"value": VALUE})
+        os._exit(31)
+    return {"saved": ctx.resume()["value"], "current": VALUE, "entry": "frozen", "cwd": os.getcwd()}
+`;
+  fs.writeFileSync(sourcePath, source);
+  const actions = async () => assert.fail('Module loading must not dispatch device actions');
+  const script = { schemaVersion: 'aab.code-script/v1', language, sourcePath, cwd: dir,
+    policy: { restartPolicy: 'checkpoint', timeoutMs: 5000 } };
+  const first = await run(supervisor(), { store: reopen(), script, actions });
+  assert.equal(first.status.status, 'failed');
+  assert.equal(first.status.error, 'child_crashed');
+  fs.writeFileSync(sourcePath, language === 'javascript' ? 'throw new Error("Changed entry");' : 'raise RuntimeError("Changed entry")\n');
+  fs.writeFileSync(helper, language === 'javascript' ? 'exports.value = 43; // updated dependency' : 'VALUE = 43\n# updated dependency\n');
+  const fresh = supervisor(), store = reopen();
+  const resumed = await handle({ supervisor: fresh, operation: 'resume', operationId: 'recovery', store, actions });
+  assert.equal(resumed.ok, true, JSON.stringify(resumed));
+  await fresh.registry.get('recovery').running;
+  const result = await fresh.handle({ operation: 'result', operationId: 'recovery', store });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.deepEqual(result.result, { saved: 42, current: 43, entry: 'frozen', cwd: dir });
 });
 
 test('terminal pause/cancel cannot reopen completed operation and create a replay route', async (t) => {

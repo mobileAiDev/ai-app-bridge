@@ -83,6 +83,13 @@ def main(ctx):
         check('wrong memo content must fail', observation, marker in observation['result']['dom']['bodyText'])
         return {'verdicts': verdicts}
 
+    filters = [node for node in controls(observation) if node['tag'] == 'button' and node['text'] == 'Remove filter']
+    if filters:
+        act(observation, one(observation, lambda node: node['tag'] == 'button' and node['text'] == 'Remove filter',
+                             'active filter'), 'web-click')
+        observation = until('previous search filter is removed', None, lambda value: not any(
+            node['tag'] == 'button' and node['text'] == 'Remove filter' for node in controls(value)))
+
     observation = until('home editor is ready', None, lambda value: any(
         node['role'] == 'textbox' and node['editable'] and node['interaction']['status'] == 'ready'
         for node in controls(value)))

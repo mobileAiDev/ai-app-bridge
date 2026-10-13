@@ -12,7 +12,7 @@ const { executablePath } = require('../shared-kernel/executable-path');
 
 function prepareExtraction(extract) {
   if (extract === null) return null;
-  if (extract.mode === 'auto') return extract;
+  if (extract.mode === 'auto' || extract.mode === 'delta') return extract;
   if (extract.mode === 'select') {
     if (extract.path !== '' && (!extract.path.startsWith('/') || /~(?![01])/u.test(extract.path)))
       throw new CommandError('invalid_argument', 'path must be a JSON Pointer; use /items, escape ~ as ~0 and / as ~1.', { field: 'extract.path' });

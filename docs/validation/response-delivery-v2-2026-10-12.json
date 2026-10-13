@@ -1,0 +1,681 @@
+{
+  "schemaVersion": "aab.response-delivery-audit/v2",
+  "replayDate": "2026-10-12",
+  "archivedAt": "2026-10-13T04:34:12.628713+00:00",
+  "status": "existing_v2_replay_archived_overall_optimization_in_progress",
+  "scope": "Archive and index correction only; no new replay or device actions. Artifact and conversation groups overlap and are reported separately.",
+  "provenance": [
+    {
+      "originalPath": "/tmp/aab-response-delivery-shared-replay.json",
+      "archivedPath": "/Users/macbook/Documents/CompanyProject/ai-app-bridge-release-evidence/0.4.6-2026-10-12/k2-live-demo-1791808027918/response-delivery-v2-archive/aab-response-delivery-shared-replay.json",
+      "sha256": "0d92b2d5a9d49842e7dc92a18370156d6d8eecb605140783ce6baab53f5147e0",
+      "bytes": 67560
+    },
+    {
+      "originalPath": "/tmp/aab-scheduling-flow-replay.json",
+      "archivedPath": "/Users/macbook/Documents/CompanyProject/ai-app-bridge-release-evidence/0.4.6-2026-10-12/k2-live-demo-1791808027918/response-delivery-v2-archive/aab-scheduling-flow-replay.json",
+      "sha256": "bf07a9a29e64d912f77f0aaa590891a2117222b7b99a3a3fe7429bde3fdb2ed8",
+      "bytes": 10302
+    }
+  ],
+  "counts": {
+    "artifacts": {
+      "n": 25845,
+      "compact": 3931,
+      "overOld8KiB": 9231,
+      "next_inline": 3957,
+      "inline": 21888,
+      "overview": 26,
+      "previewWithData": 26
+    },
+    "artifacts/uia-tree": {
+      "n": 4526,
+      "compact": 1978,
+      "overOld8KiB": 3761,
+      "next_inline": 2001,
+      "inline": 2525,
+      "overview": 23,
+      "previewWithData": 23
+    },
+    "artifacts/intent": {
+      "n": 5222,
+      "inline": 3445,
+      "overOld8KiB": 4493,
+      "compact": 1777,
+      "next_inline": 1777
+    },
+    "artifacts/tree": {
+      "n": 77,
+      "compact": 71,
+      "overOld8KiB": 71,
+      "next_inline": 71,
+      "inline": 6
+    },
+    "artifacts/logcat": {
+      "n": 51,
+      "inline": 49,
+      "overOld8KiB": 18,
+      "overview": 2,
+      "previewWithData": 2,
+      "next_inline": 2
+    },
+    "conversations": {
+      "n": 2915,
+      "inline": 2914,
+      "overOld8KiB": 122,
+      "compact": 1,
+      "next_inline": 1
+    }
+  },
+  "byteStatistics": {
+    "artifacts": {
+      "originalValueBytes": {
+        "p50": 3237,
+        "p90": 40470,
+        "p95": 50118,
+        "max": 248303,
+        "sum": 352614699
+      },
+      "originalBodyBytes": {
+        "p50": 3642,
+        "p90": 41456,
+        "p95": 53375,
+        "max": 248668,
+        "sum": 375394152
+      },
+      "deliveredBodyBytes": {
+        "p50": 3642,
+        "p90": 25482,
+        "p95": 31792,
+        "max": 95658,
+        "sum": 243264638
+      },
+      "previewReturned": {
+        "p50": 60040,
+        "p90": 60370,
+        "p95": 64860,
+        "max": 65061,
+        "sum": 1330614
+      }
+    },
+    "artifacts/uia-tree": {
+      "originalValueBytes": {
+        "p50": 33856,
+        "p90": 60315,
+        "p95": 81770,
+        "max": 248303,
+        "sum": 148828216
+      },
+      "originalBodyBytes": {
+        "p50": 34175,
+        "p90": 60680,
+        "p95": 82135,
+        "max": 248668,
+        "sum": 150473420
+      },
+      "deliveredBodyBytes": {
+        "p50": 13141,
+        "p90": 30993,
+        "p95": 34191,
+        "max": 95658,
+        "sum": 73291512
+      },
+      "previewReturned": {
+        "p50": 60040,
+        "p90": 60281,
+        "p95": 60288,
+        "max": 60370,
+        "sum": 1200591
+      }
+    },
+    "artifacts/intent": {
+      "originalValueBytes": {
+        "p50": 27216,
+        "p90": 50224,
+        "p95": 68098,
+        "max": 202859,
+        "sum": 146820554
+      },
+      "originalBodyBytes": {
+        "p50": 28547,
+        "p90": 51906,
+        "p95": 69450,
+        "max": 203992,
+        "sum": 153346786
+      },
+      "deliveredBodyBytes": {
+        "p50": 19443,
+        "p90": 32098,
+        "p95": 33532,
+        "max": 70261,
+        "sum": 105552012
+      }
+    },
+    "artifacts/tree": {
+      "originalValueBytes": {
+        "p50": 107693,
+        "p90": 170627,
+        "p95": 176115,
+        "max": 176135,
+        "sum": 8750882
+      },
+      "originalBodyBytes": {
+        "p50": 108055,
+        "p90": 170989,
+        "p95": 176477,
+        "max": 176497,
+        "sum": 8778722
+      },
+      "deliveredBodyBytes": {
+        "p50": 46178,
+        "p90": 71271,
+        "p95": 73771,
+        "max": 73791,
+        "sum": 3729149
+      }
+    },
+    "artifacts/logcat": {
+      "originalValueBytes": {
+        "p50": 1166,
+        "p90": 49906,
+        "p95": 75580,
+        "max": 245716,
+        "sum": 1053058
+      },
+      "originalBodyBytes": {
+        "p50": 1482,
+        "p90": 50223,
+        "p95": 75897,
+        "max": 246034,
+        "sum": 1070698
+      },
+      "deliveredBodyBytes": {
+        "p50": 1482,
+        "p90": 50223,
+        "p95": 66919,
+        "max": 75897,
+        "sum": 772824
+      },
+      "previewReturned": {
+        "p50": 64860,
+        "p90": 65061,
+        "p95": 65061,
+        "max": 65061,
+        "sum": 129921
+      }
+    },
+    "conversations": {
+      "originalValueBytes": {
+        "p50": 560,
+        "p90": 3943,
+        "p95": 6406,
+        "max": 40028,
+        "sum": 5075801
+      },
+      "originalBodyBytes": {
+        "p50": 929,
+        "p90": 4486,
+        "p95": 6843,
+        "max": 40388,
+        "sum": 6342784
+      },
+      "deliveredBodyBytes": {
+        "p50": 929,
+        "p90": 4486,
+        "p95": 6843,
+        "max": 40388,
+        "sum": 6315936
+      }
+    }
+  },
+  "additionalFlowReplay": {
+    "composition": {
+      "sampleCount": 45,
+      "counts": {
+        "inline": 31,
+        "compact": 14
+      },
+      "verifiedCompleteValues": 45,
+      "samples": [
+        {
+          "command": "script",
+          "inputBytes": 1638,
+          "deliveredBytes": 1637,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1399,
+          "deliveredBytes": 1398,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2274,
+          "deliveredBytes": 2273,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1332,
+          "deliveredBytes": 1331,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 4101,
+          "deliveredBytes": 4100,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1875,
+          "deliveredBytes": 1874,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1939,
+          "deliveredBytes": 1938,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1875,
+          "deliveredBytes": 1874,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1939,
+          "deliveredBytes": 1938,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3757,
+          "deliveredBytes": 3756,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1944,
+          "deliveredBytes": 1943,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2207,
+          "deliveredBytes": 2206,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1823,
+          "deliveredBytes": 1822,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3669,
+          "deliveredBytes": 3668,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1334,
+          "deliveredBytes": 1333,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1732,
+          "deliveredBytes": 1731,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1532,
+          "deliveredBytes": 1531,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2415,
+          "deliveredBytes": 2414,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 5960,
+          "deliveredBytes": 5959,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2971,
+          "deliveredBytes": 2970,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 6614,
+          "deliveredBytes": 6613,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 2801,
+          "deliveredBytes": 2800,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 90485,
+          "deliveredBytes": 48850,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57004,
+          "deliveredBytes": 41302,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57174,
+          "deliveredBytes": 41472,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57374,
+          "deliveredBytes": 41672,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57539,
+          "deliveredBytes": 41837,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57731,
+          "deliveredBytes": 42029,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 57895,
+          "deliveredBytes": 42193,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59075,
+          "deliveredBytes": 43373,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1399,
+          "deliveredBytes": 1398,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2479,
+          "deliveredBytes": 2478,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 1955,
+          "deliveredBytes": 1954,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3963,
+          "deliveredBytes": 3962,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2225,
+          "deliveredBytes": 2224,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2059,
+          "deliveredBytes": 2058,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 2034,
+          "deliveredBytes": 2033,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 3036,
+          "deliveredBytes": 3035,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "script",
+          "inputBytes": 104411,
+          "deliveredBytes": 35042,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 161711,
+          "deliveredBytes": 72198,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59541,
+          "deliveredBytes": 43839,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 58641,
+          "deliveredBytes": 42939,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59007,
+          "deliveredBytes": 43305,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 59499,
+          "deliveredBytes": 43797,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "runtime",
+          "inputBytes": 898,
+          "deliveredBytes": 898,
+          "status": "inline",
+          "partial": false
+        }
+      ]
+    },
+    "observation": {
+      "sampleCount": 13,
+      "counts": {
+        "inline": 12,
+        "compact": 1
+      },
+      "verifiedCompleteValues": 13,
+      "samples": [
+        {
+          "command": "adb-exec",
+          "inputBytes": 1725,
+          "deliveredBytes": 1456,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "adb-exec",
+          "inputBytes": 1790,
+          "deliveredBytes": 1521,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 24415,
+          "deliveredBytes": 24146,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "tree",
+          "inputBytes": 48083,
+          "deliveredBytes": 47768,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42562,
+          "deliveredBytes": 42293,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 23731,
+          "deliveredBytes": 23462,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42646,
+          "deliveredBytes": 42377,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42193,
+          "deliveredBytes": 41924,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 52796,
+          "deliveredBytes": 52795,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "intent",
+          "inputBytes": 53460,
+          "deliveredBytes": 40677,
+          "status": "compact",
+          "format": "aab.response-tables/v2",
+          "partial": false
+        },
+        {
+          "command": "tap-native",
+          "inputBytes": 62464,
+          "deliveredBytes": 62194,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "wait-text",
+          "inputBytes": 42585,
+          "deliveredBytes": 42313,
+          "status": "inline",
+          "partial": false
+        },
+        {
+          "command": "runtime",
+          "inputBytes": 898,
+          "deliveredBytes": 898,
+          "status": "inline",
+          "partial": false
+        }
+      ]
+    }
+  },
+  "previousV1Summary": "response-delivery-2026-10-12.json",
+  "verification": {
+    "archivedBytesEqualOriginal": true,
+    "aggregateCountsReconciled": true,
+    "newReplayPerformed": false,
+    "newDeviceActionsPerformed": false
+  }
+}

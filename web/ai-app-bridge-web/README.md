@@ -23,6 +23,14 @@ unchecked. Use the current SDK with the current Host; missing `checked` is an
 invalid snapshot. A semantic click must still be followed by a fresh observation
 and an independent business check where persistence matters.
 
+Visible controls without text, an ARIA label or a placeholder may also expose
+`context.ancestors`: up to two distinct text samples from their actual DOM
+ancestors, within six parent levels and 160 characters per sample. Collection
+is bounded to 64 nodes per ancestor, excludes form values and hidden branches,
+and stops before BODY/HTML. Truncation flags describe the limits. This fresh
+observation helps an agent distinguish otherwise unlabelled record menus; it
+does not infer a business row or change selectors and action identity.
+
 ## Capture windows and network bodies
 
 Network body capture is explicitly enabled with `captureRequestBodies: true`

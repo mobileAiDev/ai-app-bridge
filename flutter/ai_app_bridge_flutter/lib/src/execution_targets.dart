@@ -26,7 +26,7 @@ class _FlutterExecutionTargets {
       'tapAt': ['x', 'y'],
       'tapText': ['text'],
       'tapTarget': ['selector', 'targetRef'],
-      'inputText': ['text', 'selector', 'targetRef', 'x', 'y'],
+      'inputText': ['text', 'selector', 'targetRef', 'x', 'y', 'hideKeyboard', 'focus'],
       'swipe': ['startX', 'startY', 'endX', 'endY'],
       'scrollBy': ['delta', 'selector', 'targetRef'],
       'scrollUntilText': ['text', 'maxSwipes', 'selector', 'targetRef'],
@@ -53,6 +53,12 @@ class _FlutterExecutionTargets {
     for (final field in request.keys) {
       if (!allowed.contains(field))
         throw _FlutterTargetFailure('unsupported_argument', field: field);
+    }
+    if (request.containsKey('hideKeyboard') && request['hideKeyboard'] is! bool) {
+      throw const _FlutterTargetFailure('invalid_argument', field: 'hideKeyboard');
+    }
+    if (request.containsKey('focus') && request['focus'] is! bool) {
+      throw const _FlutterTargetFailure('invalid_argument', field: 'focus');
     }
     for (final field in ['actionId', 'text', 'script']) {
       if (request.containsKey(field) &&
@@ -98,11 +104,7 @@ class _FlutterExecutionTargets {
     }
     if (request.containsKey('selector')) {
       final selector = request['selector'];
-      if (selector is! Map ||
-          selector.length != 1 ||
-          !['text', 'nodeId'].contains(selector.keys.single) ||
-          selector.values.single is! String ||
-          (selector.values.single as String).isEmpty ||
+      if (!_validSelector(selector) ||
           request.containsKey('x') ||
           request.containsKey('y')) {
         throw const _FlutterTargetFailure('invalid_flutter_selector');
@@ -119,6 +121,18 @@ class _FlutterExecutionTargets {
       }
     }
   }
+
+  bool _validSelector(Object? selector) => selector is Map && selector.isNotEmpty &&
+      (!selector.containsKey('nodeId') || selector.length == 1) &&
+      selector.entries.every((entry) => ['text', 'nodeId', 'label', 'hint', 'role', 'widgetType'].contains(entry.key) &&
+          entry.value is String && (entry.value as String).isNotEmpty);
+
+  bool _matchesSelector(Map<String, Object?> node, Map selector) => selector.entries.every((entry) {
+    if (entry.key == 'nodeId') return node['id'] == entry.value;
+    if (entry.key == 'text') return node['textTruncated'] != true && node['text'] == entry.value ||
+        node['valueTruncated'] != true && node['value'] == entry.value;
+    return node['${entry.key}Truncated'] != true && node[entry.key] == entry.value;
+  });
 
   String identity(Object object) =>
       _identities[object] ??= 'e${++_nextIdentity}';
@@ -204,20 +218,11 @@ class _FlutterExecutionTargets {
         .where((t) => (t.node['actions'] as List).contains(action))
         .toList();
     if (selector != null) {
-      if (selector is! Map ||
-          selector.length != 1 ||
-          !['text', 'nodeId'].contains(selector.keys.single) ||
-          selector.values.single is! String ||
-          (selector.values.single as String).isEmpty) {
+      if (!_validSelector(selector)) {
         throw _FlutterTargetFailure('invalid_flutter_selector');
       }
       candidates = candidates
-          .where((t) => selector.containsKey('nodeId')
-              ? t.node['id'] == selector['nodeId']
-              : t.node['textTruncated'] != true &&
-                      t.node['text'] == selector['text'] ||
-                  t.node['valueTruncated'] != true &&
-                      t.node['value'] == selector['text'])
+          .where((t) => _matchesSelector(t.node, selector as Map))
           .toList();
     } else if (action == 'input' &&
         (request.containsKey('x') || request.containsKey('y'))) {
@@ -380,6 +385,7 @@ class _FlutterExecutionTargets {
     final text = request['text'];
     if (text is! String)
       throw _FlutterTargetFailure('invalid_argument', field: 'text');
+    if (request['focus'] == false) await bridge._checkAction();
     final target = resolve(request, 'input');
     final editor = target.editor!;
     final controller = editor.widget.controller;
@@ -387,19 +393,22 @@ class _FlutterExecutionTargets {
     if (editor.widget.readOnly || !focus.canRequestFocus) {
       throw _FlutterTargetFailure('flutter_input_not_editable');
     }
-    final point = bridge._visibleGlobalBounds(target.element)!.center;
-    final tapped = await bridge._dispatchTap(point, target: target);
-    await bridge._waitForFrame();
-    await bridge._checkAction();
-    validate(target, dispatched: true);
-    if (!identical(editor.widget.controller, controller) ||
-        !identical(editor.widget.focusNode, focus)) {
-      throw _FlutterTargetFailure('flutter_target_changed', dispatched: true);
-    }
-    if (!focus.hasFocus ||
-        !identical(FocusManager.instance.primaryFocus, focus)) {
-      throw _FlutterTargetFailure('flutter_input_focus_changed',
-          dispatched: true);
+    Offset? tapped;
+    if (request['focus'] != false) {
+      final point = bridge._visibleGlobalBounds(target.element)!.center;
+      tapped = await bridge._dispatchTap(point, target: target);
+      await bridge._waitForFrame();
+      await bridge._checkAction();
+      validate(target, dispatched: true);
+      if (!identical(editor.widget.controller, controller) ||
+          !identical(editor.widget.focusNode, focus)) {
+        throw _FlutterTargetFailure('flutter_target_changed', dispatched: true);
+      }
+      if (!focus.hasFocus ||
+          !identical(FocusManager.instance.primaryFocus, focus)) {
+        throw _FlutterTargetFailure('flutter_input_focus_changed',
+            dispatched: true);
+      }
     }
     // Address this exact TextInputClient. A global TextInput update would write
     // to whichever client became active while the tap and frames were awaited.
@@ -408,9 +417,16 @@ class _FlutterExecutionTargets {
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     ));
-    final result = receipt(
-        target, {'textLength': text.length, 'x': tapped.dx, 'y': tapped.dy});
+    final result = receipt(target, {
+      'textLength': text.length,
+      'inputMode': tapped == null ? 'direct' : 'tap',
+      if (tapped != null) ...{'x': tapped.dx, 'y': tapped.dy},
+    });
     await bridge._waitForFrame();
+    if (request['hideKeyboard'] == true) {
+      await bridge._hideKeyboard();
+      result['keyboard'] = {'ok': true, 'dismissalRequested': true, 'source': 'flutter-text-input'};
+    }
     bridge.recordEvent(
         category: 'ui.interaction', name: 'input.changed', data: result);
     return result;

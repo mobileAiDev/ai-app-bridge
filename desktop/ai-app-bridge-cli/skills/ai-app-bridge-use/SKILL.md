@@ -7,8 +7,8 @@ description: 使用 AI App Bridge 观察、操作和验证 Android、iOS、Flutt
 
 ## 选择入口
 
-- **Intent**：日常操作和未知流程，观察与 Agent 决策绑定；适合页面探索、系统窗口交互。
-- **Script**：固定流程和重复运行，自由编写 JavaScript/Python（trusted-local-code），用 `ctx.call` 调用设备能力；权限声明不是 OS 沙箱。
+- **Intent**：日常操作和页面探索；已有决策策略时用 autonomous 连续执行，逐步决策时用 supervised。
+- **Script**：当前已知的连续步骤、动态观察分支和重复运行，自由编写 JavaScript/Python（trusted-local-code），用 `ctx.call` 调用设备能力；权限声明不是 OS 沙箱。
 - **单次命令**：观察、单步动作、安装、权限夹具和诊断可独立调用，无须包装成完整流程。
 
 ## 共享调用合同
@@ -17,7 +17,7 @@ MCP 入口是 `capabilities` 和 `run`；`capabilities` 是独立工具，不是
 
 省略 `extract` 时使用 auto：预算内完整返回，重复结构可用无损表格（`partial:false`）减少字节；超预算也先尝试无损表示，仍放不下才给含完整记录或文本片段的部分视图（`partial:true`）。不要看到 `read` 就机械补读：首个回复已经包含需要的信息时直接继续。已知需要什么时用 select、regex 或 JS/Python；显式 `null` 保持原始形状。业务参数在 `arguments`；`extract/output` 属于顶层，不传入设备命令。
 
-CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响应是一行紧凑 JSON，业务值在 `value`；MCP 工具正文同样是紧凑 JSON。Script 的调用返回值另见下文。客户端退出不会取消任务，用原 operationId 显式 cancel。取消不撤销已派发效果；版本错误会列出两侧身份，只在确定 Runtime 是待更新一侧时安排显式 stop。
+CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响应是一行紧凑 JSON，业务值在 `value`；MCP 工具正文同样是紧凑 JSON。Script 的调用返回值另见下文。客户端退出不会取消任务，用原 operationId 显式 cancel。取消不撤销已派发效果。版本错误列出两侧身份；同版本 hash 不能判断新旧。决定加载当前客户端构建时，按返回提示显式 stop/start，并考虑 stop 会结束现有 Runtime 任务。
 
 旧 MCP 实例可能与已安装 CLI 不同。缺少 Intent/Script 或参数不匹配时，核对实际入口版本，选用支持当前合同的入口；不要套用旧 batch、工具别名或外层参数。
 
@@ -29,11 +29,15 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 
 先看 `execution` 的原执行事实及 `failureStage`，再消费 `value`；Script 内部 `ctx.call` 仍按 `ok/result` 处理，不加 extract。`control` 保留续跑字段和采集覆盖；当前 Script 问题从 `control.pendingQuestion` 读取，即使 events 被游标过滤也可回答。
 
+Script 恢复可用 `resume {waitMs:60000}`，回答问题可用 `decide {...,waitMs:60000}`，在同次调用拿到下一问题或结果；回复已带 result 时直接使用。控制回复默认只带最近一条事件和历史记录，`history.omittedBefore:true` 明确存在更早内容。审计历史从 `afterSequence:0` 和显式 `limit` 开始，用 `history.lastSequence` 续页直到 `hasMore:false`；审计事件则用最后一条 `events[].sequence` 和显式 `eventLimit`。`eventSequence` 是实时水位，只适合等待新进度，用于审计翻页会漏掉未返回的记录。
+
 默认最终正文预算 96 KiB，可用 `output.maxBytes` 设为 16–256 KiB。提取失败或超预算不等于动作失败；存在 `control.source.persisted:true` 时，用 `response` 的 `operation:read`、原 `ref` 和新的 extract 重读，不重发原动作。未保存或留存已过期时没有可恢复的大结果，不捏造 ref。提取会减少交付内容，不承诺减少采集耗时。
 
 `aab.response-tables/v1` 包含 `data/tables`：在各 `table.path` 处，用 `constants` 的公共叶子字段和 `columns` 对应的每行 `rows` 单元格构造对象，替换 null。路径都是 JSON Pointer；节点、空值、状态、顺序和重复项完整保留，不必再查原文。`aab.response-overview/v1` 的 `preview.ranges` 给出原偏移和完整记录/文本片段；只有确实需要未展示部分时，才使用 `value.read` 或自行 select 原始路径。原采集范围仍以 coverage/truncated 为准。
 
 `aab.response-tables/v2` 还将重复长文本放在 `sharedTexts`：先把每项 `text` 填回它的 `paths`（指向整个表示的 `/data` 或 `/tables`），再按 v1 展开表格。`tables` 可以为空；`partial:false` 仍表示本次已完整返回，不需要补读。提取和保存的 ref 始终使用原始响应路径。
+
+反复观察同一页面时，可首轮用 `extract:{mode:"delta"}`，后续传 `base:上一轮control.source.ref`。`aab.response-delta/v1` 首轮 `mode:full` 给完整 `data`，后续 `mode:patch` 给针对前一份重建 data 的 RFC 6902 operations；检查 baseSha256/sha256。data 若为 `aab.response-columns/v1`，按各 table 的 rowCount、constants 和按字段路径索引的 columns 还原每行；保留展开前的 data 供下轮 patch 使用。新节点引用、状态和覆盖信息都保留，仍执行新观察。基线失效或差量不划算会给新完整基线，不阻断动作；不要把元数据变化或空 patch 等同于全 App 没变化。Script 内部直接处理普通 ctx.call 结果，无需差量。详见 `docs/RESPONSE_EXTRACTION.md`。
 
 提取脚本只使用 `ctx.inputs = {kind, response, execution, control}`，返回严格 JSON；没有 `ctx.call`。保留实际断言需要的来源身份、时间和状态，不能将选出的几条成功记录当作完整覆盖。完整示例见 `docs/RESPONSE_EXTRACTION.md`。
 
@@ -42,8 +46,11 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 - Android：明确 `serial`，App 命令再提供 `packageName`；设备级 Script 可只设 serial。iOS：`deviceId`/`bundleId`；Native Intent 还需原 WDA Runner/session 绑定。Web：从当前连接取得 `sessionId`/`runtimeEpoch`/`targetId`。
 - Intent/Script 的目标带 `platform`。执行目标保持明确指定的 App/provider；Android 前台匹配、不匹配、未知是独立观测事实，不代表动作成功或失败。更多绑定按平台合同补齐。
 - selector、nodeRef、pageRef 和坐标来自当前观察。多重匹配先看 candidates 和 guidance.nextActions，按实际意图选 nodeRef/targetRef；过期引用或 `reobserve_required` 再观察。Android 前台 warning 由 agent 决定继续、观察或调整目标；无需 force。Intent 切 provider 通过 `observe`，切 Android App 显式传 `observationTarget.packageName`。
+- UIA 键盘/系统节点太多时，用 `uia-tree {packageFilter:"实际包名"}` 在节点预算前筛出目标 App；省略筛选可观察系统权限弹窗。Flutter 表单可按 `{label:"账号",role:"input"}` 等组合条件定位。只需准备字段值时，输入命令或 Intent inputText 可设 `focus:false`，保留输入格式器和 onChanged，不点按、抢焦点或打开键盘；测试键盘、点按或焦点行为时保留默认输入，`hideKeyboard:true` 可在同次输入后请求收起键盘。
 - Android Native/UIA selector 可组合 text、className、resourceName、contentDescription 和 clickable 等条件，text 默认精确；包含匹配显式用 textContains/contentDescriptionContains。within 可直接限定容器，或用 `{text:"行标签",ancestor:{resourceName:"行容器"}}` 找邻近按钮；容器可多匹配，最终目标须唯一。候选序号只用于在已返回列表里取实际 viewId/完整 targetRef，不把第 N 个当跨观察稳定身份。Native 在 SDK 原子校验，省去 Host 重读；同 View 属性变动给 warning，显式 selector 条件仍要满足。UIA 组合查询先筛观察再绑定 nodeRef，属性变化给 warning。
 - H5/Web selector 可组合 text、ariaLabel、tag（Web 还有 role/css），所有字段共同匹配；已有 elementId 可用于部分观察。原 DOM 节点属性变动是 warning，替换节点或切换文档才需要重新绑定。
+- H5/Web 可直接传 `expectedTarget:{pageRef,element:observedControl}`，保留完整观察对象，无需手工挑字段。必需身份字段仍校验；context、checked、bounds 等额外观察信息不参与身份比较，selector 和动作参数仍按合同精确传入。
+- 无标签 Web 控件可带 `context.ancestors`，提供有界的真实祖先文本及截断标记，帮助判断菜单属于哪条记录；据此选择已观察的 elementId。context 不是 selector 或稳定身份，祖先可能覆盖多条记录，不清楚时再筛选页面或查看截图。
 - `logcat.grep` 默认匹配字面子串；`A|B` 等表达式显式用 `grepMode:"regex"`。普通空日志不意味着没有业务事件。若返回 `filterApplied:false`，查看保留的 text 和提示，不重复清空日志。
 - 已派发但结果未知（`ambiguous`）时，原结果继续记为未知。可查询原回执、观察、取消或开始新的显式动作；工具不自动重放，是否重试由 agent 结合现场决定。保留原 `error`、`message`、`dispatched` 和操作状态。
 - 若使用 freeze，后续操作和结束交付前先 thaw。
@@ -61,6 +68,8 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 
 ## Intent
 
+已有字段、目标和结果判断方式时，可用 `start {mode:"autonomous",agentModule:"/absolute/policy.cjs",background:false,...}`，由现有 Intent 在一次调用内连续执行。模块导出 `decide(input)`，输入含当前 revision、summary、lastAction 和 observationFailure，返回下述 decision；根据当前结果决定下一步、等待或结束。命令动作默认不重采树，需要新页面事实时再观察。模块可以执行普通本地 JavaScript；不要求每次 decide 都请求模型。模块接口与完整 start 形状见 `COMMAND_CONTRACT.md` **Run a known sequence in one Intent call**。按流程规模显式设置 budget，耗尽或需要干预时保留原 operationId 继续处理。
+
 `start` 提供 `goal`、显式 `target` 和所需 provider；默认 supervised。
 保留返回的 operationId，读取当前观察后以 `decide` 提交决策。
 `decision` 包含唯一 `decisionId`、当前 `basedOnRevision` 和 `agentDecision`；控件 action 遵循该观察的 provider 合同，使用唯一 selector。
@@ -75,14 +84,17 @@ supervised 不会仅凭 goal 自动执行：没有决策时停在 `waiting_for_d
 ## Script
 
 `start` 的 `script` 内提供 `target`、`language`（`javascript` 或 `python`），以及 `source`/`sourcePath` 二选一。源码入口、权限和 API 按需查 `SCRIPT_AUTHORING.md`。
+当前页的目标和判断方式明确后，优先用 `source` 内嵌普通代码和 `waitMs:60000` 连续执行；长期复用再保存 `sourcePath`。直接调用现有 MCP `run` 或 CLI，无需另写 RPC 控制器或 JSON 流程解释器。陌生页面也可在代码里观察、等待和处理已识别分支，不必先发现整个流程。页面暂时为空时在本地有界等待；只有需要新判断时再 `ctx.askAgent`，任务完成直接 `return`。问题只带待决事项和相关候选，完整回执可用 `recordingDir` 留存。
+它在完成、需要 Agent 决策或本次等待耗尽时返回；省略 waitMs 默认异步启动。启动 App 后按页面/网络结果等待，`launch-activity` 接纳启动请求不等于页面已可用。普通动作不必每步重读整棵树；需要新状态、节点身份或业务完成条件时再观察，Intent 可用 `observeAfter:false` 保留连续执行能力。
 Script 默认提供全部注册命令；显式 permissions 才收窄。`ctx.call` 返回 envelope：先检查 `ok`，设备数据在 `result`；调用失败和 `ctx.assert` 的 verdict 由源码处理。
 `ctx.call` 可启动和控制 Intent/Script，也可安装、查询与恢复；缺省继承父 target，显式子 Script target:null 选择 Host。子任务有独立 operationId/期限，父任务停止不会隐式取消子任务。组合调用 Intent start 默认 background:true，先返回接纳状态；按返回 ID 继续 wait/decide/cancel，接纳不表示完成。
 Runtime 卡住可先 `runtime {operation:"stop",timeoutMs:5000}`，仍无响应用 `runtime {operation:"force-stop"}`；保留证据，设备结果未知。Script/Intent 内调用这类关闭会返回独立控制器的 controlAccepted/resultPath，再由另一调用确认状态。
 可用 `script {operation:"recipes"}` 读配方目录，加 name 读普通 JS 源码和 start 请求；CLI 同样支持，无需先启动 Runtime。android-test-session 在改设置前保存独立恢复文件，取消后可新开 Script 恢复；android-launch-and-wait 启动一次并在设备侧等待标签。填写真实 target/inputs，可直接运行或改源码。`ctx.target` 提供声明目标的副本；Python 同名。更多范围与恢复说明见 SCRIPT_AUTHORING.md。
 用原 operationId 查询 `status`/`wait`；每次 `waitMs` 最多 60000，`running` 或 `finishing` 时用上一响应的 `eventSequence` 作为 `afterSequence` 继续等待。
-`waiting_for_agent` 是源码的 `ctx.askAgent`：用 `control.pendingQuestion`（或本页 `agent_question_created` 事件）里的 `requestId`/`revision` 调 `decide`，或 `cancel`；不要等到超时。完整 start → wait → result 范例见 `SCRIPT_AUTHORING.md` **Lifecycle: start, wait, result**。
+`waiting_for_agent` 是源码的 `ctx.askAgent`：用 `control.pendingQuestion`（或本页 `agent_question_created` 事件）里的 `requestId`/`revision` 调 `decide {...,waitMs:60000}`，或 `cancel`；不要等到超时。先检查 status 再读问题，其他状态下问题可能为空。一次等待超时后继续 `wait`，不重发业务动作。完整 start → wait → result 范例见 `SCRIPT_AUTHORING.md` **Lifecycle: start, wait, result**。
+停止后的 checkpoint Script 可由 Agent 在原 `resume` 请求中传 `recovery.checkpoint:{name,state}`，明确选择新的 `ctx.resume()` 状态；适用于中断后先查询原结果、或取消后另选续跑位置。原回执和未知结果保留，具体合同与示例见 `SCRIPT_AUTHORING.md` **Recover a stopped Script**。
 `completed` 仅说明源码返回并持久化；status/wait 的 `resultRef` 不是最终值。
-完成后调用 `script` 的 `operation:"result"` 读取 `result`、`resultRef` 和 `persisted`，检查 representation 及实际断言结果。读取失败保留错误，不从进度事件拼出返回值。
+start 已返回 `value.result` 时直接检查断言和持久化状态；仅在还没有返回值且存在 `resultRef` 时调用 `operation:"result"`。失败操作若源码返回了诊断也会保留结果，`status:"failed"` 和 `executionError` 仍表示原执行没有成功。读取失败保留错误，不从进度事件拼出返回值。
 
 ## 验证与证据
 

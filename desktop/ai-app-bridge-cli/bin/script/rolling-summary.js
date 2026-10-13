@@ -15,15 +15,25 @@ function createRollingSummary({ operationId, startedAtMs }) {
   let lastEventAtMs = startedAtMs;
   let lastKind = null;
   let latestEvidenceRefs = [];
-  let agentRequest = null;
-  let pausedAtMs = null;
-  let pausedMs = 0;
+  const agentRequests = new Map();
+  let paused = false;
+  let accountedAtMs = startedAtMs;
+  let activeMs = 0;
+  let decisionWaitMs = 0;
   let terminalAtMs = null;
 
   function apply(event) {
     if (event.kind === 'heartbeat') {
       return snapshot(event.timestampMs);
     }
+    // Charge the interval to the state that held before this event. Explicit
+    // pause and Agent wait can overlap; their union is excluded from active time.
+    if (terminalAtMs === null) {
+      const durationMs = event.timestampMs - accountedAtMs;
+      if (!paused && agentRequests.size === 0) activeMs += durationMs;
+      if (agentRequests.size > 0) decisionWaitMs += durationMs;
+    }
+    accountedAtMs = event.timestampMs;
     lastEventAtMs = event.timestampMs;
     lastKind = event.kind;
     if (event.evidenceRefs !== undefined) {
@@ -58,22 +68,21 @@ function createRollingSummary({ operationId, startedAtMs }) {
       message = event.message;
     }
     if (event.kind === 'agent_question_created') {
-      agentRequest = event.request;
+      agentRequests.set(event.requestId, event.request);
+      if (!paused) status = 'waiting_for_agent';
     }
     if (event.kind === 'agent_decision') {
-      agentRequest = null;
+      agentRequests.delete(event.requestId);
+      if (!paused) status = agentRequests.size === 0 ? 'running' : 'waiting_for_agent';
     }
     if (event.kind === 'paused') {
       status = 'paused';
-      pausedAtMs = event.timestampMs;
+      paused = true;
     }
     if (event.kind === 'resumed') {
-      status = 'running';
-      if (pausedAtMs !== null) {
-        pausedMs += event.timestampMs - pausedAtMs;
-        pausedAtMs = null;
-      }
-      agentRequest = null;
+      status = agentRequests.size === 0 ? 'running' : 'waiting_for_agent';
+      paused = false;
+      terminalAtMs = null;
     }
     if (event.kind === 'script_completed') {
       status = 'completed';
@@ -88,13 +97,18 @@ function createRollingSummary({ operationId, startedAtMs }) {
       status = 'ambiguous';
     }
     if (['script_completed', 'script_failed', 'script_cancelled', 'script_ambiguous'].includes(event.kind)
-      && terminalAtMs === null) terminalAtMs = event.timestampMs;
+      && terminalAtMs === null) {
+      terminalAtMs = event.timestampMs;
+      paused = false;
+      agentRequests.clear();
+    }
     return snapshot(event.timestampMs);
   }
 
   function snapshot(nowMs) {
     const endAtMs = terminalAtMs ?? nowMs;
-    const holdMs = pausedAtMs === null ? 0 : endAtMs - pausedAtMs;
+    const liveMs = terminalAtMs === null ? endAtMs - accountedAtMs : 0;
+    const agentRequest = agentRequests.size === 0 ? null : [...agentRequests.values()].at(-1);
     return {
       operationId,
       status,
@@ -109,9 +123,10 @@ function createRollingSummary({ operationId, startedAtMs }) {
       },
       assertionScopes: { code: { ...assertionScopes.code }, device: { ...assertionScopes.device } },
       lastCheckpoint,
+      startedAtMs,
       elapsedMs: endAtMs - startedAtMs,
-      activeMs: endAtMs - startedAtMs - pausedMs - holdMs,
-      decisionWaitMs: agentRequest === null ? 0 : endAtMs - lastEventAtMs,
+      activeMs: activeMs + (!paused && agentRequests.size === 0 ? liveMs : 0),
+      decisionWaitMs: decisionWaitMs + (agentRequests.size === 0 ? 0 : liveMs),
       latestEvidenceRefs,
       agentRequest,
     };

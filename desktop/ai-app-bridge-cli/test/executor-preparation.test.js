@@ -83,6 +83,14 @@ test('a failed or cancelled prepare retains its log and releases the project loc
   const first = withProject(project, async () => new Promise(resolve => { released = resolve; }), { home });
   await assert.rejects(withProject(project, async () => assert.fail('concurrent preparation ran'), { home }), { code: 'executor_preparing' });
   released({ prepared: true }); await first;
+  const { DatabaseSync } = require('node:sqlite');
+  const lockFiles = fs.readdirSync(path.join(home, 'preparation-locks'));
+  assert.equal(lockFiles.length, 1);
+  const reader = new DatabaseSync(path.join(home, 'preparation-locks', lockFiles[0]));
+  try {
+    reader.exec('BEGIN; SELECT * FROM sqlite_schema');
+    assert.equal((await withProject(project, async () => ({ prepared: true }), { home })).prepared, true);
+  } finally { reader.close(); }
   await assert.rejects(prepareAndroid({ projectDir: project, module: ':app', variant: 'debug' }, { home,
     run: async () => { throw Object.assign(new Error('original compiler failure'), { stdout: 'COMPILER EVIDENCE', stderr: '', code: 1 }); } }),
   error => {

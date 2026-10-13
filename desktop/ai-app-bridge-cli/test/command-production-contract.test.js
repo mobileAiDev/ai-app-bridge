@@ -223,7 +223,7 @@ test('automatic text routing discovers providers before one action and never ret
   assert.equal(result.provider, 'flutter');
   assert.equal(result.ambiguous, true);
   assert.equal(result.ok, false);
-  assert.deepEqual(calls, ['observe-native', 'observe-flutter', 'observe-flutter', { action: 'tapTarget', selector: { text: '设置' }, targetRef: flutterRef('e1') }]);
+  assert.deepEqual(calls, ['observe-native', 'observe-flutter', { action: 'tapTarget', selector: { text: '设置' }, targetRef: flutterRef('e1') }]);
   assert.deepEqual(result.observations.map(item => item.status), ['not-found', 'matched']);
   calls.length = 0;
   const nativeOnly = await tapText(ctx, '设置', { provider: 'native' }, deps);
@@ -231,7 +231,7 @@ test('automatic text routing discovers providers before one action and never ret
   assert.deepEqual(calls, ['observe-native']);
 });
 
-test('automatic text routing permits read-only discovery failure but refuses ambiguous or changed targets', async () => {
+test('automatic text routing permits read-only discovery failure, rejects ambiguity and retains foreground advice', async () => {
   const { tapText } = require('../bin/device-provider');
   const ctx = { explicitPackageName: true, packageName: 'contract.app' };
   const foreground = { ok: true, packageName: 'contract.app', component: 'contract.app/.Main', windowIdentity: 'contract-window:token:pid:start' };
@@ -255,9 +255,10 @@ test('automatic text routing permits read-only discovery failure but refuses amb
   assert.equal(duplicate.error, 'target_ambiguous'); assert.equal(duplicate.dispatched, false); assert.equal(dispatches, 1);
   let reads = 0;
   const changed = await tapText(ctx, '设置', { provider: 'uia' }, { ...deps,
-    foregroundWindow: async () => (++reads === 1 ? foreground : { ...foreground, component: 'contract.app/.Other' }),
+    foregroundWindow: async () => { reads++; return { ...foreground, packageName: 'overlay.app', component: 'overlay.app/.Other' }; },
   });
-  assert.equal(changed.ok, true); assert.equal(changed.warnings[0].code, 'foreground_changed'); assert.equal(dispatches, 2);
+  assert.equal(changed.ok, true); assert.equal(changed.warnings[0].code, 'foreground_package_mismatch'); assert.equal(dispatches, 2);
+  assert.equal(reads, 1);
 });
 
 test('Script discovery is first-class, and explicit permissions restrict defaults with the same mutation lease', async () => {

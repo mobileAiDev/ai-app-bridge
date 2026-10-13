@@ -413,6 +413,56 @@
       role: attr(hit, 'role'), className: typeof hit.className === 'string' ? trimText(hit.className, 300) : '' } : null };
   }
 
+  function ancestorContext(element, identity, cache) {
+    if ([identity.text, identity.ariaLabel, identity.placeholder].some(value => value.trim())) return null;
+    const ancestors = [], seen = new Set();
+    let parent = element.parentElement, depth = 1;
+    while (parent && !['BODY', 'HTML'].includes(parent.tagName) && depth <= 6 && ancestors.length < 2) {
+      const sample = ancestorText(parent, cache);
+      if (sample.text && !seen.has(sample.text)) {
+        seen.add(sample.text);
+        const id = text(parent.id), role = attr(parent, 'role');
+        ancestors.push({ depth, tag: text(parent.tagName).toLowerCase(), id: id.slice(0, 80), role: role.slice(0, 40),
+          text: sample.text, textTruncated: sample.truncated, identityTruncated: id.length > 80 || role.length > 40 });
+      }
+      parent = parent.parentElement; depth++;
+    }
+    // DOM context describes actual ancestors, not a guessed business row or a visibility guarantee.
+    return ancestors.length ? { source: 'ancestor-dom-text', ancestors,
+      truncated: ancestors.some(item => item.textTruncated || item.identityTruncated)
+        || Boolean(parent && !['BODY', 'HTML'].includes(parent.tagName)) } : null;
+  }
+
+  function ancestorText(root, cache) {
+    if (cache.has(root)) return cache.get(root);
+    let node = root, visited = 0, value = '', truncated = false;
+    while (node && visited < 64) {
+      visited++;
+      let descend = true;
+      if (node.nodeType === 1) {
+        const style = node.ownerDocument?.defaultView?.getComputedStyle(node);
+        descend = !['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName)
+          && !isSensitiveInput(node) && !node.hidden && attr(node, 'aria-hidden') !== 'true'
+          && style?.display !== 'none' && !['hidden', 'collapse'].includes(style?.visibility) && style?.opacity !== '0';
+      } else if (node.nodeType === 3) {
+        const raw = text(node.nodeValue);
+        // Normalize a bounded raw sample so indentation does not consume the readable-text budget.
+        const part = raw.slice(0, 1024).replace(/\s+/g, ' ').trim();
+        const next = value + (value && part ? ' ' : '') + part;
+        value = next.slice(0, 160);
+        if (raw.length > 1024 || next.length > 160) { truncated = true; break; }
+      }
+      if (descend && node.firstChild) node = node.firstChild;
+      else {
+        while (node !== root && !node.nextSibling) node = node.parentNode;
+        node = node === root ? null : node.nextSibling;
+      }
+    }
+    const result = { text: value, truncated: truncated || Boolean(node) };
+    cache.set(root, result);
+    return result;
+  }
+
   function snapshotDom(options = {}) {
     const doc = options.document || globalValue('document');
     if (!doc || !doc.querySelectorAll) {
@@ -427,18 +477,22 @@
     const maxControls = Number(options.maxControls || 200);
     const offset = options.offset ?? 0;
     const controls = [];
+    const contextCache = new WeakMap();
     const matched = options.query ? matchingElements(options.query, doc) : doc.querySelectorAll(selector);
     const elements = Array.prototype.slice.call(matched, offset, offset + maxControls);
     elements.forEach((element, index) => {
       const sensitive = isSensitiveInput(element);
       const elementValue = text(element.value);
+      const identity = elementIdentity(element, doc), visible = elementVisible(element);
+      const context = visible ? ancestorContext(element, identity, contextCache) : null;
       controls.push({
-        ...elementIdentity(element, doc),
+        ...identity,
+        ...(context ? { context } : {}),
         index: offset + index,
         sensitive,
         ...(sensitive ? { valueLength: elementValue.length } : {}),
         disabled: elementDisabled(element),
-        visible: elementVisible(element),
+        visible,
         editable: elementEditable(element),
         checked: elementChecked(element),
         ariaChecked: element.getAttribute('aria-checked'),
@@ -493,12 +547,31 @@
       element.dispatchEvent(new win.InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: value }));
       ensureTarget(selected, task, { focus: true, edited: true }); task.permit(); element.dispatchEvent(new win.Event('change', { bubbles: true }));
     }
-    ensureTarget(selected, task, { edited: true });
+    // The final input/change dispatch may collapse, disable or remove its own
+    // editor. Report what happened to that original object; never reselect it
+    // or treat its resulting layout as a precondition for the completed input.
+    const targetState = { samePage: samePage(task.pageRef(), selected.ref.pageRef),
+      sameDocument: element.ownerDocument === globalValue('document'), connected: element.isConnected,
+      visible: elementVisible(element), disabled: elementDisabled(element), editable: elementEditable(element),
+      focused: doc.activeElement === element, bounds: bounds(element) };
+    if (!targetState.samePage || !targetState.sameDocument || !targetState.connected) {
+      return { ok: false, error: targetState.samePage ? 'web_element_changed' : 'reobserve_required',
+        resolved: selected.ref, inputDispatched: true, valueState: 'unconfirmed', targetState,
+        message: 'Input was dispatched, but its original element is no longer in the current page. Reobserve before continuing.' };
+    }
+    recordTargetChanges(selected, elementIdentity(element), true);
+    const warnings = targetWarnings(selected).warnings ?? [];
+    if (!targetState.visible || targetState.disabled || !targetState.editable || !targetState.focused)
+      warnings.push({ code: 'target_state_changed_after_input',
+        message: 'Input was dispatched; the original element state changed afterwards. Inspect targetState before another action.' });
     const sensitive = isSensitiveInput(element);
     return {
       ok: true,
       resolved: selected.ref,
-      ...targetWarnings(selected),
+      inputDispatched: true,
+      valueState: 'observed',
+      targetState,
+      ...(warnings.length ? { warnings } : {}),
       sensitive,
       valueLength: (richText ? element.innerText : element.value).length,
       ...(sensitive ? {} : { value: richText ? element.innerText : element.value }),

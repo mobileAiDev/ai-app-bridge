@@ -10,6 +10,33 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testBridge('navigation semantics and its label remain one target with live selected state', (h) async {
+    var selected = 0, taps = 0;
+    await h.tester.pumpWidget(MaterialApp(home: StatefulBuilder(builder: (context, update) => Scaffold(
+      body: Column(children: [
+        TextButton(onPressed: () {}, child: const Text('Open')),
+        TextButton(onPressed: () {}, child: const Text('Open')),
+      ]),
+      bottomNavigationBar: NavigationBar(selectedIndex: selected,
+        onDestinationSelected: (value) => update(() { selected = value; taps++; }),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.local_activity), label: 'Activities'),
+        ]),
+    ))));
+    final before = await h.observe();
+    final activities = before.where((node) => node['text'] == 'Activities').toList();
+    expect(activities, hasLength(1));
+    expect(activities.single['selected'], false);
+    expect(activities.single['enabled'], true);
+    expect(before.where((node) => node['text'] == 'Open'), hasLength(2), reason: 'separate same-label buttons stay distinct');
+    final result = await h.action({'action': 'tapTarget', 'selector': {'text': 'Activities'}, 'targetRef': activities.single['targetRef']});
+    expect(result['ok'], true, reason: '$result');
+    expect(taps, 1);
+    await h.tester.pumpAndSettle();
+    final after = await h.observe();
+    expect(after.singleWhere((node) => node['text'] == 'Activities')['selected'], true);
+  });
   testBridge(
       'a long label reports its truncated preview and keeps explicit node selection',
       (h) async {
@@ -493,6 +520,107 @@ void main() {
     }
   });
 
+  testBridge('direct editor input keeps formatters and callbacks without tapping or opening IME', (h) async {
+    final controller = TextEditingController(), focus = FocusNode();
+    final changed = <String>[];
+    var taps = 0;
+    addTearDown(() { controller.dispose(); focus.dispose(); });
+    await h.tester.pumpWidget(MaterialApp(home: Scaffold(body: TextField(
+      controller: controller, focusNode: focus,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      onChanged: changed.add, onTap: () => taps++,
+    ))));
+    final result = await h.action({'action': 'inputText', 'text': 'a12b3', 'focus': false});
+    expect(result['ok'], true, reason: '$result');
+    expect(controller.text, '123');
+    expect(changed, ['123']);
+    expect(taps, 0);
+    expect(focus.hasFocus, false);
+    expect(h.tester.testTextInput.isVisible, false);
+    expect(result['inputMode'], 'direct');
+    expect(result.containsKey('x'), false, reason: 'no tap coordinates are claimed');
+  });
+
+  testBridge('direct input does not redirect to another focused editor', (h) async {
+    final first = TextEditingController(), second = TextEditingController();
+    final otherFocus = FocusNode();
+    addTearDown(() { first.dispose(); second.dispose(); otherFocus.dispose(); });
+    await h.tester.pumpWidget(MaterialApp(home: Scaffold(body: Column(children: [
+      TextField(controller: first, decoration: const InputDecoration(labelText: 'First')),
+      TextField(controller: second, focusNode: otherFocus),
+    ]))));
+    otherFocus.requestFocus();
+    await h.tester.pump();
+    final result = await h.action({'action': 'inputText', 'text': '正确🙂', 'focus': false,
+      'selector': {'label': 'First', 'role': 'input'}});
+    expect(result['ok'], true, reason: '$result');
+    expect(first.text, '正确🙂'); expect(second.text, '');
+    expect(otherFocus.hasFocus, true);
+  });
+
+  testBridge('input can dismiss its keyboard in the same Flutter action', (h) async {
+    final controller = TextEditingController();
+    final focus = FocusNode();
+    addTearDown(() { controller.dispose(); focus.dispose(); });
+    await h.tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: TextField(controller: controller, focusNode: focus))));
+    final kept = await h.action({'action': 'inputText', 'text': 'first', 'hideKeyboard': false});
+    expect(kept['ok'], true, reason: '$kept');
+    expect(focus.hasFocus, true);
+    final hidden = await h.action({'action': 'inputText', 'text': '完成🙂', 'hideKeyboard': true});
+    expect(hidden['ok'], true, reason: '$hidden');
+    expect(controller.text, '完成🙂');
+    expect(focus.hasFocus, false);
+    expect(h.tester.testTextInput.isVisible, false);
+    expect(hidden['keyboard'], {'ok': true, 'dismissalRequested': true, 'source': 'flutter-text-input'});
+  });
+
+  testBridge('keyboard dismissal refreshes platform insets instead of retaining a hidden IME rectangle', (h) async {
+    addTearDown(h.tester.view.resetViewInsets);
+    await h.tester.pumpWidget(MaterialApp(home: Scaffold(resizeToAvoidBottomInset: false,
+      body: Stack(children: [Positioned(bottom: 30, left: 20,
+        child: TextButton(onPressed: () {}, child: const Text('Bottom action')))]))));
+    h.tester.view.viewInsets = FakeViewPadding(bottom: h.tester.view.physicalSize.height / 2);
+    expect((await h.observe()).where((node) => node['text'] == 'Bottom action'), isEmpty);
+    var refreshes = 0;
+    h.refreshWindowInsets = () { refreshes++; h.tester.view.resetViewInsets(); };
+    final hidden = await h.action({'action': 'hideKeyboard'});
+    expect(hidden['ok'], true, reason: '$hidden');
+    expect(refreshes, 1);
+    expect((await h.observe()).where((node) => node['text'] == 'Bottom action'), hasLength(1));
+  });
+
+  testBridge('a keyboard hide request does not declare a still-covered target visible', (h) async {
+    addTearDown(h.tester.view.resetViewInsets);
+    await h.tester.pumpWidget(MaterialApp(home: Scaffold(resizeToAvoidBottomInset: false,
+      body: Stack(children: [Positioned(bottom: 30, left: 20,
+        child: TextButton(onPressed: () {}, child: const Text('Bottom action')))]))));
+    h.tester.view.viewInsets = FakeViewPadding(bottom: h.tester.view.physicalSize.height / 2);
+    final hidden = await h.action({'action': 'hideKeyboard'});
+    expect(hidden['ok'], true, reason: '$hidden');
+    expect(hidden['dismissalRequested'], true);
+    expect(hidden.containsKey('dismissed'), false);
+    expect((await h.observe()).where((node) => node['text'] == 'Bottom action'), isEmpty);
+    h.tester.view.resetViewInsets();
+    expect((await h.observe()).where((node) => node['text'] == 'Bottom action'), hasLength(1));
+  });
+
+  testBridge('compound editor labels bind directly without a separate node lookup', (h) async {
+    final first = TextEditingController(), second = TextEditingController();
+    addTearDown(() { first.dispose(); second.dispose(); });
+    await h.tester.pumpWidget(MaterialApp(home: Scaffold(body: Column(children: [
+      const Text('账号'),
+      TextField(controller: first, decoration: const InputDecoration(labelText: '账号', hintText: '用户名')),
+      TextField(controller: second, decoration: const InputDecoration(labelText: '账号', hintText: '邮箱')),
+    ]))));
+    final ambiguous = await h.action({'action': 'inputText', 'text': 'wrong', 'selector': {'label': '账号', 'role': 'input'}});
+    expect(ambiguous['error'], 'flutter_selector_not_unique');
+    expect(first.text, ''); expect(second.text, '');
+    final result = await h.action({'action': 'inputText', 'text': '邮箱账号', 'selector': {'label': '账号', 'hint': '邮箱', 'role': 'input'}});
+    expect(result['ok'], true, reason: '$result');
+    expect(first.text, ''); expect(second.text, '邮箱账号');
+  });
+
   testBridge('unfocused multiple editors are ambiguous and unchanged',
       (h) async {
     final a = TextEditingController(text: 'A');
@@ -521,11 +649,12 @@ void main() {
     await h.tester.pumpWidget(MaterialApp(
         home:
             Scaffold(body: TextField(controller: controller, readOnly: true))));
-    final result =
-        await h.action({'action': 'inputText', 'text': 'unexpected'});
-    expect(result['error'], 'flutter_input_not_editable');
-    expect(result['dispatched'], false);
-    expect(controller.text, 'fixed');
+    for (final focus in [true, false]) {
+      final result = await h.action({'action': 'inputText', 'text': 'unexpected', 'focus': focus});
+      expect(result['error'], 'flutter_input_not_editable');
+      expect(result['dispatched'], false);
+      expect(controller.text, 'fixed');
+    }
   });
 
   testBridge(
@@ -967,6 +1096,8 @@ void main() {
       },
       {'action': 'inputText', 'text': 'wrong', 'targetRef': {}},
       {'action': 'inputText', 'text': 'wrong', 'typo': true},
+      {'action': 'inputText', 'text': 'wrong', 'hideKeyboard': 'true'},
+      {'action': 'inputText', 'text': 'wrong', 'focus': 'false'},
       {'action': 'scrollBy', 'delta': '100'},
     ]) {
       final result = await h.action(request);
@@ -1033,12 +1164,17 @@ class _BridgeHarness {
   final WidgetTester tester;
   final snapshots = <Map<String, dynamic>>[];
   int actionSequence = 0;
+  void Function()? refreshWindowInsets;
   static const channel = MethodChannel('ai_app_bridge');
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
 
   void start() {
     messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'refreshWindowInsets') {
+        refreshWindowInsets?.call();
+        return {'ok': true};
+      }
       if (call.method == 'checkAction') {
         final identity = jsonDecode(call.arguments as String) as Map;
         return jsonEncode({

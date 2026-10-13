@@ -5,14 +5,14 @@ const { selectionFailure } = require('./action-guidance');
 const schema = 'aab.web-dom-target/v1';
 const string = { type: 'string' };
 const elementKeys = ['elementId', 'tag', 'id', 'name', 'type', 'role', 'ariaLabel', 'placeholder', 'href', 'text'];
-const elementSchema = object(Object.fromEntries(elementKeys.map(key => [key, key === 'elementId' ? text : string])), elementKeys);
+const elementSchema = { ...object(Object.fromEntries(elementKeys.map(key => [key, key === 'elementId' ? text : string])), elementKeys), additionalProperties: true };
 const pageSchema = object({ schemaVersion: { const: schema }, sessionId: text, runtimeEpoch: text,
   targetId: text, navigationId: text, url: text }, ['schemaVersion', 'sessionId', 'runtimeEpoch', 'targetId', 'navigationId', 'url']);
 const selectorSchema = { ...object({ elementId: text, text, ariaLabel: text, css: text, tag: text, role: text }),
   anyOf: ['elementId', 'text', 'ariaLabel', 'css'].map(key => ({ required: [key] })) };
 const intentSelectorSchema = { ...object({ elementId: text, text, ariaLabel: text, tag: text, role: text }),
   anyOf: ['elementId', 'text', 'ariaLabel'].map(key => ({ required: [key] })) };
-const expectedTargetSchema = object({ pageRef: pageSchema, element: elementSchema }, ['pageRef', 'element']);
+const expectedTargetSchema = object({ pageRef: { ...pageSchema, additionalProperties: true }, element: elementSchema }, ['pageRef', 'element']);
 const reject = error => ({ ok: false, error, dispatched: false, ambiguous: false });
 
 function validateSnapshot(dom, target) {

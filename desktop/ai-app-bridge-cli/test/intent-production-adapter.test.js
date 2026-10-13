@@ -201,7 +201,7 @@ test('G7 production Intent adapter taps native text from the observed tree', asy
   assert.deepEqual(taps, [{ x: 20, y: 30 }]);
 });
 
-test('G7 production Intent adapter revalidates Flutter text before one dispatch', async () => {
+test('G7 production Intent adapter sends the observed Flutter reference in one dispatch', async () => {
   let flutterAcquires = 0;
   const taps = [];
   const ports = {
@@ -237,7 +237,7 @@ test('G7 production Intent adapter revalidates Flutter text before one dispatch'
     },
   });
   assert.equal(result.ok, true);
-  assert.equal(flutterAcquires, 1);
+  assert.equal(flutterAcquires, 0);
   assert.deepEqual(taps, [{ payload: { action: 'tapTarget', selector: { text: '返回' }, targetRef: flutterRef('e1') }, context: { runtimeActionId: 'intent:flutter-tap' } }]);
 });
 

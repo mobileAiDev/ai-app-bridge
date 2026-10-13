@@ -277,6 +277,7 @@ async function actionOnce(command, args, options, { actions, target, executionId
       executionReceipt: raw.executionReceipt ?? null,
       executionReceipts: raw.executionReceipts,
       warnings: raw.warnings, foregroundObservations: raw.foregroundObservations,
+      guidance: raw.guidance, candidates: raw.candidates,
       executionId,
       callId,
       actionId,

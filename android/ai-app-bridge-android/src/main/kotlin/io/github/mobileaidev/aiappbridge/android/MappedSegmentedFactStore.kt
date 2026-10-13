@@ -780,11 +780,25 @@ internal class MappedSegmentedFactStore(
     }
 
     private fun committedMarkerFollows(map: ByteBuffer, fileSize: Int, frameOffset: Int): Boolean {
-        val limit = minOf(fileSize.toLong(), segmentSize)
-        var markerOffset = frameOffset.toLong() + FRAME_PREFIX_SIZE
-        while (markerOffset <= limit && limit - markerOffset >= FRAME_COMMIT_SIZE) {
-            if (map.getLong(markerOffset.toInt()) == FRAME_COMMIT_MARKER) return true
-            markerOffset += 8
+        val limit = minOf(fileSize.toLong(), segmentSize).toInt()
+        val start = frameOffset + FRAME_PREFIX_SIZE
+        var remaining = (limit - start).coerceAtLeast(0) / FRAME_COMMIT_SIZE * FRAME_COMMIT_SIZE
+        if (remaining == 0) return false
+        val input = map.duplicate()
+        input.position(start)
+        val bytes = ByteArray(minOf(remaining, IO_CHUNK_BYTES))
+        while (remaining > 0) {
+            val count = minOf(remaining, bytes.size)
+            input.get(bytes, 0, count)
+            var index = 0
+            while (index < count) {
+                if (bytes[index] == FRAME_COMMIT_BYTES[0] && bytes[index + 1] == FRAME_COMMIT_BYTES[1] &&
+                    bytes[index + 2] == FRAME_COMMIT_BYTES[2] && bytes[index + 3] == FRAME_COMMIT_BYTES[3] &&
+                    bytes[index + 4] == FRAME_COMMIT_BYTES[4] && bytes[index + 5] == FRAME_COMMIT_BYTES[5] &&
+                    bytes[index + 6] == FRAME_COMMIT_BYTES[6] && bytes[index + 7] == FRAME_COMMIT_BYTES[7]) return true
+                index += FRAME_COMMIT_SIZE
+            }
+            remaining -= count
         }
         return false
     }
@@ -885,9 +899,8 @@ internal class MappedSegmentedFactStore(
             }
         }
         return ByteArray(location.payloadLength).also { payload ->
-            for (index in payload.indices) {
-                payload[index] = map.get(location.frameOffset.toInt() + FRAME_PREFIX_SIZE + index)
-            }
+            map.position(location.frameOffset.toInt() + FRAME_PREFIX_SIZE)
+            map.get(payload)
         }
     }
 
@@ -1080,6 +1093,9 @@ internal class MappedSegmentedFactStore(
         private const val LOCK_FILE = ".sfs-lock"
         private const val MANIFEST_COMMIT_MARKER = 0x314D4F434D534653L
         private const val FRAME_COMMIT_MARKER = 0x314D4F4346534653L
+        private val FRAME_COMMIT_BYTES = ByteArray(FRAME_COMMIT_SIZE) { (FRAME_COMMIT_MARKER ushr (it * 8)).toByte() }
+        private const val IO_CHUNK_BYTES = 8192
+        private val ZERO_BYTES = ByteArray(IO_CHUNK_BYTES)
         private const val RECORD_GAP_BEFORE = 1
         private val MANIFEST_MAGIC = "SFSMAN01".toByteArray(Charsets.US_ASCII)
         private val SEGMENT_MAGIC = "SFSSEG01".toByteArray(Charsets.US_ASCII)
@@ -1097,11 +1113,20 @@ internal class MappedSegmentedFactStore(
         }
 
         private fun zero(buffer: ByteBuffer, offset: Int, length: Int) {
-            for (index in offset until offset + length) buffer.put(index, 0)
+            val output = buffer.duplicate()
+            output.position(offset)
+            var remaining = length
+            while (remaining > 0) {
+                val count = minOf(remaining, ZERO_BYTES.size)
+                output.put(ZERO_BYTES, 0, count)
+                remaining -= count
+            }
         }
 
         private fun putBytes(buffer: ByteBuffer, offset: Int, bytes: ByteArray) {
-            for (index in bytes.indices) buffer.put(offset + index, bytes[index])
+            val output = buffer.duplicate()
+            output.position(offset)
+            output.put(bytes)
         }
 
         private fun matches(buffer: ByteBuffer, offset: Int, bytes: ByteArray): Boolean {
@@ -1184,27 +1209,61 @@ private fun syncDirectoryBestEffort(directory: File) {
 }
 
 internal object Crc32c {
-    private val table = IntArray(256) { seed ->
-        var value = seed
-        repeat(8) {
-            value = (value ushr 1) xor if (value and 1 != 0) 0x82F63B78.toInt() else 0
+    private val table = IntArray(8 * 256).apply {
+        for (seed in 0 until 256) {
+            var value = seed
+            repeat(8) {
+                value = (value ushr 1) xor if (value and 1 != 0) 0x82F63B78.toInt() else 0
+            }
+            this[seed] = value
         }
-        value
+        for (slice in 1 until 8) {
+            for (seed in 0 until 256) {
+                val previous = this[(slice - 1) * 256 + seed]
+                this[slice * 256 + seed] = this[previous and 0xFF] xor (previous ushr 8)
+            }
+        }
     }
 
-    fun compute(bytes: ByteArray): Int {
-        var crc = -1
-        bytes.forEach { byte ->
-            crc = table[(crc xor (byte.toInt() and 0xFF)) and 0xFF] xor (crc ushr 8)
-        }
-        return crc.inv()
-    }
+    fun compute(bytes: ByteArray): Int = update(-1, bytes, bytes.size).inv()
 
     fun compute(buffer: ByteBuffer, offset: Int, length: Int): Int {
+        // Bulk reads avoid a direct-buffer/native boundary for every payload byte.
+        // Preserve the caller's position, mark and byte order, including on API 19.
+        val input = buffer.duplicate()
+        input.position(offset)
+        val bytes = ByteArray(minOf(length, 8192))
         var crc = -1
-        for (index in offset until offset + length) {
-            crc = table[(crc xor (buffer.get(index).toInt() and 0xFF)) and 0xFF] xor (crc ushr 8)
+        var remaining = length
+        while (remaining > 0) {
+            val count = minOf(remaining, bytes.size)
+            input.get(bytes, 0, count)
+            crc = update(crc, bytes, count)
+            remaining -= count
         }
         return crc.inv()
+    }
+
+    private fun update(initial: Int, bytes: ByteArray, length: Int): Int {
+        var crc = initial
+        var index = 0
+        // Each table advances one byte through the same Castagnoli polynomial.
+        // Eight independent lookups avoid the byte-at-a-time dependency chain.
+        while (index <= length - 8) {
+            crc = table[0x700 or ((crc xor bytes[index].toInt()) and 0xFF)] xor
+                table[0x600 or (((crc ushr 8) xor bytes[index + 1].toInt()) and 0xFF)] xor
+                table[0x500 or (((crc ushr 16) xor bytes[index + 2].toInt()) and 0xFF)] xor
+                table[0x400 or (((crc ushr 24) xor bytes[index + 3].toInt()) and 0xFF)] xor
+                table[0x300 or (bytes[index + 4].toInt() and 0xFF)] xor
+                table[0x200 or (bytes[index + 5].toInt() and 0xFF)] xor
+                table[0x100 or (bytes[index + 6].toInt() and 0xFF)] xor
+                table[bytes[index + 7].toInt() and 0xFF]
+            index += 8
+        }
+        while (index < length) {
+            crc = table[(crc xor bytes[index].toInt()) and 0xFF] xor (crc ushr 8)
+            index += 1
+        }
+        return crc
     }
 }

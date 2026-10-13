@@ -111,6 +111,26 @@ test('failed result persistence cannot publish a completed terminal', async () =
   assert.equal(result.error, 'result_unavailable');
 });
 
+test('a caught ambiguous action retains the returned recovery report while preserving failed status', async () => {
+  const store = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
+  const supervisor = createScriptSupervisor();
+  let calls = 0;
+  const script = { ...spec(`module.exports.main = async ctx => {
+    const launch = await ctx.call('launch-app', {});
+    return { launchError: launch.error, recovery: 'inspect the existing activity before replaying' };
+  }`), permissions: ['app.interact'], target: { platform: 'android', serial: 'result-fixture', packageName: 'example.app' } };
+  const result = await handle({ supervisor, store, operation: 'start', waitMs: 60000, script,
+    actions: async () => { calls++; return { ok: false, error: 'deadline_exceeded', dispatched: null, ambiguous: true }; } });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, true, 'retrieval succeeds without claiming execution succeeded');
+  assert.equal(result.status, 'failed');
+  assert.equal(result.executionError, 'ambiguous');
+  assert.equal(result.result.launchError, 'deadline_exceeded');
+  assert.match(result.result.recovery, /before replaying/);
+  const cold = await handle({ supervisor: createScriptSupervisor(), store, operation: 'result', operationId: result.operationId });
+  assert.deepEqual(cold, result);
+});
+
 test('terminal checkpoint waits for durable result and missing/tampered outputs never pass retrieval', async () => {
   const backing = createScriptEvidenceStore({ adapter: createMemoryEvidenceAdapter() });
   let release, notify;

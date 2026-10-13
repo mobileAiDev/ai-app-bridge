@@ -91,7 +91,7 @@ async function prepareManagedWda({ home = require('./executors/managed-runtime')
   const lock = new DatabaseSync(path.join(directory, 'prepare.sqlite'));
   let locked = false;
   try {
-    try { lock.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE'); locked = true; }
+    try { lock.exec('PRAGMA busy_timeout=0; BEGIN IMMEDIATE'); locked = true; }
     catch (error) { if (error.errcode === 5) throw new CommandError('executor_preparing', 'This WDA project is already being prepared.'); throw error; }
     const readyFile = path.join(directory, 'prepared.json');
     const existing = readJson(readyFile);

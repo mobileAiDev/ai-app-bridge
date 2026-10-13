@@ -12,6 +12,7 @@ internal object NativeWindowContract {
         val type: Int,
         val displayId: Int,
         val visible: Boolean,
+        val touchable: Boolean = true,
     )
 
     // Application windows carry the Activity token in LayoutParams. Subwindows
@@ -35,7 +36,7 @@ internal object NativeWindowContract {
         }
         val owner = applicationToken(activityIndex)
         return (windows.lastIndex downTo 0).firstOrNull {
-            windows[it].visible && windows[it].displayId == activity.displayId && applicationToken(it) == owner
+            windows[it].visible && windows[it].touchable && windows[it].displayId == activity.displayId && applicationToken(it) == owner
         } ?: throw NativeTargetFailure("native_window_unavailable")
     }
 

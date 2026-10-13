@@ -135,6 +135,19 @@ void main() {
     expect(editor.text, 'original');
   });
 
+  managedTest('native revocation before direct editor input prevents the write', (h) async {
+    final editor = TextEditingController(text: 'original');
+    addTearDown(editor.dispose);
+    await h.mount(TextField(controller: editor));
+    h.permission = (_) async => h.checks == 2
+        ? jsonEncode({'ok': false, 'error': 'flutter_action_cancelled'})
+        : h.grant();
+    final result = await h.finish(h.send({'action': 'inputText', 'text': 'late write', 'focus': false}));
+    expect(result['error'], 'flutter_action_cancelled');
+    expect(result['dispatched'], false);
+    expect(editor.text, 'original');
+  });
+
   managedTest('owned frame wait can stop without delivering another frame',
       (h) async {
     final scroll = ScrollController();

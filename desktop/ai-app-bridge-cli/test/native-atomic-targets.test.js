@@ -85,7 +85,8 @@ test('Intent carries the observed View to the atomic SDK and refuses missing met
     for (const bound of [true, false]) {
       let attempts = 0;
       const port = async (...args) => {
-        attempts++; assert.deepEqual(args.at(-1).nativeTarget, { selector, targetRef });
+        attempts++; assert.deepEqual(args.at(-2).nativeTarget, { selector, targetRef });
+        assert.deepEqual(args.at(-1), { foregroundFeedback: { foregroundObservations: [], warnings: [] } });
         return { ok: false, error: 'native_target_replaced', dispatched: false };
       };
       const adapter = createProductionIntentDeviceAdapter({ ports: { createBridgeContext: args => args,

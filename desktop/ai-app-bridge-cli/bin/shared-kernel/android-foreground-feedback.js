@@ -8,7 +8,7 @@ const { sameForegroundWindow } = require('./android-foreground-identity');
 async function readForegroundFeedback(ctx, read, previous) {
   let actual;
   const startedAtMs = Date.now();
-  try { actual = await read(ctx); }
+  try { actual = await read(ctx, { verification: 'window' }); }
   catch (error) {
     checkExecution();
     actual = foregroundProbeFailure(error);

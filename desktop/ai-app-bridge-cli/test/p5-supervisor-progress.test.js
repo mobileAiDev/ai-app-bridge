@@ -37,7 +37,7 @@ test('P5 supervisor records call-level progress without a script progress event'
     },
   });
   await supervisor.registry.get(started.operationId).running;
-  const status = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const status = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(status.rollingSummary.completedCalls, 1);
   assert.equal(status.rollingSummary.stage, null);
   assert.equal(status.events.some((event) => event.type === 'call_started'), true);
@@ -67,7 +67,7 @@ test('P5 in-flight mutation pause waits for a receipt before paused_live', async
   assert.equal(requested.status, 'pause_requested');
   release();
   await delay(20);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_live');
   assert.equal(paused.events.some((event) => event.type === 'action_receipt'), true);
 });
@@ -92,7 +92,7 @@ test('P5 thrown host.call emits call_failed', async () => {
     },
   });
   await delay(20);
-  const status = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const status = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(status.events.some((event) => event.type === 'call_failed'), true);
   assert.equal(status.rollingSummary.completedCalls, 1);
 });
@@ -154,7 +154,7 @@ test('P5 concurrent thrown and successful mutations stay paused_ambiguous', asyn
   releaseThrow();
   releaseOk();
   await delay(20);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_ambiguous');
 });
 
@@ -208,7 +208,7 @@ test('P5 stale decide is rejected and duplicate decide is idempotent', async () 
     decision: 'no',
   });
   assert.equal(conflict.error, 'invalid_argument');
-  const before = (await supervisor.handle({ operation: 'status', operationId: started.operationId }))
+  const before = (await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId }))
     .events.filter((event) => event.type === 'agent_decision').length;
   const same = await supervisor.handle({
     operation: 'decide',
@@ -218,10 +218,10 @@ test('P5 stale decide is rejected and duplicate decide is idempotent', async () 
     decision: 'yes',
   });
   assert.equal(same.ok, true);
-  const after = (await supervisor.handle({ operation: 'status', operationId: started.operationId }))
+  const after = (await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId }))
     .events.filter((event) => event.type === 'agent_decision').length;
   assert.equal(after, before);
-  const question = (await supervisor.handle({ operation: 'status', operationId: started.operationId }))
+  const question = (await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId }))
     .events.find((event) => event.type === 'agent_question_created');
   assert.equal(question.requestId, 'ask-1');
 });
@@ -253,7 +253,7 @@ test('P5 thrown null still emits call_failed and ends paused_ambiguous', async (
   assert.equal(requested.status, 'pause_requested');
   release();
   await delay(20);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_ambiguous');
   assert.equal(paused.events.some((event) => event.type === 'call_failed'), true);
 });
@@ -297,35 +297,53 @@ test('P5 decide rejects a previous requestId at the current revision', async () 
   assert.equal(second.ok, true);
 });
 
-test('P5 concurrent askAgent keeps each requestId decidable at its own revision', async () => {
-  const supervisor = createScriptSupervisor({ createHost: createFakeHostPort });
-  const started = await supervisor.handle({
-    operation: 'start',
-    script: spec(),
-    program: async (ctx) => {
-      const first = ctx.askAgent({ question: 'q1' });
-      const second = ctx.askAgent({ question: 'q2' });
-      await Promise.all([first, second]);
-      return { passed: true };
-    },
-  });
-  await delay(10);
-  const first = await supervisor.handle({
-    operation: 'decide',
-    operationId: started.operationId,
-    requestId: 'ask-1',
-    revision: 1,
-    decision: 'yes',
-  });
-  assert.equal(first.ok, true);
-  const second = await supervisor.handle({
-    operation: 'decide',
-    operationId: started.operationId,
-    requestId: 'ask-2',
-    revision: 2,
-    decision: 'no',
-  });
-  assert.equal(second.ok, true);
+test('P5 concurrent askAgent preserves the remaining question and counts overlapping waits once', async t => {
+  for (const [answered, remaining] of [[1, 2], [2, 1]]) {
+    let now = 1000;
+    const supervisor = createScriptSupervisor({ createHost: createFakeHostPort, now: () => now });
+    t.after(() => supervisor.cancelAll());
+    const started = await supervisor.handle({
+      operation: 'start',
+      script: spec(),
+      program: async (ctx) => {
+        const first = ctx.askAgent({ question: 'q1' });
+        const second = ctx.askAgent({ question: 'q2' });
+        await Promise.all([first, second]);
+        return { passed: true };
+      },
+    });
+    await delay(10);
+    now = 1500;
+    const first = await supervisor.handle({
+      operation: 'decide',
+      operationId: started.operationId,
+      requestId: `ask-${answered}`,
+      revision: answered,
+      decision: 'yes',
+    });
+    assert.equal(first.ok, true);
+    assert.equal(first.status, 'waiting_for_agent');
+    assert.equal(first.pendingQuestion.requestId, `ask-${remaining}`);
+    assert.equal(first.pendingQuestion.revision, remaining);
+    assert.equal(first.rollingSummary.agentRequest.question, `q${remaining}`);
+    assert.equal(first.rollingSummary.decisionWaitMs, 500);
+    assert.equal(first.rollingSummary.activeMs, 0);
+    now = 1900;
+    const second = await supervisor.handle({
+      operation: 'decide',
+      operationId: started.operationId,
+      requestId: `ask-${remaining}`,
+      revision: remaining,
+      decision: 'no',
+    });
+    assert.equal(second.ok, true);
+    await supervisor.registry.get(started.operationId).running;
+    const terminal = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+    assert.equal(terminal.status, 'completed');
+    assert.equal(terminal.rollingSummary.elapsedMs, 900);
+    assert.equal(terminal.rollingSummary.decisionWaitMs, 900);
+    assert.equal(terminal.rollingSummary.activeMs, 0);
+  }
 });
 
 test('P5 pause_requested and paused_ambiguous reject new host.call', async () => {
@@ -366,7 +384,7 @@ test('P5 pause_requested and paused_ambiguous reject new host.call', async () =>
   assert.equal(secondHandlerCalls, 0);
   releaseFirst();
   await delay(20);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_live');
 });
 
@@ -409,7 +427,7 @@ test('P5 paused_ambiguous rejects new host.call', async () => {
   releaseThrow();
   releaseOk();
   await delay(20);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_ambiguous');
   assert.equal(thirdResult.error, 'paused');
   assert.equal(thirdHandlerCalls, 0);
@@ -428,7 +446,7 @@ test('P5 restartPolicy none cannot resume after child crash', async () => {
     },
   });
   await delay(10);
-  const status = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const status = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(status.status, 'failed');
   const resumed = await supervisor.handle({ operation: 'resume', operationId: started.operationId });
   assert.equal(resumed.error, 'not_resumable');
@@ -446,7 +464,7 @@ test('P5 supervisor merges business progress and does not pause on checkpoint', 
     },
   });
   await delay(20);
-  const status = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const status = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(status.rollingSummary.stage, 'search');
   assert.equal(status.rollingSummary.message, 'waiting for results');
   assert.equal(status.rollingSummary.lastCheckpoint, 'search-complete');
@@ -467,13 +485,13 @@ test('P5 official checkpoint template resumes from committed state', async () =>
     },
   });
   await delay(20);
-  const first = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const first = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(first.status, 'failed');
   assert.equal(first.rollingSummary.lastCheckpoint, 'after-status');
   const resumed = await supervisor.handle({ operation: 'resume', operationId: started.operationId });
   assert.equal(resumed.ok, true);
   await delay(20);
-  const second = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const second = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(second.status, 'completed');
   const completed = second.events.filter((event) => event.type === 'script_completed');
   assert.equal(completed.length, 1);
@@ -503,13 +521,13 @@ test('P5 official JS template restarts as a Node child from checkpoint', async (
   });
   const firstWait = await waitTerminal(supervisor, started.operationId, started.eventSequence);
   assert.equal(firstWait.status, 'failed');
-  const first = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const first = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(first.rollingSummary.lastCheckpoint, 'after-status');
   const resumed = await supervisor.handle({ operation: 'resume', operationId: started.operationId });
   assert.equal(resumed.ok, true);
   const secondWait = await waitTerminal(supervisor, started.operationId, resumed.eventSequence);
   assert.equal(secondWait.status, 'completed');
-  const second = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const second = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   const completed = second.events.filter((event) => event.type === 'script_completed');
   assert.equal(completed.length, 1);
   await supervisor.registry.get(started.operationId).running;
@@ -546,14 +564,14 @@ test('P5 live Node pause holds at the next progress boundary', async () => {
   const requested = await supervisor.handle({ operation: 'pause', operationId: started.operationId });
   assert.equal(requested.status, 'paused_manual');
   await delay(400);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_manual');
   assert.equal(paused.events.some((event) => event.type === 'progress' && event.stage === 'after-pause'), false);
   const resumed = await supervisor.handle({ operation: 'resume', operationId: started.operationId });
   assert.equal(resumed.status, 'running');
   const done = await waitTerminal(supervisor, started.operationId, resumed.eventSequence);
   assert.equal(done.status, 'completed');
-  const finished = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const finished = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(finished.events.some((event) => event.type === 'progress' && event.stage === 'after-pause'), true);
 });
 
@@ -611,7 +629,7 @@ async function assertLiveCallPause({ language, name, source }) {
   const requested = await supervisor.handle({ operation: 'pause', operationId: started.operationId });
   assert.equal(requested.status, 'paused_manual');
   await delay(400);
-  const paused = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const paused = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(paused.status, 'paused_manual');
   assert.equal(paused.events.some((event) => event.type === 'call_started'), false);
   assert.equal(paused.events.some((event) => event.type === 'script_completed'), false);
@@ -619,7 +637,7 @@ async function assertLiveCallPause({ language, name, source }) {
   assert.equal(resumed.status, 'running');
   const done = await waitTerminal(supervisor, started.operationId, resumed.eventSequence);
   assert.equal(done.status, 'completed');
-  const finished = await supervisor.handle({ operation: 'status', operationId: started.operationId });
+  const finished = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId: started.operationId });
   assert.equal(finished.events.some((event) => event.type === 'call_started'), true);
   assert.equal(finished.events.some((event) => event.type === 'call_completed'), true);
 }
@@ -627,13 +645,14 @@ async function assertLiveCallPause({ language, name, source }) {
 async function waitForEvent(supervisor, operationId, match) {
   let after = 0;
   for (let i = 0; i < 40; i += 1) {
-    const status = await supervisor.handle({ operation: 'status', operationId, afterSequence: after });
+    const status = await supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId, afterSequence: after });
     if ((status.events || []).some(match)) return status;
     const waited = await supervisor.handle({
       operation: 'wait',
       operationId,
       afterSequence: after,
       waitMs: 100,
+      until: 'event', limit: 1000, eventLimit: 1000,
     });
     if ((waited.events || []).some(match)) return waited;
     after = waited.eventSequence || status.eventSequence;
@@ -655,5 +674,5 @@ async function waitTerminal(supervisor, operationId, afterSequence) {
     }
     after = result.eventSequence;
   }
-  return supervisor.handle({ operation: 'status', operationId });
+  return supervisor.handle({ operation: 'status', limit: 1000, eventLimit: 1000, operationId });
 }

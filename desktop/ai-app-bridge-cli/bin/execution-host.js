@@ -142,7 +142,7 @@ function wrapIsolatedEntry(entry, namespace) {
   return {
     handle(args) {
       if (namespace === 'script' && args.operation === 'runtime-status') return entry.handle(args);
-      if (namespace === 'script' && args.operation === 'wait') {
+      if (namespace === 'script' && (args.operation === 'wait' || ['start', 'resume', 'decide'].includes(args.operation) && args.waitMs > 0)) {
         if (Object.prototype.hasOwnProperty.call(args, 'isolatedTimeoutMs')) {
           return require('./script/script-errors').scriptError('unsupported_argument', {
             field: 'isolatedTimeoutMs',
@@ -204,7 +204,7 @@ async function runGeneric(args = {}, dependencies = {}) {
     const getStore = () => dependencies.responseStore || getResponseStore();
     if (command === 'response') {
       const frozen = getStore().read(commandArguments.ref);
-      return { value: await finishReply({ body: responseReply(frozen), extract, output: request.output, frozen }) };
+      return { value: await finishReply({ body: responseReply(frozen), extract, output: request.output, frozen, getStore }) };
     }
     const reply = await commandRouter.route(request.command, commandArguments, dependencies);
     reply.value = withActionGuidance(command, commandArguments, reply.value);

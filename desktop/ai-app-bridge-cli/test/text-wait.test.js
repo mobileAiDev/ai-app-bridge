@@ -17,6 +17,18 @@ function ports(extra = {}) {
     flutterNodes: async () => ({ nodes: [] }), uiaTreeOnce: async () => '<hierarchy><node text="Other page"/></hierarchy>', ...extra };
 }
 
+test('one wait returns whichever visible network outcome arrives, without waiting for success after failure', async () => {
+  const args = { packageName: 'example.app', provider: 'native', anyText: ['Login successful', 'Network unavailable', 'Verification required'],
+    timeoutMs: 1000, intervalMs: 2 };
+  validateCommandArguments('wait-text', args);
+  let reads = 0;
+  const result = await waitText(ctx, undefined, args, ports({ bridgeTree: async () => tree(++reads === 1 ? 'Signing in…' : 'Network unavailable') }));
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.matched.anyMatched, ['Network unavailable']);
+  assert.equal(reads, 2);
+  assert.ok(result.elapsedMs < 500);
+});
+
 test('wait-text validates units, exact arrays, conflicting conditions and explicit absence provider', () => {
   const args = { packageName: 'example.app', targetText: 'Save, draft', requireText: ['Editor, v2'], timeoutMs: 1000 };
   assert.deepEqual(validateCommandArguments('wait-text', args).requireText, ['Editor, v2']);
@@ -81,6 +93,53 @@ test('transient observation failures recover within one deadline without repeate
   assert.equal(result.failures[0].error, 'no_current_activity');
   assert.equal(result.failures[0].message, 'Activity is starting');
   assert.equal(result.foregroundObservations.length, 2);
+});
+
+test('Flutter wait retains the provider timeout phase without requiring another diagnostic read', async () => {
+  for (const phase of ['android-main-queue', 'flutter-channel', 'frame']) {
+    const observation = { phase, timeoutMs: 2000 };
+    let reads = 0;
+    const result = await waitText(ctx, 'Ready', { provider: 'flutter', timeoutMs: 500, intervalMs: 1 }, ports({
+      flutterNodes: async () => ++reads === 1
+        ? { ok: false, error: 'flutter_observation_timeout', observation }
+        : { nodes: [{ text: 'Ready' }] },
+    }));
+    assert.equal(result.ok, true);
+    assert.equal(result.failedReads, 1);
+    assert.equal(reads, 2);
+    assert.deepEqual(result.failures[0].observation, observation);
+  }
+});
+
+test('a system ANR dialog is visible in bounded wait diagnostics without another device read', async () => {
+  const { withActionGuidance } = require('../bin/shared-kernel/action-guidance');
+  const args = { serial: 'phone', packageName: 'example.app', provider: 'uia', targetText: 'Take note', timeoutMs: 35, intervalMs: 5 };
+  let reads = 0;
+  const result = await waitText(ctx, args.targetText, args, ports({ uiaTreeOnce: async () => {
+    reads++;
+    return '<hierarchy><node text="Example app isn&apos;t responding"/><node text="Close app"/><node text="Wait"/></hierarchy>';
+  } }));
+  assert.equal(result.error, 'deadline_exceeded');
+  assert.deepEqual(result.observedText, { labels: ["Example app isn't responding", 'Close app', 'Wait'], truncated: false });
+  assert.equal(reads, result.successfulReads);
+  const guided = withActionGuidance('wait-text', args, result);
+  const inspect = guided.guidance.nextActions.find(call => call.command === 'uia-tree');
+  assert(inspect); validateCommandArguments(inspect.command, inspect.arguments);
+  assert.equal(inspect.arguments.serial, 'phone');
+  assert.equal(inspect.arguments.packageFilter, undefined, 'system overlays must remain observable');
+  assert.equal(reads, result.successfulReads, 'guidance never runs recovery commands');
+});
+
+test('wait failure previews bound long text without changing exact matching', async () => {
+  const labels = Array.from({ length: 20 }, (_, i) => `${i}:` + 'x'.repeat(1000));
+  const result = await waitText(ctx, 'x', { provider: 'native', timeoutMs: 30, intervalMs: 5 }, ports({ bridgeTree: async () => tree(...labels) }));
+  assert.equal(result.ok, false);
+  assert.equal(result.observedText.labels.length, 12);
+  assert(result.observedText.labels.every(label => label.length === 160));
+  assert.equal(result.observedText.truncated, true);
+  const success = await waitText(ctx, labels[0], { provider: 'native', timeoutMs: 100 }, ports({ bridgeTree: async () => tree(...labels) }));
+  assert.equal(success.ok, true);
+  assert.equal(success.observedText, undefined, 'successful waits remain concise');
 });
 
 test('an optional foreground probe cannot consume the entire text deadline', async () => {

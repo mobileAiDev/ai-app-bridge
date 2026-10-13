@@ -99,6 +99,39 @@ test('Intent retains a textless ARIA checkbox and its mixed/unchecked/checked st
   assert.deepEqual(calls.find(call => call.command === 'web-click').args.expectedTarget.pageRef, raw.pageRef);
 });
 
+test('Intent keeps fresh ancestor observations for unlabelled menus without binding actions to context', async t => {
+  const raw = snapshot();
+  const context = marker => ({ source: 'ancestor-dom-text', truncated: true, ancestors: [
+    { depth: 3, tag: 'article', id: '', role: '', text: marker, textTruncated: false, identityTruncated: false },
+  ] });
+  Object.assign(raw.dom.controls[0], { tag: 'button', type: '', id: '', placeholder: '', text: '', editable: false,
+    context: context('Shared prefix FIRST original') });
+  raw.dom.controls.push({ ...structuredClone(raw.dom.controls[0]), elementId: 'e2', context: context('Shared prefix SECOND unchanged') });
+  raw.dom.controlCount = 2;
+  const calls = [];
+  const adapter = createWebIntentDeviceAdapter({ provider: { run: async (command, args) => {
+    calls.push({ command, args });
+    return command === 'web-dom' ? structuredClone(raw) : { ok: true, dispatched: true, ambiguous: false, settled: true };
+  } } });
+  const worker = createIntentWorker({ operationId: 'context-intent', target, provider: 'h5', goal: 'Open the first record menu',
+    adapter, store: createIntentEvidenceStore({ adapter: createMemoryEvidenceAdapter() }) });
+  t.after(async () => { if (!worker.isFinished()) await worker.cancel(); });
+  const first = await worker.start();
+  assert.deepEqual(first.summary.nodes.map(node => node.context), raw.dom.controls.map(node => node.context));
+  assert.equal(first.summary.truncated, false, 'bounded optional context does not truncate the control observation');
+  raw.dom.controls[0].context = context('Shared prefix FIRST updated');
+  const current = await worker.observe();
+  assert.equal(current.summary.nodes[0].context.ancestors[0].text, 'Shared prefix FIRST updated');
+  const menu = current.summary.nodes.find(node => node.context.ancestors[0].text.includes('FIRST'));
+  const acted = await worker.decide({ decisionId: 'open-menu', basedOnRevision: current.revision, agentDecision: 'act',
+    action: { action: 'tap', selector: { elementId: menu.elementId } } });
+  assert.equal(acted.ok, true, JSON.stringify(acted));
+  const dispatched = calls.find(call => call.command === 'web-click').args;
+  assert.deepEqual(dispatched.selector, { elementId: 'e1' });
+  assert.equal(dispatched.expectedTarget.element.elementId, 'e1');
+  assert.equal(Object.hasOwn(dispatched.expectedTarget.element, 'context'), false);
+});
+
 test('Web Intent dispatch retains the observed page, node and original action ID', async t => {
   const calls = [], raw = snapshot();
   const adapter = createWebIntentDeviceAdapter({ provider: { run: async (command, args) => {

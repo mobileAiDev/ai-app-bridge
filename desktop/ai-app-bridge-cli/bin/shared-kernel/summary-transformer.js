@@ -228,6 +228,7 @@ function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId, 
     ...(source.textTruncated || source.valueTruncated ? { textTruncated: true } : {}),
     ...(source.contentDescriptionTruncated || source.labelTruncated ? { labelTruncated: true } : {}),
     ...(provider === 'flutter' ? { hint: source.hint, errorText: source.errorText } : {}),
+    ...(provider === 'h5' && source.context !== undefined ? { context: source.context } : {}),
     bounds: boundsOf(source),
     enabled: source.enabled !== false && source.enabled !== 'false',
     checked: provider === 'uia' && boolOrNull(source.checkable) !== true

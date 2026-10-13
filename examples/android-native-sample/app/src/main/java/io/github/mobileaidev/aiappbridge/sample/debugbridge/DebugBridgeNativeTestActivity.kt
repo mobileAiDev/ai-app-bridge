@@ -89,6 +89,10 @@ class DebugBridgeNativeTestActivity : Activity() {
         }
         root.addView(statusView)
 
+        root.addView(button("完整工作流测试", View.generateViewId()) {
+            startActivity(android.content.Intent(this, io.github.mobileaidev.aiappbridge.sample.ComplexWorkflowFixtureActivity::class.java))
+        })
+
         inputView = EditText(this).apply {
             id = R.id.ai_app_native_test_input
             hint = "Native input"

@@ -19,7 +19,8 @@ class FlutterActionExecutorTest {
     private class Peer(grace: Long = 30) {
         var epoch = "runtime-A"
         val calls = CopyOnWriteArrayList<Pair<String, AiAppBridge.FlutterActionReply>>()
-        val executor = FlutterActionExecutor({ AiAppBridge.FlutterActionHandler { method, _, reply -> calls.add(method to reply) } }, { epoch }, grace)
+        private val handler = AiAppBridge.FlutterActionHandler { method, _, reply -> calls.add(method to reply) }
+        val executor = FlutterActionExecutor({ FlutterActionExecutor.Runtime(handler, epoch, handler) }, grace)
         fun identity(id: String = "action-A") = JSONObject().put("actionId", id).put("runtimeEpoch", epoch)
         fun body(id: String = "action-A", timeout: Long = 5000) = JSONObject().put("action", "back").put("actionId", id)
             .put("execution", identity(id).put("schemaVersion", FlutterActionExecutor.SCHEMA).put("timeoutMs", timeout))
@@ -134,7 +135,8 @@ class FlutterActionExecutorTest {
     }
 
     @Test fun aThrowingChannelStillRevokesItsQueuedDelivery() {
-        val executor = FlutterActionExecutor({ AiAppBridge.FlutterActionHandler { _, _, _ -> error("channel failed") } }, { "runtime-A" })
+        val handler = AiAppBridge.FlutterActionHandler { _, _, _ -> error("channel failed") }
+        val executor = FlutterActionExecutor({ FlutterActionExecutor.Runtime(handler, "runtime-A", handler) })
         val result = Response(); executor.submit(Peer().body(), result::reply)
         assertEquals("flutter_channel_failed", result.await().getString("error"))
         assertFalse(result.await().getBoolean("dispatched")); assertFalse(executor.isBusy())
