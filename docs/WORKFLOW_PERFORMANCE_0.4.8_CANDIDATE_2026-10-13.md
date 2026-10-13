@@ -5,6 +5,9 @@ CLI and the reconnected Codex MCP now use 0.4.8; the live Runtime reports
 `compatible:true`. See the [release closeout](RELEASE_VERIFICATION_0.4.8_2026-10-13.md)
 for public default tags and integration status. The comparisons below retain
 their actual historical versions; published 0.4.7 bytes have not been replaced.
+The [complete-workflow closeout](WORKFLOW_ACCEPTANCE_0.4.8_2026-10-13.md)
+adds the final unchanged mixed/recovery repeats and fresh concurrent-edit run;
+it does not overwrite the slower historical samples below.
 
 Evidence is under the sibling directory
 `ai-app-bridge-release-evidence/0.4.8-work/2026-10-13/` (called `N` below).

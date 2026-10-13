@@ -6,9 +6,12 @@ subsequent documentation update, not a different 0.4.8 build.
 
 Status: **coordinated publication and local/consumer integration are complete**.
 [GitHub 0.4.8 is published](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.8),
-and both npm packages now have `latest` and `next` set to 0.4.8. Broader workflow
-performance acceptance remains open for the full mixed/recovery flows described
-below; completing publication does not close those performance requirements.
+and both npm packages now have `latest` and `next` set to 0.4.8. The remaining
+complete mixed/recovery programs have also passed their original budgets in two
+unchanged repeats after the confirmed unlock. The concurrent-edit business has
+passed from a fresh start. See the separate
+[complete workflow acceptance](WORKFLOW_ACCEPTANCE_0.4.8_2026-10-13.md), including
+retained slow runs and the limits of platform/version coverage.
 
 Evidence is retained under the sibling directory
 `ai-app-bridge-release-evidence/0.4.8-work/2026-10-13/` (`N` below).
@@ -77,19 +80,28 @@ lossless response-byte saving is a delivery result, not execution-time saving.
 Initial authoring and explicit agent-decision waits have separate timing scopes.
 These flows do not constitute complete coverage of arbitrary apps.
 
-The earlier complete three-journey mixed Native/Flutter/H5 program took
-**62.334 seconds** for 201 commands, exceeding the 60-second target. It needs an
-equivalent complete rerun; the faster three-journey Native/H5 program is a
-different workload and cannot satisfy this row.
+The original complete three-journey mixed Native/Flutter/H5 source now runs with
+the 0.4.8 Host/SDKs in **54.113 and 55.406 seconds**, each with 200 commands,
+one external Script call, 16 checks and three independent ledgers. The original
+complete Flutter process-death plus mixed-commerce source takes **30.860 and
+31.114 seconds**, including both injected deaths and final payment/refund/stock
+verification. Both original 60-second budgets and all 15-second recovery
+readiness limits pass. A one-poll command-count difference does not change the
+business source or omit a step. These are complete reruns, not replacements by
+the shorter Native/H5 or recovery diagnostic programs.
 
-Flutter 0.4.8 changes version/dependency metadata, not the already tested
-execution implementation. Earlier real mixed commerce and expired-session
-recovery programs completed in 25.938 and 29.377 seconds. However, the complete
-process-death recovery program took **67.501 seconds** and recorded
-`performanceBudgetMet:false`. A later targeted recovery diagnostic does not
-replace that complete commerce result. This cold-start/recovery long tail is
-retained as a performance limitation, not marked as a passed one-minute budget.
-Exact historical reports are listed in `N/publication/final-audit.md`.
+The original concurrent-edit/409/duplicate-confirmation business also passes
+from a fresh start in **24.926 seconds**, with one external call and independent
+proof of the retained Flutter page and a single final commit. Its existing
+explicit Back navigation correction selects the observed original task.
+
+The earlier **62.334-second mixed** and **67.501-second recovery** failures,
+and the newer pre-unlock 62.103/64.684-second samples, remain recorded. Two
+complete repeats after the user unlocked the Mac used bounded temporary sleep
+prevention and environment observations. This closes the declared workload
+budgets for that environment, not every cold-start long tail or a controlled
+SDK speedup. Historical and final evidence are indexed in
+`N/publication/goal-requirements-audit.md`.
 
 ## Local and consumer updates
 

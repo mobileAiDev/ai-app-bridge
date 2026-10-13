@@ -71,6 +71,15 @@ the original registration, five JavaScript journeys and one Python journey:
 seconds. These final-version traces were collected during concurrent release
 work and are not a new controlled speed comparison.
 
+The remaining full Native/Flutter/H5 program was subsequently repeated with
+the final 0.4.8 Host/SDKs in 54.113 and 55.406 seconds. The full Flutter
+before/after-effect process-death recovery plus commerce program completed in
+30.860 and 31.114 seconds. Each finished in one external Script call, with
+unchanged business source, original fault injection and independent ledgers.
+The complete concurrent-edit/409/duplicate-confirmation workflow also passed
+in 24.926 seconds. See the
+[complete acceptance record](WORKFLOW_ACCEPTANCE_0.4.8_2026-10-13.md).
+
 The coordinated release passed 1,660 Host functional and 50 performance checks;
 Android SDK, UIA and plugin checks; Web source and installed-package tests;
 Flutter analyzer checks and 80 tests; and an unsigned iOS generic-device build.
@@ -92,8 +101,11 @@ Simulator runtime acceptance is claimed.
 
 One earlier complete Flutter process-death recovery program passed functional
 checks but took 67.501 seconds, exceeding its performance budget. A later narrow
-recovery diagnostic does not replace that full-flow result; cold-start/recovery
-long tails are not claimed to be fully resolved.
+recovery diagnostic did not replace that full-flow result. The complete repeats
+above now satisfy the original budget after the user confirmed an unlocked Mac,
+with bounded temporary sleep prevention and recorded environment state. The
+slow samples remain visible; cold-start/recovery long tails are not claimed to
+be fully resolved, and host scheduling has not been isolated as the sole cause.
 
 See [the detailed validation record](WORKFLOW_PERFORMANCE_0.4.8_CANDIDATE_2026-10-13.md)
 for source fingerprints, retained failures, full timing boundaries and evidence.

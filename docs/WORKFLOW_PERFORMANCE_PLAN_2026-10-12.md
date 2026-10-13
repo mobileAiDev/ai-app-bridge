@@ -1,6 +1,10 @@
 # Intent / Script real-workflow acceptance
 
-Status: **in progress**. Small prepared-flow results do not establish whole-product acceptance.
+Status: **the declared representative-workflow acceptance is complete**. The
+[0.4.8 closeout](WORKFLOW_ACCEPTANCE_0.4.8_2026-10-13.md) records the final full
+mixed/recovery repeats, fresh concurrent-edit business, retained failures and
+coverage limits. This is not exhaustive acceptance of every app or platform /
+language combination; the historical investigation below remains unchanged.
 
 For the post-0.4.7 first-use comparison, response-delivery corrections and Native
 startup diagnosis, see [the current candidate report](WORKFLOW_PERFORMANCE_0.4.8_CANDIDATE_2026-10-13.md).
@@ -19,9 +23,13 @@ official web research as an observed real-Meituan test.
 
 Required platforms are **pure native Android, Flutter, same-package native +
 Flutter + WebView, UIA-only apps without the SDK, and independent desktop Web**.
-Run the equivalent business outcomes through Intent, JavaScript and Python; a
-passing Flutter run does not satisfy the native, UIA, Web or execution-language
-rows. Existing open-source apps remain required independent acceptance targets.
+Track platform coverage and real Intent, JavaScript and Python execution
+separately; a passing Flutter run does not satisfy the Native, UIA or Web rows.
+The original draft proposed every platform/language combination. That stronger
+15-cell expansion is not claimed fully measured: the user's platform and real
+language requirements are closed by the explicitly identified runtime evidence,
+not by treating unmeasured combinations as passes. Existing open-source apps
+remain required independent acceptance targets.
 The user explicitly excludes the K2 Mini cashier and requires all other supported
 platforms to be checked. Physical iOS is unavailable; inspect iOS Simulator
 availability separately and report any untested capabilities without borrowing
@@ -107,11 +115,14 @@ prices, expired sessions, concurrent edits, process restart and duplicate taps.
 
 ## Completion criteria
 
-All applicable rows must have current execution evidence, not just mocked unit
-tests or historical reports. A discovered correctness defect must be reproduced,
-fixed and rerun under its original conditions. Source, package fingerprints,
-scenario and fault configuration must accompany each run. Broad untested
-capabilities remain unverified rather than being counted as a pass.
+All applicable rows must have traceable real execution evidence, not just mocked
+unit tests. The closeout identifies final 0.4.8 integration runs separately from
+earlier independent-app records; matching implementation or payload hashes do
+not relabel an older Host run as a new 0.4.8 run. A discovered correctness defect
+must be reproduced, fixed and rerun under its original business conditions.
+Source, package fingerprints, scenario and fault configuration must accompany
+each run. Broad untested capabilities remain unverified rather than being
+counted as a pass.
 
 Process outputs, screenshots, recordings, logs and databases are stored outside
 the source repository. Reusable tests, scenario sources and fixture applications
