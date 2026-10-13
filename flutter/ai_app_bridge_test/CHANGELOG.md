@@ -1,3 +1,8 @@
+## 0.4.8
+
+- Align the optional executor identity with the coordinated 0.4.8 release. The WidgetTester execution contract is unchanged.
+- The companion Host declares its SDK dependency version explicitly when preparing the test helper.
+
 ## 0.4.7
 
 - Align the optional executor identity with the coordinated 0.4.7 release. The WidgetTester execution contract is unchanged.

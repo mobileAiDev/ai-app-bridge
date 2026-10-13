@@ -77,7 +77,7 @@ class ManualTimers {
 }
 
 test('G0 Android capture contract stays platform-specific', () => {
-  const version = require('../package.json').version;
+  const version = require('../package.json').sdkReleaseVersion;
   const gradle = readRepo('android/ai-app-bridge-android/build.gradle.kts');
   assert.equal(gradle.match(/^version = "([^"]+)"/m)?.[1], version);
   const source = readRepo(contract.android.source);
@@ -127,7 +127,7 @@ test('G0 Android capture contract stays platform-specific', () => {
 
 test('G0 Flutter MethodChannel and HTTP fallback call shape stay frozen', () => {
   const pubspec = readRepo('flutter/ai_app_bridge_flutter/pubspec.yaml');
-  assert.equal(pubspec.match(/^version: (\S+)$/m)?.[1], require('../package.json').version);
+  assert.equal(pubspec.match(/^version: (\S+)$/m)?.[1], require('../package.json').sdkReleaseVersion);
   const dart = readRepo(contract.flutter.source);
   assert.match(dart, /static const MethodChannel _channel = MethodChannel\('ai_app_bridge'\);/);
   assert.match(dart, /static const String _baseEndpoint = 'http:\/\/127\.0\.0\.1:18080';/);

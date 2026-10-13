@@ -9,6 +9,62 @@ Evidence is under the sibling directory
 `ai-app-bridge-release-evidence/0.4.8-work/2026-10-13/` (called `N` below).
 The directory name is a work label, not evidence of publication.
 
+## Acceptance clock
+
+The user clarified the main acceptance criterion: once the necessary information
+is available, measure from submitting Intent/Script through verified business
+completion. This includes real page loading, network waits, local condition
+polling and fault recovery. Report time spent waiting for an explicit agent
+decision separately while retaining the total elapsed time.
+
+Initial business-program authoring is necessary and depends on the agent as well
+as the task. Record it separately; it is not evidence that Bridge executes slowly.
+Avoidable tool costs still matter: repeated contract discovery, forced rewriting
+of an existing program, redundant observations, unnecessary external round trips
+and rework caused by incorrect rejection. Reuse the same prepared source and
+vary inputs for the main execution comparison. First-use wall time remains a
+usability measurement, not a one-minute execution acceptance gate.
+
+## Prepared execution and recovery
+
+Existing business sources were reused byte for byte with only external test
+runner location adapters. Each run had new server data and isolated browser,
+facts, Runtime and ownership directories. No initial business authoring is
+included in this prepared measurement.
+
+| Submission through final business verification | Public 0.4.7 | Candidate | Same candidate, unchanged source |
+|---|---:|---:|---:|
+| Web Intent registration, five JS journeys and one Python journey | 8.703 s | 9.097 s | 9.023 s |
+| JS five journeys with SQLite oracle | 6.200 s | 6.538 s | 6.471 s |
+| Python journey with SQLite oracle | 1.468 s | 1.537 s | 1.520 s |
+
+All three Web runs passed 83 Script assertions, created the six intended
+records, preserved existing records and ended with independent SQLite checks.
+Each includes 184 Script calls, 102 captured business-period network requests
+and seven public command RPCs. Network waits stay inside the clock; the union
+of captured request intervals was 331 / 361 / 397 ms, not an exclusive blocking
+time estimate. No `askAgent` question occurred in this fixed program. The
+candidate did not execute faster in these samples; they establish normal-flow
+execution and reuse, not a new engine speedup or fault-injection result.
+
+Prepared Android verification reused the original installed Native SDK **0.4.6**
+APK on `emulator-5564`, with its SHA-256 unchanged. The native HTTP login Intent
+took **1.689 s**; launch/readiness and the independent one-session server check
+included took **3.406 s**. The original three-journey Native/H5 program took
+**45.087 s** from submission through the final independent oracle: **187
+commands, two external calls and 4,450 returned bytes**. It includes a deliberate
+child-process exit after journey one, same-operation checkpoint continuation,
+a price change and a lost payment response. Fifteen business checks passed;
+each journey had one order/payment/refund and stock returned to 12. The first
+journey was not replayed. This is Host compatibility with the identified older
+APK, not Native SDK 0.4.7 runtime acceptance.
+
+The Android window had 89 environment samples and no observed lock/App Nap
+warning; this is separate from business success. Every dedicated Web/Android
+Host and server was stopped normally. Source hashes, raw times and limitations
+are recorded in `N/prepared-execution-check/comparison.md` and
+`N/prepared-android-check/summary.md`.
+
 ## Discovery and complete response delivery
 
 The MCP run description incorrectly required `extract` although its schema
@@ -45,7 +101,7 @@ covers the complete initial baseline, subsequent patch, checksum and original
 saved response. The frozen first-use candidate below has not been overwritten
 with this later correction.
 
-## Independent first use remains too slow
+## First-use overhead is separate from execution time
 
 Two separate fresh-context agents used new Memos databases and authored their
 own ordinary scripts. Both registered an account, created two related notes,
@@ -67,9 +123,10 @@ confirmed both contents, no deletion and an unchanged SECOND timestamp.
 | Authored source characters | 10,959 | 6,746 |
 
 The 44.570-second UI difference is one sample per arm, not an isolated causal
-compression result or a percentile. The candidate still took over five minutes
-and did not meet the intended first-use efficiency. Its 1.483-second successful
-Script-body total is not the user workflow time. The database-check delays are
+compression result or a percentile. The candidate's five-minute first-use wall
+time includes discovery and authoring; it must not be presented as the execution
+time of an already prepared flow. Conversely, its 1.483-second successful
+Script-body total is not the full first-use time. The database-check delays are
 parent coordination/resumption time, not database or UI execution latency.
 
 All mistakes remain in the evidence: invalid app username, a textarea-only
@@ -142,7 +199,7 @@ performance tests**, with all 560 captured files unchanged during the run
 (`N/host-integration-1`). This predates the additional delta regression and Web
 authoring module.
 
-The final Host integration run passed **1,658 functional and 50 performance
+The second pre-release Host integration run passed **1,658 functional and 50 performance
 tests** in 196.988 seconds, with all 561 captured files unchanged throughout
 (`N/host-integration-2`). The candidate tarball then passed the existing clean
 installation and controlled CLI/MCP/npx, continuation, shutdown, permissions
@@ -153,6 +210,52 @@ package check. See `N/package-candidate-1/report.json` and
 `source-install-parity.json`. These candidate bytes still carry the source
 version 0.4.7 in an isolated directory; they are not a replacement for published
 0.4.7 and will need a new version before publication.
+
+After changing the Host version to 0.4.8, the release check caught two failures
+in `N/host-release-0.4.8`: executor preparation and the SDK source checks still
+assumed the Host and SDK version were identical. Preparation would request
+unpublished SDK/helper 0.4.8. The tarball in `N/package-release-0.4.8` is marked
+**superseded and not publishable**, even though its controlled package checks
+passed. The correction declares `sdkReleaseVersion: "0.4.7"` separately and
+uses it for Maven coordinates, Pub add/reuse and resolved-dependency checks.
+Host identity stays 0.4.8. Original failing logs and targeted red/green results
+are retained in `N/host-sdk-version-split`; final release checks use new evidence
+directories.
+
+The corrected Host-only package in `N/package-release-0.4.8-2` passed
+1,660 functional / 50 performance checks and 218-file source/tar/install parity.
+It was then superseded before publication when the release scope changed to
+coordinated **0.4.8 for Host and all SDKs**. `sdkReleaseVersion` now also declares
+0.4.8. The default release policy is to upgrade the maintained components and
+current consumer dependencies together; old measured version identities remain
+historical facts.
+
+The final coordinated Host check passed **1,660 functional and 50 performance
+tests** in 211.965 seconds, with all 561 captured files unchanged
+(`N/host-coordinated-0.4.8`). Web SDK 0.4.8 passed the same 38 tests from source
+and from a clean installation of its actual tarball; all six package files match
+source. Flutter passed analyzer checks and 80 tests; both Pub preflights reported
+zero warnings. The iOS unsigned generic-device build passed, and all 26 shared
+Swift/C files match between the standalone and embedded SDK. These build checks
+do not imply iOS device runtime acceptance. Evidence is in the corresponding
+`N/coordinated-web-0.4.8` and `N/coordinated-flutter-ios-0.4.8` directories.
+
+The final coordinated CLI tarball passed clean installation and the controlled
+CLI/MCP/npx, JS/Python, continuation, permissions and shutdown checks. All 218
+files match source, tarball and installation (`N/package-coordinated-0.4.8`).
+Host and its declared SDK dependency are both 0.4.8. The same prepared Web
+business source also passed with the final installed Host and installed Web SDK
+0.4.8: 83 assertions, 184 internal calls and all six records independently
+checked. Its 9.327-second execution trace was collected during concurrent release
+work and is not added to the quieter performance comparison above. All dedicated
+Web processes closed normally (`N/prepared-execution-check/coordinated-release-0.4.8`).
+
+Android's coordinated build passed 214 debug and 214 release SDK tests, 50 UIA
+tests and eight Gradle plugin tests. Maven POM/module metadata and SDK/executor
+runtime identities are 0.4.8. The hash-bound UIA runtime has no independent
+semantic version; its rebuilt bytes still match the CLI payload. Existing lint
+warnings are retained, with no lint errors or fatal findings
+(`N/coordinated-android-0.4.8`).
 
 The overall efficiency/capability/recovery goal remains active. iOS device
 acceptance remains unavailable and is not implied by compilation or Host tests.

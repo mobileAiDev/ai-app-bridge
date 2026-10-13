@@ -1,3 +1,8 @@
+## 0.4.8
+
+- Align the Flutter package, Android dependency and embedded iOS runtime with the coordinated 0.4.8 release.
+- Flutter SDK execution behavior is unchanged from 0.4.7; the companion Host release improves Script discovery and compact responses.
+
 ## 0.4.7
 
 - Bind Android Flutter handlers and observations to their owning Activity so retained engines cannot redirect actions to a background screen.

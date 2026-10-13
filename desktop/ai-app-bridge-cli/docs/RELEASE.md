@@ -1,38 +1,43 @@
-# 0.4.7 统一发行检查
+# 0.4.8 统一发行
 
-本次统一 CLI/MCP、Android SDK/plugin/执行器、Flutter SDK/helper、Web 和
-iOS 源码版本。嵌入式 native store 保持 0.2.0。
+CLI/MCP、Android、iOS、Flutter、Web 和可选 Bridge 执行器统一发行 0.4.8，
+同时更新本机 CLI/skill 与最近使用项目的 Bridge 依赖。设备/Web 协议保持不变。
 
-## 发行范围
+后续默认统一升级上述版本与当前安装示例，即使某端只有版本元数据变化。
+如确实需要分开发行，应先明确原因和依赖关系。历史验收中的实际版本必须保留，
+不能为了版本一致改写测试事实。
 
-- 效率：减少重复连接、目标采集及启动探测；Script 决策与继续可在同一次调用
-  等待下一问题或完成结果。新增可选 delta 观察交付，保留完整结果查询入口。
-- 能力：现有 Intent、普通 JavaScript/Python Script 连续操作、局部分支、
-  实际网络等待和动态询问；Web 提供无标签控件的真实祖先文本，完整观察对象
-  可以直接用于 Web/H5 动作，无需手动剔除诊断字段。
-- 恢复：失败结果保留原因与进度；显式检查点继续、取消和强停仍可用。
-  Flutter 执行器绑定实际 Activity，多引擎不再将动作误交后台页面。
-  结果未知的动作保留原记录，不自动重放。
-- 正确性：目标身份、回执、覆盖和截断信息独立于附加诊断；权限与前台
-  信息不会平白拦截已明确目标的动作。Script 计时正确记录 agent 等待。
+## 变化
 
-已知信息充足时的连续执行与首次探索分别计时。首次 Web 探索仍有分钟级
-成本，解锁状态下的 Android 冷启动慢轮仍未归因。局部 CRC 微基准收益
-不作为实际 App 启动提速证明；本版本没有新增 iOS 运行验收。
+- 可选 Android/Flutter 执行器按包内明确声明的 `sdkReleaseVersion` 解析依赖。
+  本次 Host 与 SDK/helper 均为 0.4.8，准备结果分别返回 Host 和 SDK 版本。
+- auto 在 8 KiB 以上尝试无损表示，支持可选字段，仍保留完整控件、身份、
+  状态及缺失/null 区别；8 KiB 是格式尝试阈值，不是截断或补读阈值。
+- 差量观察保留原有 columns 表示，混合诊断数组不会使大页面退化成必须
+  补读的结果。明确 `extract:null` 和 Script 内部对象形状保持原合同。
+- Script 提供可运行的 JS/Python 例子、完整但更精简的生命周期发现，及
+  可编辑的普通 JS Web 辅助源码。已写好的业务程序可直接复用和传参。
+- 示例环境探针分别报告显示、前台 PID、App Nap 和 CPU 事实；只给提示，
+  不因环境警告阻断测试或改变业务成功结果。
+
+## 验收口径
+
+信息充分时，从 Intent/Script 提交到业务结果验证完成计时，包含页面加载、
+网络等待和恢复。首次业务编写单列；显式 agent 决策等待分别报告并保留总时长。
+小样本、准备耗时及内部命令求和不能替代整个执行过程，也不作为稳定提速比例。
 
 ## 发布检查
 
-1. Host 完整功能与串行性能回归；UIA 源码和 bundle hash 一致。
-2. Android build/lint/test、Swift iPhoneOS 无签名构建、Flutter 分析/测试和
-   发布 dry-run、Web 测试构建、生成 H5 四份副本一致。
-3. 冻结版本后，在仓库外安装最终 tarball，验证 native prebuild、CLI/MCP、
-   Script/Intent、恢复入口及命令合同；归档逐文件核对冻结源码。
-4. 复用本轮真实 Android 模拟器选择器、观察、恢复及组合流程的原始证据；
-   不把 Host 基准当作真机提速，也不把模拟器通过声明为所有 OEM/iOS 验收。
-5. 发布 GitHub/tag、JitPack、npm CLI/Web、Flutter SDK/helper；核对公开归档。
-6. 升级本机 CLI、MCP 接入和 skill，保留 Runtime 配置和事实记录；更新近期
-   项目对应依赖并验证解析。公开可用后更新 remote-smoke 的精确依赖。
+1. 冻结实际发行版本，运行 Host 功能和性能回归。
+2. 在仓库外安装最终 tarball，核对逐文件哈希、native prebuild、CLI/MCP/npx、
+   JS/Python、恢复与关闭。保持全局 Runtime 和其他项目不受验收器影响。
+3. 复用原业务源验证 prepared Web 和 Android 路径，保留提交到独立核验的
+   时间、原始失败、续跑和清理回执；明确实际 SDK/APK 身份。
+4. 完成各 SDK 的构建、测试和发行包检查，再发布统一 Git tag/Release、npm、
+   Pub 及 Maven 产物，逐一核对公开版本与归档。
+5. 更新本机 CLI/skill 和最近使用项目的 Bridge 依赖至 0.4.8，验证依赖解析
+   与构建，并分别记录当前已连接 MCP 客户端和磁盘安装的实际版本。
 
-发行范围及已知限制见仓库 `docs/RELEASE_NOTES_0.4.7_2026-10-13.md`，
-完整实测记录见 `docs/WORKFLOW_PERFORMANCE_PLAN_2026-10-12.md`。
-公开制品、本机升级和项目依赖结果将在发布后单独记录。
+本次结果和范围见仓库
+`docs/RELEASE_NOTES_0.4.8_2026-10-13.md` 与
+`docs/WORKFLOW_PERFORMANCE_0.4.8_CANDIDATE_2026-10-13.md`。

@@ -9,7 +9,7 @@ const { object, text, integer } = require('../shared-kernel/argument-schema');
 const { resolveRequestPath } = require('../shared-kernel/request-context');
 const { execFileBounded } = require('../shared-kernel/execution-io');
 const { executorHome, atomicJson, readJson, preparePackage } = require('./managed-runtime');
-const bridgeVersion = require('../../package.json').version;
+const { version: bridgeVersion, sdkReleaseVersion } = require('../../package.json');
 const testClass = 'io.github.mobileaidev.aiappbridge.generated.BridgeSessionTest';
 const identifier = { ...text, maxLength: 4096 };
 const common = { timeoutMs: integer(1, 1800000), requestId: identifier, feedback: { enum: ['auto', 'off', 'full'] } };
@@ -61,11 +61,11 @@ async function withProject(projectDir, action, { home = executorHome() } = {}) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
     const startedAtMs = Date.now();
     try {
-      const result = { ok: true, bridgeVersion, directory, ...await action(project, directory), elapsedMs: Date.now() - startedAtMs };
+      const result = { ok: true, bridgeVersion, sdkReleaseVersion, directory, ...await action(project, directory), elapsedMs: Date.now() - startedAtMs };
       atomicJson(path.join(directory, 'result.json'), result);
       return result;
     } catch (error) {
-      const result = { ok: false, bridgeVersion, directory, error: error.code || 'executor_prepare_failed',
+      const result = { ok: false, bridgeVersion, sdkReleaseVersion, directory, error: error.code || 'executor_prepare_failed',
         message: error.message, ...(error.details ? { details: error.details } : {}), elapsedMs: Date.now() - startedAtMs };
       atomicJson(path.join(directory, 'result.json'), result);
       throw new CommandError(result.error, result.message, { details: { ...error.details, directory, resultFile: path.join(directory, 'result.json') } });
@@ -109,7 +109,7 @@ async function prepareAndroid(args, { run = execFileBounded, home } = {}) {
     const javaFile = path.join(directory, 'java', ...testClass.split('.')) + '.java';
     fs.mkdirSync(path.dirname(javaFile), { recursive: true });
     fs.writeFileSync(javaFile, androidEntry(adapters));
-    const coordinate = module => `com.github.mobileAiDev.ai-app-bridge:${module}:${bridgeVersion}`;
+    const coordinate = module => `com.github.mobileAiDev.ai-app-bridge:${module}:${sdkReleaseVersion}`;
     const config = { directory, module: args.module, variant: args.variant, repositoryUrl,
       requirements: { minCompileSdk: adapters.includes('compose') ? 35 : 34, minAgp: '8.1.1',
         dependencies: ['androidx.test.uiautomator:uiautomator:2.4.0', ...(adapters.includes('compose') ? ['androidx.compose.ui:ui-test-junit4-android:1.8.3'] : [])] },
@@ -183,8 +183,8 @@ async function prepareFlutter(args, { run = execFileBounded, home } = {}) {
       : beforeDependency?.source === 'hosted');
     const dependency = args.testPackagePath
       ? `dev:ai_app_bridge_test:${JSON.stringify({ path: fs.realpathSync(resolveRequestPath(args.testPackagePath)) })}`
-      : `dev:ai_app_bridge_test:${bridgeVersion}`;
-    const reusedDependency = matchingSource && beforeDependency.version === bridgeVersion;
+      : `dev:ai_app_bridge_test:${sdkReleaseVersion}`;
+    const reusedDependency = matchingSource && beforeDependency.version === sdkReleaseVersion;
     try {
       if (!reusedDependency) await loggedRun(run, flutter, ['pub', 'add', dependency], directory, 'flutter-dependencies', { cwd: project, timeoutMs: args.timeoutMs ?? 600000 });
       const afterGraph = JSON.parse((await loggedRun(run, flutter, ['pub', 'deps', '--json'], directory, 'flutter-deps-after', { cwd: project, timeoutMs: 30000 })).stdout);
@@ -197,8 +197,8 @@ async function prepareFlutter(args, { run = execFileBounded, home } = {}) {
       }
       const packages = JSON.parse(fs.readFileSync(path.join(packageRoot, '.dart_tool/package_config.json')));
       const helper = packages.packages.find(item => item.name === 'ai_app_bridge_test');
-      if (!helper || afterVersions.get('ai_app_bridge_test') !== bridgeVersion)
-        throw new CommandError('executor_flutter_dependency_mismatch', `Pub must resolve ai_app_bridge_test ${bridgeVersion}; received ${afterVersions.get('ai_app_bridge_test')}.`);
+      if (!helper || afterVersions.get('ai_app_bridge_test') !== sdkReleaseVersion)
+        throw new CommandError('executor_flutter_dependency_mismatch', `Pub must resolve ai_app_bridge_test ${sdkReleaseVersion}; received ${afterVersions.get('ai_app_bridge_test')}.`);
     } catch (error) {
       if (!original.equals(fs.readFileSync(pubspec)) || !originalLock.equals(fs.readFileSync(lockFile))) {
         fs.writeFileSync(pubspec, original);
@@ -224,7 +224,7 @@ async function prepareFlutter(args, { run = execFileBounded, home } = {}) {
       projectDir: project, entrypoint, generatedEntrypoint: generated,
       reusedDependency: Boolean(reusedDependency),
       applicationApks: [{ path: apk, sha256: digest(fs.readFileSync(apk)) }], lifecycle: 'built-not-installed',
-      dependencySource: args.testPackagePath ? { path: fs.realpathSync(resolveRequestPath(args.testPackagePath)) } : { hosted: 'pub.dev', version: bridgeVersion },
+      dependencySource: args.testPackagePath ? { path: fs.realpathSync(resolveRequestPath(args.testPackagePath)) } : { hosted: 'pub.dev', version: sdkReleaseVersion },
       projectFilesEdited: original.equals(fs.readFileSync(pubspec)) ? [] : ['pubspec.yaml'],
       applicationDependencyVersionsChanged: [],
       dependencyMetadata: ['pubspec.lock', '.dart_tool/package_config.json', '.flutter-plugins-dependencies'],
@@ -259,4 +259,4 @@ async function prepareExecutor(args, dependencies = {}) {
   throw new CommandError('invalid_argument', 'Select android, flutter, ios or web.');
 }
 
-module.exports = { preparationSchema, prepareExecutor, prepareAndroid, prepareFlutter, androidEntry, withProject, loggedRun, testClass, bridgeVersion, productionVersions };
+module.exports = { preparationSchema, prepareExecutor, prepareAndroid, prepareFlutter, androidEntry, withProject, loggedRun, testClass, bridgeVersion, sdkReleaseVersion, productionVersions };

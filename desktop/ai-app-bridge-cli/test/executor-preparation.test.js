@@ -5,10 +5,23 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const Module = require('node:module');
 const { validateCommandArguments, commandContract, isAndroidMutation } = require('../bin/command-registry');
 const { bindCommandTarget } = require('../bin/shared-kernel/execution-target');
 const { createScriptHostPort } = require('../bin/script/script-host-port');
-const { prepareAndroid, prepareFlutter, withProject, productionVersions, bridgeVersion } = require('../bin/executors/preparation');
+const { prepareAndroid, prepareFlutter, withProject, productionVersions, sdkReleaseVersion } = require('../bin/executors/preparation');
+
+function preparationWithVersions(version, sdkReleaseVersion) {
+  const filename = require.resolve('../bin/executors/preparation');
+  const isolated = new Module(filename, module);
+  isolated.filename = filename;
+  isolated.paths = Module._nodeModulePaths(path.dirname(filename));
+  const originalRequire = isolated.require.bind(isolated);
+  isolated.require = name => name === '../../package.json'
+    ? { ...require('../package.json'), version, sdkReleaseVersion } : originalRequire(name);
+  isolated._compile(fs.readFileSync(filename, 'utf8'), filename);
+  return isolated.exports;
+}
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-prepare-'));
@@ -48,9 +61,11 @@ test('a Script can prepare another platform without acquiring its default phone'
   assert.equal(result.execution.target, null);
 });
 
-test('Android preparation returns the original variant and verified APK bytes without editing consumer files', async t => {
+test('Android preparation keeps Host identity independent from SDK coordinates and preserves the consumer variant', async t => {
   const { project, home } = fixture(t);
+  const preparation = preparationWithVersions('0.4.8', '0.4.7');
   let calls = 0;
+  let generatedConfig;
   const run = async (file, args, options) => {
     calls++;
     assert.equal(file, 'sh');
@@ -58,7 +73,8 @@ test('Android preparation returns the original variant and verified APK bytes wi
     assert.equal(options.cwd, project);
     assert.ok(args.includes(':app:aiAppBridgePrepareExecutor'));
     const config = JSON.parse(fs.readFileSync(args.find(arg => arg.startsWith('-Daab.prepare.config=')).split('=').slice(1).join('=')));
-    assert.equal(config.requirements.minCompileSdk, 34);
+    generatedConfig = config;
+    assert.equal(config.requirements.minCompileSdk, 35);
     fs.writeFileSync(path.join(config.directory, 'android-preflight.json'), JSON.stringify({ status: 'compatible', module: ':app', variant: 'sitDebug' }));
     const application = path.join(config.directory, 'original-app.apk'), tests = path.join(config.directory, 'original-app-test.apk');
     fs.writeFileSync(application, 'original app'); fs.writeFileSync(tests, 'instrumentation');
@@ -67,8 +83,18 @@ test('Android preparation returns the original variant and verified APK bytes wi
       applicationApks: [application], testApks: [tests] }));
     return { stdout: 'BUILD SUCCESSFUL', stderr: '' };
   };
-  const result = await prepareAndroid({ projectDir: project, module: ':app', variant: 'sitDebug', adapters: ['espresso-web'] }, { run, home });
+  const result = await preparation.prepareAndroid({ projectDir: project, module: ':app', variant: 'sitDebug', adapters: ['espresso-web', 'compose'] }, { run, home });
   assert.equal(calls, 1);
+  assert.equal(generatedConfig.pluginCoordinate, 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-gradle-plugin:0.4.7');
+  assert.deepEqual(generatedConfig.dependencies, [
+    'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.4.7',
+    'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.4.7',
+    'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-compose:0.4.7',
+    'androidx.compose.ui:ui-test-junit4:1.8.3',
+  ]);
+  assert.equal(result.bridgeVersion, '0.4.8');
+  assert.equal(result.sdkReleaseVersion, '0.4.7');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(result.directory, 'result.json'))), result);
   assert.equal(result.packageName, 'original.app.sit');
   assert.equal(result.instrumentation, 'original.app.sit.test/custom.ExistingRunner');
   assert.deepEqual(result.projectFilesEdited, []);
@@ -135,14 +161,14 @@ test('Flutter dependency comparison traverses business dependencies across works
   assert.deepEqual([...productionVersions(graph)], [['business', '2'], ['storage', '3']]);
 });
 
-function flutterFixture(t, mode) {
+function flutterFixture(t, mode, helperVersion = sdkReleaseVersion) {
   const { project, home } = fixture(t);
   fs.mkdirSync(path.join(project, 'lib'));
   fs.writeFileSync(path.join(project, 'lib/main.dart'), 'void main(List<String> args) {}');
   const pubspec = path.join(project, 'pubspec.yaml'), lock = path.join(project, 'pubspec.lock');
   fs.writeFileSync(pubspec, 'original manifest'); fs.writeFileSync(lock, 'original lock');
   fs.mkdirSync(path.join(project, '.dart_tool'));
-  const helper = { name: 'ai_app_bridge_test', version: bridgeVersion, source: 'hosted', kind: 'dev', directDependencies: [] };
+  const helper = { name: 'ai_app_bridge_test', version: helperVersion, source: 'hosted', kind: 'dev', directDependencies: [] };
   const graph = { packages: [{ name: 'app', version: '1.0.0', kind: 'root', directDependencies: ['business'], devDependencies: [] },
     { name: 'business', version: '2.0.0', source: 'hosted', directDependencies: [] }, ...(mode === 'reuse' ? [helper] : [])] };
   const config = () => fs.writeFileSync(path.join(project, '.dart_tool/package_config.json'), JSON.stringify({
@@ -162,7 +188,7 @@ function flutterFixture(t, mode) {
       if (mode === 'partial-failure') throw new Error('Pub failed after changing metadata');
       if (mode === 'conflict') graph.packages[1].version = '3.0.0';
     } else if (args[0] === 'build') {
-      assert.equal(mode, 'reuse', 'A dependency failure must never build the App');
+      assert.ok(['reuse', 'add'].includes(mode), 'A dependency failure must never build the App');
       const apk = path.join(project, 'build/app/outputs/flutter-apk/app-debug.apk');
       fs.mkdirSync(path.dirname(apk), { recursive: true }); fs.writeFileSync(apk, 'original App test build');
     } else assert.fail(JSON.stringify(args));
@@ -181,12 +207,46 @@ for (const mode of ['conflict', 'partial-failure']) test(`Flutter ${mode} restor
   assert.equal(f.calls.some(args => args[0] === 'build'), false);
 });
 
-test('Flutter repeated preparation reuses the exact helper and keeps argument-taking business main untouched', async t => {
-  const f = flutterFixture(t, 'reuse');
-  const result = await prepareFlutter({ projectDir: f.project, mainArguments: ['$literal', '中文'] }, f);
+test('Flutter preparation adds the declared SDK helper without changing Host identity', async t => {
+  const f = flutterFixture(t, 'add', '0.4.7');
+  const preparation = preparationWithVersions('0.4.8', '0.4.7');
+  const result = await preparation.prepareFlutter({ projectDir: f.project }, f);
+  assert.deepEqual(f.calls.find(args => args[1] === 'add'), ['pub', 'add', 'dev:ai_app_bridge_test:0.4.7']);
+  assert.equal(result.bridgeVersion, '0.4.8');
+  assert.equal(result.sdkReleaseVersion, '0.4.7');
+  assert.deepEqual(result.dependencySource, { hosted: 'pub.dev', version: '0.4.7' });
+  assert.equal(result.reusedDependency, false);
+  assert.ok(f.calls.some(args => args[0] === 'build' && args.includes('--no-pub')));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(result.directory, 'result.json'))), result);
+});
+
+test('Flutter repeated preparation reuses the SDK helper across a Host-only release and keeps business main untouched', async t => {
+  const f = flutterFixture(t, 'reuse', '0.4.7');
+  const preparation = preparationWithVersions('0.4.8', '0.4.7');
+  const result = await preparation.prepareFlutter({ projectDir: f.project, mainArguments: ['$literal', '中文'] }, f);
   assert.equal(result.reusedDependency, true);
+  assert.equal(f.calls.some(args => args[1] === 'add'), false);
+  assert.equal(fs.readFileSync(f.lock, 'utf8'), 'original lock');
   assert.deepEqual(result.projectFilesEdited, []);
   assert.deepEqual(result.applicationDependencyVersionsChanged, []);
   assert.equal(fs.readFileSync(path.join(f.project, 'lib/main.dart'), 'utf8'), 'void main(List<String> args) {}');
   assert.match(fs.readFileSync(result.generatedEntrypoint, 'utf8'), /\\\$literal/);
+});
+
+test('Flutter rejects a helper resolved to the Host version and restores the original lock', async t => {
+  const f = flutterFixture(t, 'mismatch', '0.4.8');
+  const preparation = preparationWithVersions('0.4.8', '0.4.7');
+  await assert.rejects(preparation.prepareFlutter({ projectDir: f.project }, f), error => {
+    assert.equal(error.code, 'executor_flutter_dependency_mismatch');
+    assert.match(error.message, /must resolve ai_app_bridge_test 0\.4\.7; received 0\.4\.8/);
+    const result = JSON.parse(fs.readFileSync(error.details.resultFile));
+    assert.equal(result.bridgeVersion, '0.4.8');
+    assert.equal(result.sdkReleaseVersion, '0.4.7');
+    return true;
+  });
+  assert.deepEqual(f.calls.find(args => args[1] === 'add'), ['pub', 'add', 'dev:ai_app_bridge_test:0.4.7']);
+  assert.equal(fs.readFileSync(f.pubspec, 'utf8'), 'original manifest');
+  assert.equal(fs.readFileSync(f.lock, 'utf8'), 'original lock');
+  assert.ok(f.calls.some(args => args.includes('--offline') && args.includes('--enforce-lockfile')));
+  assert.equal(f.calls.some(args => args[0] === 'build'), false);
 });
