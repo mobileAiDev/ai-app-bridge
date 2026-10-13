@@ -4,9 +4,11 @@ Release source: `ddf95d1e578a094f3b6c9aa4fcd80bbfc75ff9d2`, annotated tag
 `0.4.8`. The tag and published package bytes are immutable. This closeout is a
 subsequent documentation update, not a different 0.4.8 build.
 
-Status: [GitHub 0.4.8 is published](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.8),
-and package publication and local/consumer integration are verified. Only the
-Web npm `latest` authentication remains pending; installing explicit 0.4.8 works.
+Status: **coordinated publication and local/consumer integration are complete**.
+[GitHub 0.4.8 is published](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.8),
+and both npm packages now have `latest` and `next` set to 0.4.8. Broader workflow
+performance acceptance remains open for the full mixed/recovery flows described
+below; completing publication does not close those performance requirements.
 
 Evidence is retained under the sibling directory
 `ai-app-bridge-release-evidence/0.4.8-work/2026-10-13/` (`N` below).
@@ -18,7 +20,7 @@ retains failures, superseded candidates and timing boundaries.
 | Component | Verification |
 |---|---|
 | CLI/MCP `@mobileaidev/ai-app-bridge` | npm 0.4.8; `latest` 0.4.8; public tarball equals the validated package |
-| Web `@mobileaidev/ai-app-bridge-web` | npm 0.4.8; public tarball equals the validated package; `latest` update pending |
+| Web `@mobileaidev/ai-app-bridge-web` | npm 0.4.8; `latest` and `next` 0.4.8; public tarball equals the validated package |
 | Android SDK, Gradle plugin and six optional executors | JitPack 0.4.8; eight modules, all 16 public POM/binary files verified |
 | Flutter `ai_app_bridge_flutter` | Pub 0.4.8; 57/57 published files match the frozen inventory and release Git blobs |
 | Flutter `ai_app_bridge_test` | Pub 0.4.8; 6/6 published files match the frozen inventory and release Git blobs |
@@ -37,8 +39,9 @@ Both registry SHA-512 values also match. See `N/publication/*-integrity.json`,
 `jitpack/artifacts-report.json` and `pub-ios-verification.json`. Two Web `latest`
 authentication attempts ended with callback HTTP 404; the second retained
 repeated HTTP 202 responses without a successful callback. Neither changed or
-invalidated the already verified package. Only the default tag still needs an
-authenticated update; the package must not be republished.
+invalidated the already verified package. A fresh third authentication succeeded:
+the CLI confirmed the tag update and an independent registry read returned
+`latest:0.4.8/next:0.4.8`. The package was not republished.
 
 ## Final-version verification
 
@@ -73,6 +76,11 @@ history: the Web candidate was not faster than 0.4.7. The measured 40.69%
 lossless response-byte saving is a delivery result, not execution-time saving.
 Initial authoring and explicit agent-decision waits have separate timing scopes.
 These flows do not constitute complete coverage of arbitrary apps.
+
+The earlier complete three-journey mixed Native/Flutter/H5 program took
+**62.334 seconds** for 201 commands, exceeding the 60-second target. It needs an
+equivalent complete rerun; the faster three-journey Native/H5 program is a
+different workload and cannot satisfy this row.
 
 Flutter 0.4.8 changes version/dependency metadata, not the already tested
 execution implementation. Earlier real mixed commerce and expired-session
