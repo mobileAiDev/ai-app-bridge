@@ -59,6 +59,28 @@ Web runs did not inject faults; explicit document rebinding and `askAgent`
 continuation were validated separately. The Android commerce run includes its
 actual interruption and recovery time.
 
+## Final coordinated build verification
+
+The final 0.4.8 Host and Native SDK ran the original login Intent in 1.983 seconds
+(4.238 seconds including launch/readiness and the independent server check),
+followed by three Native/H5 commerce journeys in 46.299 seconds: 187 commands,
+15 independent business checks, and continuation of the original operation
+after an injected child-process exit. The final 0.4.8 Web package also passed
+the original registration, five JavaScript journeys and one Python journey:
+184 calls, 83 assertions and all six records independently checked in 9.327
+seconds. These final-version traces were collected during concurrent release
+work and are not a new controlled speed comparison.
+
+The coordinated release passed 1,660 Host functional and 50 performance checks;
+Android SDK, UIA and plugin checks; Web source and installed-package tests;
+Flutter analyzer checks and 80 tests; and an unsigned iOS generic-device build.
+Public npm/Pub archives match the validated packages, and all eight JitPack
+modules were verified. iOS runtime acceptance remains unavailable. The earlier
+measured version identities and timing comparisons above remain unchanged.
+
+See the [release verification](RELEASE_VERIFICATION_0.4.8_2026-10-13.md) for
+publication and local/consumer integration status.
+
 ## Scope and remaining limits
 
 These are representative prepared workflows, not complete coverage of arbitrary

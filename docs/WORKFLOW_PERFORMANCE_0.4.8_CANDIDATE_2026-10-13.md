@@ -1,9 +1,10 @@
 # Workflow performance after the 0.4.7 release
 
-Status: **in progress, not a new public release**. The installed CLI and the
-reconnected Codex MCP still use 0.4.7; the live Runtime reports `compatible:true`.
-The published 0.4.7 artifacts and tag have not been replaced. This document
-records subsequent source changes and their actual limits.
+Status: the final coordinated **0.4.8 artifacts are published**. The installed
+CLI and the reconnected Codex MCP now use 0.4.8; the live Runtime reports
+`compatible:true`. See the [release closeout](RELEASE_VERIFICATION_0.4.8_2026-10-13.md)
+for public default tags and integration status. The comparisons below retain
+their actual historical versions; published 0.4.7 bytes have not been replaced.
 
 Evidence is under the sibling directory
 `ai-app-bridge-release-evidence/0.4.8-work/2026-10-13/` (called `N` below).
@@ -257,5 +258,18 @@ semantic version; its rebuilt bytes still match the CLI payload. Existing lint
 warnings are retained, with no lint errors or fatal findings
 (`N/coordinated-android-0.4.8`).
 
-The overall efficiency/capability/recovery goal remains active. iOS device
-acceptance remains unavailable and is not implied by compilation or Host tests.
+The final Native APK with SDK 0.4.8 was also installed on the same Android
+emulator without clearing app data. The original login Intent completed in
+1.983 seconds, or 4.238 seconds including launch/readiness and the independent
+one-session server check. The original three-journey Native/H5 program completed
+in 46.299 seconds including its final oracle: 187 commands, two external calls,
+same-operation continuation after the deliberate child-process exit, and 15/15
+business checks. The first journey was not replayed, no order/payment/refund was
+duplicated, and each journey restored stock to 12. These final-version traces
+were collected during concurrent release work; they are correctness and runtime
+identity evidence, not a new controlled speed comparison
+(`N/coordinated-android-0.4.8/emulator-final`).
+
+Publication and local/consumer integration are recorded in the
+[release closeout](RELEASE_VERIFICATION_0.4.8_2026-10-13.md). iOS device acceptance
+remains unavailable and is not implied by compilation or Host tests.
