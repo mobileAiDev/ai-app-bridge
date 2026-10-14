@@ -2,7 +2,8 @@
 
 当前状态（2026-10-15）：0.4.9 已完成 GitHub、npm、Pub、Maven 和 Swift tag 的
 公开发布核验。本机 CLI 和近期四个项目的依赖已升级并通过安装/构建验证；
-新启动的 MCP 和 JS/Python 运行检查通过，旧的已连接 MCP 需要重连后加载新版。
+新启动的 MCP 和 JS/Python 运行检查通过。Codex 重启后的实际 MCP 与 Runtime
+均已核验为 0.4.9，代码/配置身份一致，兼容性通过，Host 诊断为零问题。
 完整公开归档、依赖与当前连接状态见仓库
 `docs/RELEASE_VERIFICATION_0.4.9_2026-10-14.md`。
 
@@ -75,7 +76,8 @@ CLI/MCP、Android SDK/Gradle plugin、iOS、Flutter、Web 和可选 Bridge 执�
 2. Git tag/Release、npm、Pub、Maven 和 Swift 公开源码均已核验，两个 npm 包的
    `latest`/`next` 都是 0.4.9；Web smoke 使用真实发布的 URL 和 integrity。
 3. 本机公开 npm 安装、CLI/skill、新 MCP、近期四个项目的依赖解析与六个 APK
-   构建通过。磁盘版本和旧连接的版本分开记录；旧客户端需重连后再验证身份。
+   构建通过。磁盘版本和旧连接的版本分开记录；当前 Codex 重连后的实际身份
+   与 Runtime 一致，最后一项升级核验已完成。
 
 发布包与 tag 保留发布前冻结的说明快照。本段是主分支发布后的收尾更新，
 没有重新打包或改写已发布的 0.4.9 制品，也不扩大未验证端的运行覆盖。

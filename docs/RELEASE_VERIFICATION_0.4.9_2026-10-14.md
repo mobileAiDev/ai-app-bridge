@@ -8,8 +8,9 @@ not a different 0.4.9 build.
 Closeout continued on **2026-10-15 (Asia/Shanghai)**. **All public release
 channels are verified**, including both npm packages with `latest` and `next`
 at 0.4.9. Local CLI installation from the public registry and fresh MCP checks
-pass. Four Android consumers have been upgraded and built. The already connected
-Codex MCP process still reports 0.4.8 and must reconnect. Public Web smoke
+pass. Four Android consumers have been upgraded and built. After the user's
+Codex restart, the actual connected MCP and Runtime both report 0.4.9, with
+matching code/config identities, `compatible:true` and zero Host doctor issues. Public Web smoke
 integration has passed against the registry-generated package and lockfile.
 
 Evidence is retained in the sibling directory
@@ -73,12 +74,22 @@ See `P/local/global-install-parity.json`, `global-registry-parity.json`,
 `post-test-cleanup.json`. The fresh MCP and JS/Python checks passed again after
 the public-registry installation.
 
-The actual pre-existing Codex connection was checked separately after the disk
-upgrade: its pinned client identity is still 0.4.8 and the shared Runtime is
-stopped. Updating installed files does not replace that process. The fresh MCP
-result must not be represented as a completed reconnect of the current chat.
+The pre-existing Codex connection was checked separately after the disk upgrade:
+its pinned client identity was still 0.4.8 and the shared Runtime was stopped.
+Updating installed files did not replace that process. The earlier fresh MCP
+result was not treated as a completed reconnect of the current chat.
 See `P/local/current-codex-doctor-after-disk-upgrade.json` and
 `current-codex-doctor-after-npm-upgrade.json`.
+
+After the user restarted Codex on October 15, the actual current MCP reported
+0.4.9. The shared Runtime was explicitly started and independently queried:
+both sides use code fingerprint
+`9eeee1b3ae07922d6a943c543eae4bb7c70453bf202c12da6e8c4b0933e2bd24`
+and configuration fingerprint
+`e23f4f8c77ea06cdca3bef37f906dbaf58d1b7abd5e244dbc925593a35e1fda3`.
+Runtime status reports `compatible:true`; Host doctor reports zero issues.
+The normal shared Runtime remains running. No device operation was needed for
+this connection check. See `P/local/current-codex-after-restart.json`.
 
 ## Consumer dependency integration
 
@@ -112,11 +123,11 @@ loading evidence, not a new browser UI workflow run. Two incomplete VM harness
 attempts are retained; no SDK code was changed to make the harness pass.
 See `P/web-remote-smoke/package-verification.json`.
 
-## Remaining release closeout
+## Release closeout complete
 
-Reconnect Codex to load the updated MCP and verify the actual current client.
 Public release channels, the registry installation, skill, consumer builds and
-Web package integration no longer have pending authentication or publication work.
+Web package integration are complete. The actual Codex MCP reconnect and Runtime
+compatibility check also passed; no release or upgrade item remains pending.
 
 The first npm login attempt expired: its callback returned HTTP 404 after
 repeated pending responses. A subsequent `npm whoami` returned HTTP 401. A fresh
