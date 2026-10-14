@@ -5,11 +5,12 @@ Release source: `f3274017c89ebe8306284a0cc6ecd1246ce331ef`, annotated tag
 validated package bytes are immutable. This closeout is subsequent documentation,
 not a different 0.4.9 build.
 
-Status: **GitHub, Android, Flutter and Swift publication is complete; npm
-publication still awaits account authentication.** Local CLI installation and
-fresh MCP checks pass. Four Android consumers have been upgraded and built.
-The already connected Codex MCP process still reports 0.4.8 and must reconnect.
-The public Web smoke dependency remains 0.4.8 until npm 0.4.9 is available.
+Closeout continued on **2026-10-15 (Asia/Shanghai)**. **All public release
+channels are verified**, including both npm packages with `latest` and `next`
+at 0.4.9. Local CLI installation from the public registry and fresh MCP checks
+pass. Four Android consumers have been upgraded and built. The already connected
+Codex MCP process still reports 0.4.8 and must reconnect. Public Web smoke
+integration has passed against the registry-generated package and lockfile.
 
 Evidence is retained in the sibling directory
 `ai-app-bridge-release-evidence/0.4.9-2026-10-14/` (`P` below). The frozen
@@ -22,8 +23,8 @@ adoption decisions, retained failures and runtime acceptance boundaries.
 | Component | Observed status |
 |---|---|
 | Git source and [GitHub Release](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.9) | Main and tag peel to the frozen source; release published with the validated CLI/Web archives and SHA-256 checksums |
-| CLI/MCP `@mobileaidev/ai-app-bridge` | npm pending authentication; the validated 0.4.9 archive is attached to GitHub |
-| Web `@mobileaidev/ai-app-bridge-web` | npm pending authentication; the validated 0.4.9 archive is attached to GitHub |
+| CLI/MCP `@mobileaidev/ai-app-bridge` | Public npm 0.4.9; `latest` and `next` 0.4.9; downloaded archive exactly matches the validated package |
+| Web `@mobileaidev/ai-app-bridge-web` | Public npm 0.4.9; `latest` and `next` 0.4.9; downloaded archive exactly matches the validated package |
 | Android SDK, Gradle plugin and six optional executors | JitPack 0.4.9; eight modules and 16 public POM/binary files downloaded and verified |
 | Flutter `ai_app_bridge_flutter` | Pub 0.4.9; public latest 0.4.9; all 57 published files match the frozen inventory and release Git |
 | Flutter `ai_app_bridge_test` | Pub 0.4.9; public latest 0.4.9; all six published files match the frozen inventory and release Git |
@@ -57,8 +58,9 @@ These events are not rewritten as successful first attempts.
 
 The global installation at
 `/opt/homebrew/lib/node_modules/@mobileaidev/ai-app-bridge` is 0.4.9, installed
-from the exact frozen release archive while npm authentication is pending.
-All 223 package files match that archive. The two installed Bridge skill files
+from the exact frozen release archive first, then reinstalled from public npm
+once it became available. All 223 package files match the public archive and
+the frozen validated archive; registry SHA-512 integrity and SHA-1 also match. The two installed Bridge skill files
 already matched the release and required no change.
 
 Existing Codex and Cursor configuration points to this global installation;
@@ -66,14 +68,17 @@ their configuration bytes and approval settings were preserved. A fresh MCP
 process passed runtime identity/compatibility, a same-runtime CLI query, Host
 doctor with zero issues, wrapped read-only ADB, eight concurrent JavaScript
 calls and Python Script. The isolated verification Runtime was stopped afterward.
-See `P/local/global-install-parity.json`, `global-mcp-report.json`,
-`skill-update.json` and `post-test-cleanup.json`.
+See `P/local/global-install-parity.json`, `global-registry-parity.json`,
+`public-install/global-mcp-report.json`, `skill-update.json` and
+`post-test-cleanup.json`. The fresh MCP and JS/Python checks passed again after
+the public-registry installation.
 
 The actual pre-existing Codex connection was checked separately after the disk
 upgrade: its pinned client identity is still 0.4.8 and the shared Runtime is
 stopped. Updating installed files does not replace that process. The fresh MCP
 result must not be represented as a completed reconnect of the current chat.
-See `P/local/current-codex-doctor-after-disk-upgrade.json`.
+See `P/local/current-codex-doctor-after-disk-upgrade.json` and
+`current-codex-doctor-after-npm-upgrade.json`.
 
 ## Consumer dependency integration
 
@@ -97,17 +102,33 @@ build integration evidence; no consumer APK was installed on a phone or K2.
 See `P/consumers-pos-duo/closeout.json` and
 `P/consumers-reader-measure/closeout.json`.
 
+`web/remote-smoke` now consumes the public 0.4.9 package. The package and
+lockfile were generated through a real registry install, with the registry's
+actual URL and SHA-512 integrity. Install, pack and `npm run check` passed.
+All six public package files match the tarball, installed dependency and
+release-tag source. CommonJS and browser-target UMD loading passed, the latter
+in an explicit VM environment with Web Crypto and a session ID. This is package
+loading evidence, not a new browser UI workflow run. Two incomplete VM harness
+attempts are retained; no SDK code was changed to make the harness pass.
+See `P/web-remote-smoke/package-verification.json`.
+
 ## Remaining release closeout
 
-1. Complete npm's account verification and publish the two exact archives with
-   the intended public default tags. Download them from npm and verify hashes.
-2. Upgrade `web/remote-smoke` from the actual public npm metadata; verify its
-   installed files and executable entry points. Do not invent lockfile integrity.
-3. Reconnect Codex to load the updated MCP and verify the actual current client.
+Reconnect Codex to load the updated MCP and verify the actual current client.
+Public release channels, the registry installation, skill, consumer builds and
+Web package integration no longer have pending authentication or publication work.
 
 The first npm login attempt expired: its callback returned HTTP 404 after
-repeated pending responses. A subsequent `npm whoami` returned HTTP 401. No npm
-publication success is claimed, and no package has been republished as a retry.
+repeated pending responses. A subsequent `npm whoami` returned HTTP 401. A fresh
+official login succeeded on October 15 local time. Both publish commands returned
+exit 0 with registry PUT HTTP 202; exact-version reads initially returned 404.
+They later became publicly downloadable and both archives matched the frozen
+bytes. This is consistent with npm's documented
+[publish-time scanning delay](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/).
+The packages were each uploaded once, not republished after the temporary 404.
+CLI/Web `next` updates required separate account verification and both succeeded.
+See `P/npm/publication-receipts.json`, `*-public-integrity.json` and
+`final-dist-tags.json`; the latter is the final authoritative tag check.
 
 The accepted performance and recovery evidence is unchanged: the prepared
 dynamic Android flows improve by 31.24% and 26.55% in their respective paired

@@ -1,10 +1,13 @@
-# 0.4.9 统一发行候选
+# 0.4.9 统一发行
 
-当前状态：本地候选的代码审查、最终安装包验收和指定业务流程实测已完成；
-公开发布和本机依赖升级尚未执行。这不证明 npm、Pub、Maven 或 Git tag 中已经存在 0.4.9。
+当前状态（2026-10-15）：0.4.9 已完成 GitHub、npm、Pub、Maven 和 Swift tag 的
+公开发布核验。本机 CLI 和近期四个项目的依赖已升级并通过安装/构建验证；
+新启动的 MCP 和 JS/Python 运行检查通过，旧的已连接 MCP 需要重连后加载新版。
+完整公开归档、依赖与当前连接状态见仓库
+`docs/RELEASE_VERIFICATION_0.4.9_2026-10-14.md`。
 
 CLI/MCP、Android SDK/Gradle plugin、iOS、Flutter、Web 和可选 Bridge 执行器
-统一准备 0.4.9。Flutter 内嵌的 Android 依赖、iOS 源码与 test helper 身份同步更新。
+统一发行 0.4.9。Flutter 内嵌的 Android 依赖、iOS 源码与 test helper 身份同步更新。
 设备/Web 协议版本保持不变。
 
 后续默认统一升级上述版本与当前安装示例，即使某端只有版本元数据变化。
@@ -40,9 +43,9 @@ CLI/MCP、Android SDK/Gradle plugin、iOS、Flutter、Web 和可选 Bridge 执�
 - CLI `package.json` / `package-lock.json`、各 SDK 发行身份与
   `examples/flutter-workflow-sample/pubspec.lock` 的本地 path 版本同步为 0.4.9。
   第三方依赖的版本、URL 和 integrity 不随发行号改写。
-- `web/remote-smoke` 专门消费已发布包，现有 package/lock 仍保持真实的 0.4.8
-  公开坐标。0.4.9 Web SDK 发布后再从 registry 更新这一对文件并运行 smoke，
-  不预填尚未发布的 tarball URL 或 integrity。
+- `web/remote-smoke` 专门消费已发布包，在 0.4.9 Web SDK 公开可用后才从
+  registry 更新 package/lock，并完成安装、包文件一致性和入口加载检查。
+  版本冻结时保留的旧锁文件属于发布前快照；没有预填未发布的 URL 或 integrity。
 - 内部 FactStore 原生组件和 Playwright 私有依赖容器保留各自的版本；
   它们不是公开 Bridge SDK 发行身份。历史验收及旧 CHANGELOG 段落保留原版本。
 
@@ -66,15 +69,17 @@ CLI/MCP、Android SDK/Gradle plugin、iOS、Flutter、Web 和可选 Bridge 执�
 `docs/RELEASE_CANDIDATE_AUDIT_2026-10-14.md`。本文件是在执行代码冻结后补充的
 结果说明；最终归档仍须验证与实测归档的执行文件逐字节相同。
 
-## 公开发布检查（待完成）
+## 公开发布核验
 
-1. 保存本次源码、包哈希和上述本地验收记录；发布的执行文件必须与验证对象一致。
-2. 发布统一 Git tag/Release、npm、
-   Pub 及 Maven 产物，逐一核对公开版本与归档；公开 Web smoke 锁文件必须
-   来自这次真实发布，并通过安装和加载验证。未验证的端保持明确的范围限制。
-3. 更新本机 CLI/skill 和最近使用项目的 Bridge 依赖至 0.4.9，验证依赖解析
-   与构建，并分别记录当前已连接 MCP 客户端和磁盘安装的实际版本。
+1. 已冻结源码、包哈希和本地验收记录；公开 npm 归档与验证对象逐字节一致。
+2. Git tag/Release、npm、Pub、Maven 和 Swift 公开源码均已核验，两个 npm 包的
+   `latest`/`next` 都是 0.4.9；Web smoke 使用真实发布的 URL 和 integrity。
+3. 本机公开 npm 安装、CLI/skill、新 MCP、近期四个项目的依赖解析与六个 APK
+   构建通过。磁盘版本和旧连接的版本分开记录；旧客户端需重连后再验证身份。
 
-公开基线为 0.4.8。它的发行记录
+发布包与 tag 保留发布前冻结的说明快照。本段是主分支发布后的收尾更新，
+没有重新打包或改写已发布的 0.4.9 制品，也不扩大未验证端的运行覆盖。
+
+性能对照所用的公开基线为 0.4.8。它的发行记录
 `docs/RELEASE_NOTES_0.4.8_2026-10-13.md` 和历史性能记录保留原样，
 0.4.9 的通过结论来自本次最终候选的独立证据。
