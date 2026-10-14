@@ -26,6 +26,10 @@ const { discoverAndroidSdkEndpoint } = require('./shared-kernel/android-sdk-endp
 const { createBridgeForward, verifyBridgeForward, removeBridgeForward } = require('./bridge-forward');
 const { ConnectionCache } = require('./connection-cache');
 const sdkConnections = new ConnectionCache();
+const sdkCapabilities = new ConnectionCache({ ttlMs: 15000, maxEntries: 256 });
+const adbRoutes = require('./shared-kernel/android-adb-route');
+const { openAdbSocket } = require('./shared-kernel/adb-socket-transport');
+const { androidSdkHttpRequest } = require('./shared-kernel/android-sdk-http');
 const { decodeXmlAttribute, parseXmlAttributes } = require('./shared-kernel/xml-attributes');
 const { visitAndroidUiHierarchyTags } = require('./android-uia-xml');
 const { readForegroundFeedback, withForeground, foregroundProbeFailure } = require('./shared-kernel/android-foreground-feedback');
@@ -57,6 +61,10 @@ function createBridgeContext(options = {}) {
     packageName: options.packageName,
     explicitPackageName: options.packageName !== undefined,
     actionId: options.runtimeActionId ?? options.requestId,
+    feedback: options.feedback ?? 'auto',
+    sdkTransport: options.sdkTransport ?? 'auto',
+    adbServerSocket: options.originalSdkRoute?.server.socket ?? adbRoutes.adbServerSocket(options),
+    ...(options.originalSdkRoute ? { sdkRoute: options.originalSdkRoute, sdkRoutePinned: true } : {}),
   };
 }
 
@@ -66,8 +74,15 @@ async function executeProviderCommand(resolvedCommand, options) {
   }
 
   const { isMutationCommand, executionTimeoutMs } = require('./command-registry');
-  return runExecution({ timeoutMs: executionTimeoutMs(resolvedCommand, options), mutation: isMutationCommand(resolvedCommand, options) },
-    () => runCommand(resolvedCommand, options, createBridgeContext(options)));
+  return runExecution({ timeoutMs: executionTimeoutMs(resolvedCommand, options), mutation: isMutationCommand(resolvedCommand, options) }, async () => {
+    const ctx = createBridgeContext(options);
+    const result = await runCommand(resolvedCommand, options, ctx);
+    return result && typeof result === 'object' && ctx.sdkRoute ? { ...result, sdkConnection: {
+      transport: ctx.sdkRoute.transport, selection: ctx.sdkTransportSelection?.reason ?? 'original_route',
+      serverSocket: ctx.sdkRoute.server.socket, serial: ctx.sdkRoute.serial,
+      runtimeEpoch: ctx.sdkRoute.endpoint.runtimeEpoch,
+    } } : result;
+  });
 }
 
 function isIOSCommand(command) {
@@ -93,7 +108,7 @@ async function runCommand(command, options, ctx) {
     case 'ui-observation':
       return bridgeRequest(ctx, async () => {
         const path = require('./ui-observation').path(options);
-        const result = JSON.parse(await httpPost(bridgeUrl(ctx, path), require('./ui-observation').request(options), ctx.httpTimeoutMs));
+        const result = JSON.parse(await sdkHttpRequest(ctx, path, { method: 'POST', payload: require('./ui-observation').request(options) }));
         verifyBridgeTargetPackage(ctx, result, path);
         return result;
       });
@@ -101,8 +116,7 @@ async function runCommand(command, options, ctx) {
       return bridgeTree(ctx, options);
     case 'flutter-tree': {
       const status = await bridgeGet(ctx, '/v1/flutter/snapshot');
-      if (status.ok === false) return status;
-      return status.flutter?.layout || null;
+      return require('./shared-kernel/flutter-layout-result').flutterLayoutResult(status);
     }
     case 'flutter-nodes':
       return flutterNodes(ctx);
@@ -244,6 +258,7 @@ async function adb(ctx, args, { binary = false, mutation = false } = {}) {
     timeoutMs: ctx.adbTimeoutMs || defaults.adbTimeoutMs,
     mutation,
     windowsHide: true,
+    ...(ctx.adbServerSocket ? { env: { ...process.env, ADB_SERVER_SOCKET: ctx.adbServerSocket } } : {}),
   });
   return mutation ? runDeviceEffect({ kind: 'adb', commandSha256: createHash('sha256').update(JSON.stringify(allArgs)).digest('hex') }, execute) : execute();
 }
@@ -269,7 +284,8 @@ async function ensureForward(ctx) {
   if (!ctx.serial) ctx.serial = (await adb(ctx, ['get-serialno'])).stdout.trim();
   ctx.endpoint = null;
   ctx.hostPort = null;
-  ctx.sdkConnectionKey = JSON.stringify([ctx.adb, ctx.serial, ctx.packageName, ctx.explicitPort ? ctx.port : null]);
+  const binding = adbRoutes.resolveAdbBinding(ctx);
+  ctx.sdkConnectionKey = adbRoutes.routeKey(binding, ctx, 'forward');
   let discovered = false;
   const connection = await sdkConnections.getOrCreate(ctx.sdkConnectionKey, async () => {
     const endpoint = await discoverAndroidSdkEndpoint(ctx, adb);
@@ -283,6 +299,7 @@ async function ensureForward(ctx) {
   const { endpoint } = connection;
   ctx.endpoint = endpoint;
   ctx.hostPort = connection.hostPort;
+  ctx.sdkRoute = { ...binding, transport: 'forward', serial: connection.serial, endpoint, hostPort: connection.hostPort };
   return {
     ok: true,
     forward: `tcp:${connection.hostPort} -> localabstract:${endpoint.socketName}`,
@@ -290,6 +307,74 @@ async function ensureForward(ctx) {
     endpoint,
     reused: connection.reused,
   };
+}
+
+async function ensureSdkRoute(ctx) {
+  if (ctx.sdkRoutePinned) {
+    const route = ctx.sdkRoute;
+    ctx.adb = route.executable.path;
+    ctx.adbServerSocket = route.server.socket;
+    ctx.serial = route.serial;
+    ctx.endpoint = route.endpoint;
+    ctx.hostPort = route.hostPort;
+    if (route.transport === 'forward') {
+      adbRoutes.assertOriginalExecutable(route);
+      await verifyBridgeForward(ctx, route, adb);
+    }
+    return route;
+  }
+  const binding = adbRoutes.resolveAdbBinding(ctx);
+  const selected = adbRoutes.selectSdkTransport({ ...ctx, adbIdentity: ctx.sdkTransport === 'forward' || ctx.explicitPort
+    ? { nativeAdb: false } : await adbRoutes.standardAdbIdentity(ctx, binding) });
+  ctx.sdkTransportSelection = selected;
+  if (selected.transport === 'forward') { await ensureForward(ctx); return ctx.sdkRoute; }
+  ctx.adb = binding.executable.path;
+  ctx.adbServerSocket = binding.server.socket;
+  if (!ctx.serial) ctx.serial = (await adb(ctx, ['get-serialno'])).stdout.trim();
+  ctx.sdkConnectionKey = adbRoutes.routeKey(binding, ctx, 'direct');
+  const endpoint = await sdkConnections.getOrCreate(ctx.sdkConnectionKey, () => discoverAndroidSdkEndpoint(ctx, adb));
+  ctx.endpoint = endpoint;
+  ctx.hostPort = null;
+  ctx.sdkRoute = { ...binding, transport: 'direct', serial: ctx.serial, endpoint };
+  return ctx.sdkRoute;
+}
+
+async function sdkHttpRequest(ctx, requestPath, options = {}) {
+  const timeoutMs = options.timeoutMs ?? ctx.httpTimeoutMs;
+  const startedAtMs = Date.now();
+  const socket = ctx.sdkRoute?.transport === 'direct' ? await openAdbSocket(ctx.sdkRoute, { timeoutMs }) : undefined;
+  try {
+    checkExecution();
+    return await androidSdkHttpRequest(bridgeUrl(ctx, requestPath), { ...options,
+      timeoutMs: Math.max(1, timeoutMs - (Date.now() - startedAtMs)), ...(socket ? { socket } : {}) });
+  }
+  finally { socket?.destroy(); }
+}
+
+async function originalSdkPost(ctx, requestPath, payload, timeoutMs) {
+  await ensureSdkRoute(ctx);
+  return JSON.parse(await sdkHttpRequest(ctx, requestPath, { method: 'POST', payload, timeoutMs }));
+}
+
+function originalSdkTarget(ctx) {
+  return { packageName: ctx.packageName, adb: ctx.adb, ...(ctx.explicitPort ? { port: ctx.port } : {}),
+    ...(ctx.sdkRoute ? { originalSdkRoute: structuredClone(ctx.sdkRoute) } : {}) };
+}
+
+async function runtimeCapabilities(ctx, expectedEpoch, readStatus) {
+  // Only immutable schemas are reused. Dynamic status, focus, target references
+  // and coordinates are never inserted into this route-and-epoch cache.
+  if (!ctx.sdkRoute || !expectedEpoch) return readStatus();
+  const key = JSON.stringify([ctx.sdkRoute, ctx.packageName, expectedEpoch]);
+  return sdkCapabilities.getOrCreate(key, async () => {
+    const originalRoute = JSON.stringify(ctx.sdkRoute);
+    const status = await readStatus();
+    if (status?.ok === false) throw new CommandError(status.error || 'bridge_status_unavailable', status.message || 'SDK capability observation failed.',
+      { dispatched: false, ambiguous: false, details: status });
+    if (status?.debugBridge?.runtimeEpoch !== expectedEpoch || JSON.stringify(ctx.sdkRoute) !== originalRoute) throw new CommandError('reobserve_required', 'The observed target and SDK capabilities have different runtime epochs or routes.', { dispatched: false, ambiguous: false });
+    const { runtimeEpoch, nativeExecutionSchema, h5ExecutionSchema, h5TargetSchema } = status.debugBridge;
+    return { app: { packageName: status.app?.packageName }, debugBridge: { runtimeEpoch, nativeExecutionSchema, h5ExecutionSchema, h5TargetSchema } };
+  });
 }
 
 async function bridgeStatus(ctx, options = {}) {
@@ -410,13 +495,17 @@ function buildBridgeFailureResult(ctx, command, requestPath, error) {
     ambiguous: error.ambiguous ?? false,
     packageName: ctx.packageName,
     attempted: {
-      host: '127.0.0.1',
+      host: ctx.sdkRoute?.server.host ?? null,
+      transport: ctx.sdkRoute?.transport ?? null,
+      serverSocket: ctx.adbServerSocket ?? null,
       localPort: ctx.hostPort ?? null,
       requestedLocalPort: ctx.port ?? null,
       endpoint: ctx.endpoint ?? null,
       url: ctx.hostPort ? bridgeUrl(ctx, requestPath) : null,
     },
     suggestion: normalized.suggestion,
+    ...(error.details === undefined ? {} : { details: error.details }),
+    ...(error.adbService === undefined ? {} : { adbService: error.adbService }),
   };
 }
 
@@ -485,7 +574,7 @@ function firstErrorLine(error) {
 
 async function bridgeGet(ctx, requestPath) {
   return bridgeRequest(ctx, async () => {
-    const body = await httpGet(bridgeUrl(ctx, requestPath), ctx.httpTimeoutMs);
+    const body = await sdkHttpRequest(ctx, requestPath);
     const payload = JSON.parse(body);
     verifyBridgeTargetPackage(ctx, payload, requestPath);
     return payload;
@@ -494,15 +583,15 @@ async function bridgeGet(ctx, requestPath) {
 
 async function bridgePost(ctx, requestPath, payload) {
   return bridgeRequest(ctx, () => runDeviceEffect({ kind: 'sdk-http', path: requestPath,
-    target: { packageName: ctx.packageName, adb: ctx.adb, ...(ctx.explicitPort ? { port: ctx.port } : {}) } }, async () => {
-    const body = await httpPost(bridgeUrl(ctx, requestPath), payload, ctx.httpTimeoutMs);
+    target: originalSdkTarget(ctx) }, async () => {
+    const body = await sdkHttpRequest(ctx, requestPath, { method: 'POST', payload });
     const responsePayload = JSON.parse(body);
     verifyBridgeTargetPackage(ctx, responsePayload, requestPath);
     return responsePayload;
   }));
 }
 
-async function bridgeRequest(ctx, request, { ensureForward: prepare = ensureForward, readOnly = false } = {}) {
+async function bridgeRequest(ctx, request, { ensureForward: prepare = ensureSdkRoute, readOnly = false } = {}) {
   for (let attempt = 0; ; attempt++) {
     checkExecution();
     try { await prepare(ctx); }
@@ -520,14 +609,18 @@ async function bridgeRequest(ctx, request, { ensureForward: prepare = ensureForw
       if (ctx.sdkConnectionKey) sdkConnections.invalidate(ctx.sdkConnectionKey);
       // Only a disconnected read is repeated, once, after fresh discovery.
       // A submitted action, timeout or cancellation must keep its original receipt.
-      if (!readOnly || attempt || !['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'provider_disconnected'].includes(error.code)) throw error;
+      const selectedSocketGone = error.code === 'adb_service_failed' && error.aiAppBridgeRequestNotStarted === true
+        && error.adbService?.startsWith('localabstract:');
+      if (!readOnly || ctx.sdkRoutePinned || attempt || !(selectedSocketGone || ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'provider_disconnected'].includes(error.code))) throw error;
     }
   }
 }
 
 function bridgeUrl(ctx, requestPath) {
+  if (ctx.sdkRoute?.transport === 'direct') return `http://adb-device${requestPath}`;
   if (!ctx.hostPort) throw new CommandError('bridge_not_ready', 'SDK endpoint has not been connected.');
-  return `http://127.0.0.1:${ctx.hostPort}${requestPath}`;
+  const host = ctx.sdkRoute?.server.host || '127.0.0.1';
+  return `http://${host.includes(':') ? `[${host}]` : host}:${ctx.hostPort}${requestPath}`;
 }
 
 function verifyBridgeTargetPackage(ctx, payload, requestPath) {
@@ -545,10 +638,6 @@ function verifyBridgeTargetPackage(ctx, payload, requestPath) {
 
 function httpGet(url, timeoutMs = 10000) {
   return httpRequestBounded(url, { timeoutMs });
-}
-
-function httpPost(url, payload, timeoutMs = 20000) {
-  return httpRequestBounded(url, { method: 'POST', payload: payload || {}, timeoutMs });
 }
 
 function captureQuery(options) {
@@ -1571,7 +1660,8 @@ function compactBridgeNode(node, extra) {
 }
 
 function compactUiaTree(xml, options = {}) {
-  const compactOptions = { ...compactTreeOptions(options), packageFilter: options.packageFilter };
+  const compactOptions = { ...compactTreeOptions({ ...options,
+    visibleOnly: options.visibleOnly === undefined ? true : options.visibleOnly }), packageFilter: options.packageFilter };
   const text = String(xml || '');
   const snapshot = uiaSnapshotIdentity(text);
   const hierarchy = parseXmlAttributes(text.match(/<hierarchy\b[^>]*>/)?.[0] || '');
@@ -1582,7 +1672,7 @@ function compactUiaTree(xml, options = {}) {
     compact: true,
     rawBytes: Buffer.byteLength(text, 'utf8'),
     viewport: null,
-    options: compactTreeResultOptions(compactOptions),
+    options: { ...compactTreeResultOptions(compactOptions), visibleOnly: compactOptions.visibleOnly },
     nodes: [],
     scannedNodes: 0,
     matchedNodes: 0,
@@ -1644,9 +1734,9 @@ function compactUiaNode(attrs, depth, sequence) {
     ...(['true', 'false'].includes(visible) ? { visible: visible === 'true' } : {}),
     enabled: attrs.enabled !== 'false',
     clickable: attrs.clickable === 'true',
-    focusable: attrs.focusable === 'true',
-    focused: attrs.focused === 'true',
-    selected: attrs.selected === 'true',
+    ...(['true', 'false'].includes(attrs.focusable) ? { focusable: attrs.focusable === 'true' } : {}),
+    ...(['true', 'false'].includes(attrs.focused) ? { focused: attrs.focused === 'true' } : {}),
+    ...(['true', 'false'].includes(attrs.selected) ? { selected: attrs.selected === 'true' } : {}),
     scrollable: attrs.scrollable === 'true',
     checked: attrs.checked === 'true',
     bounds: compactBounds(parseUiaBounds(attrs.bounds)),
@@ -1683,7 +1773,7 @@ function compactTreeResultOptions(options) {
 }
 
 function parseUiaBounds(value) {
-  const match = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(String(value || ''));
+  const match = /\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/.exec(String(value || ''));
   if (!match) return null;
   const left = Number(match[1]);
   const top = Number(match[2]);
@@ -1705,12 +1795,10 @@ function boundsInViewport(bounds, viewport) {
   const height = Number(bounds.height ?? bounds.bottom - bounds.top);
   if (width <= 0 || height <= 0) return false;
   if (!viewport) return true;
-  const centerX = (Number(bounds.left) + Number(bounds.right)) / 2;
-  const centerY = (Number(bounds.top) + Number(bounds.bottom)) / 2;
-  return centerX >= Number(viewport.left) &&
-    centerX <= Number(viewport.right) &&
-    centerY >= Number(viewport.top) &&
-    centerY <= Number(viewport.bottom);
+  return Number(bounds.right) > Number(viewport.left) &&
+    Number(bounds.left) < Number(viewport.right) &&
+    Number(bounds.bottom) > Number(viewport.top) &&
+    Number(bounds.top) < Number(viewport.bottom);
 }
 
 function compactBounds(bounds) {
@@ -1741,13 +1829,16 @@ function boundedInteger(value, fallback, min, max) {
 }
 
 async function screenshot(ctx, outFile, options = {}) {
-  const foreground = await foregroundWindow(ctx);
+  const verification = options.screenshotVerification ?? 'window';
+  const foreground = await foregroundWindow(ctx, { verification });
   const resolvedPath = await adbBinaryToFile(ctx, ['exec-out', 'screencap', '-p'], outFile);
   const size = pngSize(resolvedPath);
   const result = {
     ok: true,
     transport: 'adb',
     mimeType: 'image/png',
+    source: 'adb-screencap',
+    screenshotVerification: verification,
     path: resolvedPath,
     width: size.width,
     height: size.height,
@@ -1770,7 +1861,7 @@ async function screenshot(ctx, outFile, options = {}) {
   if (ctx.packageName) {
     result.targetPackageName = ctx.packageName;
   }
-  const feedback = await readForegroundFeedback(ctx, async () => foreground);
+  const feedback = await readForegroundFeedback({ ...ctx, feedback: 'window' }, async () => foreground);
   if (ctx.explicitPackageName) result.foregroundMatchesPackage = foreground.ok ? foreground.packageName === ctx.packageName : null;
   return withForeground(result, feedback);
 }
@@ -2270,7 +2361,7 @@ function escapeRegExp(value) {
 
 async function waitText(ctx, targetText, options = {}, dependencies = {}) {
   return require('./shared-kernel/text-wait').waitForText({
-    options: { ...options, targetText, packageName: ctx.explicitPackageName ? ctx.packageName : undefined },
+    options: { ...options, feedback: options.feedback ?? ctx.feedback, targetText, packageName: ctx.explicitPackageName ? ctx.packageName : undefined },
     readForeground: (_, probe) => (dependencies.foregroundWindow || foregroundWindow)(ctx, probe),
     readTree: provider => provider === 'native' ? (dependencies.bridgeTree || bridgeTree)(ctx)
       : provider === 'flutter' ? (dependencies.flutterNodes || flutterNodes)(ctx) : (dependencies.uiaTreeOnce || uiaTreeOnce)(ctx),
@@ -2306,14 +2397,18 @@ async function flutterAction(ctx, payload, options = {}, dependencies = {}) {
       if (!bound.ok) return withForeground(bound, feedback);
       payload = bound.payload;
     }
+    // Intent can supply an already observed Flutter tree in a fresh context.
+    // Resolve its Android SDK route before persisting the effect identity; both
+    // lost-response cancellation and later recovery must keep this exact route.
+    if (!ctx.sdkRoute) await ensureSdkRoute(ctx);
     const actionId = options.runtimeActionId ?? options.requestId ?? ctx.actionId ?? randomUUID();
-    const requestCtx = { ...ctx };
+    const requestCtx = { ...ctx, sdkRoutePinned: Boolean(ctx.sdkRoute) };
     const identity = { actionId: requiredString(actionId, 'actionId'), runtimeEpoch: tree.runtimeEpoch };
-    const target = { packageName: ctx.packageName, adb: ctx.adb, ...(ctx.explicitPort ? { port: ctx.port } : {}) };
+    const target = originalSdkTarget(ctx);
     const result = await runDeviceEffect({ kind: 'flutter', ...identity, target }, () => executeFlutterAction({ tree, payload,
       actionId: identity.actionId, timeoutMs: ctx.httpTimeoutMs,
       send: request => bridgePost(requestCtx, '/v1/flutter/action', request),
-      cancel: identity => httpPost(bridgeUrl(requestCtx, '/v1/flutter/cancel'), identity, 4000).then(JSON.parse),
+      cancel: identity => originalSdkPost(requestCtx, '/v1/flutter/cancel', identity, 4000),
     }), result => flutterSettlementProof(result, identity));
     return withForeground({ ...result, transport: 'bridge', source: 'flutter-runtime-action' }, feedback);
   } catch (error) {
@@ -2340,10 +2435,12 @@ async function h5Dom(ctx, options = {}) {
   }
 }
 
-async function h5Action(ctx, payload) {
-  const feedback = await readForegroundFeedback(ctx, foregroundWindow);
+async function h5Action(ctx, payload, foregroundFeedback) {
+  // A typed command has just bracketed its DOM read with WindowManager samples.
+  // Reuse those same-command samples without changing their timestamps.
+  const feedback = foregroundFeedback ?? await readForegroundFeedback(ctx, foregroundWindow);
   try {
-    const status = await bridgeGet(ctx, '/v1/status');
+    const status = await runtimeCapabilities(ctx, payload.pageRef?.runtimeEpoch, () => bridgeGet(ctx, '/v1/status'));
     const runtime = { runtimeEpoch: status.debugBridge?.runtimeEpoch, executionSchema: status.debugBridge?.h5ExecutionSchema };
     if (runtime.executionSchema !== h5ExecutionSchema || status.debugBridge?.h5TargetSchema !== h5Target.schema) return withForeground({
       ok: false, error: 'h5_execution_unavailable', dispatched: false, ambiguous: false,
@@ -2353,12 +2450,12 @@ async function h5Action(ctx, payload) {
       ok: false, error: 'reobserve_required', dispatched: false, ambiguous: false,
     }, feedback);
     const identity = { actionId: ctx.actionId ?? randomUUID(), runtimeEpoch: runtime.runtimeEpoch };
-    const target = { packageName: ctx.packageName, adb: ctx.adb, ...(ctx.explicitPort ? { port: ctx.port } : {}) };
-    const requestCtx = { ...ctx };
+    const target = originalSdkTarget(ctx);
+    const requestCtx = { ...ctx, sdkRoutePinned: Boolean(ctx.sdkRoute) };
     const result = await runDeviceEffect({ kind: 'h5', ...identity, target }, () => executeH5Action({ runtime, payload: { payload },
       actionId: identity.actionId, timeoutMs: ctx.httpTimeoutMs,
       send: request => bridgePost(requestCtx, '/v1/h5/action', request),
-      cancel: identity => httpPost(bridgeUrl(requestCtx, '/v1/h5/cancel'), identity, 4000).then(JSON.parse),
+      cancel: identity => originalSdkPost(requestCtx, '/v1/h5/cancel', identity, 4000),
     }), result => h5SettlementProof(result, identity));
     return withForeground(result, feedback);
   } catch (error) {
@@ -2379,14 +2476,14 @@ async function h5Control(ctx, action, options) {
   const tree = await h5Dom(ctx, { webViewId: options.webViewId });
   if (tree.ok !== true) return tree;
   if (action === 'scroll' && options.selector === undefined) {
-    if (options.expectedPage !== undefined && !isDeepStrictEqual(tree.pageRef, options.expectedPage)) return {
+    if (options.expectedPage !== undefined && !isDeepStrictEqual(tree.pageRef, options.expectedPage)) return withForeground({
       ok: false, error: 'reobserve_required', dispatched: false, ambiguous: false,
-    };
-    return h5Action(ctx, { action: 'scrollBy', pageRef: tree.pageRef, deltaX: options.deltaX, deltaY: options.deltaY });
+    }, tree);
+    return h5Action(ctx, { action: 'scrollBy', pageRef: tree.pageRef, deltaX: options.deltaX, deltaY: options.deltaY }, tree);
   }
   const selected = h5Target.selectH5Node(tree, options.selector, options.expectedTarget);
-  if (!selected.ok) return selected;
-  return h5Action(ctx, { action, ...selected.targetRef, ...(action === 'input' ? { text: options.text } : {}) });
+  if (!selected.ok) return withForeground(selected, tree);
+  return h5Action(ctx, { action, ...selected.targetRef, ...(action === 'input' ? { text: options.text } : {}) }, tree);
 }
 
 const h5Click = (ctx, options) => h5Control(ctx, 'click', options);
@@ -2664,16 +2761,17 @@ async function nativeGesture(ctx, payload, dependencies = {}) {
 
 async function nativeAction(ctx, path, payload, dependencies = {}) {
   checkExecution();
-  const status = await (dependencies.bridgeStatus || bridgeStatus)(ctx, { full: true });
+  if (!dependencies.bridgeStatus && !ctx.sdkRoute) await ensureSdkRoute(ctx);
+  const status = await runtimeCapabilities(ctx, payload.targetRef?.runtimeEpoch, () => (dependencies.bridgeStatus || bridgeStatus)(ctx, { full: true }));
   const runtime = { executionSchema: status?.debugBridge?.nativeExecutionSchema, runtimeEpoch: status?.debugBridge?.runtimeEpoch };
   const identity = { actionId: payload.actionId ?? randomUUID(), runtimeEpoch: runtime.runtimeEpoch };
-  const target = { packageName: ctx.packageName, adb: ctx.adb, ...(ctx.explicitPort ? { port: ctx.port } : {}) };
-  const requestCtx = { ...ctx };
+  const target = originalSdkTarget(ctx);
+  const requestCtx = { ...ctx, sdkRoutePinned: Boolean(ctx.sdkRoute) };
   return runDeviceEffect({ kind: 'native', ...identity, target }, () => executeNativeAction({ runtime, payload,
     actionId: identity.actionId, timeoutMs: ctx.httpTimeoutMs,
     send: request => (dependencies.bridgePost || bridgePost)(requestCtx, path, request),
     cancel: identity => dependencies.cancelBridgePost ? dependencies.cancelBridgePost(requestCtx, identity)
-      : httpPost(bridgeUrl(requestCtx, '/v1/action/cancel'), identity, 4000).then(JSON.parse),
+      : originalSdkPost(requestCtx, '/v1/action/cancel', identity, 4000),
   }), result => nativeSettlementProof(result, identity));
 }
 

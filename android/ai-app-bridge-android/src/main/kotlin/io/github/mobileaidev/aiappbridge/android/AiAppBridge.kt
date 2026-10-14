@@ -41,7 +41,6 @@ import org.json.JSONTokener
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.lang.reflect.Proxy
-import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.IdentityHashMap
@@ -62,7 +61,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.4.8"
+    private const val bridgeVersion = "0.4.9"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
 
@@ -736,24 +735,6 @@ object AiAppBridge {
         return JSONObject(body.ifBlank { "{}" })
     }
 
-    private fun parseQuery(rawQuery: String): Map<String, String> {
-        if (rawQuery.isBlank()) {
-            return emptyMap()
-        }
-        return rawQuery
-            .split("&")
-            .filter { it.isNotBlank() }
-            .associate { part ->
-                val key = part.substringBefore("=")
-                val value = part.substringAfter("=", "")
-                decodeUrl(key) to decodeUrl(value)
-            }
-    }
-
-    private fun decodeUrl(value: String): String {
-        return URLDecoder.decode(value, StandardCharsets.UTF_8.name())
-    }
-
     private fun postLog(body: String): JSONObject {
         val event = recordExternalCapture("recordLog", requestJson(body), source = "http")
         return JSONObject().put("ok", true).put("event", event)
@@ -1091,6 +1072,15 @@ object AiAppBridge {
 
         private fun handleClient(socket: LocalSocket) {
             val request = try { readRequest(socket) }
+            catch (error: AndroidHttpRequestFailure) {
+                replyGesture(socket, error.statusCode, JSONObject().put("ok", false).put("error", error.code)
+                    .put("message", error.message).put("dispatched", false).put("ambiguous", false)); return
+            }
+            catch (_: java.net.SocketTimeoutException) {
+                replyGesture(socket, 408, JSONObject().put("ok", false).put("error", "http_request_timeout")
+                    .put("message", "No HTTP request bytes arrived within the 1500 ms socket idle timeout.")
+                    .put("dispatched", false).put("ambiguous", false)); return
+            }
             catch (error: Throwable) { replyGesture(socket, 500, JSONObject().put("ok", false).put("error", error.toString())); return }
             if (request.method == "POST" && request.path in setOf("/v1/action/tap", "/v1/action/tap-target",
                     "/v1/action/input-text", "/v1/action/input-target", "/v1/action/gesture-target", "/v1/action/cancel", "/v1/action/query")) {
@@ -1299,58 +1289,9 @@ object AiAppBridge {
             }
         }
 
-        private fun readRequest(socket: LocalSocket): HttpRequest {
+        private fun readRequest(socket: LocalSocket): AndroidHttpRequest {
             socket.soTimeout = 1500
-            val input = socket.getInputStream()
-            val headerBytes = ByteArrayOutputStream()
-            val tail = IntArray(4)
-            var tailSize = 0
-            while (true) {
-                val next = input.read()
-                if (next == -1) {
-                    break
-                }
-                headerBytes.write(next)
-                tail[tailSize % tail.size] = next
-                tailSize++
-                if (tailSize >= 4 && isHeaderEnd(tail, tailSize)) {
-                    break
-                }
-            }
-
-            val headerText = headerBytes.toString(StandardCharsets.UTF_8.name())
-            val lines = headerText.split("\r\n")
-            val firstLine = lines.firstOrNull().orEmpty().split(" ")
-            val method = firstLine.getOrNull(0).orEmpty()
-            val target = firstLine.getOrNull(1).orEmpty()
-            val path = target.substringBefore("?")
-            val query = parseQuery(target.substringAfter("?", ""))
-            val contentLength = lines.firstOrNull {
-                it.startsWith("content-length:", ignoreCase = true)
-            }?.substringAfter(":")?.trim()?.toIntOrNull() ?: 0
-            val bodyBytes = ByteArray(contentLength)
-            var offset = 0
-            while (offset < contentLength) {
-                val read = input.read(bodyBytes, offset, contentLength - offset)
-                if (read <= 0) {
-                    break
-                }
-                offset += read
-            }
-            return HttpRequest(
-                method = method,
-                path = path,
-                query = query,
-                body = String(bodyBytes, 0, offset, StandardCharsets.UTF_8),
-            )
-        }
-
-        private fun isHeaderEnd(tail: IntArray, tailSize: Int): Boolean {
-            val start = tailSize % tail.size
-            return tail[start] == '\r'.code &&
-                tail[(start + 1) % tail.size] == '\n'.code &&
-                tail[(start + 2) % tail.size] == '\r'.code &&
-                tail[(start + 3) % tail.size] == '\n'.code
+            return AndroidHttpRequest.read(socket.getInputStream())
         }
 
         private fun clearAppData(): JSONObject {
@@ -2328,7 +2269,10 @@ object AiAppBridge {
         private fun writeJson(socket: LocalSocket, statusCode: Int, body: JSONObject) {
             val statusText = when (statusCode) {
                 200 -> "OK"
+                400 -> "Bad Request"
                 404 -> "Not Found"
+                408 -> "Request Timeout"
+                413 -> "Payload Too Large"
                 else -> "Internal Server Error"
             }
             val bodyBytes = body.toString().toByteArray(StandardCharsets.UTF_8)
@@ -2346,13 +2290,6 @@ object AiAppBridge {
             }
         }
     }
-
-        private data class HttpRequest(
-        val method: String,
-        val path: String,
-        val query: Map<String, String>,
-        val body: String,
-    )
 
     private data class ScreenshotTarget(
         val window: Window,

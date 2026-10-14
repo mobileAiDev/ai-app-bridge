@@ -313,6 +313,27 @@ checkpoint and unresolved actions. Reading does not restart the child, fill in
 missing receipts or make ordinary resume safe. Use those facts and the current
 App result to choose an explicit continuation.
 
+If restoration reports `script_hash_mismatch`, inspect the original start
+specification. Older evidence could normalize a safe input URL (for example,
+adding `/` to `http://host:port`) even though the original hash used its exact
+bytes. You can supply the complete, unchanged original `script` on `resume`:
+
+```javascript
+{ command: 'script', arguments: {
+  operation: 'resume', operationId: originalOperationId,
+  script: originalStartScript, waitMs: 60000
+} }
+```
+
+Use the original working directory, or specify its original absolute `script.cwd`;
+unchanged source alone is insufficient. Source, inputs, target, cwd, permissions
+and policy must pass the original hash check. Changed source files or missing
+original inputs must be corrected before this can resume. Omit `script` for
+ordinary recovery from the saved program, which does not need to reread its
+source file. Supplying the original spec does not resolve unknown effects;
+inspect them and provide `recovery` separately when needed. Old records remain
+unchanged. Credential redaction remains enabled.
+
 An execution status of `completed` means the child returned and its final JSON
 and terminal checkpoint were persisted; it does not imply that assertions passed.
 
@@ -746,6 +767,20 @@ device assertions per page; evaluate cross-page set equality separately and
 retain every page and its assertion. The current API has no device assertion
 that binds multiple observation objects together.
 
+A successful tree read can have partial or unreported coverage. Script keeps
+that distinction in `evidence.coverage`; it does not turn a truncated result
+into complete evidence. Full Flutter layout coverage includes every requested
+source, so an available operable tree does not hide a failed diagnostic source.
+Use `flutter-nodes` when the decision only needs operable controls.
+
+Compact `uia-tree` reads show visible nodes by default. Hidden and offscreen
+nodes are filtered before `maxNodes`, so retained background pages cannot fill
+the budget ahead of current controls. Use `visibleOnly: false` with `compact:
+true` to inspect hidden nodes, or omit compaction and filters to read raw XML.
+The response reports the applied filter and any remaining truncation. A visible
+control in a partial tree remains available for explicit selection; the read
+does not automatically retry or stop a Script.
+
 `ctx.assert({scope:'code', name, condition})` records a local code check. It
 cannot accept device evidence and is counted separately. Keep independent
 database, file or network business oracles in the report when applicable.
@@ -824,7 +859,13 @@ When following `nextCursor`, preserve the original query filters, including
 pre-action `watermarkCursor` is the separately acknowledged starting boundary.
 
 ```javascript
-const before = await ctx.call('events', { sinceMs: Date.now() - 1000, limit: 200 });
+// Reuse a recent status observation of this target when already available.
+const status = await ctx.call('status');
+const deviceNow = status.result?.updatedAtMs;
+if (!status.ok || !Number.isFinite(deviceNow)) {
+  throw new Error('device capture time unavailable');
+}
+const before = await ctx.call('events', { sinceMs: deviceNow - 1000, limit: 200 });
 const capture = before.evidence.capture;
 if (!before.ok || before.evidence.coverage.status !== 'complete'
     || before.evidence.coverage.gap || !before.evidence.coverage.committed
@@ -844,6 +885,11 @@ const after = await ctx.call('events', {
 // Evaluate the declared predicate from after.result.items and pass the
 // unchanged after.evidence to ctx.assert; require the events stream.
 ```
+
+`sinceMs` uses the device's wall clock. A Host `Date.now()` value can be ahead
+of that clock and exclude records from the intended window. Reuse a recent
+device status for the initial time bound; subsequent reads use the opaque
+capture cursor. Clock offset is diagnostic information, not an action gate.
 
 The timestamp bounds the initial read, while the returned cursor supplies the
 boundary for the action. Do not replace that cursor with a host timestamp,

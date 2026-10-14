@@ -4,13 +4,20 @@ Foreground detection reports facts; it does not authorize or veto actions. The s
 contract applies to CLI, MCP, Script and Android Intent. No force or confirmation
 flag is required to act when the foreground differs or cannot be probed.
 
+Android's default `feedback:"auto"` and `"off"` omit advisory foreground probes and
+return `status:"notCollected"`, `actual:null` without an observation timestamp.
+Use `feedback:"window"` or `"full"` to request the facts below. Explicit Activity
+wait conditions still collect their required evidence. See
+[Android execution policies](ANDROID_EXECUTION_POLICY.md) for the defaults.
+
 Results expose `foregroundObservations` and `warnings`, including:
 
 - `expected`: the explicitly requested serial and package.
 - `actual`: observed window owner, type, Activity, UID/process identity and raw
   evidence where available. Missing fields remain missing. `ownershipVerified`
   is true only after the WindowManager, PackageManager and process checks pass.
-- `status`: `match`, `mismatch`, `unknown`, or `observed` for a device-only request.
+- `status`: `match`, `mismatch`, `unknown`, or `observed` for a device-only request;
+  `notCollected` when the caller's policy omits the probe.
 - `reason`, `source`, `startedAtMs` and `observedAtMs`: the diagnosis and timing.
 
 A parsing failure is `unknown`, never proof of a mismatch. Specific causes such as

@@ -39,4 +39,25 @@ function observationCoverage(provider, rawTree) {
     ...(truncated ? { reason: 'provider_truncated' } : source?.truncated === false ? {} : { reason: 'provider_coverage_unreported' }) };
 }
 
-module.exports = { observationCoverage };
+// Script evidence covers exactly the returned projection. Filtering is an
+// explicit scope; truncation or an unavailable source is a coverage gap.
+function observationEvidenceCoverage(provider, rawTree, { fullFlutter = false } = {}) {
+  const projection = rawTree?.coverage?.projection;
+  let sources;
+  if (fullFlutter) {
+    const layout = rawTree?.layout || rawTree;
+    sources = ['widgetInspector', 'widgetDump', 'semantics', 'operable'].map(name => {
+      const source = layout?.[name];
+      return !source || source.ok === false ? { status: 'partial' } : observationCoverage(null, source);
+    });
+  } else {
+    sources = [rawTree?.coverage?.source || rawTree?.coverage?.status && rawTree.coverage
+      || observationCoverage(provider, rawTree)];
+  }
+  const partial = rawTree?.truncated === true || projection?.truncated === true
+    || sources.some(source => source.status === 'partial' || source.status === 'unavailable');
+  const status = partial ? 'partial' : sources.every(source => source.status === 'complete') ? 'complete' : 'unknown';
+  return { status, gap: status !== 'complete', committed: true };
+}
+
+module.exports = { observationCoverage, observationEvidenceCoverage };

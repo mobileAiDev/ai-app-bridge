@@ -50,7 +50,8 @@ async function main(ctx) {
       node.bounds.left > label.bounds.right));
   }
   async function tap(name, read, node, routeAction = null) {
-    const boundary = routeAction ? await call('events', { sinceMs: Date.now() - 1000, limit: 200 }) : null;
+    if (routeAction && !Number.isFinite(read.result.updatedAtMs)) throw new Error('device capture time unavailable');
+    const boundary = routeAction ? await call('events', { sinceMs: read.result.updatedAtMs - 1000, limit: 200 }) : null;
     if (boundary) {
       const c = boundary.evidence.capture, coverage = boundary.evidence.coverage;
       if (coverage.status !== 'complete' || coverage.gap || !coverage.committed || c.hasMore ||

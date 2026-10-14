@@ -147,4 +147,19 @@ test('a stale expected page or element cannot dispatch even if the selector stil
     element: Object.fromEntries(['elementId','tag','id','name','type','text','ariaLabel','href'].map(key => [key, control('one','button')[key]])) };
   const rejected = await executeCommand('h5-click', { ...target, selector: { elementId: 'one' }, expectedTarget });
   assert.equal(rejected.error, 'reobserve_required'); assert.equal(rejected.dispatched, false); assert.equal(writes, 0);
+  assert.equal(rejected.foregroundObservations.length, 2);
+});
+
+test('typed H5 action preserves both DOM observations with their original times before dispatch', async t => {
+  let dispatchedAt;
+  const target = await fixture(t, (_endpoint, body) => { dispatchedAt = Date.now(); return terminal(body); });
+  const result = await executeCommand('h5-click', { ...target, selector: { elementId: 'one' }, feedback: 'window' });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.foregroundObservations.length, 2);
+  const [before, after] = result.foregroundObservations;
+  assert(before.startedAtMs <= before.observedAtMs);
+  assert(before.observedAtMs <= after.startedAtMs);
+  assert(after.startedAtMs <= after.observedAtMs);
+  assert(after.observedAtMs <= dispatchedAt);
+  assert.equal(result.executionReceipt.kind, 'h5');
 });

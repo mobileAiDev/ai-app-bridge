@@ -24,7 +24,8 @@ const fenced = (text, info) => [...text.matchAll(new RegExp('```' + info + '\\n(
 const documentedRun = (text, command, operation) => fenced(text, 'json lifecycle-example').flatMap(block => block.trim().split('\n')).map(line => JSON.parse(line))
   .filter(call => call.command === command && call.arguments.operation === operation);
 const target = { platform: 'android', serial: 'example-device', packageName: 'com.example.notes' };
-const nodes = text => ({ ok: true, compact: true, nodes: [{ className: 'TextView', text, visible: true, clickable: true, bounds: [0, 0, 100, 40] }] });
+const nodes = text => ({ ok: true, compact: true, coverage: { source: { status: 'complete' }, projection: { truncated: false } },
+  nodes: [{ className: 'TextView', text, visible: true, clickable: true, bounds: [0, 0, 100, 40] }] });
 
 // Result persistence that takes longer than one wait call, so the caller
 // observes status "finishing" before the terminal status.

@@ -8,6 +8,7 @@ const { createFakeHostPort } = require('../bin/script/fake-host-port');
 const { createTestScriptSupervisor: createScriptSupervisor } = require('./helpers/script-supervisor');
 
 const nativeTree = {
+  coverage: { status: 'complete' },
   root: {
     id: 'root',
     className: 'FrameLayout',

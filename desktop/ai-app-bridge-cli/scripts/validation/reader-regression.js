@@ -72,7 +72,9 @@ module.exports.main = async ctx => {
   await native('起始目录包含第3章', nodes => nodes.some(n => n.resourceName === id('category_tv_chapter') && n.text === chapter3));
   await tap({text:chapter3});
   await body(chapter3);
-  const before = await call('events', {sinceMs:Date.now() - 1000, limit:200});
+  const deviceNow = (await call('status')).result.updatedAtMs;
+  if (!Number.isFinite(deviceNow)) throw new Error('Device capture time unavailable');
+  const before = await call('events', {sinceMs:deviceNow - 1000, limit:200});
   const boundary = before.evidence.capture;
   if (before.evidence.coverage.status !== 'complete' || before.evidence.coverage.gap || !before.evidence.coverage.committed
       || boundary.hasMore || !boundary.watermarkCursor || !boundary.runtimeEpoch || !boundary.targetKey) {

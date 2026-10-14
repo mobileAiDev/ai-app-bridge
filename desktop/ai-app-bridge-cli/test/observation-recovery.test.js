@@ -16,7 +16,7 @@ test('UIA visibleOnly follows each window and provider visibility instead of the
   assert.equal(parseUiaViewport(xml).bottom, 200);
   const visible = compactUiaTree(xml, { visibleOnly: true });
   assert.deepEqual(visible.nodes.map(n => n.text).filter(Boolean), ['Time', 'Button']);
-  const all = compactUiaTree(xml);
+  const all = compactUiaTree(xml, { visibleOnly: false });
   assert.equal(all.nodes.find(n => n.text === 'Covered').visible, false);
   assert.equal(all.nodes.find(n => n.text === 'Hidden child').effectiveVisible, false);
   const classTags = '<hierarchy><android.widget.FrameLayout bounds="[0,0][100,200]"><android.widget.Button text="Button" displayed="true" bounds="[0,100][100,140]"/></android.widget.FrameLayout></hierarchy>';
@@ -43,7 +43,7 @@ test('compact Native/UIA observations preserve source coverage, projection limit
   assert.equal(all.nodes[1].textLength, 500); assert.equal(all.nodes[1].checked, false);
   const depth = compactBridgeTree(tree, { maxDepth: 0 });
   assert.equal(depth.nodes.length, 1); assert.equal(depth.coverage.projection.reason, 'max_depth');
-  const uia = compactUiaTree('<hierarchy aab-truncated="true"><node text="Parent"><node text="Child"/></node></hierarchy>', { maxDepth: 0 });
+  const uia = compactUiaTree('<hierarchy aab-truncated="true"><node text="Parent"><node text="Child"/></node></hierarchy>', { maxDepth: 0, visibleOnly: false });
   assert.equal(uia.nodes.length, 1); assert.equal(uia.coverage.source.status, 'partial');
   assert.equal(uia.coverage.projection.reason, 'max_depth');
 });

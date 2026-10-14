@@ -1,6 +1,7 @@
 'use strict';
 
 const { selectWebNode, schema } = require('../shared-kernel/web-dom-target');
+const { withActionGuidance } = require('../shared-kernel/action-guidance');
 
 function createWebIntentDeviceAdapter({ provider } = {}) {
   if (!provider || typeof provider.run !== 'function') throw new TypeError('Web Intent requires the serving Web provider.');
@@ -15,7 +16,8 @@ function createWebIntentDeviceAdapter({ provider } = {}) {
     async action(target) {
       const { spec, rawTree } = target;
       const selected = selectWebNode(rawTree, spec.selector);
-      if (!selected.ok) return selected;
+      if (!selected.ok) return selected.error === 'web_element_not_found'
+        ? withActionGuidance('web-click', { ...bound(target), selector: spec.selector }, selected) : selected;
       const commands = { tap: 'web-click', inputText: 'web-input', pressKey: 'web-key', scroll: 'web-scroll', scrollBy: 'web-scroll' };
       const result = await provider.run(commands[spec.action], { ...bound(target), runtimeActionId: target.actionId,
         selector: { elementId: selected.node.elementId }, expectedTarget: selected.targetRef,

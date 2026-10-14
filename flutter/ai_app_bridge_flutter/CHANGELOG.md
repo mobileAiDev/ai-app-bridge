@@ -1,3 +1,9 @@
+## 0.4.9 (Unreleased; pending acceptance)
+
+- Align the Flutter package, Android dependency and embedded iOS runtime with the coordinated 0.4.9 candidate.
+- Include the Android runtime's explicit malformed HTTP framing failures and bounded request parsing; valid request contracts remain unchanged.
+- Final package and complex workflow acceptance remain pending; version alignment does not establish device coverage.
+
 ## 0.4.8
 
 - Align the Flutter package, Android dependency and embedded iOS runtime with the coordinated 0.4.8 release.

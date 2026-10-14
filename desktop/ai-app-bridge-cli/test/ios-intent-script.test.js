@@ -26,7 +26,7 @@ async function fixture(t) {
   function tree() {
     const nodes = page === 'Receive' ? [node('settings', 'Settings', 'tap')]
       : [node('name', 'Device name', 'input', name), node('settings-list', 'Preferences', 'scroll')];
-    return { nodes, count: nodes.length, truncated: false, updatedAtMs: ++tick,
+    return { ok: true, nodes, count: nodes.length, truncated: false, updatedAtMs: ++tick,
       runtimeEpoch: 'engine-1', viewport: { logicalWidth: 390, logicalHeight: 844 }, page, scroll, keyboardVisible };
   }
   const server = http.createServer(async (req, res) => {

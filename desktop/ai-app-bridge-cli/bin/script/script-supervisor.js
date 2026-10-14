@@ -21,6 +21,7 @@ const {
   codeStartCheckpoint,
   RESTORE_CONTEXT,
   restartGate,
+  planCodeRestore,
 } = require('./script-durable-restore');
 const { scriptError } = require('./script-errors');
 const { planRecovery } = require('./script-recovery');
@@ -376,6 +377,10 @@ function createScriptSupervisor({
   async function resume(args) {
     const record = registry.get(args.operationId);
     if (!record) return scriptError('unknown_operation', { operationId: args.operationId || null });
+    if (args.script !== undefined) {
+      const planned = planCodeRestore({ checkpoint: codeStartCheckpoint({ spec: record.spec, hash: record.hash }, record.operationId), script: args.script });
+      if (!planned.ok) return planned;
+    }
     if (record.cancelling && !(record.finished && args.recovery !== undefined)) return scriptError('runtime_stopped', { operationId: record.operationId });
     if (record.recovering) return scriptError('operation_busy', { operationId: record.operationId, status: record.status });
     if (record.status === 'finishing') return scriptError('not_resumable', { operationId: record.operationId });

@@ -23,7 +23,7 @@ const commandDefinitions = [
   { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start, stop or force-reset the Android API 25+ UIA node runtime. Start checks the process lock; force-reset archives UIA sessions with unknown outcomes without stopping the Bridge Host or SDK apps.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
-  { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator accessibility windows. Optional packageFilter returns compact nodes for that exact app before applying the node budget, including controls without resource IDs.', options: ['serial', 'packageFilter', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
+  { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator accessibility windows. Compact reads show visible nodes by default; visibleOnly=false includes hidden nodes. Optional packageFilter is applied before the node budget, including controls without resource IDs.', options: ['serial', 'packageFilter', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
   { command: 'screenshot', domain: 'core', summary: 'Capture a screenshot, with foreground package verification when packageName is supplied.', options: ['serial', 'packageName', 'outFile', 'artifactDir'] },
   { command: 'logs', domain: 'core', summary: 'Read in-app log records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'network', domain: 'core', summary: 'Read in-app network records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'urlFilter', 'method', 'statusCode', 'noBodies', 'bodyMaxBytes', 'sinceId', 'sinceMs', 'limit'] },
@@ -233,7 +233,10 @@ define('keyCode', { type: 'integer', minimum: 0, maximum: 2147483647, default: 4
 define('statusCode', { type: 'integer', minimum: 100, maximum: 599 });
 define('category extra deviceLogBuffers', { anyOf: [{ type: 'string', minLength: 1 }, { type: 'array', items: { type: 'string', minLength: 1 } }] });
 define('arguments target budget require decision', { type: 'object', additionalProperties: true });
-define('feedback', { enum: ['auto', 'off', 'full'], description: 'auto/off/full.' });
+define('feedback', { enum: ['auto', 'off', 'window', 'full'], description: 'Android: auto/off omit advisory foreground probes and report notCollected; window collects window advice only; full also requests post-action UI feedback. Explicit wait predicates and screenshot evidence remain collected.' });
+define('sdkTransport', { enum: ['auto', 'direct', 'forward'], default: 'auto', description: 'Android SDK HTTP route: auto selects direct for a native adb executable without port; wrappers and explicit ports use forward. Selection occurs before dispatch, never after a mutation fails.' });
+define('adbServerSocket', { type: 'string', minLength: 1, description: 'Android SDK ADB server namespace: tcp:HOST:PORT, tcp:PORT or localfilesystem:PATH. Overrides the Host ADB server environment for this SDK connection.' });
+define('screenshotVerification', { enum: ['window', 'ownership'], default: 'window', description: 'window collects the current system window; ownership also verifies package UID/process identity. Both capture the actual display with adb screencap, not an App-only image.' });
 define('view', { enum: ['legacy-live', 'decision-window', 'connected-history'] });
 define('userId', { type: 'integer', minimum: 0, maximum: 2147483647, description: 'Defaults to the actual current Android user, frozen before mutation.' });
 define('outcome', { enum: ['allow', 'allow-once', 'deny', 'dismiss'] });
@@ -428,6 +431,14 @@ function commandSchema(command) {
   const common = isolatedByName.has(command) || workflowCommands.has(command) || permissionCommands.has(command) ? [] : definition.domain === 'ios' ? iosCommon
     : definition.domain === 'web' ? [] : androidCommon;
   const names = new Set([...definition.options, ...common, ...(isolatedByName.has(command) || workflowCommands.has(command) ? [] : executionOptions), ...(extraOptions[command] || [])]);
+  if (['status', 'tree', 'flutter-tree', 'flutter-nodes', 'tap', 'tap-text', 'tap-native', 'input-text', 'native-gesture', 'wait-text', 'tap-flutter', 'tap-flutter-text', 'input-flutter-text', 'scroll-flutter', 'flutter-action', 'logs', 'network', 'state', 'events', 'h5-dom', 'h5-click', 'h5-input', 'h5-scroll', 'h5-wait', 'h5-eval', 'flutter-h5-dom', 'flutter-h5-click', 'flutter-h5-input', 'flutter-h5-scroll', 'flutter-h5-wait', 'flutter-h5-eval'].includes(command)) {
+    names.add('sdkTransport');
+    // These four commands may also use UIA or ADB input. Their whole workflow
+    // namespace comes from the Host environment, not an SDK-only override.
+    if (!['tap', 'tap-text', 'wait-text', 'input-text'].includes(command)) names.add('adbServerSocket');
+  }
+  if (command === 'screenshot') names.add('screenshotVerification');
+  if (command === 'forward' || command === 'remove-forward') names.add('adbServerSocket');
   if (historyCommands.has(command)) ['history', 'factCursor', 'cursor'].forEach(n => names.add(n));
   if (captureCommands.has(command)) ['view', 'runtimeEpoch', 'afterActionId', 'mobileFactId', 'targetKey', 'timeoutMs'].forEach(n => names.add(n));
   const properties = {};
@@ -466,6 +477,8 @@ function commandSchema(command) {
     properties.maxDepth = { type: 'integer', minimum: 0, maximum: 200 };
     properties.maxNodes = { type: 'integer', minimum: 1, maximum: 1000 };
   }
+  if (command === 'uia-tree') properties.visibleOnly = { type: 'boolean', default: true,
+    description: 'Compact reads filter hidden and offscreen nodes before the node budget. Set false to inspect them; raw XML remains unfiltered.' };
   if (command === 'flutter-action' || command === 'ios-flutter-action') properties.payload = flutterActionSchema();
   if (command === 'native-gesture') properties.payload = nativeGestureSchema();
   if (['tap-flutter', 'input-flutter-text', 'scroll-flutter', 'ios-tap-flutter', 'ios-input-flutter-text', 'ios-scroll-flutter'].includes(command)) properties.selector = flutterSelector;

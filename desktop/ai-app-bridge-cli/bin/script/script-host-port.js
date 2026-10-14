@@ -9,6 +9,13 @@ const { isMutationCommand, ownsCommandLifecycle, commandSchema } = require('../c
 const { normalizeExecutionTarget, bindCommandTarget, targetFingerprint } = require('../shared-kernel/execution-target');
 const { createScriptCapturePort, isCaptureReadCommand } = require('./script-capture-port');
 const { judgeAssertion, issueObservation, createObservationRegistry } = require('./script-assert');
+const { observationEvidenceCoverage } = require('../shared-kernel/observation-coverage');
+
+const treeProviders = new Map([
+  ['tree', 'native'], ['ios-tree', 'native'], ['uia-tree', 'uia'], ['ios-uia-tree', 'native'],
+  ['flutter-tree', 'flutter'], ['flutter-nodes', 'flutter'], ['ios-flutter-tree', 'flutter'], ['ios-flutter-nodes', 'flutter'],
+  ['h5-dom', 'h5'], ['flutter-h5-dom', 'h5'], ['ios-h5-dom', 'h5'], ['web-dom', 'h5'],
+]);
 
 function createScriptHostPort({
   runner,
@@ -128,7 +135,7 @@ function createScriptHostPort({
     issueObservation(observations, result.evidence, observed, {
       command,
       payload: result.result,
-      tree: result.ok && ['tree', 'uia-tree', 'flutter-tree', 'flutter-nodes', 'h5-dom', 'flutter-h5-dom', 'ios-tree', 'ios-uia-tree', 'ios-flutter-tree', 'ios-flutter-nodes', 'ios-h5-dom', 'web-dom'].includes(command),
+      tree: result.ok && treeProviders.has(command),
     });
     return stamp(result);
   }
@@ -162,7 +169,8 @@ function pageSummaryResult(args, ids) {
     executionId: ids.executionId,
     callId: ids.callId,
     actionId: null,
-    coverage: { status: 'complete', gap: false, committed: true },
+    coverage: summary.ok === false ? { status: 'unavailable', gap: true, committed: false }
+      : observationEvidenceCoverage(args.provider, summary),
     refs: Array.isArray(args.refs) ? args.refs : [],
     timings: {},
   });
@@ -286,10 +294,11 @@ async function actionOnce(command, args, options, { actions, target, executionId
       timings: raw.timings || {},
     });
   }
+  const payload = !['script', 'intent', 'install-apk', 'permission-dialog', 'response'].includes(command) && raw && raw.result !== undefined ? raw.result : raw;
   return envelope({
     ok: raw != null && raw.ok !== false && !raw.error,
     command,
-    result: !['script', 'intent', 'install-apk', 'permission-dialog', 'response'].includes(command) && raw && raw.result !== undefined ? raw.result : raw,
+    result: payload,
     error: raw && raw.error ? raw.error : null,
     dispatched: raw?.dispatched,
     executionReceipt: raw?.executionReceipt ?? null,
@@ -300,7 +309,9 @@ async function actionOnce(command, args, options, { actions, target, executionId
     actionId,
     coverage: raw == null || raw.ok === false || raw.error
       ? { status: 'unavailable', gap: true, committed: false }
-      : { status: 'complete', gap: false, committed: true },
+      : treeProviders.has(command) ? observationEvidenceCoverage(treeProviders.get(command), payload,
+        { fullFlutter: command === 'flutter-tree' || command === 'ios-flutter-tree' })
+        : { status: 'complete', gap: false, committed: true },
     refs: actionRefs(command, raw),
     timings: raw?.timings || {},
     guidance: raw?.guidance, candidates: raw?.candidates,

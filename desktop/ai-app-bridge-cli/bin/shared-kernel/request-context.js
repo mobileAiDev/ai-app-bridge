@@ -25,7 +25,7 @@ function resolveCommandPaths(command, args) {
   for (const field of localPaths) {
     if (typeof resolved[field] === 'string') resolved[field] = resolveRequestPath(resolved[field]);
   }
-  if (command === 'script' && args.operation === 'start') {
+  if (command === 'script' && (args.operation === 'start' || (args.operation === 'resume' && args.script !== undefined))) {
     resolved.script = { ...args.script, cwd: resolveRequestPath(args.script.cwd ?? requestDirectory()) };
     if (args.script.sourcePath !== undefined) resolved.script.sourcePath = resolveRequestPath(args.script.sourcePath);
   }

@@ -28,7 +28,7 @@ test('explicit UIA fields distinguish a parent accessibility label from its chil
   for (const [index, selector] of [{ text: '全部文件' }, { contentDescription: '全部文件' },
     { resourceName: 'example.uia:id/title' }].entries()) {
     const id = `precise-uia:${index}`;
-    const result = (await runCli('tap-uia', { ...args, selector, requestId: id })).value;
+    const result = (await runCli('tap-uia', { ...args, selector, requestId: id, feedback: 'window' })).value;
     assert.equal(result.ok, true, JSON.stringify(result));
     assert.equal(result.executionReceipt.actionId, id);
     assert.deepEqual(result.selector, selector);
@@ -54,7 +54,7 @@ test('a precise text selector neither falls back to a description nor picks betw
 
 test('precise UIA selection preserves explicit package binding and rejects mixed fields before dispatch', async t => {
   const { peer, args } = await fixture(t);
-  const foreground = await executeCommand('tap-uia', { ...args, packageName: 'another.app', selector: { text: '全部文件' } });
+  const foreground = await executeCommand('tap-uia', { ...args, packageName: 'another.app', selector: { text: '全部文件' }, feedback: 'window' });
   assert.equal(foreground.error, 'uia_selector_not_found');
   assert.equal(foreground.warnings[0].code, 'foreground_package_mismatch'); assert.equal(foreground.dispatched, false);
   const invalid = await executeCommand('tap-uia', { ...args, selector: { text: '全部文件', contentDescription: '全部文件' } });

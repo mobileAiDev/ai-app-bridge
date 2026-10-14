@@ -49,12 +49,14 @@ export function createLabServer({ directory, port = 0, host = '127.0.0.1' }) {
       }
       if (url.pathname === '/__state') return send(200, runId ? runs[runId] || null : runs);
       if (['/review.html', '/campaign.html'].includes(url.pathname)) {
+        const bytes = fs.readFileSync(new URL(`.${url.pathname}`, import.meta.url));
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        response.end(fs.readFileSync(new URL(`.${url.pathname}`, import.meta.url))); return;
+        response.end(bytes); return;
       }
       if (/^\/images\/product-([0-9]|1[01])\.png$/.test(url.pathname)) {
+        const bytes = fs.readFileSync(new URL(`.${url.pathname}`, import.meta.url));
         response.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'max-age=3600' });
-        response.end(fs.readFileSync(new URL(`.${url.pathname}`, import.meta.url))); return;
+        response.end(bytes); return;
       }
       const run = runs[runId];
       if (!run) return send(404, { error: 'unknown_run' });

@@ -88,6 +88,12 @@ function withActionGuidance(command, args, value) {
   } else if (command === 'intent' && value.operationId && code && !candidates?.length && !value.guidance) {
     message = 'The failed step was not replayed. Inspect lastAction and observationFailure, issue a command action to diagnose or recover, observe again, or cancel this Intent.';
     calls.push(call('intent', { operation: 'observe', operationId: value.operationId }), call('intent', { operation: 'cancel', operationId: value.operationId }));
+  } else if (code === 'web_element_not_found' && command.startsWith('web-') && !value.guidance) {
+    const selector = args.selector ?? args.arguments?.selector;
+    message = 'No control currently matches. Inspect the current page and selector. If the control is still loading, you may choose the suggested wait. The original action was not replayed.';
+    calls.push(call('web-dom', selector && selector.elementId === undefined ? { query: selector } : {}));
+    if (selector?.elementId === undefined && selector) calls.push(call('web-wait', { selector }));
+    else if (selector?.elementId !== undefined) message = 'The observed elementId is absent. Read the current page and choose a current control. The original action was not replayed.';
   } else if (candidates?.length) message = 'Choose the intended candidate. The suggested calls have not been executed.';
   else if (code === 'reobserve_required' && (command.includes('h5') || command.startsWith('web-'))) {
     const observe = command.startsWith('ios-flutter-h5-') ? 'ios-flutter-h5-dom'

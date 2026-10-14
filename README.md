@@ -47,10 +47,16 @@ receipts and unknown outcomes remain explicit. See the
 [release notes and measured limits](docs/RELEASE_NOTES_0.4.7_2026-10-13.md) and
 [command contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md).
 
-The coordinated `0.4.8` release adds lossless delivery for optional fields, more
-focused Script discovery and a reusable ordinary JavaScript Web helper. CLI/MCP,
-Android, iOS, Flutter, Web and optional Bridge executors use version `0.4.8`. See its
+The published `0.4.8` release added lossless delivery for optional fields, more
+focused Script discovery and a reusable ordinary JavaScript Web helper. That release
+aligned CLI/MCP, Android, iOS, Flutter, Web and optional Bridge executors. See its
 [release notes and measured execution results](docs/RELEASE_NOTES_0.4.8_2026-10-13.md).
+
+Current source and installation examples target the coordinated `0.4.9` candidate.
+Final package acceptance and registry publication are pending; use local source or
+reviewed local packages until publication. See the
+[candidate audit and remaining checks](docs/RELEASE_CANDIDATE_AUDIT_2026-10-14.md) and
+[release preparation guide](desktop/ai-app-bridge-cli/docs/RELEASE.md).
 
 ## What It Solves
 
@@ -121,7 +127,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.8")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.9")
 }
 ```
 
@@ -154,7 +160,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.8"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.9"
 }
 
 aiAppBridge {
@@ -169,7 +175,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.8")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.9")
 ```
 
 Start the runtime once in the debug app process:
@@ -185,7 +191,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.8
+npm install -g @mobileaidev/ai-app-bridge@0.4.9
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -200,7 +206,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.8
+  ai_app_bridge_flutter: 0.4.9
 ```
 
 Initialize once:
@@ -267,10 +273,12 @@ The package includes the embedded FactStore prebuild; no database service,
 C/C++ compiler or Python is needed for ordinary commands and JS/regex extraction.
 Python is only needed for Python scripts/extraction. See the [Host support
 matrix and local-tarball setup](desktop/ai-app-bridge-cli/docs/INSTALLATION.md).
-The configuration and SDK dependencies pin the coordinated 0.4.8 release.
+The configuration and SDK dependencies pin the coordinated 0.4.9 candidate.
+Registry coordinates become available only after publication; use the local
+tarball configuration in the installation guide before then.
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.8","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.9","ai-app-bridge-mcp"]}}}
 ```
 
 Omit `extract` for complete data within the output budget. Over-budget JSON first

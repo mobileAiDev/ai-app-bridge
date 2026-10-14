@@ -765,6 +765,13 @@ Policy supports `timeoutMs`, `restartPolicy`, `maxOutputBytes`, `maxProgressByte
 and assertion verdicts, uncaught exceptions fail execution, and pause is explicit.
 Recording currently requires `restartPolicy:"none"`. Frozen checkpoint recovery
 uses its saved program and never blends missing caller fields with stored fields.
+`resume` optionally accepts the complete original `script` specification. This
+supports recovery when older retained evidence normalized an input URL: the
+original source, inputs, target, cwd, permissions and policy must still produce
+the original hash. A changed specification is rejected on both live and restored
+operations. This parameter does not replace the program, rewrite old evidence,
+or bypass unresolved-action recovery. URLs requiring no credential redaction
+retain their original bytes when persisted; credentials remain redacted.
 For a stopped checkpoint-enabled Script, `resume` also accepts
 `recovery:{checkpoint:{name,state},reason?}`. This explicitly commits the Agent's
 chosen reentry state before starting the same frozen program. Past receipts and
@@ -825,10 +832,15 @@ that every advertised optional parameter is already equally meaningful on all
 platforms. Read `entrypoints.script` independently of direct MCP availability.
 
 `tap` uses physical pixels. App scope uses the SDK; `scope:"device"` chooses physical
-ADB input. Foreground mismatch, change and probe failure are independent observations
-and warnings, including with `feedback:"off"`; they do not veto an explicit action.
+ADB input. Android `feedback:"auto"` and `"off"` report attached foreground advice as
+`notCollected`; `"window"` and `"full"` request actual WindowManager observations.
+Foreground mismatch, change and probe failure are independent observations and
+warnings; they do not veto an explicit action. An explicit `requireActivity` readiness
+condition always collects the requested Activity fact.
 `execution.ok`, `dispatched` and `ambiguous` retain the actual executor result.
 See [Android foreground observations](INTENT_FOREGROUND.md) for evidence and target selection.
+See [Android execution policies](ANDROID_EXECUTION_POLICY.md) for direct SDK transport,
+immutable capability reuse, caller-selected diagnostics and screenshot provenance.
 `tap-flutter` uses Flutter logical pixels, with no DPR multiplication.
 
 `tree` and `uia-tree` compact reads accept `maxDepth` from 0 to 200 and
@@ -1545,7 +1557,7 @@ sends CANCEL to that original window and reports `native_gesture_window_changed`
 This can occur after a long-click has already opened a dialog; inspect the result.
 
 After Host cancellation or response loss, Host sends one bounded cancellation to
-the same forwarded endpoint with the exact action ID and runtime epoch, outside
+the original bound SDK route with the exact action ID and runtime epoch, outside
 the aborted execution scope. It waits for that reply, never retries the gesture,
 and preserves uncertainty if acknowledgement is missing or invalid. The SDK
 keeps a blocked active touch reserved until CANCEL actually runs. Native tap/input,

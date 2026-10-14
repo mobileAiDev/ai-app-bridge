@@ -1695,7 +1695,7 @@ test('status compacts large Flutter layout dumps by default', () => {
 test('UIA package filtering happens before the node budget and retains controls without resource IDs', () => {
   const keyboard = Array.from({ length: 100 }, (_, i) => `<node package="keyboard" text="Key ${i}"/>`).join('');
   const xml = `<hierarchy aab-truncated="false">${keyboard}<node package="app" text="Title"/><node package="app" content-desc="Menu"/></hierarchy>`;
-  const result = compactUiaTree(xml, { packageFilter: 'app', maxNodes: 2 });
+  const result = compactUiaTree(xml, { packageFilter: 'app', maxNodes: 2, visibleOnly: false });
   assert.deepEqual(result.nodes.map(n => n.packageName), ['app', 'app']);
   assert.equal(result.nodes[1].contentDescription, 'Menu');
   assert.equal(result.truncated, false);

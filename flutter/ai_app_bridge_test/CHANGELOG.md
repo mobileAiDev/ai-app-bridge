@@ -1,3 +1,8 @@
+## 0.4.9 (Unreleased; pending acceptance)
+
+- Align the optional executor identity with the coordinated 0.4.9 candidate. The WidgetTester execution contract is unchanged.
+- Final package and complex workflow acceptance remain pending.
+
 ## 0.4.8
 
 - Align the optional executor identity with the coordinated 0.4.8 release. The WidgetTester execution contract is unchanged.

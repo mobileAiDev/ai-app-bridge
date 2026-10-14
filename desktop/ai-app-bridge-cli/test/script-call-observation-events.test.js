@@ -50,7 +50,7 @@ function matchingEvent(result, envelope) {
 
 const payloads = {
   tap: { ok: true },
-  tree: { ok: true, root: { text: 'PRIVATE_UI_BODY' } },
+  tree: { ok: true, coverage: { status: 'complete' }, root: { text: 'PRIVATE_UI_BODY' } },
   status: { ok: true, app: { packageName: 'sample.app' } },
   'keyboard-state': { ok: true, visible: false },
   screenshot: { ok: true, path: '/virtual/screenshot.png', artifact: { sha256: 'a'.repeat(64) } },

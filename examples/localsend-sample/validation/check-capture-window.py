@@ -107,9 +107,14 @@ def main():
                                                        sinceMs=last['timestampMs'], limit=200), expected=last)
             time.sleep(1.2)
         for round_number in range(args.rounds):
+            clock = request('status')
+            assert clock['app']['packageName'] == PACKAGE
+            assert clock['debugBridge']['runtimeEpoch'] == report['runtimeEpoch'], 'capture_runtime_changed'
+            device_now = clock['updatedAtMs']
+            assert type(device_now) is int and device_now > 0, 'device_capture_time_unavailable'
             for stream in ['events', 'state', 'logs']:
                 before = query(f'{round_number+1}-{stream}-time', stream,
-                               dict(view='decision-window', sinceMs=int(time.time()*1000)-1000, limit=200))
+                               dict(view='decision-window', sinceMs=device_now-1000, limit=200))
                 if before and before.get('watermarkCursor'):
                     query(f'{round_number+1}-{stream}-cursor', stream,
                           dict(view='decision-window', factCursor=before['watermarkCursor'],

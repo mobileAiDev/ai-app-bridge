@@ -5,7 +5,7 @@ const commands = new Set(['ui-observation', 'ios-ui-observation', 'web-ui-observ
 function schema(command, optionTypes) {
   const target = command === 'web-ui-observation' ? ['sessionId', 'runtimeEpoch', 'targetId', 'timeoutMs']
     : command === 'ios-ui-observation' ? ['deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort', 'timeoutMs', 'devicectl']
-      : ['serial', 'packageName', 'port', 'adb', 'timeoutMs'];
+      : ['serial', 'packageName', 'port', 'adb', 'timeoutMs', 'sdkTransport', 'adbServerSocket'];
   const properties = Object.fromEntries(target.map(name => [name, optionTypes[name]]));
   Object.assign(properties, { operation: { enum: ['start', 'status', 'stop'] },
     durationMs: { type: 'integer', minimum: 100, maximum: 5000 }, leaseId: { type: 'string', minLength: 1, maxLength: 256 } });

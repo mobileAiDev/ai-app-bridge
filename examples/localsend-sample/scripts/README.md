@@ -6,7 +6,13 @@ screenshot bindings and public Script contracts. `authorship.v1.json` records
 the reads, hash checks, selector decisions and explicitly shared pilot feedback.
 No upstream application source or prior sample Script was used.
 
-Current v1.3.0 uses complete visible Flutter nodes to prove the empty-discovery
+Current v1.3.1 uses the target SDK's `status.updatedAtMs` for each initial mobile
+capture window. Host timestamps remain execution timings. This maintenance fix
+does not change the original independent-authoring record or historical device
+verdicts; scenario manifests identify the source hash of that historical
+acceptance separately. The corrected source still needs a new device replay.
+
+The v1.3.0 flow uses complete visible Flutter nodes to prove the empty-discovery
 branch. Its controller records an explicit fixture: both SIM slots absent,
 Wi-Fi disabled, no connected Android network, and WLAN down without addresses.
 It checks that condition before and after the UI observations and restores the

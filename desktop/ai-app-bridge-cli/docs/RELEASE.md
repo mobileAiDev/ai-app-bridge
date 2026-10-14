@@ -1,24 +1,33 @@
-# 0.4.8 统一发行
+# 0.4.9 统一发行候选
 
-CLI/MCP、Android、iOS、Flutter、Web 和可选 Bridge 执行器统一发行 0.4.8，
-同时更新本机 CLI/skill 与最近使用项目的 Bridge 依赖。设备/Web 协议保持不变。
+当前状态：本地候选的代码审查、最终安装包验收和指定业务流程实测已完成；
+公开发布和本机依赖升级尚未执行。这不证明 npm、Pub、Maven 或 Git tag 中已经存在 0.4.9。
+
+CLI/MCP、Android SDK/Gradle plugin、iOS、Flutter、Web 和可选 Bridge 执行器
+统一准备 0.4.9。Flutter 内嵌的 Android 依赖、iOS 源码与 test helper 身份同步更新。
+设备/Web 协议版本保持不变。
 
 后续默认统一升级上述版本与当前安装示例，即使某端只有版本元数据变化。
 如确实需要分开发行，应先明确原因和依赖关系。历史验收中的实际版本必须保留，
 不能为了版本一致改写测试事实。
 
-## 变化
+## 本次候选变化与验收
 
-- 可选 Android/Flutter 执行器按包内明确声明的 `sdkReleaseVersion` 解析依赖。
-  本次 Host 与 SDK/helper 均为 0.4.8，准备结果分别返回 Host 和 SDK 版本。
-- auto 在 8 KiB 以上尝试无损表示，支持可选字段，仍保留完整控件、身份、
-  状态及缺失/null 区别；8 KiB 是格式尝试阈值，不是截断或补读阈值。
-- 差量观察保留原有 columns 表示，混合诊断数组不会使大页面退化成必须
-  补读的结果。明确 `extract:null` 和 Script 内部对象形状保持原合同。
-- Script 提供可运行的 JS/Python 例子、完整但更精简的生命周期发现，及
-  可编辑的普通 JS Web 辅助源码。已写好的业务程序可直接复用和传参。
-- 示例环境探针分别报告显示、前台 PID、App Nap 和 CPU 事实；只给提示，
-  不因环境警告阻断测试或改变业务成功结果。
+- Host 的 Android SDK 直连传输、显式路由和按端点/epoch 复用能力信息，
+  以及普通命令参考前台查询和截图归属查询的开销调整。最终包已重跑动态混合流程；
+  目标身份、不确定结果和原动作回执仍须保留，不得静默换路或重放变更。
+- 原始 Script 源码恢复、URL 字节保留、Flutter 部分观察、UIA 可见节点投影、
+  iOS 观察失败保留及 Web 错误指引。原始失败和修复后回执均保留。
+  UIA 同时补充焦点观察；缺失状态保持未知，不能误报为 false。
+- Android HTTP framing 明确拒绝非法长度、过大或截断请求，并限制解析时间；
+  已有的合法请求与变更派发合同保持不变。明确未派发的 framing 拒绝保留原错误，
+  修正后能继续请求；其他断线仍保留未知结果。
+- Host/CLI 与包内 `sdkReleaseVersion` 均为 0.4.9；Android/Flutter 可选执行器
+  依赖和运行时身份一致。版本对齐本身不代表各端复杂流程已经通过。
+
+持久化 group commit、设备端树镜像、录屏替代截图和 UIA 连接缓存等实验
+不计入本次已交付能力或提速承诺。具体采纳、保留问题和验收范围以仓库
+`docs/RELEASE_CANDIDATE_AUDIT_2026-10-14.md` 为准。
 
 ## 验收口径
 
@@ -26,18 +35,46 @@ CLI/MCP、Android、iOS、Flutter、Web 和可选 Bridge 执行器统一发行 0
 网络等待和恢复。首次业务编写单列；显式 agent 决策等待分别报告并保留总时长。
 小样本、准备耗时及内部命令求和不能替代整个执行过程，也不作为稳定提速比例。
 
-## 发布检查
+## 版本冻结边界
 
-1. 冻结实际发行版本，运行 Host 功能和性能回归。
-2. 在仓库外安装最终 tarball，核对逐文件哈希、native prebuild、CLI/MCP/npx、
-   JS/Python、恢复与关闭。保持全局 Runtime 和其他项目不受验收器影响。
-3. 复用原业务源验证 prepared Web 和 Android 路径，保留提交到独立核验的
-   时间、原始失败、续跑和清理回执；明确实际 SDK/APK 身份。
-4. 完成各 SDK 的构建、测试和发行包检查，再发布统一 Git tag/Release、npm、
-   Pub 及 Maven 产物，逐一核对公开版本与归档。
-5. 更新本机 CLI/skill 和最近使用项目的 Bridge 依赖至 0.4.8，验证依赖解析
+- CLI `package.json` / `package-lock.json`、各 SDK 发行身份与
+  `examples/flutter-workflow-sample/pubspec.lock` 的本地 path 版本同步为 0.4.9。
+  第三方依赖的版本、URL 和 integrity 不随发行号改写。
+- `web/remote-smoke` 专门消费已发布包，现有 package/lock 仍保持真实的 0.4.8
+  公开坐标。0.4.9 Web SDK 发布后再从 registry 更新这一对文件并运行 smoke，
+  不预填尚未发布的 tarball URL 或 integrity。
+- 内部 FactStore 原生组件和 Playwright 私有依赖容器保留各自的版本；
+  它们不是公开 Bridge SDK 发行身份。历史验收及旧 CHANGELOG 段落保留原版本。
+
+## 本地验证结果
+
+- Host 功能回归 1,751/1,751、性能专项 50/50；干净安装的 CLI/MCP/npx、
+  JS/Python、native prebuild 和恢复/关闭验证通过。
+- 同一个候选 SDK 测试 APK、同一脚本和三个动态 seed，对照公开 0.4.8 Host：
+  无额外网络延迟时总时长中位数 10.483 → 7.208 秒；180 ms 延迟并丢失订单响应时
+  12.751 → 9.365 秒。十二轮均通过独立账本核对。这是 Host 的 prepared 流程收益，
+  不含模型编写、安装或首次冷启动，不泛化成美团全部业务验收。
+- 单次 Intent 的 14 条命令用时 4.066 秒；包括观察输入错误后纠正并查询。
+- 无 SDK NotallyX 三轮完整业务流程及 SQLite 核验通过；Web Memos 的
+  JS/Python 共 185 次命令、83 项断言和六份业务记录通过。
+- 三处真实 Host SIGKILL 的 178 项检查通过，诊断加恢复约 1.6–2.2 秒；
+  原订单只提交一次。此证据不等同于断电或所有 provider 的故障验收。
+- Android SDK/UIA/plugin、Flutter、Web 测试与包检查通过；iOS 共享 Swift
+  测试及无签名构建通过，仍无 iOS 真机/模拟器复杂流程运行证据。
+
+完整范围、失败归因和原始证据索引在仓库
+`docs/RELEASE_CANDIDATE_AUDIT_2026-10-14.md`。本文件是在执行代码冻结后补充的
+结果说明；最终归档仍须验证与实测归档的执行文件逐字节相同。
+
+## 公开发布检查（待完成）
+
+1. 保存本次源码、包哈希和上述本地验收记录；发布的执行文件必须与验证对象一致。
+2. 发布统一 Git tag/Release、npm、
+   Pub 及 Maven 产物，逐一核对公开版本与归档；公开 Web smoke 锁文件必须
+   来自这次真实发布，并通过安装和加载验证。未验证的端保持明确的范围限制。
+3. 更新本机 CLI/skill 和最近使用项目的 Bridge 依赖至 0.4.9，验证依赖解析
    与构建，并分别记录当前已连接 MCP 客户端和磁盘安装的实际版本。
 
-本次结果和范围见仓库
-`docs/RELEASE_NOTES_0.4.8_2026-10-13.md` 与
-`docs/WORKFLOW_PERFORMANCE_0.4.8_CANDIDATE_2026-10-13.md`。
+公开基线为 0.4.8。它的发行记录
+`docs/RELEASE_NOTES_0.4.8_2026-10-13.md` 和历史性能记录保留原样，
+0.4.9 的通过结论来自本次最终候选的独立证据。

@@ -63,6 +63,7 @@ function runtimeIdentity(location = runtimeLocation()) {
     'AI_APP_BRIDGE_IOS_TEAM_ID', 'AI_APP_BRIDGE_PYTHON', 'AI_APP_BRIDGE_EXECUTOR_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPMENT_TEAM', 'DEVELOPER_DIR', 'XCODEBUILD'];
   const config = { facts: location.facts, profile: location.profile, ownership: canonicalPath(ownershipDirectory()),
     adb: executablePath(process.env.ADB || 'adb') ?? { unavailable: process.env.ADB || 'adb' },
+    adbServerSocket: require('./shared-kernel/android-adb-route').adbServerSocket(),
     environment: Object.fromEntries(names.map(name => [name, process.env[name] ?? null])) };
   return { protocol, code: fingerprint, config: createHash('sha256').update(JSON.stringify(config)).digest('hex'),
     version: packageVersion, node: { version: process.versions.node, modules: process.versions.modules, napi: process.versions.napi } };

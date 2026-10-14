@@ -39,6 +39,7 @@ async function executeManagedAction({ kind, schema, runtime, payload, actionId, 
   } catch (error) {
     if (error.aiAppBridgeRequestNotStarted === true || error.dispatched === false) return {
       ok: false, error: error.code || `${kind}_request_not_started`, message: error.message,
+      ...(error.details === undefined ? {} : { details: error.details }),
       dispatched: false, ambiguous: false, request,
     };
     failure = error;

@@ -105,7 +105,10 @@ test('public native iOS Intent publishes real iOS selectors and binds original a
     result = await run('script', { operation: 'wait', operationId: scriptId, waitMs: 1000 });
   }
   assert.equal(result.status, 'completed', JSON.stringify(result));
-  assert.deepEqual(result.rollingSummary.assertions, { passed: 1, failed: 0, inconclusive: 0 });
+  // WDA supplies the observed controls but does not report whole-tree coverage.
+  // The action succeeds; its read must not invent complete device evidence.
+  assert.deepEqual(result.rollingSummary.assertions, { passed: 0, failed: 0, inconclusive: 1 });
+  assert.equal(h.state.tree.children.find(n => n.rawIdentifier === 'title').value, 'Script record');
   assert.deepEqual(h.state.actions.filter(a => a.operation === 'set-orientation').map(a => a.payload),
     [{ orientation: 'landscapeLeft' }, { orientation: 'portrait' }]);
 });

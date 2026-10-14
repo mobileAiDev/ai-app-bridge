@@ -146,7 +146,7 @@ if (call.args.includes('logcat')) process.stdout.write('10-12 09:00:00.001  123 
     assert.equal(invalidRegex.failureStage, 'validation'); assert.equal(invalidRegex.execution.dispatched, false);
     assert.equal(fs.readFileSync(calls, 'utf8'), beforeInvalid);
     report.logcatQuery = { installedWorker: true, literalHint: true, regexMatched: true, invalidRegexNeverClears: true };
-    const uiaArgs = { serial: 'controlled-package-device', packageName: 'example.uia', adb: uia.adb, feedback: 'off' };
+    const uiaArgs = { serial: 'controlled-package-device', packageName: 'example.uia', adb: uia.adb, feedback: 'window' };
     const preciseCli = await cli('tap-uia', { ...uiaArgs, selector: { contentDescription: 'Package UI probe' } });
     const preciseMcp = await run('tap-uia', { ...uiaArgs, selector: { resourceName: 'example.uia:id/child' } });
     assert.equal(preciseCli.ok, true); assert.equal(preciseMcp.ok, true);
@@ -166,7 +166,7 @@ if (call.args.includes('logcat')) process.stdout.write('10-12 09:00:00.001  123 
       const tree = await ctx.call('uia-tree', { adb: ${JSON.stringify(adb)}, compact: true, maxDepth: 0 });
       if (!tree.ok) throw new Error(tree.error);
       if (tree.result.nodes.length !== 1 || tree.result.nodes[0].text !== 'Package UI probe') throw new Error('UIA depth filter failed');
-      const precise = await ctx.call('tap-uia', { adb: ${JSON.stringify(uia.adb)}, packageName: 'example.uia', selector: { text: 'Package UI probe' } });
+      const precise = await ctx.call('tap-uia', { adb: ${JSON.stringify(uia.adb)}, packageName: 'example.uia', feedback: 'window', selector: { text: 'Package UI probe' } });
       if (!precise.ok || precise.executionReceipt.actionId !== precise.execution.actionId) throw new Error('UIA original Script action identity missing');
       if (precise.warnings[0].code !== 'foreground_package_mismatch' || !precise.dispatched || precise.ambiguous) throw new Error('Script lost foreground/execution facts');
       const action = await ctx.call('keyevent', { adb: ${JSON.stringify(adb)}, keyCode: 0 });

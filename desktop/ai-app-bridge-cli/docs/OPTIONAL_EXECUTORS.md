@@ -19,10 +19,15 @@ These dependencies are isolated from ordinary production source sets. They are v
 
 Use `executor-prepare` from CLI, MCP `run`, or JavaScript/Python `ctx.call` with `app.test`. This is a Host operation: it does not require a device target, install an App, start UI observation, or open an executor session. Preparation uses the selected project's existing toolchain and keeps its application ID. The result separates preparation from installation and session readiness.
 
-Host/CLI 0.4.8 declares `sdkReleaseVersion: "0.4.8"` in its package metadata.
+Host/CLI 0.4.9 declares `sdkReleaseVersion: "0.4.9"` in its package metadata.
 Android and Flutter preparation use that exact SDK release for dependencies and
 report both `bridgeVersion` (Host) and `sdkReleaseVersion`. Both are updated
 together as part of the coordinated release.
+
+Version 0.4.9 is a release candidate until its public artifacts are published and
+verified. Before publication, select reviewed local Android artifacts with
+`repositoryUrl` or the local Flutter helper with `testPackagePath`; do not expect
+the 0.4.9 registry coordinates below to resolve yet.
 
 ```sh
 ai-app-bridge executor-prepare --extract null --platform android --project-dir /project \
@@ -57,9 +62,9 @@ android {
     }
 }
 dependencies {
-    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.4.8")
+    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-instrumentation:0.4.9")
     // Optional H5 adapter:
-    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.4.8")
+    androidTestImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-test-espresso-web:0.4.9")
 }
 ```
 
@@ -114,7 +119,7 @@ Espresso text actions have different semantics. `replaceText` is the framework's
 
 ## Flutter
 
-Add `ai_app_bridge_test: 0.4.8` to the application's `dev_dependencies`. The helper takes `flutter_test` and `integration_test` from the **same Flutter SDK** as the application. It is a Dart test helper, not an additional Android plugin with its own AGP/Kotlin versions.
+Add `ai_app_bridge_test: 0.4.9` to the application's `dev_dependencies`. The helper takes `flutter_test` and `integration_test` from the **same Flutter SDK** as the application. It is a Dart test helper, not an additional Android plugin with its own AGP/Kotlin versions.
 
 The helper declares Flutter **>=3.41.0** and Dart **>=3.11.0 <4.0.0**. The 0.3.8 automatic preparation was exercised with LocalSend on Flutter **3.41.9 / Android API 36**, preserving all 214 production dependency versions. Earlier executor validation covered Flutter 3.41.9 / API 25 and 3.44.8 / API 36. These are specific verified combinations; other SDK versions still need validation with the application's plugin graph.
 

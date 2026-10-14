@@ -386,8 +386,10 @@ async function main(ctx) {
   }
   async function mobileBoundary(name) {
     const boundaries = {};
+    const deviceNow = (await call('status')).result.updatedAtMs;
+    if (!Number.isFinite(deviceNow)) throw new Stop('inconclusive', 'Device capture time unavailable');
     for (const stream of ['events', 'state', 'logs']) {
-      const before = await ctx.call(stream, { ...target, sinceMs: Date.now() - 1000, limit: 200 },
+      const before = await ctx.call(stream, { ...target, sinceMs: deviceNow - 1000, limit: 200 },
         { evidenceWindow: { timeoutMs: 1000 } });
       const c = before.evidence.capture, coverage = before.evidence.coverage;
       const ready = before.ok && coverage.status === 'complete' && coverage.gap === false

@@ -94,16 +94,24 @@ function sanitizeString(value, key) {
     value = redactSensitiveUrlPath(value);
     try {
       const url = new URL(value);
+      const originalUrl = url.toString();
       if (url.password) url.password = REDACTED;
       url.pathname = redactSensitiveUrlPath(url.pathname);
       for (const parameter of [...url.searchParams.keys()]) {
         if (isSensitiveKey(parameter)) url.searchParams.set(parameter, REDACTED);
       }
-      value = url.toString();
+      // Parsing can reveal credentials (for example pass<TAB>word=...). Check
+      // that representation too, but retain safe hashed inputs byte for byte.
+      const redactedUrl = redactInlineCredentials(url.toString());
+      if (redactedUrl !== originalUrl) value = redactedUrl;
     } catch (_) {
       // Relative/non-URL text still receives assignment redaction below.
     }
   }
+  return redactInlineCredentials(value, androidUiHierarchyXml);
+}
+
+function redactInlineCredentials(value, androidUiHierarchyXml = false) {
   let sanitized = value.replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, '$1 [REDACTED]');
   sanitized = sanitized.replace(
     /(\b(?:authorization|proxy[-_ ]?authorization)\b\s*[:=]\s*)[^\r\n]*/gi,

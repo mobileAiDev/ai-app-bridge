@@ -6,7 +6,7 @@ async function runWithFeedbackProbe(options = {}) {
       || command === 'launch-app' || command === 'launch-activity') return runFeedback(options);
   const observationCommand = String(command).startsWith('ios-') ? 'ios-ui-observation'
     : String(command).startsWith('web-') ? 'web-ui-observation' : 'ui-observation';
-  const targetArgs = pick(args, ['serial', 'adb', 'packageName', 'port', 'deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort', 'sessionId', 'runtimeEpoch', 'targetId']);
+  const targetArgs = pick(args, ['serial', 'adb', 'packageName', 'port', 'sdkTransport', 'adbServerSocket', 'deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort', 'sessionId', 'runtimeEpoch', 'targetId']);
   if (observationCommand !== 'web-ui-observation') targetArgs.provider = String(command).includes('flutter') ? 'flutter' : 'native';
   const started = await runner(observationCommand, { ...targetArgs, operation: 'start', durationMs: 5000 });
   if (started?.ok !== true || started.active !== true || typeof started.leaseId !== 'string') {

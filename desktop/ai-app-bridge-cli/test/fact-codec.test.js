@@ -113,6 +113,18 @@ test('canonical projection converts buffers to metadata and rejects cycles', () 
   assert.throws(() => sanitizePersistentValue(cyclic), /without cycles/);
 });
 
+for (const removedByUrlParser of ['\t', '\n', '\r']) {
+  test(`URL normalization must reveal credentials before preserving bytes: ${JSON.stringify(removedByUrlParser)}`, () => {
+    const secret = 'synthetic-normalization-secret';
+    const url = `https://example.test/pass${removedByUrlParser}word=${secret}`;
+    const value = { baseUrl: url, receiptJson: JSON.stringify({ url }) };
+    const projected = sanitizePersistentValue(value);
+    assert.doesNotMatch(JSON.stringify(projected), /synthetic-normalization-secret/);
+    assert.match(projected.baseUrl, /REDACTED/);
+    assert.deepEqual(sanitizePersistentValue(projected), projected);
+  });
+}
+
 test('canonical projection redacts only password field values in UiAutomator XML', () => {
   const source = [
     "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>",

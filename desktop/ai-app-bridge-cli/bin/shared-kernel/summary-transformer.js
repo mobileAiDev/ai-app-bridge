@@ -7,6 +7,7 @@ const { parseXmlAttributes } = require('./xml-attributes');
 const iosNative = require('./ios-native-target');
 const uia = require('./uia-protocol');
 const { observationCoverage } = require('./observation-coverage');
+const { visitAndroidUiHierarchyTags } = require('../android-uia-xml');
 
 const DEFAULT_MAX_BYTES = 64 * 1024;
 const HARD_LIMIT_MS = 50;
@@ -31,6 +32,7 @@ function summarizeTree({
   let visited = 0;
   let truncated = false;
   let reason = null;
+  let omittedHiddenNodes = 0;
   const page = provider === 'h5' && ([require('./ios-h5-target').schema, require('./android-h5-target').schema].includes(rawTree?.h5TargetSchema)
     || rawTree?.webTargetSchema === require('./web-dom-target').schema)
     ? { ...rawTree.pageRef, title: rawTree.dom.title.slice(0,500), readyState: rawTree.dom.readyState,
@@ -52,6 +54,10 @@ function summarizeTree({
       reason = 'hard_limit_ms';
       return false;
     }
+    if (provider === 'uia' && (source?.effectiveVisible === false || source?.visible === false)) {
+      omittedHiddenNodes += 1;
+      return true;
+    }
     const node = toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId, uiaSnapshot);
     if (node && keepNode(node)) collected.push(node);
     return true;
@@ -68,11 +74,13 @@ function summarizeTree({
     activity,
     page,
     sourceCoverage,
+    omittedHiddenNodes,
     prioritizeVisibleControls: provider === 'native' && rawTree?.nativeTargetSchema === iosNative.schema,
   });
   truncated = truncated || nodes.truncated;
   reason = reason || nodes.reason;
-  const coverage = { source: sourceCoverage, projection: { truncated, reason } };
+  const coverage = { source: sourceCoverage, projection: { truncated, reason,
+    ...(omittedHiddenNodes ? { filtered: true, omittedHiddenNodes } : {}) } };
   if (sourceCoverage.status === 'partial') { truncated = true; reason = reason || 'source_incomplete'; }
 
   return {
@@ -144,14 +152,29 @@ function walkUia(tree, visit) {
 }
 
 function walkUiaXml(xml, visit) {
-  const tokenRegex = /<\/node>|<node\b[^>]*\/?>/g;
   let sourceIndex = 0;
-  let token;
-  while ((token = tokenRegex.exec(String(xml || ''))) !== null) {
-    const tag = token[0];
-    if (tag.startsWith('</node') || !tag.startsWith('<node')) continue;
-    if (visit(parseXmlAttributes(tag), sourceIndex++) === false) return;
-  }
+  const ancestors = [];
+  visitAndroidUiHierarchyTags(xml, ({ tag, tagName, closing, selfClosing }) => {
+    if (closing) { ancestors.pop(); return; }
+    const source = parseXmlAttributes(tag);
+    if (!source.class && tagName !== 'node') source.class = tagName;
+    const reported = boolOrNull(source['visible-to-user'] ?? source.displayed);
+    const hidden = ancestors.at(-1)?.hidden || reported === false;
+    const bounds = boundsOf(source);
+    const viewport = ancestors[0]?.bounds;
+    const outside = bounds && (bounds.right <= bounds.left || bounds.bottom <= bounds.top
+      || viewport && viewport.right > viewport.left && viewport.bottom > viewport.top
+        && (bounds.right <= viewport.left || bounds.left >= viewport.right
+          || bounds.bottom <= viewport.top || bounds.top >= viewport.bottom));
+    // Missing visibility/bounds remain unknown. A hidden ancestor is explicit
+    // evidence; partially visible controls still belong to the current page.
+    if (reported !== null) source.visible = reported;
+    if (hidden || outside) source.effectiveVisible = false;
+    else if (reported !== null) source.effectiveVisible = reported;
+    const result = visit(source, sourceIndex++);
+    if (!selfClosing) ancestors.push({ hidden, bounds });
+    return result;
+  });
 }
 
 function walkFlutter(tree, visit) {
@@ -239,6 +262,7 @@ function toSemanticNode(provider, source, sourceIndex, rawTreeId, screenshotId, 
       || source.clickable === 'true'
       || (Array.isArray(source.actions) && source.actions.includes('tap')),
     ),
+    ...(provider === 'uia' ? { visible: source.visible, effectiveVisible: source.effectiveVisible } : {}),
     ...(['native', 'h5'].includes(provider) ? {
       resourceName: source.resourceName,
       editable: source.editable,
@@ -321,10 +345,11 @@ function boolOrNull(value) {
   return null;
 }
 
-function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity, page, sourceCoverage, prioritizeVisibleControls }) {
+function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated, reason, maxBytes, activity, page, sourceCoverage, prioritizeVisibleControls, omittedHiddenNodes }) {
+  const visibility = omittedHiddenNodes ? { filtered: true, omittedHiddenNodes } : {};
   const meta = { ok: true, provider, rawTreeId, screenshotId, visited, truncated: truncated || sourceCoverage.status === 'partial',
     reason: reason || (sourceCoverage.status === 'partial' ? 'source_incomplete' : null),
-    coverage: { source: sourceCoverage, projection: { truncated, reason } },
+    coverage: { source: sourceCoverage, projection: { truncated, reason, ...visibility } },
     ...(activity === undefined ? {} : { activity }), ...(page === undefined ? {} : { page }) };
   if (byteSize(nodes, meta) <= maxBytes) {
     return { nodes, truncated, reason };
@@ -343,7 +368,7 @@ function fitNodes(nodes, { provider, rawTreeId, screenshotId, visited, truncated
       ...meta,
       truncated: true,
       reason: reason || 'max_bytes',
-      coverage: { source: sourceCoverage, projection: { truncated: true, reason: reason || 'max_bytes' } },
+      coverage: { source: sourceCoverage, projection: { truncated: true, reason: reason || 'max_bytes', ...visibility } },
     };
     if (byteSize(candidates.slice(0, mid), candidate) <= maxBytes) low = mid;
     else high = mid - 1;

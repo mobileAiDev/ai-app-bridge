@@ -17,7 +17,7 @@ const labels = {
   bookmarkList: 'Bookmarks', settingsRestore: '3D buildings',
 };
 const node = (text, attrs = '') => `<node text="${text}" content-desc="${text}" ${attrs}/>`;
-const xml = (...nodes) => `<hierarchy>${nodes.join('')}</hierarchy>`;
+const xml = (...nodes) => `<hierarchy aab-truncated="false">${nodes.join('')}</hierarchy>`;
 const settingsXml = (restored) => xml(
   node('Settings Theme Language'), node('System', 'class="android.widget.Button" bounds="[0,0][100,100]"'),
   node(restored ? 'System' : 'English', 'class="android.widget.Button" bounds="[0,100][100,200]"'), node(labels.noPeer),

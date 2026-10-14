@@ -92,7 +92,7 @@ async function waitForText({ options, readTree, readForeground }) {
   let feedback;
   let rounds = 0, attempts = 0, successfulReads = 0, failedReads = 0;
   const failures = new Map();
-  const foreground = previous => readForegroundFeedback(options,
+  const foreground = previous => readForegroundFeedback(conditions.requireActivity ? { ...options, feedback: 'window' } : options,
     (ctx, probe) => conditions.requireActivity ? readForeground(ctx, probe)
       : runExecution({ timeoutMs: Math.max(1, Math.min(500, Math.floor(timeoutMs / 4))) }, () => readForeground(ctx, probe)), previous);
   const progress = () => ({ rounds, attempts, successfulReads, failedReads, elapsedMs: Date.now() - startedAtMs,

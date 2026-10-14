@@ -6,6 +6,11 @@ const { sameForegroundWindow } = require('./android-foreground-identity');
 // Observation has no authority over action admission. Executor/node/reference
 // errors and their dispatch receipts are returned unchanged by withForeground.
 async function readForegroundFeedback(ctx, read, previous) {
+  if (ctx.feedback === 'auto' || ctx.feedback === 'off') return { foregroundObservations: [{
+    expected: { serial: ctx.serial ?? null, packageName: ctx.packageName ?? null },
+    actual: null, status: 'notCollected', reason: 'feedback_policy', policy: ctx.feedback,
+    source: 'android-window-manager',
+  }], warnings: [] };
   let actual;
   const startedAtMs = Date.now();
   try { actual = await read(ctx, { verification: 'window' }); }

@@ -90,10 +90,13 @@ module.exports.main=async function main(ctx) {
   async function capture(name) {
     const status=await call('status'); const epoch=status.result.debugBridge?.runtimeEpoch;
     if(!epoch)throw Error('explicit_runtime_epoch_required');
-    const r=await call('logs',{runtimeEpoch:epoch,sinceMs:result.startedAtMs,limit:500});write(`${name}-logs.json`,r);
+    const r=await call('logs',{runtimeEpoch:epoch,sinceMs:result.deviceStartedAtMs,limit:500});write(`${name}-logs.json`,r);
     result.capture={runtimeEpoch:epoch,path:path.join(out,`${name}-logs.json`),coverage:r.evidence?.coverage};save();
   }
   try {
+    const startedStatus = await call('status');
+    result.deviceStartedAtMs = startedStatus.result.updatedAtMs;
+    if (!Number.isFinite(result.deviceStartedAtMs)) throw Error('device_capture_time_unavailable');
     if(phase==='cold') {
       await navigate('未加标签');
       await checkpoint('cold-overview',PACKAGE,[{resourceName:`${PACKAGE}:id/Title`,text:noteTitle}]);

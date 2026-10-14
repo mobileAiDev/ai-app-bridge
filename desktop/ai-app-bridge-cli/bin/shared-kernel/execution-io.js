@@ -51,8 +51,8 @@ function execFileBounded(file, args, { timeoutMs = 15000, mutation = false, exec
   });
 }
 
-function httpRequestBounded(url, { method = 'GET', payload, headers = {}, timeoutMs = 10000, maxBytes = 64 * 1024 * 1024 } = {}) {
-  if (!currentExecution()) return runExecution({ mutation: method !== 'GET' }, () => httpRequestBounded(url, { method, payload, headers, timeoutMs, maxBytes }));
+function httpRequestBounded(url, { method = 'GET', payload, headers = {}, timeoutMs = 10000, maxBytes = 64 * 1024 * 1024, socket } = {}) {
+  if (!currentExecution()) return runExecution({ mutation: method !== 'GET' }, () => httpRequestBounded(url, { method, payload, headers, timeoutMs, maxBytes, socket }));
   checkExecution();
   const scope = currentExecution();
   const body = payload === undefined ? undefined : JSON.stringify(payload);
@@ -64,8 +64,11 @@ function httpRequestBounded(url, { method = 'GET', payload, headers = {}, timeou
     let data = '';
     let bytes = 0;
     let ended = false;
+    const agent = socket ? new http.Agent({ keepAlive: false }) : undefined;
+    if (agent) agent.createConnection = () => socket;
     const request = (protocol === 'https:' ? https : http).request(url, {
       method,
+      ...(agent ? { agent } : {}),
       headers: { ...headers, ...(body === undefined ? {} : { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }) },
     }, response => {
       response.setEncoding('utf8');
@@ -81,6 +84,7 @@ function httpRequestBounded(url, { method = 'GET', payload, headers = {}, timeou
           { statusCode: response.statusCode, responseBody: data });
       });
     });
+    if (socket) request.on('socket', connection => connection.resume());
     const stop = error => { failure ||= error; request.destroy(); };
     const abort = () => stop(executionFailure(scope));
     const timer = setTimeout(() => stop(ioFailure('provider_timeout', `HTTP request timed out after ${timeoutMs} ms.`, scope)), timeoutMs);
@@ -88,6 +92,8 @@ function httpRequestBounded(url, { method = 'GET', payload, headers = {}, timeou
     request.on('error', error => { failure ||= error; });
     request.on('close', () => {
       clearTimeout(timer);
+      socket?.destroy();
+      agent?.destroy();
       scope?.signal.removeEventListener('abort', abort);
       if (!ended) failure ||= ioFailure('provider_disconnected', 'HTTP response closed before completion.', scope);
       if (failure) {

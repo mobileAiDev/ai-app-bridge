@@ -3,7 +3,31 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createLabServer } from './server.mjs';
+
+test('missing static assets fail their request while the fixture remains usable', async t => {
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-workflow-missing-assets-')));
+  for (const name of ['server.mjs', 'commerce.mjs']) fs.copyFileSync(new URL(name, import.meta.url), path.join(directory, name));
+  const child = spawn(process.execPath, [path.join(directory, 'server.mjs'), path.join(directory, 'state')]);
+  let stderr = '';
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  const closed = once(child, 'close');
+  t.after(async () => { if (child.exitCode === null && child.signalCode === null) child.kill(); await closed; fs.rmSync(directory, { recursive: true }); });
+  const [ready] = await Promise.race([once(child.stdout, 'data'), closed.then(() => { throw new Error(`Fixture exited before listening: ${stderr}`); })]);
+  const { port } = JSON.parse(ready.toString());
+  const base = `http://127.0.0.1:${port}`;
+  for (const route of ['/images/product-0.png', '/campaign.html']) {
+    const response = await fetch(base + route);
+    assert.equal(response.status, 500, stderr);
+    assert.equal((await response.json()).error, 'server_error');
+  }
+  const response = await fetch(base + '/__state');
+  assert.equal(response.status, 200, stderr);
+  assert.deepEqual(await response.json(), {});
+  assert.equal(child.exitCode, null, stderr);
+});
 
 async function fixture(t, config = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-workflow-'));

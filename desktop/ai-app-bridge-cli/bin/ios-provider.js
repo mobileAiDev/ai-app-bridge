@@ -19,6 +19,7 @@ const { executeWDAAction, reconcileWDA, completionPort } = require('./ios-wda-ex
 const { deviceCommandRejection, deviceCommandProof } = require('./ios-device-outcome');
 const { initializationProof } = require('./ios-wda-startup');
 const { bindFlutterAction } = require('./shared-kernel/flutter-target');
+const { flutterLayoutResult } = require('./shared-kernel/flutter-layout-result');
 const nativeTarget = require('./shared-kernel/ios-native-target');
 const h5Target = require('./shared-kernel/ios-h5-target');
 const h5Controls = new Map([['ios-h5-click','click'], ['ios-h5-input','input'], ['ios-h5-scroll','scroll']]);
@@ -532,8 +533,12 @@ class IOSBridgeProvider {
   async flutterTree(args = {}, { scope = 'full' } = {}) {
     const status = await this.runtimeGet(args, scope === 'full' ? '/v1/flutter/snapshot' : '/v1/flutter/snapshot?scope=operable');
     if (status.ok === false) return status;
+    const layout = flutterLayoutResult(status);
     return {
-      ok: true,
+      ok: layout.ok,
+      ...(layout.error ? { error: layout.error, message: layout.message, dispatched: false, ambiguous: false } : {}),
+      availableSources: layout.availableSources,
+      unavailableSources: layout.unavailableSources,
       endpoint: status.endpoint,
       runtimeBinding: status.runtimeBinding,
       device: status.device || null,
@@ -543,19 +548,17 @@ class IOSBridgeProvider {
   }
 
   async flutterNodes(args = {}) {
-    const tree = await this.flutterTree(args, { scope: 'operable' });
-    if (tree.ok === false) return tree;
-    const operable = tree.layout?.operable || null;
+    const status = await this.runtimeGet(args, '/v1/flutter/snapshot?scope=operable');
+    if (status.ok === false) return status;
+    const operable = status.flutter?.layout?.operable;
     return {
       ...operable,
-      ok: Boolean(operable),
-      endpoint: tree.endpoint,
-      runtimeBinding: tree.runtimeBinding,
-      device: tree.device || null,
-      operable,
-      nodes: operable?.nodes || [],
-      count: operable?.count || 0,
-      error: operable ? null : 'flutter_operable_tree_absent',
+      ok: operable?.ok === true,
+      endpoint: status.endpoint,
+      runtimeBinding: status.runtimeBinding,
+      device: status.device || null,
+      operable: operable ?? null,
+      ...(!operable ? { error: 'flutter_operable_tree_absent', dispatched: false, ambiguous: false } : {}),
     };
   }
 

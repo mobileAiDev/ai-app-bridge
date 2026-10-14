@@ -13,17 +13,58 @@ async function stopDevice(serial, pending, timeoutMs, automation) {
   if (descriptor && (descriptor.serial !== serial || descriptor.sessionId !== automation.sessionId))
     throw new CommandError('executor_descriptor_mismatch', 'The recorded test session does not match this device.');
   const { executablePath } = require('./executable-path');
-  const adb = pending.find(item => item.target?.adb)?.target.adb || descriptor?.adb || executablePath(process.env.ADB || 'adb');
-  const { createUiaRuntimePort } = require('./uia-runtime-port');
-  const uia = await createUiaRuntimePort({ adb, serial, timeoutMs }).forceStop();
-  const packages = [...new Set([...pending.map(item => item.target?.packageName || item.packageName),
-    descriptor?.packageName, descriptor?.instrumentation?.split('/')[0]].filter(Boolean))];
-  const { execFileBounded } = require('./execution-io');
-  for (const packageName of packages) {
-    if (!/^[a-zA-Z0-9_.]+$/.test(packageName)) throw new CommandError('invalid_force_stop_package', 'The recorded Android package is invalid.');
-    await execFileBounded(adb, ['-s', serial, 'shell', 'am', 'force-stop', packageName], { timeoutMs, mutation: false, encoding: 'utf8' });
+  const { adbServerSocket, parseAdbServer } = require('./android-adb-route');
+  const defaultAdb = descriptor?.adb || executablePath(process.env.ADB || 'adb');
+  const records = pending.map(item => ({ target: item.target || {}, packages: [item.target?.packageName || item.packageName], source: 'pending' }));
+  if (descriptor) records.push({ target: descriptor, packages: [descriptor.packageName, descriptor.instrumentation?.split('/')[0]], source: 'automation' });
+  if (!records.length) records.push({ target: {}, packages: [], source: 'request' });
+  const groups = new Map();
+  for (const record of records) {
+    const original = record.target.originalSdkRoute;
+    if (original && (original.serial !== serial || typeof original.server?.socket !== 'string' || typeof original.executable?.path !== 'string'))
+      throw new CommandError('force_stop_route_invalid', 'The recorded SDK route is incomplete or identifies another serial. Inspect the ownership archive before resetting it.', { details: { serial } });
+    const adb = original?.executable.path || record.target.adb || defaultAdb;
+    if (typeof adb !== 'string' || !adb) throw new CommandError('force_stop_adb_unavailable', 'The recorded ADB executable is unavailable. Install or restore adb, then repeat force-stop.');
+    const serverSocket = parseAdbServer(original?.server.socket ?? record.target.adbServerSocket ?? adbServerSocket()).socket;
+    const source = original ? 'recorded_sdk_route' : record.target.adbServerSocket ? 'recorded_server'
+      : record.source === 'request' ? 'current_request' : 'legacy_environment';
+    const key = JSON.stringify([adb, serial, serverSocket]);
+    if (!groups.has(key)) groups.set(key, { adb, serial, serverSocket, sources: new Set(), packages: new Set() });
+    const group = groups.get(key); group.sources.add(source);
+    for (const packageName of record.packages.filter(Boolean)) {
+      if (!/^[a-zA-Z0-9_.]+$/.test(packageName)) throw new CommandError('invalid_force_stop_package', 'The recorded Android package is invalid.');
+      group.packages.add(packageName);
+    }
   }
-  return { ...uia, stoppedPackages: packages };
+  const { createUiaRuntimePort } = require('./uia-runtime-port');
+  const { execFileBounded } = require('./execution-io');
+  const routes = [];
+  for (const group of groups.values()) {
+    const { adb, serverSocket } = group;
+    const facts = { adb, serial, serverSocket, sources: [...group.sources], stoppedPackages: [],
+      ...(group.sources.has('legacy_environment') ? { warnings: [{ code: 'original_adb_namespace_unrecorded',
+        message: 'This older record did not save an ADB server namespace. The reset used the current Host environment shown in serverSocket.' }] } : {}) };
+    // Capture one namespace for both UIA maintenance and every package stop.
+    // A concurrent reset or caller environment change cannot redirect this group.
+    const env = { ...process.env, ADB_SERVER_SOCKET: serverSocket };
+    const run = (file, args, options) => execFileBounded(file, args, { ...options, env });
+    try {
+      const uia = await createUiaRuntimePort({ adb, serial, timeoutMs, run }).forceStop();
+      for (const packageName of group.packages) {
+        await run(adb, ['-s', serial, 'shell', 'am', 'force-stop', packageName], { timeoutMs, mutation: false, encoding: 'utf8' });
+        facts.stoppedPackages.push(packageName);
+      }
+      routes.push({ ...uia, ...facts });
+    } catch (error) {
+      routes.push({ ...facts, ok: false, error: typeof error.code === 'string' ? error.code : 'force_stop_route_failed',
+        message: error.message, ...(error.details ? { details: error.details } : {}),
+        ...(error.stderr ? { stderr: String(error.stderr).slice(0, 2048) } : {}) });
+    }
+  }
+  const ok = routes.every(route => route.ok === true);
+  return { ...(routes.length === 1 ? routes[0] : {}), ok, stopped: ok, routes,
+    stoppedPackages: [...new Set(routes.flatMap(route => route.stoppedPackages))],
+    ...(!ok ? { error: 'force_stop_device_incomplete' } : {}) };
 }
 
 // This control runs in the CLI/MCP client, before contacting the shared runtime.
@@ -88,13 +129,15 @@ async function forceStopDevice(args, { directory, stopHost = stopHosts, stopDevi
     try {
       const automation = automationStore.owner(args.serial, store.directory);
       phone = await remoteStop(args.serial, pending, args.timeoutMs ?? 10000, automation);
-      if (phone?.ok !== true) throw new CommandError(phone?.error || 'force_stop_device_failed', 'The phone did not confirm the forced reset.');
+      if (phone?.ok !== true) throw new CommandError(phone?.error || 'force_stop_device_failed', 'The phone did not confirm every recorded route was reset.', { details: phone });
       if (automation) state.lastReset.automationArchivePath = automationStore.archive(args.serial, resetId, store.directory);
     } catch (error) {
       const code = typeof error.code === 'string' && /^[a-z][a-z0-9_]*$/.test(error.code) ? error.code : 'force_stop_device_failed';
+      state.lastReset.phone = phone ?? { ok: false, error: code };
+      store.write(args.serial, state);
       return { ok: false, error: code, phase: 'idle', serial: args.serial,
         ownershipReleased: true, remoteResetPending: true, ...state.lastReset,
-        remoteError: { code, message: error.message },
+        remoteError: { code, message: error.message, ...(error.details ? { details: error.details } : {}) },
         message: 'Local occupancy was reset; the remote reset is incomplete. Reconnect and repeat device-ownership force-stop to stop the recorded old work. New explicit actions can proceed with a warning.' };
     }
     state.resetRequired = false; delete state.resetPending; state.lastReset.phone = phone; store.write(args.serial, state);

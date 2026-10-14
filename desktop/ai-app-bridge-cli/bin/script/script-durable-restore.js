@@ -41,12 +41,6 @@ function planCodeRestore({ checkpoint, script } = {}) {
     return scriptError('script_format_removed');
   }
   const candidate = script;
-  if (candidate?.target && checkpoint.target && checksumOf(candidate.target) !== checksumOf(checkpoint.target)) {
-    return scriptError('script_target_mismatch');
-  }
-  if (candidate?.permissions && checkpoint.permissions && checksumOf(candidate.permissions) !== checksumOf(checkpoint.permissions)) {
-    return scriptError('script_permissions_mismatch');
-  }
   let input = candidate;
   if (input === undefined) {
     if (!checkpoint.source || !checkpoint.language) return scriptError('script_source_required', { hash: checkpoint.hash || null });
@@ -63,10 +57,19 @@ function planCodeRestore({ checkpoint, script } = {}) {
     compiled.spec.sourcePath = checkpoint.sourcePath;
     compiled.hash = scriptHash(compiled.spec);
   }
-  if (checkpoint.hash && compiled.hash !== checkpoint.hash) {
-    return scriptError('script_hash_mismatch', {
+  // Compare the compiled program first: older persistence may have changed
+  // URL bytes, while caller-relative executable paths normalize at compilation.
+  if (compiled.hash !== checkpoint.hash) {
+    if (candidate?.target && checkpoint.target && checksumOf(compiled.spec.target) !== checksumOf(checkpoint.target)) {
+      return scriptError('script_target_mismatch');
+    }
+    if (candidate?.permissions && checkpoint.permissions && checksumOf(compiled.spec.permissions) !== checksumOf(checkpoint.permissions)) {
+      return scriptError('script_permissions_mismatch');
+    }
+    if (checkpoint.hash) return scriptError('script_hash_mismatch', {
       hash: checkpoint.hash,
       provided: compiled.hash,
+      message: 'The Script does not match the original program hash. Resume may include script with the exact original specification; that specification must pass the same hash check.',
     });
   }
   return { ok: true, format: 'code', compiled, checkpoint };

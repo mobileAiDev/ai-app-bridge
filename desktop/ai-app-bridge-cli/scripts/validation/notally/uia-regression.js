@@ -34,6 +34,28 @@ module.exports.main = async ctx => {
   const back = () => call('adb-exec', { argv: ['shell', 'input', 'keyevent', 'KEYCODE_BACK'] });
   const text = value => call('adb-exec', { argv: ['shell', 'input', 'text', value] });
   const read = () => call('uia-tree', { compact: true, packageFilter: pkg, maxNodes: 1000 });
+  async function enter(name, value) {
+    await tap(id(name));
+    const deadline = Date.now() + 4000;
+    let current;
+    do {
+      current = (await read()).nodes.find(n => n.resourceId === `${pkg}:id/${name}` && n.focused === true);
+      if (!current) await new Promise(resolve => setTimeout(resolve, 40));
+    } while (!current && Date.now() < deadline);
+    if (!current) throw new Error(`editor did not receive focus: ${name}`);
+    await text(value);
+    for (let repair = 0; repair < 2; repair++) {
+      const observed = (await read()).nodes.find(n => n.resourceId === `${pkg}:id/${name}`);
+      if (observed?.text === value) { checks.push({ name: `${name} exact input verified`, passed: true }); return; }
+      if (!observed?.focused) throw new Error(`input target changed: ${name}`);
+      // The known editor's value was read after a settled ADB call. Explicitly
+      // replace the mismatching local text; never replay an unknown action.
+      fs.appendFileSync(path.join(outDir, 'input-repairs.jsonl'), JSON.stringify({ name, expected: value, observed: observed.text }) + '\n');
+      await call('adb-exec', { argv: ['shell', 'input', 'keycombination', 'KEYCODE_CTRL_LEFT', 'KEYCODE_A'] });
+      await text(value);
+    }
+    await check(`${name} exact input after repair`, name, value);
+  }
   async function findNote() {
     const deadline = Date.now() + 6000;
     let searched = false, lastMatches = [];
@@ -50,8 +72,7 @@ module.exports.main = async ctx => {
       const search = tree.nodes.find(n => n.contentDescription === 'Search' && n.targetRef);
       if (!searched && search) {
         await call('tap-uia', { targetRef: search.targetRef });
-        await tap(id('EnterSearchKeyword'));
-        await text(title);
+        await enter('EnterSearchKeyword', title);
         searched = true;
       } else await new Promise(resolve => setTimeout(resolve, 50));
     } while (Date.now() < deadline);
@@ -79,13 +100,46 @@ module.exports.main = async ctx => {
     return tree;
   }
   async function folder(label) {
-    const tree = await read();
-    if (!tree.nodes.some(n => n.contentDescription === 'Open navigation drawer')
-      && tree.nodes.some(n => n.resourceId === `${pkg}:id/EnterSearchKeyword`)) {
-      await tap({ contentDescription: 'Navigate up' });
-    }
-    await tap({ contentDescription: 'Open navigation drawer' });
-    await tap({ ...id('design_menu_item_text'), text: label });
+    const deadline = Date.now() + 6000;
+    let leftSearch = false;
+    do {
+      const tree = await read();
+      if (tree.nodes.some(n => n.contentDescription === 'Open navigation drawer')) {
+        await tap({ contentDescription: 'Open navigation drawer' });
+        // Upstream navigation completes in onDrawerClosed. Wait for opening
+        // geometry to settle before selecting, then verify the destination.
+        // Keep animations enabled.
+        let previousBounds, stableSince = 0, drawerSettled = false;
+        do {
+          const opened = await read();
+          const item = opened.nodes.find(n => n.resourceId === `${pkg}:id/design_menu_item_text` && n.text === label);
+          const bounds = item && JSON.stringify(item.bounds);
+          if (bounds && bounds === previousBounds) {
+            if (Date.now() - stableSince >= 100) { drawerSettled = true; break; }
+          } else { previousBounds = bounds; stableSince = Date.now(); }
+          await new Promise(resolve => setTimeout(resolve, 40));
+        } while (Date.now() < deadline);
+        if (!drawerSettled) throw new Error(`drawer did not settle: ${label}`);
+        await tap({ ...id('design_menu_item_text'), text: label });
+        do {
+          const settled = await read();
+          const start = settled.nodes.findIndex(n => n.resourceId === `${pkg}:id/Toolbar`);
+          const toolbar = start < 0 ? null : settled.nodes[start];
+          const children = [];
+          if (toolbar) for (let i = start + 1; i < settled.nodes.length && settled.nodes[i].depth > toolbar.depth; i++) children.push(settled.nodes[i]);
+          if (children.some(n => n.text === label)
+              && !settled.nodes.some(n => n.resourceId === `${pkg}:id/design_menu_item_text`)) return;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } while (Date.now() < deadline);
+        throw new Error(`folder heading did not settle: ${label}`);
+      }
+      if (!leftSearch && tree.nodes.some(n => n.resourceId === `${pkg}:id/EnterSearchKeyword`)
+          && !tree.nodes.some(n => n.resourceId === `${pkg}:id/EnterTitle`)) {
+        await tap({ contentDescription: 'Navigate up' });
+        leftSearch = true;
+      } else await new Promise(resolve => setTimeout(resolve, 50));
+    } while (Date.now() < deadline);
+    throw new Error(`navigation did not settle before opening ${label}`);
   }
   async function menu(label) {
     await tap({ contentDescription: 'Tap for more options' });
@@ -103,8 +157,8 @@ module.exports.main = async ctx => {
       await wait('Take note');
       phase = 'create';
       await tap({ contentDescription: 'Take note' });
-      await tap(id('EnterTitle')); await text(title);
-      await tap(id('EnterBody')); await text(body);
+      await enter('EnterTitle', title);
+      await enter('EnterBody', body);
       await check('editor received input events', 'EnterBody', body);
       await back();
       await tap({ contentDescription: 'Pin' });

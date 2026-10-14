@@ -27,9 +27,11 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         final AccessibilityNodeInfo handle;
         final JSONObject identity;
         final Node parent;
+        final boolean focusable, focused, selected;
         final List<Node> children = new ArrayList<>();
         Node(AccessibilityNodeInfo handle, JSONObject identity, Node parent) {
             this.handle = handle; this.identity = identity; this.parent = parent;
+            this.focusable = handle.isFocusable(); this.focused = handle.isFocused(); this.selected = handle.isSelected();
         }
     }
 
@@ -147,6 +149,9 @@ final class UiaNodes implements UiaActionEngine.Gateway {
             {"enabled", "enabled"}, {"visible-to-user", "visible"}, {"clickable", "clickable"},
             {"checkable", "checkable"}, {"checked", "checked"}, {"scrollable", "scrollable"}};
         for (String[] name : names) attr(output, name[0], xmlValue(node.identity, name[1]));
+        attr(output, "focusable", Boolean.toString(node.focusable));
+        attr(output, "focused", Boolean.toString(node.focused));
+        attr(output, "selected", Boolean.toString(node.selected));
         output.append('>');
     }
 

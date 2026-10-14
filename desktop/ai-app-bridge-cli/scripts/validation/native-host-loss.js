@@ -32,7 +32,7 @@ module.exports.main = async ctx => {
   await call('tap-native', { selector: { text: 'Native Increment', contentDescription: 'native_increment' } });
   await wait('Native counter: 2');
   await call('screenshot', { outFile: path.join(ctx.inputs.outDir, 'continued-effect.png') });
-  const records = await call('state', { sinceMs: ctx.inputs.began, limit: 20 });
+  const records = await call('state', { sinceMs: ctx.inputs.deviceSinceMs, limit: 20 });
   fs.writeFileSync(path.join(ctx.inputs.outDir, 'state-records.json'), JSON.stringify(records, null, 2));
   return { ok: true, originalCounter: 1, finalCounter: 2, originalActionReplayed: false };
 };

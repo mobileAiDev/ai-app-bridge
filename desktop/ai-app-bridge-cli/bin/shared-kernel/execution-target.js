@@ -6,7 +6,7 @@ const { checksumOf } = require('./evidence-schema');
 const { resolveExecutablePaths } = require('./request-context');
 
 const definitions = Object.freeze({
-  android: { identity: ['serial', 'packageName'], connection: ['adb', 'port'] },
+  android: { identity: ['serial', 'packageName'], connection: ['adb', 'port', 'sdkTransport', 'feedback', 'screenshotVerification'] },
   ios: { identity: ['deviceId', 'bundleId'], connection: ['runtimeUrl', 'iosHost', 'iosPort', 'wdaUrl', 'wdaRunnerBundleId', 'wdaSessionId', 'webViewId', 'devicectl', 'xcodebuild'] },
   web: { identity: ['sessionId', 'runtimeEpoch'], connection: ['targetId'] },
 });
@@ -22,6 +22,9 @@ function executionTargetSchema({ intent = false, nullable = false } = {}) {
     if (platform === 'android') {
       properties.packageName = identifier;
       properties.port = integer(1, 65535);
+      properties.sdkTransport = { enum: ['auto', 'direct', 'forward'] };
+      properties.feedback = { enum: ['auto', 'off', 'window', 'full'] };
+      properties.screenshotVerification = { enum: ['window', 'ownership'] };
       if (intent) properties.foregroundPackages = { type: 'array', items: identifier, maxItems: 32, uniqueItems: true, description: 'Legacy metadata; does not route or veto actions. Use Intent observe observationTarget.packageName to select another Android app.' };
     }
     if (platform === 'ios') properties.iosPort = integer(1, 65535);

@@ -53,6 +53,8 @@ function createProductionIntentDeviceAdapter({
       port: target.port,
       adb: target.adb || adb,
       runtimeActionId: target.runtimeActionId,
+      ...Object.fromEntries(['sdkTransport', 'feedback', 'screenshotVerification']
+        .filter(key => target[key] !== undefined).map(key => [key, target[key]])),
     });
   }
 
@@ -62,10 +64,10 @@ function createProductionIntentDeviceAdapter({
     adbTimings: [],
     get maxActive() { return maxActive; },
     get callCount() { return calls.length; },
-    async observe({ serial, packageName, provider, rawTreeId, port, adb: targetAdb, foregroundPackages, observationTarget, previousForeground }) {
+    async observe({ serial, packageName, provider, rawTreeId, port, adb: targetAdb, foregroundPackages, observationTarget, previousForeground, sdkTransport, feedback: feedbackPolicy, screenshotVerification }) {
       return withDevice(serial, packageName, `observe:${provider}`, async () => {
         const selectedPackage = observationTarget?.packageName ?? packageName;
-        const ctx = context({ serial, packageName: selectedPackage, port, adb: targetAdb });
+        const ctx = context({ serial, packageName: selectedPackage, port, adb: targetAdb, sdkTransport, feedback: feedbackPolicy, screenshotVerification });
         let feedback;
         try {
           let rawTree;
@@ -87,10 +89,10 @@ function createProductionIntentDeviceAdapter({
         }
       });
     },
-    async action({ serial, spec, packageName, port, adb: targetAdb, rawTree, actionId, foregroundPackages, route, primaryProvider }) {
+    async action({ serial, spec, packageName, port, adb: targetAdb, rawTree, actionId, foregroundPackages, route, primaryProvider, sdkTransport, feedback: feedbackPolicy, screenshotVerification }) {
       const targetPackageName = packageName || spec.packageName;
       return withDevice(serial, targetPackageName, 'action', async () => {
-        const ctx = context({ serial, packageName: route?.targetPackageName ?? targetPackageName, port, adb: targetAdb, runtimeActionId: actionId });
+        const ctx = context({ serial, packageName: route?.targetPackageName ?? targetPackageName, port, adb: targetAdb, runtimeActionId: actionId, sdkTransport, feedback: feedbackPolicy, screenshotVerification });
         let dispatchAttempted = false;
         let feedback;
         const finish = result => withForeground(shapeAction(require('../shared-kernel/action-guidance').withActionGuidance('intent', ctx, result)), feedback);

@@ -413,7 +413,7 @@ test('pre-mutation tree and same-path screenshot cannot certify a subsequent mut
     target: { platform: 'android', serial: 'freshness-device', packageName: 'pkg' },
     actions: async (command) => command === 'screenshot'
       ? { ok: true, path: '/tmp/reused.png' }
-      : { ok: true, root: { text: 'Saved' } },
+      : { ok: true, coverage: { status: 'complete' }, root: { text: 'Saved' } },
   });
   const oldTree = await host.call('tree');
   const oldShot = await host.call('screenshot');
