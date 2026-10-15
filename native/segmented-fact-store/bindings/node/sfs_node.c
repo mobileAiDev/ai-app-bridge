@@ -1,6 +1,10 @@
+#define _DEFAULT_SOURCE
+#define _DARWIN_C_SOURCE
 #include <node_api.h>
 
 #include "sfs.h"
+#include "../../src/sfs_platform.h"
+#include "windows_process.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -141,23 +145,17 @@ static bool optional_uint32(napi_env env,
     return true;
 }
 
-static bool required_string(napi_env env,
-                            napi_value object,
-                            const char *name,
-                            char **out_value)
+static bool path_string(napi_env env, napi_value value, char **out_value)
 {
-    napi_value value;
     napi_valuetype type;
-    bool present;
     size_t length = 0u;
     char *buffer;
-    if (!named_property(env, object, name, &value, &present)) return false;
-    if (!present || napi_typeof(env, value, &type) != napi_ok || type != napi_string) {
-        throw_napi(env, "directory must be a non-empty string");
+    if (napi_typeof(env, value, &type) != napi_ok || type != napi_string) {
+        throw_napi(env, "path must be a non-empty string");
         return false;
     }
     if (napi_get_value_string_utf8(env, value, NULL, 0u, &length) != napi_ok || length == 0u) {
-        throw_napi(env, "directory must be a non-empty string");
+        throw_napi(env, "path must be a non-empty string");
         return false;
     }
     buffer = (char *)malloc(length + 1u);
@@ -170,8 +168,23 @@ static bool required_string(napi_env env,
         throw_napi(env, "unable to decode directory path");
         return false;
     }
+    if (strlen(buffer) != length) {
+        free(buffer);
+        throw_napi(env, "path must not contain NUL bytes");
+        return false;
+    }
     *out_value = buffer;
     return true;
+}
+
+static bool required_string(napi_env env, napi_value object, const char *name,
+                            char **out_value)
+{
+    napi_value value;
+    bool present;
+    if (!named_property(env, object, name, &value, &present)) return false;
+    if (!present) { throw_napi(env, "directory must be a non-empty string"); return false; }
+    return path_string(env, value, out_value);
 }
 
 static node_sfs_handle_t *required_handle(napi_env env, napi_value value)
@@ -574,6 +587,47 @@ static napi_value binding_close(napi_env env, napi_callback_info info)
     return js_undefined(env);
 }
 
+static napi_value binding_durable_rename(napi_env env, napi_callback_info info)
+{
+    napi_value argv[4];
+    size_t argc = 4;
+    char *source = NULL;
+    char *destination = NULL;
+    bool replace = true;
+    int result;
+    int code;
+    if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc < 2 || argc > 3) {
+        throw_napi(env, "durableRename(source, destination, replaceExisting = true) requires two paths");
+        return NULL;
+    }
+    if (argc == 3 && napi_get_value_bool(env, argv[2], &replace) != napi_ok) {
+        throw_napi(env, "replaceExisting must be a boolean"); return NULL;
+    }
+    if (!path_string(env, argv[0], &source)) return NULL;
+    if (!path_string(env, argv[1], &destination)) { free(source); return NULL; }
+    result = sfs_durable_rename(source, destination, replace);
+    code = result != 0 ? sfs_os_error() : 0;
+    free(source); free(destination);
+    if (result != 0) {
+        const char *name = "native_durable_rename_failed";
+        napi_value error, code_value, message, system_code;
+#ifdef _WIN32
+        if (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) name = "EEXIST";
+#else
+        if (code == EEXIST) name = "EEXIST";
+#endif
+        if (sfs_os_missing(code)) name = "ENOENT";
+        (void)napi_create_string_utf8(env, name, NAPI_AUTO_LENGTH, &code_value);
+        (void)napi_create_string_utf8(env, sfs_os_error_message(code), NAPI_AUTO_LENGTH, &message);
+        (void)napi_create_error(env, code_value, message, &error);
+        (void)napi_create_int32(env, code, &system_code);
+        (void)napi_set_named_property(env, error, "systemCode", system_code);
+        (void)napi_throw(env, error);
+        return NULL;
+    }
+    return js_undefined(env);
+}
+
 static napi_value initialize(napi_env env, napi_value exports)
 {
     napi_property_descriptor properties[] = {
@@ -583,11 +637,13 @@ static napi_value initialize(napi_env env, napi_value exports)
         {"status", NULL, binding_status, NULL, NULL, NULL, napi_default, NULL},
         {"flush", NULL, binding_flush, NULL, NULL, NULL, napi_default, NULL},
         {"close", NULL, binding_close, NULL, NULL, NULL, napi_default, NULL},
+        {"durableRename", NULL, binding_durable_rename, NULL, NULL, NULL, napi_default, NULL},
     };
     if (napi_define_properties(env,
                                exports,
                                sizeof(properties) / sizeof(properties[0]),
-                               properties) != napi_ok) {
+                               properties) != napi_ok ||
+        aab_windows_process_init(env, exports) != napi_ok) {
         throw_napi(env, "unable to initialize segmented fact store binding");
         return NULL;
     }

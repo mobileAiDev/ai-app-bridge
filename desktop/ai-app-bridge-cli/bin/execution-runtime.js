@@ -12,6 +12,7 @@ const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, publishEndpoint, p
 const { inRequestDirectory } = require('./shared-kernel/request-context');
 
 async function start() {
+  require('./shared-kernel/windows-process').retainRuntimeProcessScope();
   const location = runtimeLocation();
   const runtimeId = randomUUID(), startedAtMs = Date.now();
   const processStart = require('./shared-kernel/host-process-stop').processStart();

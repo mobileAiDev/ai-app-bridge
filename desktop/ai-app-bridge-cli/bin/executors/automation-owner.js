@@ -7,6 +7,7 @@ const { defaultDirectory } = require('../shared-kernel/device-ownership-store');
 const { CommandError } = require('../command-errors');
 const { atomicJson, readJson } = require('./managed-runtime');
 const { AndroidExecutorPort } = require('./android-port');
+const { durableRename, durableRemove } = require('../shared-kernel/durable-files');
 
 const fileFor = (serial, directory = defaultDirectory()) => path.join(directory, 'automation-sessions', createHash('sha256').update(serial).digest('hex') + '.json');
 function owner(serial, directory) { return readJson(fileFor(serial, directory)); }
@@ -14,11 +15,7 @@ function archive(serial, resetId, directory = defaultDirectory()) {
   const file = fileFor(serial, directory);
   if (!fs.existsSync(file)) return null;
   const destination = path.join(directory, 'force-stopped', `${resetId}.automation.json`);
-  fs.renameSync(file, destination);
-  for (const parent of [path.dirname(file), path.dirname(destination)]) {
-    const fd = fs.openSync(parent, 'r');
-    try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  }
+  durableRename(file, destination);
   return destination;
 }
 function claim(serial, descriptorFile) {
@@ -32,9 +29,7 @@ function release(serial, sessionId) {
   const current = owner(serial);
   if (!current) return;
   if (current.sessionId !== sessionId) throw new CommandError('executor_automation_owner_changed', 'A different test session owns UiAutomation.');
-  fs.unlinkSync(fileFor(serial));
-  const fd = fs.openSync(path.dirname(fileFor(serial)), 'r');
-  try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  durableRemove(fileFor(serial));
 }
 async function assertAvailable(serial) {
   const current = owner(serial);

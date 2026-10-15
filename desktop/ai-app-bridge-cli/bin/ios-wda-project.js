@@ -35,7 +35,7 @@ function prepareWdaProject({ destination, packageDirectory = path.dirname(requir
   }
   const nativeRoot = path.dirname(require.resolve('@mobileaidev/segmented-fact-store-native/package.json'));
   const nativeCore = { version: JSON.parse(fs.readFileSync(path.join(nativeRoot, 'package.json'))).version, files: [] };
-  for (const relative of ['include/sfs.h', 'src/sfs.c']) {
+  for (const relative of ['include/sfs.h', 'src/sfs.c', 'src/sfs_platform.h']) {
     const bytes = fs.readFileSync(path.join(nativeRoot, relative));
     fs.writeFileSync(path.join(destination, 'WebDriverAgentLib', 'Routing', path.basename(relative)), bytes);
     nativeCore.files.push({ path: relative, sha256: createHash('sha256').update(bytes).digest('hex') });
@@ -83,7 +83,7 @@ async function prepareManagedWda({ home = require('./executors/managed-runtime')
   const sourceRoot = path.join(__dirname, '..', 'runtime', 'ios-wda');
   for (const name of fs.readdirSync(sourceRoot).sort()) hash.update(name).update(fs.readFileSync(path.join(sourceRoot, name)));
   const nativeRoot = path.dirname(require.resolve('@mobileaidev/segmented-fact-store-native/package.json'));
-  for (const name of ['package.json', 'include/sfs.h', 'src/sfs.c']) hash.update(fs.readFileSync(path.join(nativeRoot, name)));
+  for (const name of ['package.json', 'include/sfs.h', 'src/sfs.c', 'src/sfs_platform.h']) hash.update(fs.readFileSync(path.join(nativeRoot, name)));
   const dependencyDigest = hash.digest('hex');
   const directory = path.join(home, 'packages', 'ios-wda', dependencyDigest);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });

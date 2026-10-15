@@ -21,7 +21,8 @@ debug Flutter apps.
   s.private_header_files = [
     'ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC/include/AiAppBridgeFactStoreC.h',
     'ai_app_bridge_flutter/Sources/AiAppBridgeFactStoreC/include/aab_nslog_hook.h',
-    'ai_app_bridge_flutter/Sources/SegmentedFactStoreC/include/sfs.h'
+    'ai_app_bridge_flutter/Sources/SegmentedFactStoreC/include/sfs.h',
+    'ai_app_bridge_flutter/Sources/SegmentedFactStoreC/sfs_platform.h'
   ]
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'

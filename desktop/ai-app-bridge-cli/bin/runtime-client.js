@@ -100,7 +100,7 @@ function launch(location) {
     // clients may reach the same executable through a different PATH or alias.
     const adb = executablePath(process.env.ADB || 'adb');
     child = fork(path.join(__dirname, 'execution-runtime.js'), [], {
-      detached: true, execArgv: [], stdio: ['ignore', log, log, 'ipc'],
+      detached: true, windowsHide: true, execArgv: [], stdio: ['ignore', log, log, 'ipc'],
       env: { ...process.env, ...(adb ? { ADB: adb } : {}), AI_APP_BRIDGE_FACT_STORE_DIR: location.facts },
     });
   } finally { fs.closeSync(log); }

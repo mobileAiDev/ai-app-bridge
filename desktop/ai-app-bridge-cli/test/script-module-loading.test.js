@@ -76,3 +76,14 @@ for (const language of ['javascript', 'python']) test(`inline ${language} import
   assert.equal(compiled.ok, true);
   assert.deepEqual(await run(t, compiled.spec), { value: 41, cwd });
 });
+
+test('Python protocol preserves Unicode when the inherited console encoding is not UTF-8', async t => {
+  const previous = process.env.PYTHONIOENCODING;
+  process.env.PYTHONIOENCODING = 'cp1252';
+  t.after(() => { if (previous === undefined) delete process.env.PYTHONIOENCODING; else process.env.PYTHONIOENCODING = previous; });
+  const text = '用户同意 · 商品 🛒';
+  const compiled = compileScriptSpec({ schemaVersion: 'aab.code-script/v1', language: 'python',
+    inputs: { text }, source: 'import sys\ndef main(ctx):\n    print(ctx.inputs["text"], file=sys.stderr)\n    return ctx.inputs\n' });
+  assert.equal(compiled.ok, true);
+  assert.deepEqual(await run(t, compiled.spec), { text });
+});

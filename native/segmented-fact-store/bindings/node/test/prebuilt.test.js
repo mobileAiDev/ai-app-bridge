@@ -28,7 +28,7 @@ test('missing and corrupted packaged binaries fail explicitly without source com
   fs.unlinkSync(file); check('native_prebuild_missing');
 });
 test('an unsupported platform identifies its ABI and never selects another artifact', () => {
-  const child = spawnSync(process.execPath, ['-e', `Object.defineProperty(process, 'platform', {value:'win32'});
+  const child = spawnSync(process.execPath, ['-e', `Object.defineProperty(process, 'platform', {value:'freebsd'});
 try { require(${JSON.stringify(root)}); process.exit(1); } catch(e) { console.log(e.code+' '+e.message); }`], {encoding:'utf8'});
-  assert.equal(child.status, 0); assert.match(child.stdout, /native_platform_unsupported.*win32.*Node-API.*No automatic source build/);
+  assert.equal(child.status, 0); assert.match(child.stdout, /native_platform_unsupported.*Node-API.*freebsd.*No automatic source build/);
 });

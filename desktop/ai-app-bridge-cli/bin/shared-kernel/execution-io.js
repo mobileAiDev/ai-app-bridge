@@ -1,6 +1,7 @@
 'use strict';
 
 const { execFile } = require('node:child_process');
+const hostExecFile = process.platform === 'win32' ? require('./portable-exec-file').portableExecFile : execFile;
 const http = require('node:http');
 const https = require('node:https');
 const { CommandError } = require('../command-errors');
@@ -13,7 +14,7 @@ function ioFailure(code, message, scope) {
 
 // Cancellation requests termination but resolves only after the subprocess has
 // closed. Releasing a device lease on a Promise.race would leave a live writer.
-function execFileBounded(file, args, { timeoutMs = 15000, mutation = false, execFileImpl = execFile, ...options } = {}) {
+function execFileBounded(file, args, { timeoutMs = 15000, mutation = false, execFileImpl = hostExecFile, ...options } = {}) {
   if (!currentExecution()) return runExecution({ mutation }, () => execFileBounded(file, args, { ...options, timeoutMs, mutation, execFileImpl }));
   checkExecution();
   const scope = currentExecution();
@@ -38,7 +39,10 @@ function execFileBounded(file, args, { timeoutMs = 15000, mutation = false, exec
       } else resolve({ stdout, stderr });
     });
     if (completed) return;
-    if (mutation && child.pid) markExecutionDispatched();
+    if (mutation) {
+      if (child.dispatchPending) child.once('dispatch', () => markExecutionDispatched());
+      else if (child.pid) markExecutionDispatched();
+    }
     const stop = error => {
       if (stopped) return;
       stopped = error;

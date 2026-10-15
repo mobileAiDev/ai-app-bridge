@@ -4,13 +4,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <time.h>
+#endif
 
 static uint64_t nanoseconds(void)
 {
+#ifdef _WIN32
+    LARGE_INTEGER ticks, frequency;
+    if (!QueryPerformanceCounter(&ticks) || !QueryPerformanceFrequency(&frequency)) { abort(); }
+    return (uint64_t)(ticks.QuadPart / frequency.QuadPart) * UINT64_C(1000000000) +
+        (uint64_t)(ticks.QuadPart % frequency.QuadPart) * UINT64_C(1000000000) / (uint64_t)frequency.QuadPart;
+#else
     struct timespec time;
     if (clock_gettime(CLOCK_MONOTONIC, &time) != 0) { abort(); }
     return (uint64_t)time.tv_sec * UINT64_C(1000000000) + (uint64_t)time.tv_nsec;
+#endif
 }
 
 int main(int argc, char **argv)

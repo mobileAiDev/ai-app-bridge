@@ -10,6 +10,7 @@ const { validateCommandArguments, commandContract, isAndroidMutation } = require
 const { bindCommandTarget } = require('../bin/shared-kernel/execution-target');
 const { createScriptHostPort } = require('../bin/script/script-host-port');
 const { prepareAndroid, prepareFlutter, withProject, productionVersions, sdkReleaseVersion } = require('../bin/executors/preparation');
+const gradleWrapper = process.platform === 'win32' ? 'gradlew.bat' : 'gradlew';
 
 function preparationWithVersions(version, sdkReleaseVersion) {
   const filename = require.resolve('../bin/executors/preparation');
@@ -28,7 +29,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const project = path.join(directory, "existing app's project");
   fs.mkdirSync(project);
-  fs.writeFileSync(path.join(project, 'gradlew'), '#!/bin/sh\n');
+  fs.writeFileSync(path.join(project, gradleWrapper), process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\n');
   fs.writeFileSync(path.join(project, 'business.txt'), 'original business source');
   return { project: fs.realpathSync(project), home: path.join(directory, 'executor-home') };
 }
@@ -68,8 +69,8 @@ test('Android preparation keeps Host identity independent from SDK coordinates a
   let generatedConfig;
   const run = async (file, args, options) => {
     calls++;
-    assert.equal(file, 'sh');
-    assert.equal(args[0], path.join(project, 'gradlew'));
+    assert.equal(file, process.platform === 'win32' ? path.join(project, gradleWrapper) : 'sh');
+    if (process.platform !== 'win32') assert.equal(args[0], path.join(project, gradleWrapper));
     assert.equal(options.cwd, project);
     assert.ok(args.includes(':app:aiAppBridgePrepareExecutor'));
     const config = JSON.parse(fs.readFileSync(args.find(arg => arg.startsWith('-Daab.prepare.config=')).split('=').slice(1).join('=')));
@@ -100,7 +101,7 @@ test('Android preparation keeps Host identity independent from SDK coordinates a
   assert.deepEqual(result.projectFilesEdited, []);
   assert.match(result.applicationApks[0].sha256, /^[a-f0-9]{64}$/);
   assert.equal(fs.readFileSync(path.join(project, 'business.txt'), 'utf8'), 'original business source');
-  assert.deepEqual(fs.readdirSync(project).sort(), ['build', 'business.txt', 'gradlew']);
+  assert.deepEqual(fs.readdirSync(project).sort(), ['build', 'business.txt', gradleWrapper]);
 });
 
 test('a failed or cancelled prepare retains its log and releases the project lock', async t => {

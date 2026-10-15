@@ -1,12 +1,14 @@
+#define _DEFAULT_SOURCE
+#define _DARWIN_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 
 #include "sfs.h"
+#include "../src/sfs_platform.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 static int append_and_check(sfs_store_t *store,
                             uint32_t partition_id,
@@ -56,14 +58,14 @@ int main(int argc, char **argv)
     sfs_store_t *store = NULL;
     sfs_error_t error;
     sfs_result_t result;
-    struct stat status;
+    sfs_file_info_t status;
 
     if (argc != 2) {
         (void)fprintf(stderr, "usage: %s OUTPUT_DIRECTORY\n", argv[0]);
         return EXIT_FAILURE;
     }
-    if (stat(argv[1], &status) != 0) {
-        if (errno != ENOENT || mkdir(argv[1], 0700) != 0) {
+    if (sfs_path_info(argv[1], true, &status) != 0) {
+        if (!sfs_os_missing(sfs_os_error()) || sfs_directory_create(argv[1]) != 0) {
             (void)fprintf(stderr, "cannot create output directory %s\n", argv[1]);
             return EXIT_FAILURE;
         }

@@ -6,6 +6,7 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { CommandError } = require('../command-errors');
 const { execFileBounded } = require('../shared-kernel/execution-io');
+const { durableRename } = require('../shared-kernel/durable-files');
 
 const executorHome = () => path.resolve(process.env.AI_APP_BRIDGE_EXECUTOR_HOME || path.join(os.homedir(), '.ai-app-bridge', 'executors'));
 
@@ -15,9 +16,7 @@ function atomicJson(file, value) {
   const fd = fs.openSync(temporary, 'wx', 0o600);
   try { fs.writeFileSync(fd, JSON.stringify(value) + '\n'); fs.fsyncSync(fd); }
   finally { fs.closeSync(fd); }
-  fs.renameSync(temporary, file);
-  const parent = fs.openSync(path.dirname(file), 'r');
-  try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+  durableRename(temporary, file);
 }
 
 function readJson(file) {

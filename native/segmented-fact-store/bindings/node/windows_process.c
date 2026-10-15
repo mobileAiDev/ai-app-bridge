@@ -1,0 +1,212 @@
+#include "windows_process.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#include <tlhelp32.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    HANDLE job;
+    DWORD pid;
+} aab_process_scope;
+
+static napi_value windows_error(napi_env env, const char *operation, DWORD code)
+{
+    char message[160];
+    snprintf(message, sizeof(message), "%s failed (Win32 error %lu).", operation, (unsigned long)code);
+    napi_throw_error(env, "windows_process_failed", message);
+    return NULL;
+}
+
+static int read_pid(napi_env env, napi_value value, DWORD *pid)
+{
+    double number;
+    if (napi_get_value_double(env, value, &number) != napi_ok || !(number >= 1 && number <= 4294967295.0) || number != (DWORD)number) {
+        napi_throw_type_error(env, "invalid_process_id", "Expected a positive Windows process identifier.");
+        return 0;
+    }
+    *pid = (DWORD)number;
+    return 1;
+}
+
+static int start_text(HANDLE process, char text[32])
+{
+    FILETIME creation, exit, kernel, user;
+    if (!GetProcessTimes(process, &creation, &exit, &kernel, &user)) return 0;
+    ULARGE_INTEGER ticks;
+    ticks.LowPart = creation.dwLowDateTime;
+    ticks.HighPart = creation.dwHighDateTime;
+    snprintf(text, 32, "%llu", (unsigned long long)ticks.QuadPart);
+    return 1;
+}
+
+static napi_value process_start(napi_env env, napi_callback_info info)
+{
+    size_t argc = 1;
+    napi_value argv[1], result;
+    DWORD pid;
+    if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 1 || !read_pid(env, argv[0], &pid)) return NULL;
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+    if (!process) {
+        DWORD error = GetLastError();
+        if (error != ERROR_INVALID_PARAMETER) return windows_error(env, "OpenProcess", error);
+        napi_get_null(env, &result);
+        return result;
+    }
+    char text[32];
+    DWORD error = ERROR_SUCCESS;
+    DWORD wait = WaitForSingleObject(process, 0);
+    if (wait == WAIT_FAILED || (wait == WAIT_TIMEOUT && !start_text(process, text))) error = GetLastError();
+    CloseHandle(process);
+    if (error != ERROR_SUCCESS) return windows_error(env, "GetProcessTimes", error);
+    if (wait == WAIT_OBJECT_0) napi_get_null(env, &result);
+    else napi_create_string_utf8(env, text, NAPI_AUTO_LENGTH, &result);
+    return result;
+}
+
+static int owned_child(DWORD pid, DWORD *error)
+{
+    if (pid == GetCurrentProcessId()) return 1;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) { *error = GetLastError(); return 0; }
+    PROCESSENTRY32W entry;
+    memset(&entry, 0, sizeof(entry));
+    entry.dwSize = sizeof(entry);
+    int owned = 0;
+    for (BOOL found = Process32FirstW(snapshot, &entry); found; found = Process32NextW(snapshot, &entry)) {
+        if (entry.th32ProcessID == pid) { owned = entry.th32ParentProcessID == GetCurrentProcessId(); break; }
+    }
+    CloseHandle(snapshot);
+    if (!owned) *error = ERROR_ACCESS_DENIED;
+    return owned;
+}
+
+static void scope_finalize(napi_env env, void *data, void *hint)
+{
+    (void)env;
+    (void)hint;
+    aab_process_scope *scope = data;
+    if (scope->job) CloseHandle(scope->job);
+    free(scope);
+}
+
+static napi_value scope_close(napi_env env, napi_callback_info info)
+{
+    napi_value self, result;
+    aab_process_scope *scope;
+    if (napi_get_cb_info(env, info, NULL, NULL, &self, NULL) != napi_ok || napi_unwrap(env, self, (void **)&scope) != napi_ok) return NULL;
+    if (scope->job) {
+        // A Runtime retains its own scope until process teardown. Closing it
+        // here would terminate the caller before its durable shutdown finishes.
+        if (scope->pid == GetCurrentProcessId()) {
+            napi_throw_error(env, "process_scope_self_close", "The Runtime process scope is released by process exit.");
+            return NULL;
+        }
+        if (!TerminateJobObject(scope->job, 1)) return windows_error(env, "TerminateJobObject", GetLastError());
+        ULONGLONG deadline = GetTickCount64() + 5000;
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+        for (;;) {
+            if (!QueryInformationJobObject(scope->job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), NULL))
+                return windows_error(env, "QueryInformationJobObject", GetLastError());
+            if (!accounting.ActiveProcesses) break;
+            if (GetTickCount64() >= deadline) return windows_error(env, "TerminateJobObject wait", WAIT_TIMEOUT);
+            Sleep(5);
+        }
+        if (!CloseHandle(scope->job)) return windows_error(env, "CloseHandle", GetLastError());
+        scope->job = NULL;
+    }
+    napi_get_undefined(env, &result);
+    return result;
+}
+
+static napi_value create_scope(napi_env env, napi_callback_info info)
+{
+    size_t argc = 1;
+    napi_value argv[1], result, method;
+    DWORD pid, error = ERROR_SUCCESS;
+    if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 1 || !read_pid(env, argv[0], &pid)) return NULL;
+    HANDLE process = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+    if (!process) return windows_error(env, "OpenProcess for scope", GetLastError());
+    // Callers attach only while their trusted SDK waits for its start frame.
+    // No user code runs before this assignment has succeeded.
+    if (!owned_child(pid, &error) || WaitForSingleObject(process, 0) != WAIT_TIMEOUT) {
+        CloseHandle(process);
+        return windows_error(env, "Owned live process validation", error ? error : ERROR_PROCESS_ABORTED);
+    }
+    aab_process_scope *scope = calloc(1, sizeof(*scope));
+    if (!scope) { CloseHandle(process); return windows_error(env, "Allocate process scope", ERROR_NOT_ENOUGH_MEMORY); }
+    scope->pid = pid;
+    scope->job = CreateJobObjectW(NULL, NULL);
+    if (!scope->job) error = GetLastError();
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+    memset(&limits, 0, sizeof(limits));
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!error && !SetInformationJobObject(scope->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) error = GetLastError();
+    if (!error && !AssignProcessToJobObject(scope->job, process)) error = GetLastError();
+    CloseHandle(process);
+    if (error) { if (scope->job) CloseHandle(scope->job); free(scope); return windows_error(env, "Create process scope", error); }
+    if (napi_create_object(env, &result) != napi_ok || napi_wrap(env, result, scope, scope_finalize, NULL, NULL) != napi_ok) {
+        scope_finalize(env, scope, NULL);
+        return NULL;
+    }
+    if (napi_create_function(env, "close", NAPI_AUTO_LENGTH, scope_close, NULL, &method) != napi_ok || napi_set_named_property(env, result, "close", method) != napi_ok) return NULL;
+    return result;
+}
+
+static napi_value terminate_process(napi_env env, napi_callback_info info)
+{
+    size_t argc = 2, length;
+    napi_value argv[2], result;
+    DWORD pid;
+    char expected[32], actual[32];
+    if (napi_get_cb_info(env, info, &argc, argv, NULL, NULL) != napi_ok || argc != 2 || !read_pid(env, argv[0], &pid)) return NULL;
+    if (pid == GetCurrentProcessId()) { napi_throw_error(env, "process_self_termination", "Use an independent control process."); return NULL; }
+    if (napi_get_value_string_utf8(env, argv[1], NULL, 0, &length) != napi_ok || !length || length >= sizeof(expected)
+        || napi_get_value_string_utf8(env, argv[1], expected, sizeof(expected), &length) != napi_ok || strlen(expected) != length) {
+        napi_throw_type_error(env, "invalid_process_start", "Expected the recorded Windows creation time."); return NULL;
+    }
+    HANDLE process = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, pid);
+    if (!process) {
+        DWORD error = GetLastError();
+        if (error != ERROR_INVALID_PARAMETER) return windows_error(env, "OpenProcess for termination", error);
+        napi_get_boolean(env, 0, &result); return result;
+    }
+    if (!start_text(process, actual)) { DWORD error = GetLastError(); CloseHandle(process); return windows_error(env, "GetProcessTimes", error); }
+    int stopped = 0;
+    DWORD error = ERROR_SUCCESS;
+    // Identity and termination use the same kernel handle: a reused PID can
+    // never redirect this operation to an unrelated replacement process.
+    if (!strcmp(expected, actual) && WaitForSingleObject(process, 0) == WAIT_TIMEOUT) {
+        if (!TerminateProcess(process, 1)) error = GetLastError();
+        else {
+            DWORD wait = WaitForSingleObject(process, 5000);
+            if (wait != WAIT_OBJECT_0) error = wait == WAIT_FAILED ? GetLastError() : WAIT_TIMEOUT;
+            else stopped = 1;
+        }
+    }
+    CloseHandle(process);
+    if (error) return windows_error(env, "TerminateProcess", error);
+    napi_get_boolean(env, stopped, &result);
+    return result;
+}
+
+napi_status aab_windows_process_init(napi_env env, napi_value exports)
+{
+    const napi_property_descriptor properties[] = {
+        { "windowsProcessStart", NULL, process_start, NULL, NULL, NULL, napi_default, NULL },
+        { "windowsCreateProcessScope", NULL, create_scope, NULL, NULL, NULL, napi_default, NULL },
+        { "windowsTerminateProcess", NULL, terminate_process, NULL, NULL, NULL, napi_default, NULL }
+    };
+    return napi_define_properties(env, exports, sizeof(properties) / sizeof(properties[0]), properties);
+}
+#else
+napi_status aab_windows_process_init(napi_env env, napi_value exports)
+{
+    (void)env;
+    (void)exports;
+    return napi_ok;
+}
+#endif

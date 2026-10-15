@@ -1,7 +1,7 @@
 'use strict';
 
 const { acquireRuntimeLock, readEndpoint, readRuntimeOwner, archiveRuntimeRecords } = require('./runtime-directory');
-const { stopHosts, processInfo } = require('./shared-kernel/host-process-stop');
+const { stopHosts, processInfo, isBridgeHostCommand } = require('./shared-kernel/host-process-stop');
 const { CommandError } = require('./command-errors');
 
 async function forceStopRuntime(location, { timeoutMs = 5000, ownerPid } = {}) {
@@ -18,7 +18,7 @@ async function forceStopRuntime(location, { timeoutMs = 5000, ownerPid } = {}) {
   if (!lock) {
     if (ownerPid !== undefined) {
       const info = processInfo(ownerPid);
-      if (!info || !/[\\/]bin[\\/]execution-runtime\.js(?:\s|$)/.test(info.command)) throw new CommandError('runtime_owner_mismatch',
+      if (!info || !isBridgeHostCommand(info.command, ['execution-runtime'])) throw new CommandError('runtime_owner_mismatch',
         'The supplied ownerPid is not a live Bridge execution-runtime process. Inspect doctor --platform host and choose the intended Host PID.',
         { details: { ownerPid, lockFile: location.lockFile } });
       owner = { pid: ownerPid, processStart: info.start }; endpoint = null; ownerSource = 'explicit-pid';

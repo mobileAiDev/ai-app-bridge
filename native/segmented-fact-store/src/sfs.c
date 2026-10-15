@@ -3,23 +3,15 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "sfs.h"
+#include "sfs_platform.h"
 
-#include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <inttypes.h>
-#include <pthread.h>
 #include <stdarg.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/file.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #define SFS_MIN_SEGMENT_SIZE 128u
 #define SFS_FRAME_PREFIX_SIZE 24u
@@ -62,7 +54,7 @@ typedef struct sfs_partition {
     sfs_segment_meta_t *segments;
     size_t segment_count;
     size_t segment_capacity;
-    int active_fd;
+    sfs_file_t active_fd;
     uint8_t *active_map;
     uint64_t active_write_offset;
     uint64_t durable_offset;
@@ -83,11 +75,11 @@ typedef struct sfs_partition {
 } sfs_partition_t;
 
 struct sfs_store {
-    pthread_mutex_t mutex;
+    sfs_mutex_t mutex;
     bool mutex_initialized;
     char *directory;
-    int lock_fd;
-    int manifest_fd;
+    sfs_file_t lock_fd;
+    sfs_file_t manifest_fd;
     uint8_t *manifest_map;
     int manifest_active_slot;
     uint64_t manifest_generation;
@@ -133,7 +125,7 @@ typedef struct sfs_candidate {
     sfs_frame_view_t frame;
 } sfs_candidate_t;
 
-static pthread_once_t sfs_crc_once = PTHREAD_ONCE_INIT;
+static sfs_once_t sfs_crc_once = SFS_ONCE_INIT;
 static uint32_t sfs_crc_table[256];
 
 static void sfs_crc_initialize(void)
@@ -154,7 +146,7 @@ static uint32_t sfs_crc32c(const uint8_t *data, size_t length)
 {
     uint32_t crc = UINT32_MAX;
     size_t index;
-    (void)pthread_once(&sfs_crc_once, sfs_crc_initialize);
+    (void)sfs_once(&sfs_crc_once, sfs_crc_initialize);
     for (index = 0u; index < length; ++index) {
         crc = sfs_crc_table[(crc ^ data[index]) & 0xffu] ^ (crc >> 8u);
     }
@@ -262,9 +254,9 @@ static sfs_result_t ensure_directory(const char *path,
                                      bool create,
                                      sfs_error_t *error)
 {
-    struct stat status;
-    if (stat(path, &status) == 0) {
-        if (!S_ISDIR(status.st_mode)) {
+    sfs_file_info_t status;
+    if (sfs_path_info(path, true, &status) == 0) {
+        if (!status.directory) {
             return set_error(error,
                              SFS_ERR_IO,
                              ENOTDIR,
@@ -273,34 +265,32 @@ static sfs_result_t ensure_directory(const char *path,
         }
         return SFS_OK;
     }
-    if (errno != ENOENT || !create) {
-        int saved_errno = errno;
+    if (!sfs_os_missing(sfs_os_error()) || !create) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot access directory %s: %s",
                          path,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    if (mkdir(path, 0700) != 0) {
-        int saved_errno = errno;
+    if (sfs_directory_create(path) != 0) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot create directory %s: %s",
                          path,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     return SFS_OK;
 }
 
 static void fsync_directory_best_effort(const char *path)
 {
-    int descriptor = open(path, O_RDONLY);
-    if (descriptor >= 0) {
-        (void)fsync(descriptor);
-        (void)close(descriptor);
-    }
+    /* Retained POSIX best-effort metadata sync. Windows publication itself uses
+       MOVEFILE_WRITE_THROUGH; this attempt never substitutes for map/file flush. */
+    (void)sfs_directory_sync(path);
 }
 
 static bool parse_segment_name(const char *name, uint64_t *out_id)
@@ -365,44 +355,53 @@ static bool is_temporary_segment_name(const char *name)
 static sfs_result_t cleanup_temporary_segments(sfs_partition_t *partition,
                                                sfs_error_t *error)
 {
-    DIR *directory = opendir(partition->directory);
-    struct dirent *entry;
+    sfs_directory_t *directory = sfs_directory_open(partition->directory);
+    const char *entry;
     bool removed = false;
     if (directory == NULL) {
-        int saved_errno = errno;
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot inspect temporary segments: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    while ((entry = readdir(directory)) != NULL) {
+    while ((entry = sfs_directory_next(directory)) != NULL) {
         char *path;
-        if (!is_temporary_segment_name(entry->d_name)) {
+        if (!is_temporary_segment_name(entry)) {
             continue;
         }
-        path = path_join(partition->directory, entry->d_name);
+        path = path_join(partition->directory, entry);
         if (path == NULL) {
-            (void)closedir(directory);
+            (void)sfs_directory_close(directory);
             return set_error(error,
                              SFS_ERR_NOMEM,
                              errno,
                              "cannot allocate temporary segment path");
         }
-        if (unlink(path) != 0 && errno != ENOENT) {
-            int saved_errno = errno;
+        if (sfs_file_remove(path) != 0 && !sfs_os_missing(sfs_os_error())) {
+            int saved_errno = sfs_os_error();
             free(path);
-            (void)closedir(directory);
+            (void)sfs_directory_close(directory);
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot remove interrupted segment creation: %s",
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
         free(path);
         removed = true;
     }
-    (void)closedir(directory);
+    {
+        int code = sfs_directory_error(directory);
+        if (code != 0) {
+            sfs_directory_close(directory);
+            return set_error(error, SFS_ERR_IO, code,
+                             "cannot finish temporary segment enumeration: %s",
+                             sfs_os_error_message(code));
+        }
+    }
+    (void)sfs_directory_close(directory);
     if (removed) {
         fsync_directory_best_effort(partition->directory);
     }
@@ -520,26 +519,26 @@ static sfs_result_t manifest_save(sfs_store_t *store, sfs_error_t *error)
     }
     store_u32_le(slot + SFS_MANIFEST_CRC_OFFSET,
                  sfs_crc32c(slot, SFS_MANIFEST_CRC_OFFSET));
-    atomic_thread_fence(memory_order_release);
-    if (msync(store->manifest_map, SFS_MANIFEST_SIZE, MS_SYNC) != 0) {
-        int saved_errno = errno;
+    sfs_release_fence();
+    if (sfs_map_sync(store->manifest_fd, store->manifest_map, SFS_MANIFEST_SIZE) != 0) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot flush manifest body: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     store_u64_le(slot + SFS_MANIFEST_COMMIT_OFFSET,
                  SFS_MANIFEST_COMMIT_MARKER);
-    atomic_thread_fence(memory_order_release);
-    if (msync(store->manifest_map, SFS_MANIFEST_SIZE, MS_SYNC) != 0 ||
-        fsync(store->manifest_fd) != 0) {
-        int saved_errno = errno;
+    sfs_release_fence();
+    if (sfs_map_sync(store->manifest_fd, store->manifest_map, SFS_MANIFEST_SIZE) != 0 ||
+        sfs_file_sync(store->manifest_fd) != 0) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot commit manifest: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     store->manifest_active_slot = target_slot;
     store->manifest_generation = next_generation;
@@ -552,21 +551,20 @@ static sfs_result_t lock_store_directory(sfs_store_t *store, sfs_error_t *error)
     if (path == NULL) {
         return set_error(error, SFS_ERR_NOMEM, errno, "cannot allocate lock path");
     }
-    store->lock_fd = open(path, O_RDWR | O_CREAT, 0600);
+    store->lock_fd = sfs_file_open(path, SFS_FILE_WRITE | SFS_FILE_CREATE);
     free(path);
-    if (store->lock_fd < 0) {
-        int saved_errno = errno;
+    if (store->lock_fd == SFS_FILE_INVALID) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot open store lock: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    if (flock(store->lock_fd, LOCK_EX | LOCK_NB) != 0) {
-        int saved_errno = errno;
+    if (sfs_file_lock(store->lock_fd) != 0) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
-                         (saved_errno == EWOULDBLOCK || saved_errno == EAGAIN ||
-                          saved_errno == EACCES)
+                         sfs_os_lock_busy(saved_errno)
                              ? SFS_ERR_BUSY
                              : SFS_ERR_IO,
                          saved_errno,
@@ -580,9 +578,9 @@ static sfs_result_t open_manifest(sfs_store_t *store,
                                   sfs_error_t *error)
 {
     char *path = path_join(store->directory, SFS_MANIFEST_FILE);
-    struct stat status;
+    sfs_file_info_t status;
     bool new_manifest;
-    int open_flags = O_RDWR;
+    unsigned open_flags = SFS_FILE_WRITE;
     sfs_loaded_manifest_t decoded[2];
     bool valid[2] = {false, false};
     int selected = -1;
@@ -594,28 +592,28 @@ static sfs_result_t open_manifest(sfs_store_t *store,
                          "cannot allocate manifest path");
     }
     if ((options->flags & SFS_OPEN_CREATE) != 0u) {
-        open_flags |= O_CREAT;
+        open_flags |= SFS_FILE_CREATE;
     }
-    store->manifest_fd = open(path, open_flags, 0600);
+    store->manifest_fd = sfs_file_open(path, open_flags);
     free(path);
-    if (store->manifest_fd < 0) {
-        int saved_errno = errno;
+    if (store->manifest_fd == SFS_FILE_INVALID) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot open manifest: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    if (fstat(store->manifest_fd, &status) != 0) {
-        int saved_errno = errno;
+    if (sfs_file_info(store->manifest_fd, &status) != 0) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot stat manifest: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    new_manifest = status.st_size == 0;
-    if (!new_manifest && status.st_size != (off_t)SFS_MANIFEST_SIZE) {
+    new_manifest = status.size == 0;
+    if (!new_manifest && status.size != SFS_MANIFEST_SIZE) {
         return set_error(error,
                          SFS_ERR_CORRUPT,
                          0,
@@ -665,29 +663,24 @@ static sfs_result_t open_manifest(sfs_store_t *store,
                              0,
                              "at least one partition quota must be non-zero");
         }
-        if (ftruncate(store->manifest_fd, (off_t)SFS_MANIFEST_SIZE) != 0) {
-            int saved_errno = errno;
+        if (sfs_file_resize(store->manifest_fd, SFS_MANIFEST_SIZE) != 0) {
+            int saved_errno = sfs_os_error();
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot size manifest: %s",
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
     }
-    store->manifest_map = (uint8_t *)mmap(NULL,
-                                          SFS_MANIFEST_SIZE,
-                                          PROT_READ | PROT_WRITE,
-                                          MAP_SHARED,
-                                          store->manifest_fd,
-                                          0);
-    if (store->manifest_map == MAP_FAILED) {
-        int saved_errno = errno;
+    store->manifest_map = sfs_file_map(store->manifest_fd, SFS_MANIFEST_SIZE, true);
+    if (store->manifest_map == NULL) {
+        int saved_errno = sfs_os_error();
         store->manifest_map = NULL;
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot map manifest: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     if (new_manifest) {
         memset(store->manifest_map, 0, SFS_MANIFEST_SIZE);
@@ -963,8 +956,8 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
 {
     sfs_partition_t *partition = &store->partitions[partition_id];
     char *path = segment_path(partition, segment_id);
-    int descriptor;
-    struct stat status;
+    sfs_file_t descriptor;
+    sfs_file_info_t status;
     uint8_t *mapping;
     uint64_t file_size;
     uint64_t offset = SFS_SEGMENT_HEADER_SIZE;
@@ -974,51 +967,46 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
     if (path == NULL) {
         return set_error(error, SFS_ERR_NOMEM, errno, "cannot allocate segment path");
     }
-    descriptor = open(path, O_RDWR);
+    descriptor = sfs_file_open(path, SFS_FILE_WRITE);
     free(path);
-    if (descriptor < 0) {
-        int saved_errno = errno;
+    if (descriptor == SFS_FILE_INVALID) {
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot open segment %" PRIu64 ": %s",
                          segment_id,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    if (fstat(descriptor, &status) != 0 || status.st_size < 0) {
-        int saved_errno = errno;
-        (void)close(descriptor);
+    if (sfs_file_info(descriptor, &status) != 0) {
+        int saved_errno = sfs_os_error();
+        (void)sfs_file_close(descriptor);
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot stat segment %" PRIu64,
                          segment_id);
     }
-    file_size = (uint64_t)status.st_size;
+    file_size = (uint64_t)status.size;
     if (file_size < SFS_SEGMENT_HEADER_SIZE || file_size > store->segment_size ||
         (!active && file_size != store->segment_size)) {
-        (void)close(descriptor);
+        (void)sfs_file_close(descriptor);
         return set_error(error,
                          SFS_ERR_CORRUPT,
                          0,
                          "segment %" PRIu64 " has invalid file size",
                          segment_id);
     }
-    mapping = (uint8_t *)mmap(NULL,
-                              (size_t)file_size,
-                              PROT_READ | PROT_WRITE,
-                              MAP_SHARED,
-                              descriptor,
-                              0);
-    if (mapping == MAP_FAILED) {
-        int saved_errno = errno;
-        (void)close(descriptor);
+    mapping = sfs_file_map(descriptor, (size_t)file_size, true);
+    if (mapping == NULL) {
+        int saved_errno = sfs_os_error();
+        (void)sfs_file_close(descriptor);
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot map segment %" PRIu64 ": %s",
                          segment_id,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     {
         sfs_result_t header_result = validate_segment_header(mapping,
@@ -1028,8 +1016,8 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
                                                              &header_first_sequence,
                                                              error);
         if (header_result != SFS_OK) {
-            (void)munmap(mapping, (size_t)file_size);
-            (void)close(descriptor);
+            (void)sfs_file_unmap(mapping, (size_t)file_size);
+            (void)sfs_file_close(descriptor);
             return header_result;
         }
     }
@@ -1047,13 +1035,13 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
             break;
         }
         if (frame_result != SFS_OK) {
-            (void)munmap(mapping, (size_t)file_size);
-            (void)close(descriptor);
+            (void)sfs_file_unmap(mapping, (size_t)file_size);
+            (void)sfs_file_close(descriptor);
             return (sfs_result_t)frame_result;
         }
         if (previous_sequence != 0u && frame.sequence <= previous_sequence) {
-            (void)munmap(mapping, (size_t)file_size);
-            (void)close(descriptor);
+            (void)sfs_file_unmap(mapping, (size_t)file_size);
+            (void)sfs_file_close(descriptor);
             return set_error(error,
                              SFS_ERR_CORRUPT,
                              0,
@@ -1071,8 +1059,8 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
     }
     meta->write_offset = offset;
     if (frame_result == SFS_INTERNAL_TORN && !active) {
-        (void)munmap(mapping, (size_t)file_size);
-        (void)close(descriptor);
+        (void)sfs_file_unmap(mapping, (size_t)file_size);
+        (void)sfs_file_close(descriptor);
         return set_error(error,
                          SFS_ERR_CORRUPT,
                          0,
@@ -1082,43 +1070,38 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
     if (active && (frame_result == SFS_INTERNAL_TORN ||
                    file_size != store->segment_size)) {
         uint64_t discarded = file_size > offset ? file_size - offset : 0u;
-        (void)munmap(mapping, (size_t)file_size);
-        if (ftruncate(descriptor, (off_t)store->segment_size) != 0) {
-            int saved_errno = errno;
-            (void)close(descriptor);
+        (void)sfs_file_unmap(mapping, (size_t)file_size);
+        if (sfs_file_resize(descriptor, store->segment_size) != 0) {
+            int saved_errno = sfs_os_error();
+            (void)sfs_file_close(descriptor);
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot restore segment %" PRIu64 " size: %s",
                              segment_id,
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
-        mapping = (uint8_t *)mmap(NULL,
-                                  (size_t)store->segment_size,
-                                  PROT_READ | PROT_WRITE,
-                                  MAP_SHARED,
-                                  descriptor,
-                                  0);
-        if (mapping == MAP_FAILED) {
-            int saved_errno = errno;
-            (void)close(descriptor);
+        mapping = sfs_file_map(descriptor, (size_t)store->segment_size, true);
+        if (mapping == NULL) {
+            int saved_errno = sfs_os_error();
+            (void)sfs_file_close(descriptor);
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot remap recovered segment: %s",
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
         memset(mapping + offset, 0, (size_t)(store->segment_size - offset));
-        if (msync(mapping, (size_t)store->segment_size, MS_SYNC) != 0 ||
-            fsync(descriptor) != 0) {
-            int saved_errno = errno;
-            (void)munmap(mapping, (size_t)store->segment_size);
-            (void)close(descriptor);
+        if (sfs_map_sync(descriptor, mapping, (size_t)store->segment_size) != 0 ||
+            sfs_file_sync(descriptor) != 0) {
+            int saved_errno = sfs_os_error();
+            (void)sfs_file_unmap(mapping, (size_t)store->segment_size);
+            (void)sfs_file_close(descriptor);
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot persist recovered tail: %s",
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
         store->status_flags |= SFS_STATUS_RECOVERED_TAIL;
         store->recovery_partition_id = partition_id;
@@ -1133,8 +1116,8 @@ static sfs_result_t scan_segment_file(sfs_store_t *store,
         partition->active_write_offset = offset;
         partition->durable_offset = offset;
     } else {
-        (void)munmap(mapping, (size_t)file_size);
-        (void)close(descriptor);
+        (void)sfs_file_unmap(mapping, (size_t)file_size);
+        (void)sfs_file_close(descriptor);
     }
     return SFS_OK;
 }
@@ -1144,22 +1127,22 @@ static sfs_result_t enumerate_segment_ids(sfs_partition_t *partition,
                                           size_t *out_count,
                                           sfs_error_t *error)
 {
-    DIR *directory = opendir(partition->directory);
-    struct dirent *entry;
+    sfs_directory_t *directory = sfs_directory_open(partition->directory);
+    const char *entry;
     uint64_t *ids = NULL;
     size_t count = 0u;
     size_t capacity = 0u;
     if (directory == NULL) {
-        int saved_errno = errno;
+        int saved_errno = sfs_os_error();
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot list partition directory: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    while ((entry = readdir(directory)) != NULL) {
+    while ((entry = sfs_directory_next(directory)) != NULL) {
         uint64_t id;
-        if (!parse_segment_name(entry->d_name, &id)) {
+        if (!parse_segment_name(entry, &id)) {
             continue;
         }
         if (count == capacity) {
@@ -1168,7 +1151,7 @@ static sfs_result_t enumerate_segment_ids(sfs_partition_t *partition,
                 (uint64_t *)realloc(ids, new_capacity * sizeof(*ids));
             if (resized == NULL) {
                 free(ids);
-                (void)closedir(directory);
+                (void)sfs_directory_close(directory);
                 return set_error(error,
                                  SFS_ERR_NOMEM,
                                  errno,
@@ -1179,7 +1162,17 @@ static sfs_result_t enumerate_segment_ids(sfs_partition_t *partition,
         }
         ids[count++] = id;
     }
-    (void)closedir(directory);
+    {
+        int code = sfs_directory_error(directory);
+        if (code != 0) {
+            free(ids);
+            sfs_directory_close(directory);
+            return set_error(error, SFS_ERR_IO, code,
+                             "cannot finish segment enumeration: %s",
+                             sfs_os_error_message(code));
+        }
+    }
+    (void)sfs_directory_close(directory);
     qsort(ids, count, sizeof(*ids), compare_u64);
     *out_ids = ids;
     *out_count = count;
@@ -1194,7 +1187,7 @@ static sfs_result_t create_segment(sfs_store_t *store,
     uint64_t segment_id = partition->next_segment_id;
     char *path;
     char *temporary_path;
-    int descriptor;
+    sfs_file_t descriptor;
     uint8_t *mapping;
     sfs_segment_meta_t *meta;
     sfs_result_t result;
@@ -1216,9 +1209,9 @@ static sfs_result_t create_segment(sfs_store_t *store,
         free(temporary_path);
         return set_error(error, SFS_ERR_NOMEM, errno, "cannot allocate segment path");
     }
-    descriptor = open(temporary_path, O_RDWR | O_CREAT | O_EXCL, 0600);
-    if (descriptor < 0) {
-        int saved_errno = errno;
+    descriptor = sfs_file_open(temporary_path, SFS_FILE_WRITE | SFS_FILE_CREATE | SFS_FILE_EXCLUSIVE);
+    if (descriptor == SFS_FILE_INVALID) {
+        int saved_errno = sfs_os_error();
         free(path);
         free(temporary_path);
         return set_error(error,
@@ -1226,12 +1219,12 @@ static sfs_result_t create_segment(sfs_store_t *store,
                          saved_errno,
                          "cannot create temporary segment %" PRIu64 ": %s",
                          segment_id,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    if (ftruncate(descriptor, (off_t)store->segment_size) != 0) {
-        int saved_errno = errno;
-        (void)close(descriptor);
-        (void)unlink(temporary_path);
+    if (sfs_file_resize(descriptor, store->segment_size) != 0) {
+        int saved_errno = sfs_os_error();
+        (void)sfs_file_close(descriptor);
+        (void)sfs_file_remove(temporary_path);
         free(path);
         free(temporary_path);
         return set_error(error,
@@ -1239,53 +1232,48 @@ static sfs_result_t create_segment(sfs_store_t *store,
                          saved_errno,
                          "cannot size segment %" PRIu64 ": %s",
                          segment_id,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
-    mapping = (uint8_t *)mmap(NULL,
-                              (size_t)store->segment_size,
-                              PROT_READ | PROT_WRITE,
-                              MAP_SHARED,
-                              descriptor,
-                              0);
-    if (mapping == MAP_FAILED) {
-        int saved_errno = errno;
-        (void)close(descriptor);
-        (void)unlink(temporary_path);
+    mapping = sfs_file_map(descriptor, (size_t)store->segment_size, true);
+    if (mapping == NULL) {
+        int saved_errno = sfs_os_error();
+        (void)sfs_file_close(descriptor);
+        (void)sfs_file_remove(temporary_path);
         free(path);
         free(temporary_path);
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot map new segment: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     encode_segment_header(mapping,
                           partition_id,
                           segment_id,
                           store->segment_size,
                           store->next_sequence);
-    if (msync(mapping, SFS_SEGMENT_HEADER_SIZE, MS_SYNC) != 0 ||
-        fsync(descriptor) != 0) {
-        int saved_errno = errno;
-        (void)munmap(mapping, (size_t)store->segment_size);
-        (void)close(descriptor);
-        (void)unlink(temporary_path);
+    if (sfs_map_sync(descriptor, mapping, SFS_SEGMENT_HEADER_SIZE) != 0 ||
+        sfs_file_sync(descriptor) != 0) {
+        int saved_errno = sfs_os_error();
+        (void)sfs_file_unmap(mapping, (size_t)store->segment_size);
+        (void)sfs_file_close(descriptor);
+        (void)sfs_file_remove(temporary_path);
         free(path);
         free(temporary_path);
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot commit new segment header: %s",
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     {
-        struct stat existing;
-        int existing_result = lstat(path, &existing);
-        if (existing_result == 0 || errno != ENOENT) {
-            int saved_errno = existing_result == 0 ? EEXIST : errno;
-            (void)munmap(mapping, (size_t)store->segment_size);
-            (void)close(descriptor);
-            (void)unlink(temporary_path);
+        sfs_file_info_t existing;
+        int existing_result = sfs_path_info(path, false, &existing);
+        if (existing_result == 0 || !sfs_os_missing(sfs_os_error())) {
+            int saved_errno = existing_result == 0 ? EEXIST : sfs_os_error();
+            (void)sfs_file_unmap(mapping, (size_t)store->segment_size);
+            (void)sfs_file_close(descriptor);
+            (void)sfs_file_remove(temporary_path);
             free(path);
             free(temporary_path);
             return set_error(error,
@@ -1295,11 +1283,11 @@ static sfs_result_t create_segment(sfs_store_t *store,
                              segment_id);
         }
     }
-    if (rename(temporary_path, path) != 0) {
-        int saved_errno = errno;
-        (void)munmap(mapping, (size_t)store->segment_size);
-        (void)close(descriptor);
-        (void)unlink(temporary_path);
+    if (sfs_file_rename(temporary_path, path, true) != 0) {
+        int saved_errno = sfs_os_error();
+        (void)sfs_file_unmap(mapping, (size_t)store->segment_size);
+        (void)sfs_file_close(descriptor);
+        (void)sfs_file_remove(temporary_path);
         free(path);
         free(temporary_path);
         return set_error(error,
@@ -1307,7 +1295,7 @@ static sfs_result_t create_segment(sfs_store_t *store,
                          saved_errno,
                          "cannot publish segment %" PRIu64 ": %s",
                          segment_id,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     fsync_directory_best_effort(partition->directory);
     free(path);
@@ -1359,8 +1347,8 @@ static sfs_result_t load_partition(sfs_store_t *store,
     for (index = 0u; index < id_count; ++index) {
         if (ids[index] < partition->first_retained_segment_id) {
             char *obsolete = segment_path(partition, ids[index]);
-            if (obsolete == NULL || unlink(obsolete) != 0) {
-                int saved_errno = errno;
+            if (obsolete == NULL || sfs_file_remove(obsolete) != 0) {
+                int saved_errno = sfs_os_error();
                 free(obsolete);
                 free(ids);
                 return set_error(error,
@@ -1483,9 +1471,9 @@ static sfs_result_t flush_partition(sfs_store_t *store,
         store_u64_le(partition->active_map + marker_offset, 0u);
         offset += total_length;
     }
-    atomic_thread_fence(memory_order_release);
-    if (msync(partition->active_map, (size_t)store->segment_size, MS_SYNC) != 0) {
-        first_error = errno;
+    sfs_release_fence();
+    if (sfs_map_sync(partition->active_fd, partition->active_map, (size_t)store->segment_size) != 0) {
+        first_error = sfs_os_error();
     }
     offset = partition->durable_offset;
     while (offset < partition->active_write_offset) {
@@ -1495,20 +1483,18 @@ static sfs_result_t flush_partition(sfs_store_t *store,
                      SFS_FRAME_COMMIT_MARKER);
         offset += total_length;
     }
-    atomic_thread_fence(memory_order_release);
+    sfs_release_fence();
     if (first_error == 0 &&
-        (msync(partition->active_map,
-               (size_t)store->segment_size,
-               MS_SYNC) != 0 ||
-         fsync(partition->active_fd) != 0)) {
-        first_error = errno;
+        (sfs_map_sync(partition->active_fd, partition->active_map, (size_t)store->segment_size) != 0 ||
+         sfs_file_sync(partition->active_fd) != 0)) {
+        first_error = sfs_os_error();
     }
     if (first_error != 0) {
         return set_error(error,
                          SFS_ERR_IO,
                          first_error,
                          "cannot flush segment: %s",
-                         strerror(first_error));
+                         sfs_os_error_message(first_error));
     }
     partition->durable_offset = partition->active_write_offset;
     return SFS_OK;
@@ -1517,12 +1503,12 @@ static sfs_result_t flush_partition(sfs_store_t *store,
 static void close_active_segment(sfs_store_t *store, sfs_partition_t *partition)
 {
     if (partition->active_map != NULL) {
-        (void)munmap(partition->active_map, (size_t)store->segment_size);
+        (void)sfs_file_unmap(partition->active_map, (size_t)store->segment_size);
         partition->active_map = NULL;
     }
-    if (partition->active_fd >= 0) {
-        (void)close(partition->active_fd);
-        partition->active_fd = -1;
+    if (partition->active_fd != SFS_FILE_INVALID) {
+        (void)sfs_file_close(partition->active_fd);
+        partition->active_fd = SFS_FILE_INVALID;
     }
 }
 
@@ -1551,15 +1537,15 @@ static sfs_result_t evict_oldest_segment(sfs_store_t *store,
         return result;
     }
     path = segment_path(partition, victim.id);
-    if (path == NULL || unlink(path) != 0) {
-        int saved_errno = errno;
+    if (path == NULL || sfs_file_remove(path) != 0) {
+        int saved_errno = sfs_os_error();
         free(path);
         return set_error(error,
                          SFS_ERR_IO,
                          saved_errno,
                          "cannot evict segment %" PRIu64 ": %s",
                          victim.id,
-                         strerror(saved_errno));
+                         sfs_os_error_message(saved_errno));
     }
     free(path);
     fsync_directory_best_effort(partition->directory);
@@ -1620,7 +1606,7 @@ static sfs_result_t map_segment_for_read(sfs_store_t *store,
                                          uint32_t partition_id,
                                          size_t segment_index,
                                          const uint8_t **out_mapping,
-                                         int *out_descriptor,
+                                         sfs_file_t *out_descriptor,
                                          bool *out_borrowed,
                                          sfs_error_t *error)
 {
@@ -1629,13 +1615,13 @@ static sfs_result_t map_segment_for_read(sfs_store_t *store,
     if (segment_index + 1u == partition->segment_count &&
         partition->active_map != NULL) {
         *out_mapping = partition->active_map;
-        *out_descriptor = -1;
+        *out_descriptor = SFS_FILE_INVALID;
         *out_borrowed = true;
         return SFS_OK;
     }
     {
         char *path = segment_path(partition, meta->id);
-        int descriptor;
+        sfs_file_t descriptor;
         uint8_t *mapping;
         if (path == NULL) {
             return set_error(error,
@@ -1643,30 +1629,25 @@ static sfs_result_t map_segment_for_read(sfs_store_t *store,
                              errno,
                              "cannot allocate scan path");
         }
-        descriptor = open(path, O_RDONLY);
+        descriptor = sfs_file_open(path, 0);
         free(path);
-        if (descriptor < 0) {
-            int saved_errno = errno;
+        if (descriptor == SFS_FILE_INVALID) {
+            int saved_errno = sfs_os_error();
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot open segment for scan: %s",
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
-        mapping = (uint8_t *)mmap(NULL,
-                                  (size_t)store->segment_size,
-                                  PROT_READ,
-                                  MAP_SHARED,
-                                  descriptor,
-                                  0);
-        if (mapping == MAP_FAILED) {
-            int saved_errno = errno;
-            (void)close(descriptor);
+        mapping = sfs_file_map(descriptor, (size_t)store->segment_size, false);
+        if (mapping == NULL) {
+            int saved_errno = sfs_os_error();
+            (void)sfs_file_close(descriptor);
             return set_error(error,
                              SFS_ERR_IO,
                              saved_errno,
                              "cannot map segment for scan: %s",
-                             strerror(saved_errno));
+                             sfs_os_error_message(saved_errno));
         }
         *out_mapping = mapping;
         *out_descriptor = descriptor;
@@ -1677,12 +1658,12 @@ static sfs_result_t map_segment_for_read(sfs_store_t *store,
 
 static void unmap_segment_for_read(sfs_store_t *store,
                                    const uint8_t *mapping,
-                                   int descriptor,
+                                   sfs_file_t descriptor,
                                    bool borrowed)
 {
     if (!borrowed) {
-        (void)munmap((void *)mapping, (size_t)store->segment_size);
-        (void)close(descriptor);
+        (void)sfs_file_unmap((void *)mapping, (size_t)store->segment_size);
+        (void)sfs_file_close(descriptor);
     }
 }
 
@@ -1701,7 +1682,7 @@ static sfs_result_t candidate_in_partition(sfs_store_t *store,
          ++segment_index) {
         sfs_segment_meta_t *meta = &partition->segments[segment_index];
         const uint8_t *mapping;
-        int descriptor;
+        sfs_file_t descriptor;
         bool borrowed;
         uint64_t offset = SFS_SEGMENT_HEADER_SIZE;
         sfs_result_t result;
@@ -1765,7 +1746,7 @@ static sfs_result_t copy_candidate(sfs_store_t *store,
                                    sfs_error_t *error)
 {
     const uint8_t *mapping;
-    int descriptor;
+    sfs_file_t descriptor;
     bool borrowed;
     sfs_frame_view_t frame;
     int decoded;
@@ -1858,7 +1839,7 @@ static sfs_result_t scan_partition_cursor(sfs_store_t *store,
     for (; segment_index < partition->segment_count; ++segment_index) {
         sfs_segment_meta_t *meta = &partition->segments[segment_index];
         const uint8_t *mapping;
-        int descriptor;
+        sfs_file_t descriptor;
         bool borrowed;
         sfs_frame_view_t frame;
         sfs_candidate_t candidate;
@@ -1974,17 +1955,17 @@ static void cleanup_store(sfs_store_t *store)
         free(partition->directory);
     }
     if (store->manifest_map != NULL) {
-        (void)munmap(store->manifest_map, SFS_MANIFEST_SIZE);
+        (void)sfs_file_unmap(store->manifest_map, SFS_MANIFEST_SIZE);
     }
-    if (store->manifest_fd >= 0) {
-        (void)close(store->manifest_fd);
+    if (store->manifest_fd != SFS_FILE_INVALID) {
+        (void)sfs_file_close(store->manifest_fd);
     }
-    if (store->lock_fd >= 0) {
-        (void)close(store->lock_fd);
+    if (store->lock_fd != SFS_FILE_INVALID) {
+        (void)sfs_file_close(store->lock_fd);
     }
     free(store->directory);
     if (store->mutex_initialized) {
-        (void)pthread_mutex_destroy(&store->mutex);
+        (void)sfs_mutex_destroy(&store->mutex);
     }
     free(store);
 }
@@ -2019,19 +2000,19 @@ sfs_result_t sfs_open(const sfs_open_options_t *options,
     if (store == NULL) {
         return set_error(error, SFS_ERR_NOMEM, errno, "cannot allocate store");
     }
-    store->lock_fd = -1;
-    store->manifest_fd = -1;
+    store->lock_fd = SFS_FILE_INVALID;
+    store->manifest_fd = SFS_FILE_INVALID;
     store->manifest_active_slot = -1;
     store->recovery_partition_id = SFS_PARTITION_ALL;
     for (partition_id = 0u; partition_id < SFS_MAX_PARTITIONS; ++partition_id) {
-        store->partitions[partition_id].active_fd = -1;
+        store->partitions[partition_id].active_fd = SFS_FILE_INVALID;
     }
-    store->directory = strdup(options->directory);
+    store->directory = sfs_string_copy(options->directory);
     if (store->directory == NULL) {
         cleanup_store(store);
         return set_error(error, SFS_ERR_NOMEM, errno, "cannot copy store path");
     }
-    if (pthread_mutex_init(&store->mutex, NULL) != 0) {
+    if (sfs_mutex_init(&store->mutex) != 0) {
         cleanup_store(store);
         return set_error(error, SFS_ERR_NOMEM, errno, "cannot initialize store");
     }
@@ -2093,7 +2074,7 @@ sfs_result_t sfs_append(sfs_store_t *store,
     }
     memset(out_record, 0, sizeof(*out_record));
     out_record->struct_size = sizeof(*out_record);
-    (void)pthread_mutex_lock(&store->mutex);
+    (void)sfs_mutex_lock(&store->mutex);
     partition = &store->partitions[partition_id];
     if (!partition->enabled) {
         result = set_error(error,
@@ -2140,10 +2121,10 @@ sfs_result_t sfs_append(sfs_store_t *store,
                payload,
                payload_length);
     }
-    atomic_thread_fence(memory_order_release);
+    sfs_release_fence();
     store_u64_le(partition->active_map + commit_offset,
                  SFS_FRAME_COMMIT_MARKER);
-    atomic_thread_fence(memory_order_release);
+    sfs_release_fence();
     partition->active_write_offset += frame_length;
     meta = &partition->segments[partition->segment_count - 1u];
     meta->write_offset = partition->active_write_offset;
@@ -2172,7 +2153,7 @@ sfs_result_t sfs_append(sfs_store_t *store,
     out_record->segment_id = meta->id;
     out_record->frame_offset = offset;
 done:
-    (void)pthread_mutex_unlock(&store->mutex);
+    (void)sfs_mutex_unlock(&store->mutex);
     return result;
 }
 
@@ -2195,7 +2176,7 @@ sfs_result_t sfs_scan(sfs_store_t *store,
                          0,
                          "invalid scan arguments");
     }
-    (void)pthread_mutex_lock(&store->mutex);
+    (void)sfs_mutex_lock(&store->mutex);
     if (cursor->partition_id != SFS_PARTITION_ALL && cursor->segment_id == 0u &&
         cursor->offset == 0u && cursor->after_sequence != 0u) {
         result = seek_partition_cursor(store, cursor, buffer, buffer_capacity, out_record, error);
@@ -2253,7 +2234,7 @@ sfs_result_t sfs_scan(sfs_store_t *store,
             }
         }
     }
-    (void)pthread_mutex_unlock(&store->mutex);
+    (void)sfs_mutex_unlock(&store->mutex);
     return result;
 }
 
@@ -2270,7 +2251,7 @@ sfs_result_t sfs_status(sfs_store_t *store,
                          0,
                          "invalid status arguments");
     }
-    (void)pthread_mutex_lock(&store->mutex);
+    (void)sfs_mutex_lock(&store->mutex);
     memset(out_status, 0, sizeof(*out_status));
     out_status->struct_size = sizeof(*out_status);
     out_status->format_version = SFS_FORMAT_VERSION;
@@ -2311,7 +2292,7 @@ sfs_result_t sfs_status(sfs_store_t *store,
         out_status->record_count += source->record_count;
         out_status->payload_bytes += source->payload_bytes;
     }
-    (void)pthread_mutex_unlock(&store->mutex);
+    (void)sfs_mutex_unlock(&store->mutex);
     return SFS_OK;
 }
 
@@ -2325,9 +2306,9 @@ sfs_result_t sfs_flush(sfs_store_t *store, sfs_error_t *error)
                          0,
                          "store is null");
     }
-    (void)pthread_mutex_lock(&store->mutex);
+    (void)sfs_mutex_lock(&store->mutex);
     result = flush_locked(store, error);
-    (void)pthread_mutex_unlock(&store->mutex);
+    (void)sfs_mutex_unlock(&store->mutex);
     return result;
 }
 
@@ -2341,9 +2322,9 @@ sfs_result_t sfs_close(sfs_store_t *store, sfs_error_t *error)
                          0,
                          "store is null");
     }
-    (void)pthread_mutex_lock(&store->mutex);
+    (void)sfs_mutex_lock(&store->mutex);
     result = flush_locked(store, error);
-    (void)pthread_mutex_unlock(&store->mutex);
+    (void)sfs_mutex_unlock(&store->mutex);
     cleanup_store(store);
     return result;
 }

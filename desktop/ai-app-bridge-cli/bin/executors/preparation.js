@@ -101,10 +101,10 @@ ${compose ? '    adapters.put("compose", new io.github.mobileaidev.aiappbridge.e
 }
 
 async function prepareAndroid(args, { run = execFileBounded, home } = {}) {
-  if (process.platform === 'win32') throw new CommandError('executor_host_unsupported', 'Android preparation currently supports macOS/Linux Gradle wrappers.');
   const repositoryUrl = repository(args.repositoryUrl);
   return withProject(args.projectDir, async (project, directory) => {
-    const wrapper = requireFile(args.gradlePath ? resolveRequestPath(args.gradlePath) : path.join(project, 'gradlew'));
+    const wrapper = requireFile(args.gradlePath ? resolveRequestPath(args.gradlePath)
+      : path.join(project, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew'));
     const adapters = args.adapters ?? [];
     const javaFile = path.join(directory, 'java', ...testClass.split('.')) + '.java';
     fs.mkdirSync(path.dirname(javaFile), { recursive: true });
@@ -120,8 +120,9 @@ async function prepareAndroid(args, { run = execFileBounded, home } = {}) {
     atomicJson(configFile, config);
     const template = path.resolve(__dirname, '../../runtime/executors/android/prepare.init.gradle');
     const preflightFile = path.join(directory, 'android-preflight.json');
-    try { await loggedRun(run, 'sh', [wrapper, '--init-script', template, `-Daab.prepare.config=${configFile}`,
-      `${args.module}:aiAppBridgePrepareExecutor`, '--console=plain', '--no-configuration-cache', '--max-workers=2'],
+    const gradleArgs = ['--init-script', template, `-Daab.prepare.config=${configFile}`,
+      `${args.module}:aiAppBridgePrepareExecutor`, '--console=plain', '--no-configuration-cache', '--max-workers=2'];
+    try { await loggedRun(run, process.platform === 'win32' ? wrapper : 'sh', process.platform === 'win32' ? gradleArgs : [wrapper, ...gradleArgs],
     directory, 'gradle-build', { cwd: project, timeoutMs: args.timeoutMs ?? 600000 }); }
     catch (error) {
       const preflight = readJson(preflightFile);

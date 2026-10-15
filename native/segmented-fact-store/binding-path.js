@@ -16,7 +16,7 @@ function resolveBinding() {
   const olderGlibc = glibc && minimum && (Number(glibc.split('.')[0]) < Number(minimum.split('.')[0]) ||
     (Number(glibc.split('.')[0]) === Number(minimum.split('.')[0]) && Number(glibc.split('.')[1]) < Number(minimum.split('.')[1])));
   if (!artifact || napi < manifest.napi || (platform === 'linux' && (!glibc || olderGlibc))) {
-    reject('native_platform_unsupported', 'Supported prebuilds require macOS 13.5+ arm64/x64 or Linux glibc 2.28+ arm64/x64, and Node-API 8+');
+    reject('native_platform_unsupported', `Packaged prebuild targets: ${Object.keys(manifest.artifacts).join(', ')}; require Node-API 8+ and each target's minimum OS/libc`);
   }
   const file = path.join(__dirname, 'prebuilds', target, 'segmented_fact_store.node');
   let bytes;

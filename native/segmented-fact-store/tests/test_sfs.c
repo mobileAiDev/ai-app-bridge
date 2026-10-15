@@ -2,18 +2,13 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "sfs.h"
+#include "test_platform.h"
 
-#include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/resource.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
 
 #define TEST_SEGMENT_SIZE 256u
 
@@ -33,47 +28,32 @@ static int failures = 0;
 
 static char *make_temp_directory(void)
 {
-    char *path = strdup("/tmp/sfs-test-XXXXXX");
-    int descriptor;
-    if (path == NULL) {
-        return NULL;
-    }
-    descriptor = mkstemp(path);
-    if (descriptor < 0) {
-        free(path);
-        return NULL;
-    }
-    (void)close(descriptor);
-    if (unlink(path) != 0 || mkdir(path, 0700) != 0) {
-        free(path);
-        return NULL;
-    }
-    return path;
+    return test_temp_directory();
 }
 
 static void remove_tree(const char *path)
 {
-    DIR *directory;
-    struct dirent *entry;
-    directory = opendir(path);
+    sfs_directory_t *directory;
+    const char *entry;
+    directory = sfs_directory_open(path);
     if (directory != NULL) {
-        while ((entry = readdir(directory)) != NULL) {
+        while ((entry = sfs_directory_next(directory)) != NULL) {
             char child[1024];
-            struct stat status;
-            if (strcmp(entry->d_name, ".") == 0 ||
-                strcmp(entry->d_name, "..") == 0) {
+            sfs_file_info_t status;
+            if (strcmp(entry, ".") == 0 ||
+                strcmp(entry, "..") == 0) {
                 continue;
             }
-            (void)snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-            if (lstat(child, &status) == 0 && S_ISDIR(status.st_mode)) {
+            (void)snprintf(child, sizeof(child), "%s/%s", path, entry);
+            if (sfs_path_info(child, false, &status) == 0 && status.directory) {
                 remove_tree(child);
             } else {
-                (void)unlink(child);
+                (void)sfs_file_remove(child);
             }
         }
-        (void)closedir(directory);
+        (void)sfs_directory_close(directory);
     }
-    (void)rmdir(path);
+    (void)test_remove_directory(path);
 }
 
 static void remove_temp_directory(char *path)
@@ -383,7 +363,7 @@ static void test_sealed_segment_rejects_short_nonzero_tail(void)
     sfs_error_t error;
     sfs_result_t result;
     uint64_t sequence;
-    int descriptor;
+    sfs_file_t descriptor;
 
     CHECK(directory != NULL);
     memset(almost_full_payload, 0x5au, sizeof(almost_full_payload));
@@ -406,11 +386,11 @@ static void test_sealed_segment_rejects_short_nonzero_tail(void)
     CHECK(sfs_close(store, &error) == SFS_OK);
 
     first_segment_path(segment_path, sizeof(segment_path), directory);
-    descriptor = open(segment_path, O_RDWR);
-    CHECK(descriptor >= 0);
-    CHECK(pwrite(descriptor, &torn_byte, 1u, TEST_SEGMENT_SIZE - 1u) == 1);
-    CHECK(fsync(descriptor) == 0);
-    CHECK(close(descriptor) == 0);
+    descriptor = sfs_file_open(segment_path, SFS_FILE_WRITE);
+    CHECK(descriptor != SFS_FILE_INVALID);
+    CHECK(test_write_at(descriptor, &torn_byte, 1u, TEST_SEGMENT_SIZE - 1u) == 1);
+    CHECK(sfs_file_sync(descriptor) == 0);
+    CHECK(sfs_file_close(descriptor) == 0);
 
     memset(&options, 0, sizeof(options));
     options.struct_size = sizeof(options);
@@ -434,9 +414,9 @@ static void test_every_tail_truncation_recovers_to_last_committed_frame(void)
         0x20u, 0x21u, 0x22u, 0x23u, 0x24u, 0x25u, 0x26u, 0x27u, 0x28u,
         0x29u, 0x2au, 0x2bu, 0x2cu, 0x2du, 0x2eu, 0x2fu, 0x30u};
     static const uint8_t after_recovery[] = {0xaau, 0x55u};
-    const off_t first_frame_end = 104;
-    const off_t second_frame_end = 160;
-    off_t cut;
+    const uint64_t first_frame_end = 104;
+    const uint64_t second_frame_end = 160;
+    uint64_t cut;
 
     for (cut = first_frame_end; cut <= second_frame_end; ++cut) {
         char *directory = make_temp_directory();
@@ -470,7 +450,7 @@ static void test_every_tail_truncation_recovers_to_last_committed_frame(void)
         CHECK(sfs_close(store, &error) == SFS_OK);
 
         first_segment_path(segment_path, sizeof(segment_path), directory);
-        CHECK(truncate(segment_path, cut) == 0);
+        CHECK(test_truncate(segment_path, cut) == 0);
         store = open_store(directory, TEST_SEGMENT_SIZE);
         CHECK(store != NULL);
         memset(&status, 0, sizeof(status));
@@ -528,7 +508,7 @@ static void test_committed_payload_crc_corruption_is_rejected(void)
     sfs_result_t result;
     uint64_t sequence;
     uint8_t byte;
-    int descriptor;
+    sfs_file_t descriptor;
 
     CHECK(directory != NULL);
     store = open_store(directory, TEST_SEGMENT_SIZE);
@@ -543,13 +523,13 @@ static void test_committed_payload_crc_corruption_is_rejected(void)
     CHECK(sfs_close(store, &error) == SFS_OK);
 
     first_segment_path(segment_path, sizeof(segment_path), directory);
-    descriptor = open(segment_path, O_RDWR);
-    CHECK(descriptor >= 0);
-    CHECK(pread(descriptor, &byte, 1u, 88) == 1);
+    descriptor = sfs_file_open(segment_path, SFS_FILE_WRITE);
+    CHECK(descriptor != SFS_FILE_INVALID);
+    CHECK(test_read_at(descriptor, &byte, 1u, 88) == 1);
     byte ^= 0x80u;
-    CHECK(pwrite(descriptor, &byte, 1u, 88) == 1);
-    CHECK(fsync(descriptor) == 0);
-    CHECK(close(descriptor) == 0);
+    CHECK(test_write_at(descriptor, &byte, 1u, 88) == 1);
+    CHECK(sfs_file_sync(descriptor) == 0);
+    CHECK(sfs_file_close(descriptor) == 0);
 
     memset(&options, 0, sizeof(options));
     options.struct_size = sizeof(options);
@@ -577,7 +557,7 @@ static void test_committed_header_length_corruption_is_not_recovered_as_torn(voi
     sfs_result_t result;
     uint64_t sequence;
     uint8_t corrupted_payload_length = 16u;
-    int descriptor;
+    sfs_file_t descriptor;
 
     CHECK(directory != NULL);
     memset(payload, 0x6c, sizeof(payload));
@@ -593,11 +573,11 @@ static void test_committed_header_length_corruption_is_not_recovered_as_torn(voi
     CHECK(sfs_close(store, &error) == SFS_OK);
 
     first_segment_path(segment_path, sizeof(segment_path), directory);
-    descriptor = open(segment_path, O_RDWR);
-    CHECK(descriptor >= 0);
-    CHECK(pwrite(descriptor, &corrupted_payload_length, 1u, 68) == 1);
-    CHECK(fsync(descriptor) == 0);
-    CHECK(close(descriptor) == 0);
+    descriptor = sfs_file_open(segment_path, SFS_FILE_WRITE);
+    CHECK(descriptor != SFS_FILE_INVALID);
+    CHECK(test_write_at(descriptor, &corrupted_payload_length, 1u, 68) == 1);
+    CHECK(sfs_file_sync(descriptor) == 0);
+    CHECK(sfs_file_close(descriptor) == 0);
 
     memset(&options, 0, sizeof(options));
     options.struct_size = sizeof(options);
@@ -1025,7 +1005,7 @@ static void test_global_scan_position_does_not_cache_payload_or_crc(void)
     sfs_cursor_t cursor = SFS_CURSOR_BEGIN;
     uint64_t payload = 123u, readback = 0u;
     uint8_t byte;
-    int descriptor;
+    sfs_file_t descriptor;
     CHECK(directory != NULL);
     store = open_store(directory, 2048u);
     CHECK(store != NULL);
@@ -1036,13 +1016,13 @@ static void test_global_scan_position_does_not_cache_payload_or_crc(void)
     /* This establishes a read position without handing out a successful read. */
     CHECK(sfs_scan(store, &cursor, NULL, 0u, &record, &error) == SFS_BUFFER_TOO_SMALL);
     first_segment_path(segment_path, sizeof(segment_path), directory);
-    descriptor = open(segment_path, O_RDWR);
-    CHECK(descriptor >= 0);
-    CHECK(pread(descriptor, &byte, 1u, (off_t)receipt.frame_offset + 24) == 1);
+    descriptor = sfs_file_open(segment_path, SFS_FILE_WRITE);
+    CHECK(descriptor != SFS_FILE_INVALID);
+    CHECK(test_read_at(descriptor, &byte, 1u, (uint64_t)receipt.frame_offset + 24) == 1);
     byte ^= 0x80u;
-    CHECK(pwrite(descriptor, &byte, 1u, (off_t)receipt.frame_offset + 24) == 1);
-    CHECK(fsync(descriptor) == 0);
-    CHECK(close(descriptor) == 0);
+    CHECK(test_write_at(descriptor, &byte, 1u, (uint64_t)receipt.frame_offset + 24) == 1);
+    CHECK(sfs_file_sync(descriptor) == 0);
+    CHECK(sfs_file_close(descriptor) == 0);
     CHECK(sfs_scan(store, &cursor, &readback, sizeof(readback), &record, &error) == SFS_ERR_CORRUPT);
     CHECK(cursor.after_sequence == 0u);
     CHECK(strstr(error.message, "CRC32C") != NULL);
@@ -1078,36 +1058,32 @@ static void test_second_writer_open_in_same_process_is_busy(void)
     remove_temp_directory(directory);
 }
 
-static long timeval_ms(struct timeval value)
-{
-    return value.tv_sec * 1000L + value.tv_usec / 1000L;
-}
 
 static uint64_t tree_bytes(const char *path)
 {
-    DIR *directory = opendir(path);
+    sfs_directory_t *directory = sfs_directory_open(path);
     uint64_t total = 0u;
-    struct dirent *entry;
+    const char *entry;
     if (directory == NULL) {
         return 0u;
     }
-    while ((entry = readdir(directory)) != NULL) {
+    while ((entry = sfs_directory_next(directory)) != NULL) {
         char child[1024];
-        struct stat status;
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+        sfs_file_info_t status;
+        if (strcmp(entry, ".") == 0 || strcmp(entry, "..") == 0) {
             continue;
         }
-        (void)snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-        if (lstat(child, &status) != 0) {
+        (void)snprintf(child, sizeof(child), "%s/%s", path, entry);
+        if (sfs_path_info(child, false, &status) != 0) {
             continue;
         }
-        if (S_ISDIR(status.st_mode)) {
+        if (status.directory) {
             total += tree_bytes(child);
-        } else if (S_ISREG(status.st_mode)) {
-            total += (uint64_t)status.st_size;
+        } else if (!status.directory) {
+            total += (uint64_t)status.size;
         }
     }
-    (void)closedir(directory);
+    (void)sfs_directory_close(directory);
     return total;
 }
 
@@ -1119,10 +1095,8 @@ static void run_log_payload_load(const char *tier, uint32_t count)
     sfs_error_t error;
     sfs_status_t status;
     uint8_t payload[256];
-    struct timespec started;
-    struct timespec finished;
-    struct rusage before;
-    struct rusage after;
+    test_resources_t before;
+    test_resources_t after;
     uint32_t index;
     long elapsed_ms;
 
@@ -1136,8 +1110,7 @@ static void run_log_payload_load(const char *tier, uint32_t count)
     CHECK(sfs_open(&options, &store, &error) == SFS_OK);
     CHECK(store != NULL);
     memset(payload, 'L', sizeof(payload));
-    CHECK(getrusage(RUSAGE_SELF, &before) == 0);
-    CHECK(clock_gettime(CLOCK_MONOTONIC, &started) == 0);
+    CHECK(test_resources(&before) == 0);
     for (index = 0; index < count; index += 1) {
         payload[0] = (uint8_t)(index & 0xffu);
         CHECK(append_payload(store,
@@ -1149,15 +1122,13 @@ static void run_log_payload_load(const char *tier, uint32_t count)
                              &error) == SFS_OK);
     }
     CHECK(sfs_flush(store, &error) == SFS_OK);
-    CHECK(clock_gettime(CLOCK_MONOTONIC, &finished) == 0);
-    CHECK(getrusage(RUSAGE_SELF, &after) == 0);
+    CHECK(test_resources(&after) == 0);
     memset(&status, 0, sizeof(status));
     status.struct_size = sizeof(status);
     CHECK(sfs_status(store, &status, &error) == SFS_OK);
     CHECK(status.record_count == (uint64_t)count);
     CHECK(status.partitions[2].record_count == (uint64_t)count);
-    elapsed_ms = (finished.tv_sec - started.tv_sec) * 1000L +
-        (finished.tv_nsec - started.tv_nsec) / 1000000L;
+    elapsed_ms = (long)(after.elapsed_ms - before.elapsed_ms);
     (void)fprintf(
         stderr,
         "AAB_LOG_LOAD native tier=%s offered=%u written=%" PRIu64
@@ -1167,9 +1138,9 @@ static void run_log_payload_load(const char *tier, uint32_t count)
         count,
         status.record_count,
         elapsed_ms,
-        timeval_ms(after.ru_utime) - timeval_ms(before.ru_utime),
-        timeval_ms(after.ru_stime) - timeval_ms(before.ru_stime),
-        (long)after.ru_maxrss,
+        (long)(after.user_ms - before.user_ms),
+        (long)(after.system_ms - before.system_ms),
+        (long)after.max_rss_kb,
         tree_bytes(directory),
         status.payload_bytes);
     CHECK(sfs_close(store, &error) == SFS_OK);
@@ -1193,8 +1164,8 @@ static void test_interrupted_temporary_segment_creation_is_cleaned_on_open(void)
     sfs_store_t *store;
     sfs_status_t status;
     sfs_error_t error;
-    struct stat file_status;
-    int descriptor;
+    sfs_file_info_t file_status;
+    sfs_file_t descriptor;
 
     CHECK(directory != NULL);
     store = open_store(directory, TEST_SEGMENT_SIZE);
@@ -1205,17 +1176,17 @@ static void test_interrupted_temporary_segment_creation_is_cleaned_on_open(void)
                    "%s%s",
                    directory,
                    temporary_name);
-    descriptor = open(temporary_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
-    CHECK(descriptor >= 0);
-    CHECK(write(descriptor, partial_header, sizeof(partial_header)) ==
-          (ssize_t)sizeof(partial_header));
-    CHECK(fsync(descriptor) == 0);
-    CHECK(close(descriptor) == 0);
+    descriptor = sfs_file_open(temporary_path, SFS_FILE_WRITE | SFS_FILE_CREATE | SFS_FILE_EXCLUSIVE);
+    CHECK(descriptor != SFS_FILE_INVALID);
+    CHECK(test_write_at(descriptor, partial_header, sizeof(partial_header), 0) ==
+          (int64_t)sizeof(partial_header));
+    CHECK(sfs_file_sync(descriptor) == 0);
+    CHECK(sfs_file_close(descriptor) == 0);
 
     store = open_store(directory, TEST_SEGMENT_SIZE);
     CHECK(store != NULL);
-    CHECK(lstat(temporary_path, &file_status) != 0);
-    CHECK(errno == ENOENT);
+    CHECK(sfs_path_info(temporary_path, false, &file_status) != 0);
+    CHECK(sfs_os_missing(sfs_os_error()));
     memset(&status, 0, sizeof(status));
     status.struct_size = sizeof(status);
     CHECK(sfs_status(store, &status, &error) == SFS_OK);

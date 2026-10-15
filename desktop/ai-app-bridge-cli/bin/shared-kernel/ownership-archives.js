@@ -4,6 +4,7 @@ const fs = require('node:fs'), path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { CommandError } = require('../command-errors');
 const { createOwnershipStore } = require('./device-ownership-store');
+const { durableRename, durableRemove } = require('./durable-files');
 
 const idPattern = /^(unresolved|force-stopped):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const operations = new Set(['archives', 'archive', 'reconcile-archive', 'delete-archive']);
@@ -28,15 +29,11 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const entries = state => [...new Map([state?.pending, ...(state?.reservations || []), ...(state?.resetPending || []),
   ...(state?.pendingAcknowledgements || []).map(item => item.pending)].filter(Boolean).map(item => [item.id, item])).values()];
 
-function syncDirectory(directory) {
-  const fd = fs.openSync(directory, 'r');
-  try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-}
 function writeJson(file, value) {
   const directory = path.dirname(file); fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const temporary = `${file}.${randomUUID()}.tmp`, fd = fs.openSync(temporary, 'wx', 0o600);
   try { fs.writeFileSync(fd, JSON.stringify(value) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(temporary, file); syncDirectory(directory);
+  durableRename(temporary, file);
 }
 function readBytes(file) {
   const fd = fs.openSync(file, 'r');
@@ -149,7 +146,7 @@ function createArchiveStore(directory) {
       }
       if (args.operation === 'delete-archive') {
         for (const file of [files.result, files.metadata, files.file].filter(Boolean)) {
-          try { fs.unlinkSync(file); syncDirectory(path.dirname(file)); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+          try { durableRemove(file); } catch (error) { if (error.code !== 'ENOENT') throw error; }
         }
         return { ok: true, serial: args.serial, archiveId: args.archiveId, deleted: true,
           message: 'Only this local archive and its reconciliation record were deleted. Remote actions and current device ownership were not changed.' };

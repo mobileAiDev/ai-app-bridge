@@ -298,7 +298,7 @@ test('four concurrent CLI starts converge on one OS-locked runtime', { timeout: 
   assert.equal(new Set(results.map(result => result.value.pid)).size, 1);
 });
 
-test('a live owner that stops answering is never replaced or replayed', { timeout: 20000 }, async t => {
+test('a live owner that stops answering is never replaced or replayed', { timeout: 20000, skip: process.platform === 'win32' }, async t => {
   const f = fixture(t);
   const owner = (await f.cli('runtime', { operation: 'start' })).value;
   assert.equal(owner.status, 'running');
@@ -322,7 +322,7 @@ test('CLI decisions preserve structured JSON across a disconnected MCP and a sym
   const owner = await run('runtime', { operation: 'status' });
   await client.close({ stopRuntime: false });
   const alias = path.join(f.directory, 'facts-alias');
-  fs.symlinkSync(path.join(f.directory, 'facts'), alias, 'dir');
+  fs.symlinkSync(path.join(f.directory, 'facts'), alias, process.platform === 'win32' ? 'junction' : 'dir');
   const options = { env: { AI_APP_BRIDGE_FACT_STORE_DIR: alias } };
   assert.equal((await f.cli('runtime', { operation: 'status' }, options)).value.runtimeId, owner.runtimeId);
   const question = waiting.pendingQuestion;
@@ -335,14 +335,17 @@ test('CLI decisions preserve structured JSON across a disconnected MCP and a sym
   assert.deepEqual((await f.cli('script', { operation: 'result', operationId: started.operationId })).value.result, decision);
 });
 
-test('SIGTERM to the runtime drains its actual Script and a new owner reads the durable cancellation', { timeout: 20000 }, async t => {
+test('orderly Runtime shutdown drains its actual Script and a new owner reads the durable cancellation', { timeout: 20000 }, async t => {
   const f = fixture(t);
   const { run } = await f.mcp();
   const started = await run('script', { operation: 'start', script: questionScript });
   assert.equal((await waitFor(run, started, ['waiting_for_agent', 'failed', 'cancelled'])).status, 'waiting_for_agent');
   const owner = await run('runtime', { operation: 'status' });
   assert.equal(owner.status, 'running');
-  process.kill(owner.pid, 'SIGTERM');
+  // Windows SIGTERM is an abrupt process termination. Its orderly boundary is
+  // the authenticated stop RPC; POSIX also supports signal-driven draining.
+  if (process.platform === 'win32') assert.equal((await f.cli('runtime', { operation: 'stop' })).value.status, 'stopped');
+  else process.kill(owner.pid, 'SIGTERM');
   let state;
   const deadline = Date.now() + 10000;
   do {
@@ -365,7 +368,7 @@ test('a different build or configuration cannot execute on the live runtime, whi
   fs.cpSync(path.resolve(__dirname, '../bin'), path.join(installation, 'bin'), { recursive: true });
   fs.cpSync(path.resolve(__dirname, '../runtime'), path.join(installation, 'runtime'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, '../package.json'), path.join(installation, 'package.json'));
-  fs.symlinkSync(path.resolve(__dirname, '../node_modules'), path.join(installation, 'node_modules'), 'dir');
+  fs.symlinkSync(path.resolve(__dirname, '../node_modules'), path.join(installation, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   fs.appendFileSync(path.join(installation, 'bin/command-discovery.js'), '\n// Another build.\n');
   const cliPath = path.join(installation, 'bin/ai-app-bridge.js');
   const rejected = await f.cli('script', { operation: 'runtime-status' }, { cliPath });

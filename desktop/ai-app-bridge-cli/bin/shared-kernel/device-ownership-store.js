@@ -6,6 +6,7 @@ const os = require('node:os');
 const { createHash, randomUUID } = require('node:crypto');
 const { CommandError } = require('../command-errors');
 const acknowledgements = require('./device-acknowledgements');
+const { durableRename, durableCreate } = require('./durable-files');
 
 const schemaVersion = 'aab.device-ownership/v2';
 const maxJournalBytes = 4 * 1024 * 1024;
@@ -81,9 +82,7 @@ function createOwnershipStore(directory = defaultDirectory()) {
       fd = fs.openSync(temporary, 'wx', 0o600);
       fs.writeFileSync(fd, bytes);
       fs.fsyncSync(fd); fs.closeSync(fd); fd = undefined;
-      fs.renameSync(temporary, file);
-      const parent = fs.openSync(directory, 'r');
-      try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+      durableRename(temporary, file);
     } catch (error) {
       if (fd !== undefined) fs.closeSync(fd);
       try { fs.unlinkSync(temporary); } catch (failure) { if (failure.code !== 'ENOENT') error.cleanupError = failure.code; }
@@ -98,11 +97,7 @@ function createOwnershipStore(directory = defaultDirectory()) {
     fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
     const archiveId = randomUUID();
     const archivePath = path.join(archiveDir, `${archiveId}.json`);
-    const fd = fs.openSync(archivePath, 'wx', 0o600);
-    try { fs.writeFileSync(fd, fs.readFileSync(paths(serial).journal)); fs.fsyncSync(fd); }
-    finally { fs.closeSync(fd); }
-    const parent = fs.openSync(archiveDir, 'r');
-    try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+    durableCreate(archivePath, fs.readFileSync(paths(serial).journal));
     return { archiveId: `unresolved:${archiveId}`, archivePath, outcome, archivedAtMs: Date.now() };
   }
   function archives(serial) {

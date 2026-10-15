@@ -10,6 +10,8 @@
     "include",
     "src",
     "bindings/node/sfs_node.c",
+    "bindings/node/windows_process.c",
+    "bindings/node/windows_process.h",
     "LICENSE",
     "NOTICE",
     "binding-path.js",

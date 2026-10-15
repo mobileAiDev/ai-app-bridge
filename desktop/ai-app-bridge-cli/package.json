@@ -92,6 +92,8 @@
     "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node scripts/validation/test-suite.js",
     "test": "node scripts/validation/test-suite.js",
     "verify:package": "node scripts/validation/verify-package.js",
+    "verify:windows": "node scripts/validation/verify-windows-package.js",
+    "test:windows": "node scripts/validation/windows-tests.js",
     "test:functional": "node scripts/validation/test-suite.js functional",
     "test:performance": "node scripts/validation/test-suite.js performance"
   },
@@ -99,6 +101,7 @@
   "dependencies": {
     "@mobileaidev/segmented-fact-store-native": "file:../../native/segmented-fact-store",
     "appium-webdriveragent": "14.1.1",
+    "cross-spawn": "7.0.6",
     "ws": "^8.18.0"
   },
   "bundleDependencies": [

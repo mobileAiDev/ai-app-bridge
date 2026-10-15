@@ -42,7 +42,7 @@ public static class AabPowerNative {
     $threadId = [AabPowerNative]::GetCurrentThreadId()
     if ([AabPowerNative]::SetThreadExecutionState($flags) -eq 0) { throw 'SetThreadExecutionState failed.' }
     $held = $true
-    $coverage = @{ mechanism = 'SetThreadExecutionState'; scope = 'host-idle'; system = ($mode -ne 'display'); display = ($mode -ne 'system'); manualSleep = 'not_prevented'; unlock = $false; screenSaver = 'not_prevented'; threadId = $threadId }
+    $coverage = @{ mechanism = 'SetThreadExecutionState'; scope = 'host-idle'; system = ($mode -ne 'display'); display = ($mode -ne 'system'); manualSleep = 'not_prevented'; unlock = $false; screenSaver = 'not_prevented'; threadId = $threadId; pid = $PID }
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $deadline = $clock.ElapsedMilliseconds + $ttlMs
     Send-Power @{ type = 'ready'; ok = $true; leaseId = $leaseId; coverage = $coverage }

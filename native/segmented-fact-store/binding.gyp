@@ -4,7 +4,8 @@
       "target_name": "segmented_fact_store",
       "sources": [
         "src/sfs.c",
-        "bindings/node/sfs_node.c"
+        "bindings/node/sfs_node.c",
+        "bindings/node/windows_process.c"
       ],
       "include_dirs": [
         "include"
@@ -28,6 +29,10 @@
         ]
       },
       "conditions": [
+        ["OS=='win'", {
+          "defines": ["_CRT_SECURE_NO_WARNINGS", "WIN32_LEAN_AND_MEAN", "NOMINMAX", "_WIN32_WINNT=0x0A00"],
+          "msvs_settings": { "VCCLCompilerTool": { "AdditionalOptions": ["/std:c11", "/utf-8"] } }
+        }],
         ["OS!='win'", {
           "defines": ["_POSIX_C_SOURCE=200809L"]
         }]

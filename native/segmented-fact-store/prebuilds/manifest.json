@@ -2,9 +2,26 @@
   "napi": 8,
   "artifacts": {
     "darwin-arm64": {
-      "sha256": "04c0ce98f12b8628cb6c24dd9193c147fed94ad1b99eae8da4c0abe9aa3825a8",
+      "sha256": "05f6aa5c1b6bf796e54b0e5bbc78bf159adfc1b7b824b7a007ae732cd06f35b3",
       "minSystem": "macOS 13.5",
-      "compiler": "Apple clang, -O2 -mmacosx-version-min=13.5"
+      "sourceBuild": true,
+      "sourceSha256": {
+        "binding.gyp": "e94c5adfe2ac476a26051ae565c0aadefca1d6d7de311f0f44e626f46cdf6005",
+        "include/sfs.h": "90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7",
+        "src/sfs.c": "9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14",
+        "src/sfs_platform.h": "e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d",
+        "bindings/node/sfs_node.c": "b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380",
+        "bindings/node/windows_process.c": "43c7eb85941cdc79ed3c8ee0f6d54e6528f1349731c0ea6c89fa636d936e8265",
+        "bindings/node/windows_process.h": "e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526"
+      },
+      "buildHost": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "27.0.0",
+        "node": "26.3.0",
+        "napi": 10
+      },
+      "compiler": "Apple clang (direct -O2 -std=c11 -arch arm64 -mmacosx-version-min=13.5 -DNAPI_VERSION=8)"
     },
     "darwin-x64": {
       "sha256": "ed95bc5f818de53d479a842125316ac8c2447ab9d80a1c7903384e6818e7d8d8",

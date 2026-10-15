@@ -23,12 +23,20 @@ final class SegmentedFactStoreSourceMirrorTests: XCTestCase {
                 "ios/ai-app-bridge-ios/Sources/SegmentedFactStoreC/include/sfs.h"
             ),
             (
+                "native/segmented-fact-store/src/sfs_platform.h",
+                "ios/ai-app-bridge-ios/Sources/SegmentedFactStoreC/sfs_platform.h"
+            ),
+            (
                 "native/segmented-fact-store/src/sfs.c",
                 "flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/SegmentedFactStoreC/sfs.c"
             ),
             (
                 "native/segmented-fact-store/include/sfs.h",
                 "flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/SegmentedFactStoreC/include/sfs.h"
+            ),
+            (
+                "native/segmented-fact-store/src/sfs_platform.h",
+                "flutter/ai_app_bridge_flutter/ios/ai_app_bridge_flutter/Sources/SegmentedFactStoreC/sfs_platform.h"
             ),
             (
                 "ios/ai-app-bridge-ios/Sources/AiAppBridgeFactStoreC/AiAppBridgeFactStoreC.c",

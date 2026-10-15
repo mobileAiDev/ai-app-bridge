@@ -109,11 +109,7 @@ async function forceStopDevice(args, { directory, stopHost = stopHosts, stopDevi
     fs.mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
     const archivePath = fs.existsSync(store.paths(args.serial).journal) ? path.join(archiveDir, `${resetId}.json`) : null;
     if (archivePath) {
-      const file = fs.openSync(archivePath, 'wx', 0o600);
-      try { fs.writeFileSync(file, fs.readFileSync(store.paths(args.serial).journal)); fs.fsyncSync(file); }
-      finally { fs.closeSync(file); }
-      const parent = fs.openSync(archiveDir, 'r');
-      try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+      require('./durable-files').durableCreate(archivePath, fs.readFileSync(store.paths(args.serial).journal));
       require('./ownership-archives').recordForceStoppedArchive(store.directory, resetId, args.serial);
     }
     const state = { schemaVersion, serial: args.serial, phase: 'idle', owner: null, pending: null, reservations: [],

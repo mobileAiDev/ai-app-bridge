@@ -59,9 +59,12 @@ function createEvidenceRecording({ directory, namespace, operationId, store, now
   function write(name, bytes) {
     requireValue(bytes.length <= MAX_FILE_BYTES && bytesWritten + bytes.length <= MAX_RECORDING_BYTES,
       'recording_limit_exceeded');
-    const descriptor = fs.openSync(path.join(root, name), 'wx', 0o600);
-    try { fs.writeFileSync(descriptor, bytes); fs.fsyncSync(descriptor); }
-    finally { fs.closeSync(descriptor); }
+    if (process.platform === 'win32') require('./durable-files').durableCreate(path.join(root, name), bytes);
+    else {
+      const descriptor = fs.openSync(path.join(root, name), 'wx', 0o600);
+      try { fs.writeFileSync(descriptor, bytes); fs.fsyncSync(descriptor); }
+      finally { fs.closeSync(descriptor); }
+    }
     bytesWritten += bytes.length;
     return { name, bytes: bytes.length, sha256: sha256(bytes) };
   }

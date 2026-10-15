@@ -38,9 +38,12 @@ function createChildRuntimeAdapter({
   sdkFile,
   extension,
   onSpawnFailure,
+  env,
+  createProcessScope = require('../shared-kernel/windows-process').createProcessScope,
 } = {}) {
   let channel = null;
   let child = null;
+  let processScope = null;
   let exited = Promise.resolve();
   let readControl = () => ({ status: 'running', pauseReason: null });
   let active = false;
@@ -61,6 +64,7 @@ function createChildRuntimeAdapter({
   async function terminate() {
     active = false;
     wakeControl();
+    if (processScope) { processScope.close(); processScope = null; }
     if (channel) channel.stop();
     await exited;
     child?.stdin?.destroy(); child?.stdout?.destroy(); child?.stderr?.destroy();
@@ -91,6 +95,8 @@ function createChildRuntimeAdapter({
         shell: false,
         cwd: requestDirectory(),
         stdio: ['pipe', 'pipe', 'pipe'],
+        env,
+        windowsHide: true,
       });
       channel = createScriptSessionChannel(child, {
         maxFrameBytes: Math.max(spec.policy.maxOutputBytes, spec.policy.maxProgressBytes, 1024 * 1024) + 64 * 1024,
@@ -130,6 +136,12 @@ function createChildRuntimeAdapter({
       if (!ready || ready.type !== 'ready') {
         await terminate();
         return { ok: false, error: ready && ready.type === 'fail' && ready.error === 'handshake_failed' ? 'handshake_failed' : 'child_crashed' };
+      }
+      try { processScope = createProcessScope(child.pid); }
+      catch (error) {
+        await terminate();
+        emit('script_failed', { error: 'script_process_scope_failed' });
+        return { ok: false, error: 'script_process_scope_failed', diagnostics: { message: error.message } };
       }
       emit('child_started', { kind });
       channel.send({

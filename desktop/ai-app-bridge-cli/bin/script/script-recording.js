@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { createEvidenceRecording, requireValue } = require('../shared-kernel/evidence-recording');
+const { durableCreate, durableCreateDirectory, syncDirectory } = require('../shared-kernel/durable-files');
 
 function createScriptRecording({ directory, previous, checkpointEnabled, operationId, store, now }) {
   if (directory === undefined && !previous) return null;
@@ -16,19 +17,23 @@ function createScriptRecording({ directory, previous, checkpointEnabled, operati
   const rootFile = path.join(rootDirectory, 'script-recording.json');
   if (!previous) {
     requireValue(fs.readdirSync(rootDirectory).length === 0, 'output_exists', 'recordingDir must be empty.');
-    const fd = fs.openSync(rootFile, 'wx', 0o600);
-    try { fs.writeFileSync(fd, JSON.stringify({ schemaVersion: 'aab.script-recording/v1', operationId }) + '\n'); fs.fsyncSync(fd); }
-    finally { fs.closeSync(fd); }
+    const bytes = JSON.stringify({ schemaVersion: 'aab.script-recording/v1', operationId }) + '\n';
+    if (process.platform === 'win32') durableCreate(rootFile, bytes);
+    else {
+      const fd = fs.openSync(rootFile, 'wx', 0o600);
+      try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    }
   } else {
     const root = require('../shared-kernel/evidence-recording').readRegularFile(rootDirectory, path.basename(rootFile));
     const identity = JSON.parse(root);
     requireValue(identity.schemaVersion === 'aab.script-recording/v1' && identity.operationId === operationId, 'recording_identity_mismatch');
   }
   const attemptId = randomUUID();
-  const recording = createEvidenceRecording({ directory: path.join(rootDirectory, `attempt-${attemptId}`),
+  const attemptDirectory = path.join(rootDirectory, `attempt-${attemptId}`);
+  if (process.platform === 'win32') durableCreateDirectory(attemptDirectory);
+  const recording = createEvidenceRecording({ directory: attemptDirectory,
     namespace: 'script', operationId, store, now });
-  const parent = fs.openSync(rootDirectory, 'r');
-  try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+  if (process.platform !== 'win32') syncDirectory(rootDirectory);
   return { record: recording.record, info: () => ({ ...recording.info(), rootDirectory, attemptId,
     previousRecordingId: previous?.recordingId ?? null }) };
 }

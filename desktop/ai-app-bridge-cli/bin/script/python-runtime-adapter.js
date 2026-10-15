@@ -94,6 +94,9 @@ function createPythonRuntimeAdapter(opts = {}) {
     executable: resolved.executable,
     sdkFile: 'script-sdk.py',
     extension: '.py',
+    // The Host protocol and captured diagnostics are UTF-8 on every platform,
+    // independently of the Windows console code page or inherited override.
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
     onSpawnFailure() {
       if (spawnFailureReprobed) return;
       spawnFailureReprobed = true;
