@@ -15,7 +15,7 @@ process.once('message', ({ file, args, options }) => {
   child.once('error', error => { failure = { message: error.message, code: error.code, errno: error.errno, syscall: error.syscall }; });
   child.once('close', (code, signal) => {
     // IPC and stdout are different pipes: drain both output queues before
-    // telling the parent it may close the Job (and any remaining descendants).
+    // telling the parent the command finished and may release Job ownership.
     process.stdout.write('', () => process.stderr.write('', () => {
       process.send({ event: 'result', code, signal, failure, spawned }, () => {});
     }));

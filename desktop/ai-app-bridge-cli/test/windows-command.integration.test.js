@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const net = require('node:net');
 const { setTimeout: delay } = require('node:timers/promises');
 const { execFileBounded } = require('../bin/shared-kernel/execution-io');
 const { runExecution } = require('../bin/shared-kernel/execution-scope');
@@ -97,4 +98,33 @@ test('Windows ENOENT distinguishes a missing shell from a shell that already sta
   // A created shell must remain dispatched even though the command is missing.
   await assert.rejects(execFileBounded(missing, [], { mutation: true }),
     error => error.code === 'ENOENT' && error.dispatched === true && error.ambiguous === true);
+});
+
+test('Windows ADB keeps its independently owned server across completed commands and stops only the selected port', { ...windows, timeout: 30000 }, async t => {
+  const adb = process.env.AAB_TEST_ADB;
+  assert.ok(adb && fs.existsSync(adb), 'Windows CI must provide its real SDK adb.exe through AAB_TEST_ADB');
+  const reservation = net.createServer();
+  await new Promise((resolve, reject) => { reservation.once('error', reject); reservation.listen(0, '127.0.0.1', resolve); });
+  const port = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+    !['adb_server_socket', 'android_adb_server_port', 'adb_server_port'].includes(name.toLowerCase())));
+  const run = command => execFileBounded(adb, ['-H', '127.0.0.1', '-P', String(port), command], { env, timeoutMs: 10000 });
+  let cleaned = false;
+  t.after(async () => { if (!cleaned) await run('kill-server'); });
+  await run('start-server');
+  // Inspect the listener without invoking ADB: an auto-start on the next ADB
+  // request must not hide a daemon that was killed by start-server cleanup.
+  const listener = await execFileBounded('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    `@(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess -Unique) | ConvertTo-Json -Compress`],
+  { timeoutMs: 10000 });
+  const pid = JSON.parse(listener.stdout), native = require('@mobileaidev/segmented-fact-store-native');
+  assert.equal(Number.isInteger(pid), true, listener.stdout);
+  const started = native.windowsProcessStart(pid);
+  assert.ok(started);
+  await run('server-status');
+  assert.equal(native.windowsProcessStart(pid), started, 'the second command must reuse the original server');
+  await run('kill-server'); cleaned = true;
+  for (let i = 0; i < 100 && native.windowsProcessStart(pid) !== null; i++) await delay(10);
+  assert.equal(native.windowsProcessStart(pid), null);
 });

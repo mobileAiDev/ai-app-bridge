@@ -4,7 +4,7 @@ The user requires Windows to have the same task-level, explicit power lease as
 macOS, with Windows physical testing deferred until a machine is available.
 That requirement is not met by merely shipping a PowerShell source file.
 
-## Current facts
+## Published 0.4.13 and initial findings
 
 - `bin/power/windows.ps1` implements `SetThreadExecutionState`, a monotonic
   worker deadline, renew/release messages and EOF cleanup. Acquisition and
@@ -21,7 +21,7 @@ That requirement is not met by merely shipping a PowerShell source file.
   and cannot release another lease or invalidate a replacement handle. New
   lifecycle tests went from three failures to eight passes; all 67 power tests
   passed. These are Host/process tests, not Windows API tests.
-- **The normal Windows CLI installation is currently blocked.** Its bundled
+- **The normal Windows CLI installation in public 0.4.13 is blocked.** Its bundled
   native FactStore has only Darwin arm64/x64 and Linux glibc arm64/x64 artifacts.
   `binding-path.js` rejects win32 and the install hook immediately loads that
   binding. The actual resolver, run in an isolated Mac Node process with only
@@ -68,7 +68,15 @@ Evidence is in sibling directory
    installer guidance and coordinated release. Preserve Windows physical
    verification as pending until performed. Public 0.4.10 is not overwritten.
 
-## Current decision
+## Candidate progress and current decision
+
+The isolated `codex/windows-host-validation` candidate implements the native
+platform boundary, Windows Host file/process operations and command shims.
+Actual Windows CI has now passed native compilation, 17 Node storage cases,
+the C suite and golden-format parity. It also exposed Host lifecycle and test
+fixture problems; the candidate is still under correction and has not replaced
+the installed 0.4.13. See the source-specific gates and retained failures in
+[Windows Host validation](WINDOWS_HOST_VALIDATION_2026-10-15.md).
 
 Retain the existing Windows power implementation and the tested process-exit
 diagnostic repair. Treat the missing Windows Host installation/runtime support

@@ -258,6 +258,10 @@ function createChildRuntimeAdapter({
             await terminate();
           } else {
             await finished;
+            if (active && ended.code === 0 && processScope) {
+              processScope.release();
+              processScope = null;
+            }
           }
           emit('script_completed', { result: message.result });
           return { ok: true, result: message.result };

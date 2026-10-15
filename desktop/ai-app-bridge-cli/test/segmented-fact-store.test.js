@@ -82,9 +82,12 @@ function allSegmentBytes(directory) {
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const child = path.join(current, entry.name);
       if (entry.isDirectory()) pending.push(child);
-      else if (entry.isFile()) buffers.push(fs.readFileSync(child));
+      // The lock and manifest are not payload segments. Windows enforces the
+      // writer lock against reads through another handle as well as writes.
+      else if (entry.isFile() && /^segment-\d{20}\.sfs$/.test(entry.name)) buffers.push(fs.readFileSync(child));
     }
   }
+  assert.ok(buffers.length > 0, 'expected to inspect committed segment bytes');
   return Buffer.concat(buffers);
 }
 

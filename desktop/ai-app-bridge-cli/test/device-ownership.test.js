@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { fork } = require('node:child_process');
+const { execFileSync, fork } = require('node:child_process');
 const { createDeviceMutationLease, runDeviceEffect } = require('../bin/shared-kernel/device-mutation-lease');
 const { deviceOwnership } = require('../bin/shared-kernel/device-ownership-recovery');
 const { schema } = require('../bin/shared-kernel/flutter-execution');
@@ -15,6 +15,18 @@ function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-ownership-test-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   return { directory, lease: createDeviceMutationLease({ directory }) };
+}
+
+function denyNewFiles(directory) {
+  if (process.platform === 'win32') {
+    const icacls = path.join(process.env.SystemRoot, 'System32', 'icacls.exe');
+    // Deny FILE_ADD_FILE on this directory only, without changing its children's ACLs.
+    execFileSync(icacls, [directory, '/deny', '*S-1-1-0:(WD)']);
+    return () => execFileSync(icacls, [directory, '/remove:d', '*S-1-1-0']);
+  }
+  const mode = fs.statSync(directory).mode & 0o777;
+  fs.chmodSync(directory, mode & ~0o222);
+  return () => fs.chmodSync(directory, mode);
 }
 
 function child(directory, serial, mode = 'idle') {
@@ -59,13 +71,14 @@ test('SQLite readers of the lock file do not masquerade as a device owner', t =>
   const { createOwnershipStore } = require('../bin/shared-kernel/device-ownership-store');
   const { directory, lease } = fixture(t), store = createOwnershipStore(directory);
   const reader = new DatabaseSync(store.paths('observed-phone').lock);
-  t.after(() => reader.close());
-  reader.exec('BEGIN; SELECT * FROM sqlite_schema');
-  const owner = lease.acquire('observed-phone');
-  assert.equal(owner.ok, true, JSON.stringify(owner));
   try {
-    assert.equal(createDeviceMutationLease({ directory }).acquire('observed-phone').error, 'target_busy');
-  } finally { owner.release(); reader.exec('ROLLBACK'); }
+    reader.exec('BEGIN; SELECT * FROM sqlite_schema');
+    const owner = lease.acquire('observed-phone');
+    assert.equal(owner.ok, true, JSON.stringify(owner));
+    try {
+      assert.equal(createDeviceMutationLease({ directory }).acquire('observed-phone').error, 'target_busy');
+    } finally { owner.release(); reader.exec('ROLLBACK'); }
+  } finally { reader.close(); }
 });
 
 test('device ownership remains exclusive with the previous SQLite lock mode', t => {
@@ -73,15 +86,16 @@ test('device ownership remains exclusive with the previous SQLite lock mode', t 
   const { createOwnershipStore } = require('../bin/shared-kernel/device-ownership-store');
   const { directory, lease } = fixture(t), store = createOwnershipStore(directory);
   const previous = new DatabaseSync(store.paths('mixed-version-phone').lock);
-  t.after(() => previous.close());
-  previous.exec('BEGIN EXCLUSIVE');
-  assert.equal(lease.acquire('mixed-version-phone').error, 'target_busy');
-  previous.exec('ROLLBACK');
-  const owner = lease.acquire('mixed-version-phone');
-  assert.equal(owner.ok, true);
-  try { assert.throws(() => previous.exec('BEGIN EXCLUSIVE'), error => error.errcode === 5); }
-  finally { owner.release(); }
-  previous.exec('BEGIN EXCLUSIVE; ROLLBACK');
+  try {
+    previous.exec('BEGIN EXCLUSIVE');
+    assert.equal(lease.acquire('mixed-version-phone').error, 'target_busy');
+    previous.exec('ROLLBACK');
+    const owner = lease.acquire('mixed-version-phone');
+    assert.equal(owner.ok, true);
+    try { assert.throws(() => previous.exec('BEGIN EXCLUSIVE'), error => error.errcode === 5); }
+    finally { owner.release(); }
+    previous.exec('BEGIN EXCLUSIVE; ROLLBACK');
+  } finally { previous.close(); }
 });
 
 test('process death releases an idle owner without PID guesses or expiry', async t => {
@@ -175,13 +189,28 @@ test('corrupt journal bytes are archived, but inaccessible files still fail befo
 });
 
 test('unwritable ownership metadata prevents dispatch', async t => {
+  const { createOwnershipStore } = require('../bin/shared-kernel/device-ownership-store');
   const { directory, lease } = fixture(t);
   const owner = lease.acquire('phone'); owner.release();
-  fs.chmodSync(directory, 0o500);
+  const journal = createOwnershipStore(directory).paths('phone').journal;
+  const original = fs.readFileSync(journal);
+  const restore = denyNewFiles(directory);
   let actions = 0;
-  try { await assert.rejects(lease.run('phone', () => { actions++; }), { code: 'device_ownership_unavailable' }); }
-  finally { fs.chmodSync(directory, 0o700); }
+  try {
+    assert.throws(
+      () => fs.writeFileSync(path.join(directory, 'permission-probe'), '', { flag: 'wx' }),
+      error => ['EACCES', 'EPERM'].includes(error.code),
+      'the fixture must really deny creation before testing dispatch',
+    );
+    await assert.rejects(lease.run('phone', () => { actions++; }), {
+      code: 'device_ownership_unavailable',
+      dispatched: false,
+    });
+    assert.deepEqual(fs.readFileSync(journal), original);
+  } finally { restore(); }
   assert.equal(actions, 0);
+  await lease.run('phone', () => { actions++; });
+  assert.equal(actions, 1, 'a failed metadata write must release both ownership locks');
 });
 
 test('public recovery verifies matching SDK completion and never treats idle or wrong identity as settlement', async t => {

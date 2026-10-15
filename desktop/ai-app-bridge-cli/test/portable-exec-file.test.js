@@ -27,7 +27,7 @@ function fixture(t) {
 
 // Exercise the actual Windows event ordering on every host. This fixture does
 // not claim Win32 Job behavior; the integration suite runs those APIs on Windows.
-function windowsCommand(closeScope = () => {}) {
+function windowsCommand(closeScope = () => {}, releaseScope = () => {}) {
   const child = new EventEmitter();
   child.pid = 42; child.stdout = new PassThrough(); child.stderr = new PassThrough();
   child.kill = () => { child.killed = true; return true; };
@@ -38,7 +38,7 @@ function windowsCommand(closeScope = () => {}) {
     module, exports: module.exports, process: { platform: 'win32' }, Buffer, __dirname: path.dirname(filename),
     require(name) {
       if (name === 'node:child_process') return { fork: () => child };
-      if (name === './windows-process') return { createProcessScope: () => ({ close: closeScope }) };
+      if (name === './windows-process') return { createProcessScope: () => ({ close: closeScope, release: releaseScope }) };
       return realRequire(name);
     },
   }, { filename });
@@ -48,7 +48,8 @@ function windowsCommand(closeScope = () => {}) {
 for (const trigger of ['result', 'cancel']) test(`Windows ${trigger} retains repeated cleanup failures without escaping or skipping the callback`, () => {
   let cleanupCalls = 0, callbackCalls = 0, failure;
   const first = Object.assign(new Error('first Job cleanup failed'), { code: 'windows_process_failed' });
-  const { child, execute } = windowsCommand(() => { throw ++cleanupCalls === 1 ? first : new Error('second Job cleanup failed'); });
+  const fail = () => { throw ++cleanupCalls === 1 ? first : new Error('second Job cleanup failed'); };
+  const { child, execute } = windowsCommand(fail, fail);
   execute('command', [], {}, error => { callbackCalls++; failure = error; });
   child.emit('message', { event: 'ready' });
   if (trigger === 'result') child.emit('message', { event: 'result', code: 0, signal: null, spawned: true });
@@ -58,6 +59,28 @@ for (const trigger of ['result', 'cancel']) test(`Windows ${trigger} retains rep
   assert.equal(callbackCalls, 1);
   assert.equal(failure, first);
   assert.equal(child.killed, true);
+});
+
+for (const code of [0, 17]) test(`Windows natural command exit ${code} releases ownership without terminating its daemon`, () => {
+  const methods = [], { child, execute } = windowsCommand(() => methods.push('terminate'), () => methods.push('release'));
+  let callbackCalls = 0, failure;
+  execute('command', [], {}, error => { callbackCalls++; failure = error; });
+  child.emit('message', { event: 'ready' });
+  child.emit('message', { event: 'result', code, signal: null, spawned: true });
+  child.emit('close', 1, null);
+  assert.deepEqual(methods, ['release']);
+  assert.equal(callbackCalls, 1);
+  assert.equal(failure?.code ?? 0, code);
+});
+
+test('Windows cancelled command does not release its Job when a result races termination', () => {
+  const methods = [], { child, execute } = windowsCommand(() => methods.push('terminate'), () => methods.push('release'));
+  execute('command', [], {}, () => {});
+  child.emit('message', { event: 'ready' });
+  child.kill('SIGTERM');
+  child.emit('message', { event: 'result', code: 0, signal: null, spawned: true });
+  child.emit('close', 1, null);
+  assert.deepEqual(methods, ['terminate']);
 });
 
 for (const spawned of [false, true, undefined]) test(`Windows ENOENT with spawned=${spawned} retains the proven dispatch state`, async () => {

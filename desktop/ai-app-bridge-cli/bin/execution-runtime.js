@@ -12,7 +12,6 @@ const { runtimeLocation, runtimeIdentity, acquireRuntimeLock, publishEndpoint, p
 const { inRequestDirectory } = require('./shared-kernel/request-context');
 
 async function start() {
-  require('./shared-kernel/windows-process').retainRuntimeProcessScope();
   const location = runtimeLocation();
   const runtimeId = randomUUID(), startedAtMs = Date.now();
   const processStart = require('./shared-kernel/host-process-stop').processStart();
@@ -59,7 +58,17 @@ async function start() {
         || message.protocol !== protocol || message.runtimeId !== runtimeId) throw new CommandError('runtime_protocol_error', 'Runtime request identity or fields are invalid.');
       if (message.method === 'status') { send({ value: { ...status(),
         ...(message.arguments?.diagnostics === true ? { diagnostics: host.diagnosticState() } : {}) } }); return; }
-      if (message.method === 'stop') { await stop(); send({ value: status() }); return; }
+      if (message.method === 'stop') {
+        await stop();
+        // Drain and persist first, then let the stop reply finish before closing
+        // unfinished HTTP requests that would otherwise keep this process alive.
+        if (response.destroyed) server.closeAllConnections();
+        else {
+          response.once('close', () => server.closeAllConnections());
+          send({ value: status() });
+        }
+        return;
+      }
       if (message.method !== 'execute') throw new CommandError('runtime_protocol_error', 'Unknown runtime method.');
       if (phase !== 'running') throw new CommandError('runtime_stopping', 'The runtime is stopping.');
       require('./runtime-directory').requireCompatible({ identity, runtimeId, pid: process.pid }, message.identity);

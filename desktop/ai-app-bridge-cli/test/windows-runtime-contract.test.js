@@ -69,3 +69,15 @@ test('a failed process scope never starts the user Script', async t => {
   assert.equal(calls, 1);
   assert.equal(fs.existsSync(marker), false);
 });
+
+for (const returns of [true, false]) test(`Script ${returns ? 'natural return releases' : 'failure terminates'} its execution scope`, async t => {
+  const methods = [];
+  const runtime = createChildRuntimeAdapter({ kind: 'javascript', executable: process.execPath, sdkFile: 'script-sdk.js', extension: '.js',
+    createProcessScope: () => ({ release() { methods.push('release'); }, close() { methods.push('terminate'); } }) });
+  t.after(() => runtime.stop());
+  const compiled = compileScriptSpec({ schemaVersion: 'aab.code-script/v1', language: 'javascript',
+    source: returns ? 'module.exports.main=()=>42;' : 'module.exports.main=()=>{throw new Error("failed");};' });
+  const result = await runtime.start({ spec: compiled.spec, host: {}, emit() {}, control: () => ({ status: 'running' }) });
+  assert.equal(result.ok, returns);
+  assert.deepEqual(methods, [returns ? 'release' : 'terminate']);
+});

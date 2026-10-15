@@ -99,10 +99,10 @@ static napi_value scope_close(napi_env env, napi_callback_info info)
     aab_process_scope *scope;
     if (napi_get_cb_info(env, info, NULL, NULL, &self, NULL) != napi_ok || napi_unwrap(env, self, (void **)&scope) != napi_ok) return NULL;
     if (scope->job) {
-        // A Runtime retains its own scope until process teardown. Closing it
-        // here would terminate the caller before its durable shutdown finishes.
+        // Explicit termination must not kill the caller before this native
+        // operation returns. A caller-owned self scope ends at process exit.
         if (scope->pid == GetCurrentProcessId()) {
-            napi_throw_error(env, "process_scope_self_close", "The Runtime process scope is released by process exit.");
+            napi_throw_error(env, "process_scope_self_close", "The caller cannot terminate its own process scope.");
             return NULL;
         }
         if (!TerminateJobObject(scope->job, 1)) return windows_error(env, "TerminateJobObject", GetLastError());
@@ -116,6 +116,27 @@ static napi_value scope_close(napi_env env, napi_callback_info info)
             Sleep(5);
         }
         if (!CloseHandle(scope->job)) return windows_error(env, "CloseHandle", GetLastError());
+        scope->job = NULL;
+    }
+    napi_get_undefined(env, &result);
+    return result;
+}
+
+static napi_value scope_release(napi_env env, napi_callback_info info)
+{
+    napi_value self, result;
+    aab_process_scope *scope;
+    if (napi_get_cb_info(env, info, NULL, NULL, &self, NULL) != napi_ok || napi_unwrap(env, self, (void **)&scope) != napi_ok) return NULL;
+    if (scope->job) {
+        // Natural completion transfers daemon lifetime back to the tool/user.
+        // Unfinished scopes retain KILL_ON_JOB_CLOSE, including on Host death.
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+        if (!QueryInformationJobObject(scope->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits), NULL))
+            return windows_error(env, "QueryInformationJobObject for release", GetLastError());
+        limits.BasicLimitInformation.LimitFlags &= ~JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if (!SetInformationJobObject(scope->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+            return windows_error(env, "SetInformationJobObject for release", GetLastError());
+        if (!CloseHandle(scope->job)) return windows_error(env, "CloseHandle for release", GetLastError());
         scope->job = NULL;
     }
     napi_get_undefined(env, &result);
@@ -153,6 +174,7 @@ static napi_value create_scope(napi_env env, napi_callback_info info)
         return NULL;
     }
     if (napi_create_function(env, "close", NAPI_AUTO_LENGTH, scope_close, NULL, &method) != napi_ok || napi_set_named_property(env, result, "close", method) != napi_ok) return NULL;
+    if (napi_create_function(env, "release", NAPI_AUTO_LENGTH, scope_release, NULL, &method) != napi_ok || napi_set_named_property(env, result, "release", method) != napi_ok) return NULL;
     return result;
 }
 

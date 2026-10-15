@@ -14,9 +14,9 @@ function gatedWindowsSpawn(file, args, options) {
   const kill = child.kill.bind(child);
   let scope;
   let stopped = false;
-  const closeScope = () => {
+  const closeScope = (release = false) => {
     if (!scope) return true;
-    try { scope.close(); scope = null; return true; }
+    try { if (release) scope.release(); else scope.close(); scope = null; return true; }
     catch (error) { child.emit('error', error); return false; }
   };
   child.kill = signal => { stopped = true; closeScope(); return kill(signal); };
@@ -30,10 +30,13 @@ function gatedWindowsSpawn(file, args, options) {
       } catch (error) { child.emit('error', error); child.kill('SIGKILL'); }
     } else if (message.event === 'result') {
       child.commandResult = message;
-      if (!closeScope()) kill('SIGKILL');
+      // A complete command owns its result, not its tool's long-lived daemon.
+      // Cancellation/lost results still terminate the unfinished execution tree.
+      closeScope(!stopped);
+      kill('SIGKILL');
     }
   });
-  child.once('close', closeScope);
+  child.once('close', () => closeScope());
   return child;
 }
 

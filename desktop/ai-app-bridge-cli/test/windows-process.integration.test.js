@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { createInterface } = require('node:readline');
 const { setTimeout: delay } = require('node:timers/promises');
@@ -61,19 +64,49 @@ test('Windows Job closes only its owned child tree after gated startup', windows
   assert.equal(native().windowsProcessStart(other.child.pid), otherStart);
 });
 
-test('Windows Runtime Job kills descendants even when its owner is abruptly terminated', windows, async t => {
-  const modulePath = require.resolve('@mobileaidev/segmented-fact-store-native');
+test('Windows Host death closes unfinished Script and command Jobs while independent processes survive', windows, async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-job-owner-'));
+  const commandReady = path.join(directory, 'command.json'), retained = path.join(directory, 'retained.json');
+  t.after(() => {
+    if (fs.existsSync(retained)) for (const { pid, start } of JSON.parse(fs.readFileSync(retained))) native().windowsTerminateProcess(pid, start);
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const adapter = require.resolve('../bin/script/node-runtime-adapter'), spec = require.resolve('../bin/script/script-spec');
+  const io = require.resolve('../bin/shared-kernel/execution-io'), nativePath = require.resolve('@mobileaidev/segmented-fact-store-native');
+  const scriptSource = `module.exports.main=async ctx=>{const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});await ctx.call('status',{pid:process.pid,childPid:c.pid});await new Promise(()=>{});};`;
+  const commandSource = `const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(commandReady + '.tmp')},JSON.stringify({pid:process.pid,childPid:c.pid}));fs.renameSync(${JSON.stringify(commandReady + '.tmp')},${JSON.stringify(commandReady)});setInterval(()=>{},1000);`;
+  const daemonSource = `const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true,windowsHide:true});c.unref();process.stdout.write(JSON.stringify({pid:c.pid}));`;
   const runtime = childProcess(t, `
-    const scope=require(${JSON.stringify(modulePath)}).windowsCreateProcessScope(process.pid);
-    process.once('exit',()=>scope);
-    const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});
-    console.log(JSON.stringify({childPid:c.pid}));setInterval(()=>{},1000);
+    const fs=require('node:fs'), native=require(${JSON.stringify(nativePath)}), spawn=require('node:child_process').spawn;
+    const adapter=require(${JSON.stringify(adapter)}).createNodeRuntimeAdapter();
+    const compiled=require(${JSON.stringify(spec)}).compileScriptSpec({schemaVersion:'aab.code-script/v1',language:'javascript',source:${JSON.stringify(scriptSource)}});
+    const {execFileBounded}=require(${JSON.stringify(io)});
+    let reportScript; const scriptReady=new Promise(resolve=>{reportScript=resolve;});
+    adapter.start({spec:compiled.spec,emit(){},control:()=>({status:'running'}),host:{call(command,args){reportScript(args);return{ok:true};}}});
+    execFileBounded(process.execPath,['-e',${JSON.stringify(commandSource)}],{timeoutMs:15000});
+    (async()=>{
+      const daemon=JSON.parse((await execFileBounded(process.execPath,['-e',${JSON.stringify(daemonSource)}])).stdout);
+      const saved=[{pid:daemon.pid,start:native.windowsProcessStart(daemon.pid)}];
+      fs.writeFileSync(${JSON.stringify(retained)},JSON.stringify(saved));
+      const script=await scriptReady;
+      while(!fs.existsSync(${JSON.stringify(commandReady)}))await new Promise(resolve=>setTimeout(resolve,10));
+      const command=JSON.parse(fs.readFileSync(${JSON.stringify(commandReady)}));
+      const independent=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true,windowsHide:true});
+      independent.unref(); saved.push({pid:independent.pid,start:native.windowsProcessStart(independent.pid)});
+      fs.writeFileSync(${JSON.stringify(retained)},JSON.stringify(saved));
+      console.log(JSON.stringify({script,command,saved}));
+    })();
   `);
   const running = await runtime.next();
-  assert.ok(native().windowsProcessStart(running.childPid));
+  for (const tree of [running.script, running.command]) {
+    assert.ok(native().windowsProcessStart(tree.pid));
+    assert.ok(native().windowsProcessStart(tree.childPid));
+  }
+  for (const { start } of running.saved) assert.ok(start);
   runtime.child.kill('SIGKILL');
   await runtime.ended;
-  await assertExited(running.childPid);
+  for (const tree of [running.script, running.command]) { await assertExited(tree.pid); await assertExited(tree.childPid); }
+  for (const { pid, start } of running.saved) assert.equal(native().windowsProcessStart(pid), start);
 });
 
 test('Windows native Job refuses to adopt the callers parent', windows, () => {
@@ -109,12 +142,18 @@ for (const language of ['javascript', 'python']) test(`Windows ${language} Scrip
   assert.equal(native().windowsProcessStart(b.childPid), otherChildStart);
 });
 
-test('Windows completed Script does not leave detached descendants running', windows, async t => {
-  const compiled = compileScriptSpec({ schemaVersion: 'aab.code-script/v1', language: 'javascript',
-    source: `module.exports.main=()=>{const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true,windowsHide:true});c.unref();return {pid:c.pid};};` });
-  const runtime = createNodeRuntimeAdapter();
+for (const language of ['javascript', 'python']) test(`Windows completed ${language} Script preserves its explicitly started background service`, windows, async t => {
+  const source = language === 'javascript'
+    ? `module.exports.main=()=>{const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true,windowsHide:true});c.unref();return {pid:c.pid};};`
+    : `import sys,subprocess\ndef main(ctx):\n    child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(300)'],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=subprocess.DETACHED_PROCESS)\n    return {'pid':child.pid}\n`;
+  const compiled = compileScriptSpec({ schemaVersion: 'aab.code-script/v1', language, source });
+  const runtime = language === 'javascript' ? createNodeRuntimeAdapter() : createPythonRuntimeAdapter();
   t.after(() => runtime.stop());
   const result = await runtime.start({ spec: compiled.spec, emit() {}, host: {}, control: () => ({ status: 'running' }) });
   assert.equal(result.ok, true, JSON.stringify(result));
-  await assertExited(result.result.pid);
+  const start = native().windowsProcessStart(result.result.pid);
+  assert.ok(start);
+  t.after(() => native().windowsTerminateProcess(result.result.pid, start));
+  await runtime.stop();
+  assert.equal(native().windowsProcessStart(result.result.pid), start);
 });

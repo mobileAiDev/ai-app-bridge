@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const net = require('node:net');
+const { once } = require('node:events');
 const test = require('node:test');
 const { runCli } = require('../test-support/cli-client');
 const { createMcpClient, payloadOf } = require('../scripts/validation/mcp-jsonrpc-client');
@@ -356,6 +358,56 @@ test('orderly Runtime shutdown drains its actual Script and a new owner reads th
   assert.equal(state.value.status, 'stopped', JSON.stringify(state));
   const recovered = await f.cli('script', { operation: 'status', operationId: started.operationId });
   assert.equal(recovered.value.status, 'cancelled', JSON.stringify(recovered));
+  assert.notEqual((await run('runtime', { operation: 'status' })).runtimeId, owner.runtimeId);
+});
+
+test('normal Runtime stop delivers its response, closes incomplete HTTP connections and preserves original Script records', { timeout: 30000 }, async t => {
+  const f = fixture(t), run = async (command, args) => (await f.cli(command, args)).value;
+  const completed = await run('script', { operation: 'start', waitMs: 5000,
+    script: { ...questionScript, source: 'module.exports.main = () => ({saved: true, value: 42});' } });
+  assert.equal(completed.status, 'completed', JSON.stringify(completed));
+  const waiting = await waitFor(run, await run('script', { operation: 'start', script: questionScript }),
+    ['waiting_for_agent', 'failed', 'cancelled']);
+  assert.equal(waiting.status, 'waiting_for_agent');
+  const owner = await run('runtime', { operation: 'status' });
+  const directory = path.join(f.env.AI_APP_BRIDGE_RUNTIME_HOME, fs.readdirSync(f.env.AI_APP_BRIDGE_RUNTIME_HOME)[0]);
+  const endpoint = JSON.parse(fs.readFileSync(path.join(directory, 'endpoint.json')));
+  const sockets = [], closed = new Set(), errors = [];
+  t.after(() => { for (const socket of sockets) socket.destroy(); });
+  const connect = async () => {
+    const socket = net.connect({ host: '127.0.0.1', port: endpoint.port });
+    sockets.push(socket);
+    socket.on('error', error => { if (error.code !== 'ECONNRESET') errors.push(error.code); });
+    socket.once('close', () => closed.add(socket));
+    await once(socket, 'connect');
+    return socket;
+  };
+  const incomplete = await connect(), headerless = await connect();
+  const admitted = once(incomplete, 'data');
+  incomplete.write(`POST /rpc HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer ${endpoint.token}\r\nContent-Length: 1000\r\nExpect: 100-continue\r\n\r\n`);
+  // The interim reply proves the server accepted the headers before stopping;
+  // only one of the promised 1000 body bytes is sent and the socket stays open.
+  assert.match((await admitted)[0].toString(), /HTTP\/1\.1 100 Continue/);
+  incomplete.write('{');
+  const stopped = await f.cli('runtime', { operation: 'stop' });
+  assert.equal(stopped.code, 0, JSON.stringify(stopped));
+  assert.equal(stopped.value.ok, true, JSON.stringify(stopped));
+  assert.equal(stopped.value.status, 'stopped');
+  assert.equal(stopped.value.runtimeId, owner.runtimeId);
+  const alive = () => {
+    try { process.kill(owner.pid, 0); return true; }
+    catch (error) { if (error.code !== 'ESRCH') throw error; return false; }
+  };
+  const deadline = Date.now() + 5000;
+  while ((alive() || closed.size !== sockets.length) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual({ pidAlive: alive(), incompleteClosed: closed.has(incomplete), headerlessClosed: closed.has(headerless), errors },
+    { pidAlive: false, incompleteClosed: true, headerlessClosed: true, errors: [] });
+  const recovered = await run('script', { operation: 'status', operationId: waiting.operationId });
+  assert.equal(recovered.operationId, waiting.operationId);
+  assert.equal(recovered.status, 'cancelled', JSON.stringify(recovered));
+  const result = await run('script', { operation: 'result', operationId: completed.operationId });
+  assert.equal(result.operationId, completed.operationId);
+  assert.deepEqual(result.result, { saved: true, value: 42 });
   assert.notEqual((await run('runtime', { operation: 'status' })).runtimeId, owner.runtimeId);
 });
 
