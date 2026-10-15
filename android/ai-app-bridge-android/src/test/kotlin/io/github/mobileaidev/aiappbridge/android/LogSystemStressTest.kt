@@ -2,6 +2,7 @@ package io.github.mobileaidev.aiappbridge.android
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -84,18 +85,40 @@ class LogSystemStressTest {
         }
         writeMetrics("jvm-persist-load.json", results)
         report("persist-load-tiers", mapOf("tiers" to results.toString()))
+        assertPersistLoadMetrics(results)
+    }
 
-        var previousDisk = 0L
+    @Test
+    fun persistLoadMetricsRemainCorrectWhenWriterIsPaused() {
+        val results = JSONArray()
+        for (tier in listOf(LoadTier("medium", 2_000), LoadTier("high", 10_000))) {
+            results.put(runPersistLoad(tier, pauseWriterUntilEnqueueComplete = true))
+        }
+        report("paused-writer-load-tiers", mapOf("tiers" to results.toString()))
+        assertEquals(results.getJSONObject(0).getInt("accepted"), results.getJSONObject(1).getInt("accepted"))
+        assertTrue(results.getJSONObject(0).getInt("queueFull") > 0)
+        assertTrue(results.getJSONObject(1).getInt("queueFull") > 0)
+        assertPersistLoadMetrics(results)
+    }
+
+    private fun assertPersistLoadMetrics(results: JSONArray) {
         for (index in 0 until results.length()) {
             val row = results.getJSONObject(index)
             // Burst load may exceed the payload-byte budget even when the count limit is large.
+            assertTrue(row.getInt("accepted") > 0)
             assertEquals(row.getInt("offered"), row.getInt("accepted") + row.getInt("queueFull"))
             assertEquals(row.getInt("accepted"), row.getInt("written"))
+            assertEquals(row.getInt("accepted"), row.getInt("recordCount"))
+            assertEquals(row.getInt("accepted"), row.getInt("verifiedRecords"))
             assertEquals(row.getInt("queueFull"), row.getInt("dropped"))
             assertEquals(0, row.getLong("queuedPayloadBytes"))
+            assertEquals(row.getLong("acceptedPayloadBytes"), row.getLong("storePayloadBytes"))
             val disk = row.getLong("diskDeltaBytes")
-            assertTrue("${row.getString("tier")} disk=$disk", disk > previousDisk)
-            previousDisk = disk
+            // Offered count does not determine disk growth: rejected records take no disk space,
+            // and accepted records can fit in already allocated segments.
+            val addedSegments = row.getLong("segmentCount") - row.getLong("initialSegmentCount")
+            assertEquals(row.getLong("initialDiskBytes") + addedSegments * row.getLong("segmentSizeBytes"), disk)
+            assertTrue("${row.getString("tier")} disk=$disk", disk >= row.getLong("storePayloadBytes"))
         }
     }
 
@@ -250,26 +273,46 @@ class LogSystemStressTest {
         }
     }
 
-    private fun runPersistLoad(tier: LoadTier): JSONObject {
+    private fun runPersistLoad(tier: LoadTier, pauseWriterUntilEnqueueComplete: Boolean = false): JSONObject {
         val directory = File.createTempFile("aab-log-load-${tier.name}-", "")
         assertTrue(directory.delete())
         assertTrue(directory.mkdirs())
-        val store = SegmentedFactStore(maxQueuedRecords = tier.count.coerceAtLeast(256))
+        val writer = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "log-stress-load-writer").apply { isDaemon = true }
+        }
+        val store = SegmentedFactStore(
+            nativeFactory = { MappedSegmentedFactStore() },
+            writer = writer,
+            maxQueuedRecords = tier.count.coerceAtLeast(256),
+        )
+        val releaseWriter = CountDownLatch(1)
         val context = envelopeContext()
         val probe = ResourceProbe()
+        val options = storeOptions(directory, appLogQuotaBytes = 32L * 1024L * 1024L)
         try {
-            assertTrue(awaitOperation { store.open(storeOptions(directory, appLogQuotaBytes = 32L * 1024L * 1024L), it) }.isSuccess)
+            assertTrue(awaitOperation { store.open(options, it) }.isSuccess)
+            val initialStatus = awaitStatus(store)
+            val initialDiskBytes = directoryBytes(directory)
+            if (pauseWriterUntilEnqueueComplete) {
+                writer.execute { assertTrue(releaseWriter.await(30, TimeUnit.SECONDS)) }
+            }
             val before = probe.snapshot()
             val startedAt = System.nanoTime()
             val accepted = AtomicInteger(0)
             val queueFull = AtomicInteger(0)
+            val acceptedInputs = ArrayList<Int>()
+            var acceptedPayloadBytes = 0L
             val done = CountDownLatch(1)
             val collector = ProcessLogcatCollector(
                 openSource = { IndexedLogcatSource(tier.count) { logcatLine(it) } },
                 persist = { line ->
                     val payload = persistEnvelope(context, line)
                     when (store.record(payload.bytes, partitionId = payload.partitionId)) {
-                        SegmentedFactRecordEnqueueResult.ACCEPTED -> accepted.incrementAndGet()
+                        SegmentedFactRecordEnqueueResult.ACCEPTED -> {
+                            acceptedInputs.add(accepted.get() + queueFull.get())
+                            acceptedPayloadBytes += payload.bytes.size
+                            accepted.incrementAndGet()
+                        }
                         SegmentedFactRecordEnqueueResult.QUEUE_FULL -> queueFull.incrementAndGet()
                         else -> error("unexpected enqueue result")
                     }
@@ -281,16 +324,25 @@ class LogSystemStressTest {
             collector.start()
             assertTrue("${tier.name} collector timed out", done.await(30, TimeUnit.SECONDS))
             collector.stop()
+            releaseWriter.countDown()
             val status = awaitStatus(store, writtenAtLeast = accepted.get(), timeoutSec = 30)
             val elapsedNs = System.nanoTime() - startedAt
             val after = probe.snapshot()
             val diskBytes = directoryBytes(directory)
             val hostCpu = hostCpuPercent()
+            assertTrue(status.operation.isSuccess)
+            // Verify physical persistence after the measurement, without charging readback to
+            // the collection throughput, CPU or heap samples.
+            assertTrue(awaitOperation { store.close(it) }.isSuccess)
+            assertTrue(awaitOperation { store.open(options, it) }.isSuccess)
+            verifyPersistedLogRecords(store, context, acceptedInputs)
             return JSONObject()
                 .put("tier", tier.name)
                 .put("offered", tier.count)
                 .put("accepted", accepted.get())
                 .put("written", status.writtenRecords)
+                .put("recordCount", status.recordCount)
+                .put("verifiedRecords", acceptedInputs.size)
                 .put("dropped", status.droppedRecords)
                 .put("queueFull", queueFull.get())
                 .put("queuedPayloadBytes", status.queuedPayloadBytes)
@@ -303,11 +355,48 @@ class LogSystemStressTest {
                 .put("heapUsedAfterBytes", after.heapUsed)
                 .put("heapDeltaBytes", after.heapUsed - before.heapUsed)
                 .put("diskDeltaBytes", diskBytes)
+                .put("initialDiskBytes", initialDiskBytes)
+                .put("initialSegmentCount", initialStatus.segmentCount)
+                .put("segmentCount", status.segmentCount)
+                .put("segmentSizeBytes", status.segmentSizeBytes)
+                .put("acceptedPayloadBytes", acceptedPayloadBytes)
                 .put("storePayloadBytes", status.payloadBytes)
         } finally {
+            releaseWriter.countDown()
             awaitOperation { store.close(it) }
+            writer.shutdown()
             directory.deleteRecursively()
         }
+    }
+
+    private fun verifyPersistedLogRecords(
+        store: SegmentedFactStore,
+        context: MobileFactEnvelopeContext,
+        acceptedInputs: List<Int>,
+    ) {
+        var cursor = SegmentedFactStoreCursor()
+        acceptedInputs.forEachIndexed { index, input ->
+            val expected = persistEnvelope(context, LogcatLineParser.parse(logcatLine(input)))
+            val result = awaitRead(store, cursor)
+            assertTrue(result.operation.isSuccess)
+            val record = requireNotNull(result.record)
+            assertEquals(index + 1L, record.sequence)
+            assertEquals(expected.partitionId, record.partitionId)
+            assertArrayEquals(expected.bytes, record.payload)
+            cursor = result.cursor
+        }
+        assertTrue(awaitRead(store, cursor).isEnd)
+    }
+
+    private fun awaitRead(store: SegmentedFactStore, cursor: SegmentedFactStoreCursor): SegmentedFactStoreReadResult {
+        val latch = CountDownLatch(1)
+        lateinit var result: SegmentedFactStoreReadResult
+        store.read(cursor) {
+            result = it
+            latch.countDown()
+        }
+        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        return result
     }
 
     private fun persistEnvelope(

@@ -1,3 +1,7 @@
+## 0.4.12
+
+- Align the Android dependency, embedded iOS identity and package version with coordinated release 0.4.12. SDK execution behavior is unchanged.
+
 ## 0.4.11
 
 - Align the Android dependency, embedded iOS runtime identity and package version with the coordinated 0.4.11 patch.

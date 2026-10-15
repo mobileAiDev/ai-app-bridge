@@ -1,12 +1,22 @@
-# 0.4.11 coordinated patch release
+# 0.4.12 coordinated patch release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.11 together. Device/Web protocols and the private FactStore version are
-unchanged. SDK changes only align version identities and dependencies; the
-execution repairs are in the Host.
+0.4.12 together. Device/Web protocols and the private FactStore version are
+unchanged. This release carries the Host execution repairs prepared in 0.4.11
+and fixes the Android publication checks that prevented its public Maven build.
+SDK execution behavior differs from 0.4.11 only in version identities.
 
 ## Changes
 
+- Verify log-pressure persistence against records actually accepted by the
+  bounded queue. Higher offered load can legitimately produce more rejected
+  records and equal disk usage. The tests retain resource measurements and now
+  check persisted payloads, partitions and sequence numbers after reopening the
+  store, including a deterministic paused-writer case. Production queue limits
+  and persistence behavior are unchanged.
+- Give the Android build an explicit 2 GiB Gradle heap, 512 MiB metaspace budget
+  and two-worker limit. The previous public build used the default 512 MiB heap
+  and produced incomplete Lint results after a heap-space failure.
 - Keep power renewal outside the asynchronous scope of a completed command.
   Previously, iOS renewal could fail with `runtime_stopped` while the logical
   work lease was still live.
@@ -49,7 +59,9 @@ not establish a working Windows CLI or real Windows API behavior.
 
 The repository records detailed evidence in
 `docs/PHYSICAL_DEVICE_SUPPLEMENT_0.4.10_2026-10-15.md` and publication checks in
-`docs/RELEASE_VERIFICATION_0.4.11_2026-10-15.md`. Public 0.4.10 remains immutable.
+`docs/RELEASE_VERIFICATION_0.4.12_2026-10-15.md`. The partial 0.4.11 publication,
+its three Maven attempts and the earlier release evidence are retained. Existing
+public tags and packages are not replaced.
 
 ## Release procedure
 

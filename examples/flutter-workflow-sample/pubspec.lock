@@ -7,7 +7,7 @@ packages:
       path: "../../flutter/ai_app_bridge_flutter"
       relative: true
     source: path
-    version: "0.4.11"
+    version: "0.4.12"
   async:
     dependency: transitive
     description:

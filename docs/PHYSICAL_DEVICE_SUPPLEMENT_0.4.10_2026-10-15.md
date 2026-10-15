@@ -111,7 +111,7 @@ These are invocation defects, distinct from the confirmed power code defect.
 The source audit also found missing structured guidance for actual WDA session
 and transport errors. The local repair supplies schema-valid read-only diagnosis
 for the original connection; an unknown action first queries its original ID and
-epoch. Six new regressions and 77 related tests passed, and offline replay of the
+epoch. The related suite passed 77 tests, including six new regressions, and offline replay of the
 two real failed envelopes now supplies the missing guidance. No action is replayed
 or session changed by these suggestions. This guidance repair has no new physical
 device execution claim.
