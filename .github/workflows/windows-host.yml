@@ -34,7 +34,12 @@ jobs:
           $compiler = Join-Path $toolset.FullName 'bin\Hostx64\x64\cl.exe'
           "SFS_PREBUILD_COMPILER=$compiler $((Get-Item $compiler).VersionInfo.FileVersion)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "NODE_GYP_FORCE_PYTHON=$env:pythonLocation\python.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          @{ commit=$env:GITHUB_SHA; os=[Environment]::OSVersion.VersionString; node=(& node --version); python=(& python --version); compiler=$compiler; compilerVersion=(Get-Item $compiler).VersionInfo.FileVersion } | ConvertTo-Json | Set-Content windows-evidence/provenance.json
+          $adb = Join-Path $env:ANDROID_HOME 'platform-tools\adb.exe'
+          if (!(Test-Path $adb)) { throw "Runner is missing the official Android platform-tools adb.exe" }
+          $adbVersion = & $adb version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "AAB_TEST_ADB=$adb" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          @{ commit=$env:GITHUB_SHA; os=[Environment]::OSVersion.VersionString; node=(& node --version); python=(& python --version); compiler=$compiler; compilerVersion=(Get-Item $compiler).VersionInfo.FileVersion; adb=$adb; adbVersion=$adbVersion } | ConvertTo-Json | Set-Content windows-evidence/provenance.json
       - name: Build native Node-API artifact from this source
         run: |
           npm exec --yes --package=node-gyp@13.1.0 -- node-gyp rebuild --directory native/segmented-fact-store --verbose *> windows-evidence/native-build.log
@@ -56,6 +61,7 @@ jobs:
           node native/segmented-fact-store/scripts/verify-golden.js windows-evidence/generated-golden *> windows-evidence/golden-tests.log
           if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/golden-tests.log; exit $LASTEXITCODE }
       - name: Install development test dependencies
+        id: test_dependencies
         working-directory: desktop/ai-app-bridge-cli
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Windows Runtime, leases, execution and recovery
@@ -64,6 +70,7 @@ jobs:
           npm run test:windows *> ../../windows-evidence/host-tests.log
           if ($LASTEXITCODE -ne 0) { Get-Content ../../windows-evidence/host-tests.log; exit $LASTEXITCODE }
       - name: Fresh packaged install and CLI MCP continuation
+        if: ${{ !cancelled() && steps.test_dependencies.outcome == 'success' }}
         working-directory: desktop/ai-app-bridge-cli
         run: |
           npm run verify:windows -- "${{ github.workspace }}/windows-evidence/package" *> ../../windows-evidence/package-tests.log
@@ -82,4 +89,7 @@ jobs:
             windows-evidence/*.json
             windows-evidence/win32-x64
             windows-evidence/package
+            windows-evidence/generated-golden
+            windows-evidence/cmake/Testing/Temporary
+          include-hidden-files: true
           retention-days: 14
