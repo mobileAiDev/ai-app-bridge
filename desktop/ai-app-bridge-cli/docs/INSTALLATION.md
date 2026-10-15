@@ -5,7 +5,7 @@ The same npm package contains CLI and MCP; running only MCP is supported.
 FactStore is an embedded library bundled in that package. There is no separate
 database, FactStore service or CLI process to install first.
 
-These coordinates pin the coordinated Host/CLI and SDK 0.4.15 release.
+These coordinates pin the coordinated Host/CLI and SDK 0.4.16 release.
 For source builds before public publication, use the reviewed local tarball.
 See [release changes and acceptance boundaries](RELEASE.md).
 
@@ -14,7 +14,7 @@ See [release changes and acceptance boundaries](RELEASE.md).
   "mcpServers": {
     "ai-app-bridge": {
       "command": "npx",
-      "args": ["--yes", "--package", "@mobileaidev/ai-app-bridge@0.4.15", "ai-app-bridge-mcp"]
+      "args": ["--yes", "--package", "@mobileaidev/ai-app-bridge@0.4.16", "ai-app-bridge-mcp"]
     }
   }
 }

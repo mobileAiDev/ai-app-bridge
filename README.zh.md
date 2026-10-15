@@ -39,7 +39,7 @@ CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Scrip
 
 `0.4.6` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码版本，重点改善效率、能力和故障恢复。Script 默认支持全部注册命令，独立读取可并行；Intent 支持调用 Bridge 命令、Script 和子 Intent。省略 extract 时优先完整或无损压缩返回。前台与历史恢复诊断交给 agent 决策，同时保留真实目标、执行回执和未知结果。详见[全项目审查及验证](docs/AGENT_CHOICE_AUDIT_2026-10-12.md)与[命令合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md)。
 
-当前源码和安装示例目标版本为统一的 `0.4.15`。详见[审查与验收范围](docs/OPTIMIZATION_EXECUTION_2026-10-15.md)、[发行变化](desktop/ai-app-bridge-cli/docs/RELEASE.md)和[制品核验与发布进度](docs/RELEASE_VERIFICATION_0.4.15_2026-10-15.md)。
+当前源码和安装示例目标版本为统一的 `0.4.16`。详见[审查与验收范围](docs/OPTIMIZATION_EXECUTION_2026-10-15.md)、[发行变化](desktop/ai-app-bridge-cli/docs/RELEASE.md)和[制品核验与发布进度](docs/RELEASE_VERIFICATION_0.4.16_2026-10-15.md)。
 Android Maven 的构建、仓库选择与发布故障处理见[Android 发布说明](docs/ANDROID_PUBLICATION.md)。
 
 ## 解决的问题
@@ -108,7 +108,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.15")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.16")
 }
 ```
 
@@ -141,7 +141,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.15"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.16"
 }
 
 aiAppBridge {
@@ -156,7 +156,7 @@ aiAppBridge {
 在 debug 构建里通过 Swift Package Manager 引入 Swift runtime：
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.15")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.16")
 ```
 
 在 debug app 进程启动一次 runtime：
@@ -172,7 +172,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 安装桌面 CLI，并检查完整 iOS 控制栈：
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.15
+npm install -g @mobileaidev/ai-app-bridge@0.4.16
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -187,7 +187,7 @@ Flutter 项目只需要添加 pub 包。插件的 Android debug variant 会自�
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.15
+  ai_app_bridge_flutter: 0.4.16
 ```
 
 初始化一次：
@@ -249,10 +249,10 @@ Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE
 
 ### 安装 MCP server
 
-安装 Node >=26.3.0 <27，然后只需一份固定版本 MCP 配置。包内已包含嵌入式 FactStore 原生扩展，不需要另外安装数据库服务、编译器或 Python；Python 只用于 Python Script/extract。支持矩阵及发布前本地 tarball 接入见[安装说明](desktop/ai-app-bridge-cli/docs/INSTALLATION.md)。0.4.15 实际发布后下面的 registry 配置才可解析。
+安装 Node >=26.3.0 <27，然后只需一份固定版本 MCP 配置。包内已包含嵌入式 FactStore 原生扩展，不需要另外安装数据库服务、编译器或 Python；Python 只用于 Python Script/extract。支持矩阵及发布前本地 tarball 接入见[安装说明](desktop/ai-app-bridge-cli/docs/INSTALLATION.md)。0.4.16 实际发布后下面的 registry 配置才可解析。
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.15","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.16","ai-app-bridge-mcp"]}}}
 ```
 
 省略 `extract` 时，预算内直接返回完整结果；超预算先尝试无损表格视图，仍放不下才返回完整记录或文本片段、结构目录和原始引用。按需用 select、regex/JS/Python 提取，或显式 `extract:null` 取得原始形状。补读使用原 ref，不重放动作；详见[公共返回与提取](desktop/ai-app-bridge-cli/docs/RESPONSE_EXTRACTION.md)。

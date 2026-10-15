@@ -1,7 +1,7 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.4.15",
-  "sdkReleaseVersion": "0.4.15",
+  "version": "0.4.16",
+  "sdkReleaseVersion": "0.4.16",
   "description": "Desktop CLI and MCP server for AI App Bridge across Android, iOS, Flutter, WebView, and Web targets.",
   "repository": {
     "type": "git",

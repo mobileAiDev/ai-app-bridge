@@ -1,59 +1,60 @@
-# 0.4.15 coordinated release
+# 0.4.16 coordinated release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.15 together. This release corrects evidence queries and uses a new immutable
-version for public Android publication after the 0.4.14 dependency-download
-failure. Existing tags and published archives are preserved.
+0.4.16 together. This patch corrects fresh retained-history pagination when
+the action and UI partitions have different retention boundaries.
 
 ## Changes
 
-- Read Script/Intent evidence only from its `action` and `ui` partitions. When
-  unrelated network records have been evicted, retained evidence can still be
-  listed, recovered and archived across internal pages. Actual evidence gaps,
-  cursor scope mismatches and changes during archive export remain explicit
-  failures; previously missing history remains unknown.
-- Correct installed guidance to describe the Windows x64 Host support already
-  implemented in 0.4.14. Physical Windows display/sleep testing remains deferred.
-- Advance the coordinated package versions. Android/iOS/Flutter/Web behavior
-  and native binaries otherwise retain the implementation validated for 0.4.14.
+Previously, a fresh Script inventory or long operation-history read could
+return `cursor_expired` on its second internal page even when no evidence had
+been evicted during the read. The first mixed page could end before another
+selected partition's already-existing retention boundary.
+
+Evidence lists and archive exports now scan each selected partition with its
+own signed continuation, retain the initial sequence boundary and merge facts
+in order. Actual eviction during the read, bad cursors, missing chunks and
+archive consistency failures remain explicit. Missing history and unknown
+device outcomes are preserved; no action is replayed by this change.
+
+Android, iOS, Flutter and Web changes align release metadata. Native binaries,
+the v1 store format, low-level retention semantics and Node-API 8 are unchanged.
+The explicit Maven mirror configuration validated for 0.4.15 is retained.
 
 ## Validation and limits
 
-The evidence-query fix passes 165 related checks, including multi-page retained
-history, large payload chunks, actual partition loss, cursor signatures and
-archive consistency. An independent review confirms the scope matches the
-existing writer. No native format or low-level retention rule changes.
+The correction passes 211 related regressions. Independent review includes
+asymmetric retention, a newly appended-facts counterexample, actual eviction,
+cursor signatures, large-record chunks, recovery and archive boundaries.
 
-The 0.4.14 Windows x64 implementation covers the native FactStore, durable file
-publication, literal process arguments, UTF-8 Python transport, cancellation,
-completed daemon lifetimes and Runtime shutdown. Linux and Intel Mac support
-predate that release. The v1 store format and Node-API 8 interface are unchanged.
+On a consistent copy of the real long-lived store, public 0.4.15 reproduces the
+failure; the candidate matches all 14,682 retained action/UI facts and recovery
+views for 401 original Script operations against independent retained facts.
+On the completed OPPO test store, four inventory pages, ten original Script
+IDs and recovery views, and ten offline-verified archives also match. The
+original unknown action and missing Host receipt remain visible after a
+successful verification-only continuation. These are correctness checks,
+not a new throughput claim.
 
-Native format/recovery/golden tests and installed package checks passed on
-Windows x64, macOS arm64/x64 and Linux glibc arm64/x64. The final Windows Host
-run passed 206 cases, failed none and skipped two POSIX-only cases. Cancellation
-passed 20 immediate-completion repetitions and three nested-process stress
-repetitions. Each existing Intel Mac/Linux target passed 369 shared Host cases,
-failed none and skipped one platform-specific case. These are inherited 0.4.14
-results, not newly repeated 0.4.15 runs. Detailed source and artifact identities
-remain in `docs/WINDOWS_HOST_VALIDATION_2026-10-15.md`.
+Public 0.4.15 root OPPO acceptance covers eight Native/H5/Flutter, JavaScript,
+Python, Intent and fault-recovery scenarios. Those device results are inherited
+within the unchanged SDK/execution boundary, not claimed as newly repeated
+0.4.16 business flows. Five final screenshots retained transition frames;
+complete UI login, booking, payment/refund and whole-App coverage were not
+established. See the repository's release-verification reports for exact
+package, device and evidence identities.
 
-Windows power API and lease lifetime tests ran on a Windows CI runner. Physical
-display/sleep testing on the user's Windows computer remains deferred. An idle
-assertion cannot unlock a password-protected screen or override manual sleep.
-WDA and iOS build tools still require macOS/Xcode. Windows ARM64 and Linux musl
-are outside the validated native matrix.
-
-This release makes no new whole-App speed claim. Host/package checks do not
-replace Android/iPhone business-flow acceptance. Device outcomes retain their
-original identity and uncertainty; actions with unknown results are not replayed.
+Existing Windows x64, macOS arm64/x64 and Linux glibc arm64/x64 Host acceptance
+is inherited from 0.4.14 within its unchanged native boundary. Windows physical
+display/sleep testing remains deferred. Windows ARM64 and Linux musl are
+outside the validated native matrix. WDA and iOS build tools require macOS.
 
 ## Release procedure
 
 Freeze reviewed source and exact archives after applicable checks pass. Publish
-a new immutable Git tag and verify public Maven artifacts before proceeding
-with the other publication channels and Android consumer upgrades. Verify npm,
-Pub, GitHub downloads and SwiftPM resolution against their frozen inputs.
-Upgrade consumers from public coordinates while preserving unrelated changes.
-Check the installed CLI and actual resident MCP/Runtime separately. The user
-requested root-device regression only after public Maven verification passes.
+a new immutable Git tag and verify all public Maven artifacts before publishing
+the other channels and upgrading Android consumers. Verify npm, Pub, GitHub
+downloads and SwiftPM resolution against frozen inputs. Preserve unrelated
+consumer changes and use public coordinates. Check the installed CLI and the
+actual resident MCP/Runtime separately; fresh installed files do not prove that
+an existing process has reloaded.
