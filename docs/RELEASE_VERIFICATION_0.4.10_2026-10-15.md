@@ -1,10 +1,11 @@
 # 0.4.10 release verification
 
-Status: release incomplete. Source and immutable artifacts are frozen. Git, Pub,
-public Maven artifacts and standard remote SwiftPM consumption are verified.
-npm awaits fresh human authentication. Four consumer upgrades and builds have
-passed, and the GitHub Release remains a draft. This is
-not an all-channel publication completion record.
+Status: all distribution channels are published and verified. GitHub, npm, Pub,
+public Maven artifacts and standard remote SwiftPM consumption match the frozen
+release. Four consumer upgrades, Web remote-smoke and the public-registry CLI
+installation have passed. The existing Codex MCP connection still needs a
+reconnect and verification; a fresh installed MCP process already passed. The
+platform acceptance limits below remain unchanged by publication.
 
 ## Frozen source
 
@@ -46,9 +47,13 @@ Runtime/experimental evidence is in `optimization-next-2026-10-15/`.
 - Flutter SDK/helper publication dry-runs: zero warnings; source inventories verified.
 - Maven clean release build: 496 tests passed, eight modules/16 artifacts checked, lint zero errors.
 - Final CLI archive differs from the execution-tested archive only in README and installation wording; all execution bytes and file modes are unchanged.
-- Public Git/Pub/Maven checks: passed; other channel checks are tracked below.
-- Local frozen-archive CLI/MCP and skill upgrade: passed; public-registry
-  installation and Web remote-smoke upgrade remain pending.
+- Public GitHub/npm/Pub/Maven checks and standard remote SwiftPM resolution:
+  passed. Both npm packages have `latest` and `next` set to `0.4.10`.
+- Public-registry CLI installation, fresh CLI/MCP processes and skill parity:
+  passed; all 238 package files match the frozen archive.
+- Web remote-smoke: public `0.4.10` dependency installed; six package files match
+  the public archive, import and syntax checks pass, and 38/38 contract tests
+  pass against the public package. This is not a new browser/device E2E run.
 - Four Android consumer projects: seven exact version replacements, seven
   Gradle checks and six APK packaging checks passed against public `0.4.10`.
 
@@ -60,12 +65,15 @@ to repair either view.
 
 ## Public channels
 
-- GitHub draft assets match the frozen CLI/Web SHA-256 values. Promotion to a
-  public release is pending the remaining distribution checks.
-- npm CLI and Web: both first publication attempts exited with an expired web
-  authentication callback (`E404`). Exact public version queries also returned
-  404. These attempts are not treated as published; fresh human verification is
-  required before retrying the same frozen archives.
+- [GitHub Release 0.4.10](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.10)
+  is public and marked latest. Its CLI/Web archives and `SHA256SUMS` were fetched
+  without authentication and match the frozen hashes.
+- npm CLI and Web: both uploads completed, their exact public versions and
+  archives were fetched, and SHA-256/SHA-512/SHA-1 and full bytes match the frozen
+  archives. Both packages' `latest` and `next` are `0.4.10`. Earlier expired
+  callbacks, an expired login (`whoami` returned 401) and temporary public 404s
+  after successful uploads are preserved in the evidence. Successful uploads
+  were never repeated to resolve the visibility delay.
 - Pub SDK and helper: both uploaded once, and both exact versions and `latest`
   resolve to `0.4.10`. SDK 60 files and helper six files match frozen source.
   Public archive SHA-256 values are
@@ -98,15 +106,18 @@ to repair either view.
 
 ## Local installation and consumers
 
-The final frozen CLI archive was installed globally. All 238 files match the
-archive. A fresh isolated global CLI/MCP runtime reports `0.4.10`; shared runtime
-identity, eight concurrent JavaScript status calls, Python Script execution and
-doctor (zero issues) passed without device operations. The installed
+The CLI was reinstalled globally from the public npm registry using a fresh
+cache. All 238 files match the frozen archive. A fresh isolated global CLI/MCP
+runtime reports `0.4.10`; shared runtime identity, eight concurrent JavaScript
+status calls, Python Script execution and doctor (zero issues) passed without
+device operations. Its isolated runtime was stopped in cleanup. The installed
 `ai-app-bridge-use` skill matches the shipped skill. The old default runtime was
-explicitly stopped before installation.
+explicitly stopped before the earlier frozen-archive installation.
 
-This verifies new processes, not the already connected Codex MCP process. The
-active connection still needs a reconnect after the public installation finishes.
+The already connected Codex MCP process was checked through stateless discovery:
+`capabilities` for `power`/`status` still returns `unknown_command`. It has not
+loaded the new command catalog and still needs a reconnect. No normal command
+was sent through that old client to start an incompatible runtime.
 POS, Reader, Duo and MeasureDevice now reference public `0.4.10` in all seven
 planned locations. All seven Gradle checks passed, covering six APKs (POS SIT,
 Reader, Duo, Measure app, receiver and protocol app). Eight resolved SDK/plugin
@@ -120,14 +131,11 @@ exact version replacements only. No consumer commit, push or device installation
 was performed. The full record is `consumers-four/closeout.json` under the release
 evidence root.
 
-## Remaining release steps
+The Web remote-smoke dependency and lockfile also now point to the public
+`0.4.10` tarball and its verified integrity value. Its existing HTML is unchanged.
 
-1. Complete fresh npm account verification, publish the frozen CLI/Web archives,
-   and verify public bytes and both `latest`/`next` tags.
-2. Update and verify Web remote-smoke from the public registry after npm Web is
-   available; preserve unrelated worktree changes.
-3. Install the verified public CLI package, repeat new-process MCP verification,
-   reconnect the existing Codex MCP client, and publish the GitHub draft.
+## Remaining local completion step
 
-No phone calls, installations, or cashier-device substitution are part of these
-remaining steps.
+Reconnect the existing Codex MCP client and verify that its actual connection
+loads `0.4.10`. No further npm verification or publication is pending. This final
+connection check requires no phone calls, installations or cashier-device use.
