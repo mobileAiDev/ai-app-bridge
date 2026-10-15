@@ -3,6 +3,7 @@
 const { randomUUID } = require('node:crypto');
 const { performance } = require('node:perf_hooks');
 const { createPlatformAdapter } = require('./platform-adapters');
+const { withoutExecution } = require('../shared-kernel/execution-scope');
 
 const modes = ['system', 'display', 'both'];
 const fail = (code, message, details) => Object.assign(new Error(message), { code, details });
@@ -21,6 +22,7 @@ function createPowerManager({ acquireAdapter = createPlatformAdapter(), assertio
   const leases = new Map(); let closed = false;
   const terminal = lease => ['released', 'expired', 'failed'].includes(lease.state);
   const view = lease => ({ leaseId: lease.id, ownerId: lease.ownerId, target: lease.target, mode: lease.mode,
+    recovery: lease.recovery, ...(lease.assertionRecovery ? { assertionRecovery: { ...lease.assertionRecovery } } : {}),
     state: lease.state, createdAtMs: lease.createdAtMs,
     expiresAtMs: lease.expiresAtMs, remainingMs: terminal(lease) ? 0 : Math.max(0, Math.ceil(lease.deadline - now())),
     assertionTtlMs, refreshMs, coverage: lease.coverage,
@@ -34,6 +36,17 @@ function createPowerManager({ acquireAdapter = createPlatformAdapter(), assertio
   const serial = (lease, operation) => {
     const result = lease.tail.then(operation); lease.tail = result.catch(() => {}); return result;
   };
+  function bindHandle(lease, handle) {
+    lease.handle = handle;
+    if (!handle.ended) return;
+    // Close notifications share the lease queue with renew/release. A normal
+    // finish or a late exit from a replaced handle cannot fail its successor.
+    void handle.ended.then(error => withoutExecution(() => serial(lease, async () => {
+      if (terminal(lease) || lease.handle !== handle) return;
+      lease.error = { code: error.code || 'power_assertion_lost', message: error.message, details: error.details };
+      await finish(lease, 'failed');
+    }))).catch(() => {});
+  }
   function stopTimer(lease) { if (lease.timer) unschedule(lease.timer); lease.timer = null; }
   function confirmed(lease, coverage, ttlMs) {
     lease.coverage = coverage; lease.lastRefreshAtMs = wallNow(); lease.platformDeadline = now() + ttlMs;
@@ -55,10 +68,12 @@ function createPowerManager({ acquireAdapter = createPlatformAdapter(), assertio
   function arm(lease) {
     stopTimer(lease);
     if (lease.state !== 'active') return;
-    lease.timer = schedule(() => {
+    // Platform refresh belongs to the work lease, not to the command that
+    // acquired or renewed it. Explicit calls retain their own execution scope.
+    lease.timer = withoutExecution(() => schedule(() => {
       lease.timer = null;
       void serial(lease, () => refresh(lease)).catch(() => {});
-    }, Math.max(1, Math.min(refreshMs, lease.deadline - now())));
+    }, Math.max(1, Math.min(refreshMs, lease.deadline - now()))));
     lease.timer.unref?.();
   }
   async function refresh(lease) {
@@ -66,8 +81,28 @@ function createPowerManager({ acquireAdapter = createPlatformAdapter(), assertio
     if (now() >= lease.deadline) return finish(lease, 'expired');
     const ttlMs = Math.max(1, Math.min(assertionTtlMs, Math.ceil(lease.deadline - now())));
     try {
-      const result = await lease.handle.renew({ ttlMs });
-      confirmed(lease, result.coverage, ttlMs);
+      let result, refreshedTtlMs = ttlMs;
+      try { result = await lease.handle.renew({ ttlMs }); }
+      catch (error) {
+        // The logical work is still live, but this selected SDK has confirmed
+        // its assertion no longer exists. Recovery is an explicit policy;
+        // transport errors, foreground loss and identity mismatches stay errors.
+        if (lease.recovery !== 'reacquire-ended' || error.code !== 'power_lease_ended') throw error;
+        if (closed) return finish(lease, 'released');
+        if (now() >= lease.deadline) return finish(lease, 'expired');
+        refreshedTtlMs = Math.max(1, Math.min(assertionTtlMs, Math.ceil(lease.deadline - now())));
+        lease.assertionRecovery = { attempts: (lease.assertionRecovery?.attempts || 0) + 1,
+          reason: error.code, startedAtMs: wallNow(), confirmed: false };
+        // The old assertion ended. Its confirmed expiry cannot bound a new
+        // acquisition whose response may be lost.
+        lease.platformDeadline = undefined; lease.platformExpiresAtMs = undefined;
+        bindHandle(lease, await acquireAdapter({ leaseId: lease.id, target: lease.target, mode: lease.mode, ttlMs: refreshedTtlMs }));
+        lease.assertionRecovery.confirmed = true;
+        lease.assertionRecovery.completedAtMs = wallNow();
+        result = { coverage: lease.handle.coverage };
+      }
+      confirmed(lease, result.coverage, refreshedTtlMs);
+      if (closed) return finish(lease, 'released');
       if (now() >= lease.deadline) return finish(lease, 'expired');
       arm(lease); return view(lease);
     } catch (error) {
@@ -76,22 +111,24 @@ function createPowerManager({ acquireAdapter = createPlatformAdapter(), assertio
     }
   }
   return {
-    async acquire({ ownerId, target, mode, leaseMs }) {
+    async acquire({ ownerId, target, mode, leaseMs, recovery = 'manual' }) {
       if (closed) throw fail('power_manager_closed', 'The work power manager has closed.');
       if (typeof ownerId !== 'string' || !ownerId || ownerId.length > 256 || !target || typeof target !== 'object' || Array.isArray(target) || !modes.includes(mode))
         throw fail('invalid_power_lease', 'Supply ownerId, an explicit target and mode system, display or both.');
       duration(leaseMs, 'leaseMs', 86400000);
+      if (!['manual', 'reacquire-ended'].includes(recovery) || (recovery === 'reacquire-ended' && target.platform !== 'ios'))
+        throw fail('invalid_power_recovery', 'Use manual recovery, or reacquire-ended for a selected iOS SDK App.');
       if ([...leases.values()].filter(lease => !terminal(lease)).length >= 64)
         throw fail('power_lease_capacity', 'Release an active work lease before acquiring another.');
       if (leases.size >= 256) for (const [id, lease] of leases) if (terminal(lease)) { leases.delete(id); break; }
       const createdAtMs = wallNow();
-      const lease = { id: randomUUID(), ownerId, target: structuredClone(target), mode, state: 'acquiring',
+      const lease = { id: randomUUID(), ownerId, target: structuredClone(target), mode, recovery, state: 'acquiring',
         createdAtMs, expiresAtMs: createdAtMs + leaseMs, deadline: now() + leaseMs, tail: Promise.resolve() };
       leases.set(lease.id, lease);
       return serial(lease, async () => {
         const ttlMs = Math.min(assertionTtlMs, leaseMs);
         try {
-          lease.handle = await acquireAdapter({ leaseId: lease.id, target: lease.target, mode, ttlMs });
+          bindHandle(lease, await acquireAdapter({ leaseId: lease.id, target: lease.target, mode, ttlMs }));
           confirmed(lease, lease.handle.coverage, ttlMs); lease.state = 'active';
           if (closed) return finish(lease, 'released');
           if (now() >= lease.deadline) return finish(lease, 'expired');

@@ -27,7 +27,9 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 
 **卡死 / 换 agent：** 先读 `device-ownership {operation:"status",serial:"原设备"}`。旧 Host 已消失的未知记录会归档，新明确动作可继续；archives/archive 可读原记录，reconcile-archive 只查询原动作，不取消或重放。活跃 owner 需要继续、取消，或由 agent 明确接管。决定强制接管时可用 `ai-app-bridge device-ownership --operation force-stop --serial 原设备`：无需旧回执，结束旧 Host/共享 Runtime 的相关任务并重置设备执行器；同 Host 的其他任务可能一起结束，已派发效果记为未知。读取 ownershipReleased/remoteResetPending，再观察当前状态。仅 UIA 卡住时优先考虑其 uia-runtime start/force-reset，按返回影响范围选择。
 
-**工作期间防休眠：** 默认实际操作开启十分钟空闲保护，Intent/Script 另按自身期限保护并在终态释放；MCP 常驻连接本身不算活动。用 `power {operation:"status"}` 看实际范围，`power {operation:"auto",enabled:false}` 可做休眠测试（不释放显式租约）。长会话可显式 `acquire`，结束按原 `leaseId` 释放。Mac/Windows 是系统电源 API，Android 是指定 serial 的独立锁，iOS 只覆盖前台 SDK App；不会解锁设备或模拟点击。保护失败是信息，不阻断已授权业务操作。更多见 `docs/POWER_LEASES.md`。
+**工作期间防休眠：** 默认实际操作开启十分钟空闲保护，Intent/Script 另按自身期限保护并在终态释放；MCP 连接不能判断对话是否仍在工作。跨多个程序、子代理或长时间分析的设备任务，由主代理为 Host 和每个选中设备显式 `power acquire`，期限覆盖本轮工作，保留 `leaseId` 并在到期前续期，整项工作结束再统一释放。子任务只释放自己新增的保护。用 `power status` 核对实际保护；`power auto enabled:false` 关闭自动保护而保留显式租约。Mac/Windows 使用系统 API，Android 使用指定 serial 的独立锁；iOS 只覆盖前台 SDK App，可选 `recovery:"reacquire-ended"` 在原工作期限内恢复 SDK 明确丢失的断言。已锁屏状态和实际保持解锁分别核对；充电保活设置也要结合系统实际供电状态。保护失败作为信息返回，调用方仍可继续业务操作。更多见 `docs/POWER_LEASES.md`。
+
+Windows 电源适配代码已有，但当前原生 FactStore 安装矩阵尚不支持 Windows；不能将该适配器或 Mac 上的协议测试表述为完整 Windows CLI 已可用。安装范围见 `docs/INSTALLATION.md`。
 
 ## 响应与提取
 
@@ -48,6 +50,8 @@ Script 恢复可用 `resume {waitMs:60000}`，回答问题可用 `decide {...,wa
 提取脚本只使用 `ctx.inputs = {kind, response, execution, control}`，返回严格 JSON；没有 `ctx.call`。保留实际断言需要的来源身份、时间和状态，不能将选出的几条成功记录当作完整覆盖。完整示例见 `docs/RESPONSE_EXTRACTION.md`。
 
 ## 目标与动作
+
+**iOS 系统权限弹窗：** 用实际观察到的系统 App 和已就绪 WDA 会话操作弹窗，再观察原 App 恢复前台。`ios-setup {startWda:true,...}` 已等待执行器就绪，先消费原启动结果再查询会话；处理已知弹窗和后续页面时用同一 Script 连续执行。SDK 不在前台不等于系统按钮不可操作。树按引用交付时，从原 `response` 读取需要的控件，或在 Script 内直接消费 `ctx.call` 的完整结果。未知动作先按原身份查询，连接修复后由 agent 决定下一动作。密码解锁是系统需要人工介入的情形，普通权限按钮由 agent 按用户意图选择。详见 `docs/SCRIPT_AUTHORING.md` 的 iOS 目标说明。
 
 - Android：明确 `serial`，App 命令再提供 `packageName`；设备级 Script 可只设 serial。iOS：`deviceId`/`bundleId`；Native Intent 还需原 WDA Runner/session 绑定。Web：从当前连接取得 `sessionId`/`runtimeEpoch`/`targetId`。
 - Intent/Script 的目标带 `platform`。执行目标保持明确指定的 App/provider；Android 前台匹配、不匹配、未知是独立观测事实，不代表动作成功或失败。更多绑定按平台合同补齐。

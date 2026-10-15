@@ -3,9 +3,10 @@
 Status: all distribution channels are published and verified. GitHub, npm, Pub,
 public Maven artifacts and standard remote SwiftPM consumption match the frozen
 release. Four consumer upgrades, Web remote-smoke and the public-registry CLI
-installation have passed. The existing Codex MCP connection still needs a
-reconnect and verification; a fresh installed MCP process already passed. The
-platform acceptance limits below remain unchanged by publication.
+installation have passed. The actual connected Codex MCP Runtime has also been
+verified as `0.4.10`, compatible, with native persistent storage enabled. The
+user subsequently reconnected the iPhone and rooted OPPO for a separate physical
+device supplement; its in-progress checks do not change the frozen release.
 
 ## Frozen source
 
@@ -23,12 +24,16 @@ failure diagnostics. See the [complete proposal ledger](OPTIMIZATION_EXECUTION_2
 for all 57 original proposals and the follow-up review. Experimental console
 capture, group commit and general exploration export are not claimed as shipped.
 
-The user removed both phones and explicitly requested review/publication.
-No further phone calls or installations are authorized for this closeout, and
-the K2 cashier device must not be used as a replacement. iPhone Native/H5,
+At the publication checkpoint, the user had removed both phones and explicitly
+requested review/publication. Device work stopped then. iPhone Native/H5,
 Kiwix Intent/JavaScript and power evidence exists; iPhone Python/Flutter and
-full real-device recovery remain incomplete. The [iPhone report](IOS_DEVICE_REGRESSION_2026-10-15.md)
-records the exact completed and unrun scopes. Windows real-machine verification
+full real-device recovery were incomplete at that checkpoint. The [iPhone report](IOS_DEVICE_REGRESSION_2026-10-15.md)
+retains the exact completed and unrun scopes. After publication, the user
+reconnected and authorized iPhone `00008160-001465A81E400036` and rooted OPPO
+`b46093e6` to complete those omissions. Supplement evidence is in sibling
+`ai-app-bridge-release-evidence/0.4.10-device-supplement-2026-10-15/`;
+`ACCEPTANCE_MATRIX.md` tracks actual results. The K2 cashier remains prohibited.
+Windows real-machine verification
 is deferred at the user's request. These limits are carried into the release,
 not converted into passes by packaging or automated tests.
 
@@ -114,10 +119,12 @@ device operations. Its isolated runtime was stopped in cleanup. The installed
 `ai-app-bridge-use` skill matches the shipped skill. The old default runtime was
 explicitly stopped before the earlier frozen-archive installation.
 
-The already connected Codex MCP process was checked through stateless discovery:
-`capabilities` for `power`/`status` still returns `unknown_command`. It has not
-loaded the new command catalog and still needs a reconnect. No normal command
-was sent through that old client to start an incompatible runtime.
+Before reconnect, the old Codex MCP process returned `unknown_command` from
+stateless command discovery; that record remains in the release evidence.
+After reconnect, the actual connected MCP successfully acquired its own Host
+power lease and reported Runtime `0632196a-182e-4d92-9c8c-e89020055677`, PID
+47622, version `0.4.10`, compatible `true`, and non-degraded native persistent
+storage. The raw results are in the supplement's `initial-state.json`.
 POS, Reader, Duo and MeasureDevice now reference public `0.4.10` in all seven
 planned locations. All seven Gradle checks passed, covering six APKs (POS SIT,
 Reader, Duo, Measure app, receiver and protocol app). Eight resolved SDK/plugin
@@ -134,8 +141,29 @@ evidence root.
 The Web remote-smoke dependency and lockfile also now point to the public
 `0.4.10` tarball and its verified integrity value. Its existing HTML is unchanged.
 
-## Remaining local completion step
+## Publication completion and physical supplement
 
-Reconnect the existing Codex MCP client and verify that its actual connection
-loads `0.4.10`. No further npm verification or publication is pending. This final
-connection check requires no phone calls, installations or cashier-device use.
+The current CLI, installed skill and actual Codex MCP connection are verified.
+No further npm verification or publication is pending. The newly authorized
+physical supplement uses the published CLI and verified `0.4.10` SDK sources or
+public dependencies. New passing results are recorded separately from the
+earlier candidate runs and preserved failed attempts. Publication does not imply
+that every physical supplement requirement has already passed.
+
+The supplement exposed an iOS power defect in public `0.4.10`: the background
+renewal timer inherits the execution scope of the command that acquired or
+renewed its lease. After that command settles, iOS descriptor discovery can
+reject the timer's work with `runtime_stopped`; the logical work deadline has
+not expired. This also leaves the timer's cleanup unconfirmed. A production Host
+path regression reproduces the failure with the default 15-second timer. A
+narrow unpublished candidate detaches only the timer from the finished command;
+the same regression then passes, including caller cancellation, separate-owner
+survival and explicit release. Physical verification subsequently passed a
+75.017-second no-touch window. The combined candidate additionally passed one
+real App restart, one confirmed heartbeat replacement in 479 ms, and a further
+75.012-second no-touch window with the original work deadline unchanged.
+The published archives and tag remain unchanged; earlier fake-adapter and
+direct SDK checks did not establish this complete command-to-timer lifecycle.
+The complete supplement, including Flutter persistence/negative controls,
+OPPO results, Windows limits and retained failures, is recorded in
+[PHYSICAL_DEVICE_SUPPLEMENT_0.4.10_2026-10-15.md](PHYSICAL_DEVICE_SUPPLEMENT_0.4.10_2026-10-15.md).

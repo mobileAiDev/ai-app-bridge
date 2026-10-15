@@ -14,12 +14,12 @@ function withActionGuidance(command, args, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Buffer.isBuffer(value)) return value;
   const candidates = value.candidates || value.details?.candidates;
   const calls = [];
-  const call = (name, parameters = {}) => {
+  const call = (name, parameters = {}, target = args) => {
     const { commandSchema, validateCommandArguments } = require('../command-registry');
     const schema = commandSchema(name);
     const identity = Object.fromEntries(['serial', 'packageName', 'adb', 'port', 'deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort',
       'wdaUrl', 'wdaRunnerBundleId', 'wdaSessionId', 'sessionId', 'runtimeEpoch', 'targetId', 'webViewId', 'adapterId']
-      .filter(key => args?.[key] !== undefined && schema.properties?.[key]).map(key => [key, args[key]]));
+      .filter(key => target?.[key] !== undefined && schema.properties?.[key]).map(key => [key, target[key]]));
     const arguments_ = { ...identity, ...parameters };
     try { validateCommandArguments(name, arguments_); }
     catch { return null; } // A hint must itself be executable for the known target.
@@ -46,6 +46,12 @@ function withActionGuidance(command, args, value) {
   }
   const code = value.error;
   const managedProvider = { 'aab.flutter-execution/v1': 'flutter', 'aab.h5-execution/v1': 'h5' }[value.request?.execution?.schemaVersion];
+  const wdaFailure = code && (require('../ios-wda-port').commands.has(command) || command === 'ios-execution' && args?.kind === 'wda')
+    && (['ios_wda_session_failed', 'ios_wda_session_changed', 'ios_wda_session_required', 'ios_wda_session_busy',
+      'ios_wda_target_changed', 'ios_wda_not_ready', 'ios_wda_binding_mismatch', 'ios_tunnel_unavailable',
+      'ios_command_failed', 'ios_command_timeout'].includes(code)
+      || /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EPIPE)\b/.test(`${code} ${value.message || ''}`)
+      || value.request?.execution?.schemaVersion === 'aab.wda-execution/v1' && value.ambiguous === true);
   let message;
   if (code && value.source === 'uia-node-runtime' && value.ambiguous === true
     && value.recovery?.error === 'uia_runtime_unreachable') {
@@ -64,6 +70,26 @@ function withActionGuidance(command, args, value) {
     calls.push(call('device-ownership', { operation: 'status' }));
     calls.push(call('device-ownership', { operation: 'archives', actionId: value.details.shellExecution.identity.actionId }));
     calls.push(call('uia-tree', { compact: true, maxNodes: 200 }));
+  } else if (wdaFailure) {
+    // Session status and WDA completion queries forbid the previous App/session
+    // arguments. Keep the connection binding, without retargeting the action.
+    const connection = Object.fromEntries(['deviceId', 'wdaRunnerBundleId', 'wdaUrl', 'devicectl']
+      .filter(key => args?.[key] !== undefined).map(key => [key, args[key]]));
+    const wdaCall = (name, parameters) => call(name, { ...connection, ...parameters }, {});
+    const unknown = value.ambiguous === true && value.settled !== true;
+    message = 'Inspect the selected device tunnel and bound Runner with doctor, then read current foreground/session status. '
+      + 'If a WDA start is still running, await its result and any device-unlock request; a started process alone is not ready. '
+      + 'Verify an explicit wdaUrl against the intended tunnel or port forward before choosing to change it. '
+      + 'Keep the requested App/session binding; choose whether to close or create a session only after observing current state. '
+      + 'If WDA is unavailable, use the original setup inputs to choose a start; no project path or signing arguments are inferred. '
+      + 'These read-only suggestions have not run and do not replay the action.';
+    if (unknown) {
+      message = 'This action outcome remains unknown. Query the original action/epoch and ownership before changing a session or restarting WDA. ' + message;
+      if (typeof value.actionId === 'string' && typeof value.runtimeEpoch === 'string')
+        calls.push(wdaCall('ios-execution', { operation: 'result', kind: 'wda', actionId: value.actionId, runtimeEpoch: value.runtimeEpoch }));
+      calls.push(wdaCall('ios-execution', { operation: 'status', kind: 'wda' }));
+    }
+    calls.push(wdaCall('doctor', { platform: 'ios' }), wdaCall('ios-wda-session', { operation: 'status' }));
   } else if (command === 'wait-text' && code && value.lastCheck?.absenceProven === false
     && !value.lastCheck.missing?.length && !value.lastCheck.unexpected?.length && value.lastCheck.activityMatches) {
     message = 'No forbidden label was found in the returned portion, but the provider did not establish complete coverage. Inspect the tree or choose absenceScope:observed to test only that portion.';

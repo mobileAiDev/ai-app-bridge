@@ -16,7 +16,8 @@ function schema() {
   return variants('operation', [
     operation('capabilities'),
     operation('auto', { enabled: { type: 'boolean' } }, ['enabled']),
-    operation('acquire', { ownerId: { ...text, maxLength: 256 }, target, mode: { enum: ['system', 'display', 'both'] }, leaseMs }, ['ownerId', 'target', 'mode', 'leaseMs']),
+    operation('acquire', { ownerId: { ...text, maxLength: 256 }, target, mode: { enum: ['system', 'display', 'both'] }, leaseMs,
+      recovery: { enum: ['manual', 'reacquire-ended'], description: 'Default manual. For iOS, reacquire-ended restores only an SDK-confirmed missing assertion within the original work deadline; it never retries transport, foreground or identity errors.' } }, ['ownerId', 'target', 'mode', 'leaseMs']),
     operation('renew', { leaseId: text, leaseMs }, ['leaseId', 'leaseMs']),
     operation('release', { leaseId: text }, ['leaseId']),
     operation('status', { leaseId: text }),

@@ -1,5 +1,11 @@
 # iOS device regression and power verification — 2026-10-15
 
+This is the historical pre-publication candidate session. After publication, the
+user reconnected the same iPhone and authorized the omitted checks on `0.4.10`.
+That separate session is tracked in sibling
+`ai-app-bridge-release-evidence/0.4.10-device-supplement-2026-10-15/ACCEPTANCE_MATRIX.md`.
+Its new results do not change the failed or not-run outcomes below.
+
 This records the tested **0.4.9 source candidate**, including the uncommitted
 power and observed-evidence assertion changes. A later version bump does not
 turn these records into a second device run. Evidence root:
@@ -93,3 +99,25 @@ unverified until the agreed post-release Windows test**.
 No adapter injects business input or changes global security/power policy.
 Explicit manual sleep/lock, lid behavior, device management, background iOS
 CPU execution and arbitrary external-iOS-App protection remain outside scope.
+
+## Subsequent authorized physical supplement
+
+The stop above is the original publication checkpoint. The user later reconnected
+the phones and authorized the omitted checks. Kiwix Python, cancellation,
+interactive decisions, original-action crash recovery and the independent
+bookmark oracle completed. Flexify's real workflow, deliberately wrong expected
+value, independent SQLite oracle and real process-restart persistence completed.
+
+This new run exposed a real Host renewal-context bug that the earlier direct SDK
+and substitute-worker checks did not cover. The unpublished timer repair passed
+75.017 seconds without touches. A combined candidate then recovered one ended SDK
+assertion after one actual Kiwix restart, kept the original deadline, and passed
+75.012 seconds without touches. These results supersede the earlier claim that
+the narrower review found no additional defect; they do not change public 0.4.10.
+
+Actual permission handling completed, but its 423.582-second takeover remains a
+usability gap, and the 95.607-second Flutter workflow is not a new speedup claim.
+Root retains separate work-level leases beyond subtask completion. Windows still
+has only implementation/protocol review, with native API execution deferred.
+See [the physical supplement](PHYSICAL_DEVICE_SUPPLEMENT_0.4.10_2026-10-15.md)
+for exact evidence, scopes, retained failures and remaining release gates.

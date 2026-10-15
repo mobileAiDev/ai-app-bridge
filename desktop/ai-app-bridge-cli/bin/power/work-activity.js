@@ -14,7 +14,8 @@ function createWorkPower({ manager, activity = createActivityLeases({ manager })
     return [{ target: { platform: 'host' }, mode: 'both' },
       ...(target?.platform === 'android' && target.serial ? [{ target: { platform: 'android', serial: target.serial,
         ...(target.adb ? { adb: target.adb } : {}) }, mode: 'both' }] : []),
-      ...(target?.platform === 'ios' && target.deviceId && target.bundleId ? [{ target: { platform: 'ios', ...target }, mode: 'display' }] : [])];
+      ...(target?.platform === 'ios' && target.deviceId && target.bundleId ? [{ target: { platform: 'ios', ...target },
+        mode: 'display', recovery: 'reacquire-ended' }] : [])];
   }
   function note(error, target) { return remember({ code: error.code || 'power_activity_failed', blocking: false,
     message: error.message, target, ...(error.lease ? { lease: error.lease } : {}) }); }

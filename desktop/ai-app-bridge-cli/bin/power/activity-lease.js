@@ -7,7 +7,7 @@ function createActivityLeases({ manager, idleLeaseMs = 600000 }) {
     throw new Error('idleLeaseMs must be an integer from 1 to 86400000 milliseconds.');
   const entries = new Map(); let closed = false;
   const targetKey = target => JSON.stringify(Object.entries(target).sort(([a], [b]) => a.localeCompare(b)));
-  const keyOf = ({ ownerId, target, mode }) => JSON.stringify([ownerId, mode, targetKey(target)]);
+  const keyOf = ({ ownerId, target, mode, recovery = 'manual' }) => JSON.stringify([ownerId, mode, targetKey(target), recovery]);
   const warning = (error, entry) => ({ ok: false, warning: {
     code: error.code || 'power_activity_failed', message: error.message,
     ownerId: entry.ownerId, target: entry.target, mode: entry.mode,
@@ -54,9 +54,25 @@ function createActivityLeases({ manager, idleLeaseMs = 600000 }) {
             try { current = manager.status({ leaseId: entry.leaseId }); }
             catch (error) { if (error.code !== 'power_lease_not_found') throw error; } // A retained terminal record may have been pruned.
           }
-          const lease = current?.state === 'active'
-            ? await manager.renew({ leaseId: entry.leaseId, leaseMs: idleLeaseMs, refreshAssertion: false })
-            : await manager.acquire({ ownerId: entry.ownerId, target: entry.target, mode: entry.mode, leaseMs: idleLeaseMs });
+          let lease;
+          if (current?.state === 'active') {
+            try { lease = await manager.renew({ leaseId: entry.leaseId, leaseMs: idleLeaseMs, refreshAssertion: false }); }
+            catch (error) {
+              if (error.code !== 'power_lease_ended') throw error;
+              // A queued renewal uses this code for every terminal lease.
+              // Preserve a refresh failure so only an actual ended assertion
+              // can use the immediate replacement path below.
+              if (error.details.state === 'failed') lease = error.details;
+            }
+          }
+          // Refresh can end the old lease while this touch is queued, or the
+          // SDK can report its assertion ended. This real work signal may
+          // acquire once; a failed replacement keeps its normal warning.
+          // Opted-in leases already attempted recovery in the manager. Do not
+          // turn a failed replacement into a second attempt in this touch.
+          if (!lease || (lease.recovery === 'manual' && lease.state === 'failed' && lease.error?.code === 'power_lease_ended'))
+            lease = await manager.acquire({ ownerId: entry.ownerId, target: entry.target, mode: entry.mode,
+              recovery: entry.recovery, leaseMs: idleLeaseMs });
           if (lease.state !== 'active') throw Object.assign(new Error(lease.error?.message || 'The activity power lease is not active.'),
             { code: lease.error?.code || 'power_activity_inactive', lease });
           entry.leaseId = lease.leaseId;

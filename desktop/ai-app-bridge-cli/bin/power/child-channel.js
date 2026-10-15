@@ -7,16 +7,18 @@ const failure = (code, message, details) => Object.assign(new Error(message), { 
 
 async function openChildChannel(command, args, { env, timeoutMs = 5000, spawnChild = spawn } = {}) {
   const child = spawnChild(command, args, { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-  let buffer = '', stderr = '', readyResolve, readyReject, settled = false, exited = false, releaseConfirmation = null;
+  let buffer = '', stderr = '', readyResolve, readyReject, settled = false, exited = false, releaseConfirmation = null, terminalError = null;
   const pending = new Map();
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   const end = error => {
-    if (!settled) { settled = true; readyReject(error); }
-    for (const request of pending.values()) { clearTimeout(request.timer); request.reject(error); }
+    terminalError ||= error;
+    if (!settled) { settled = true; readyReject(terminalError); }
+    for (const request of pending.values()) { clearTimeout(request.timer); request.reject(terminalError); }
     pending.clear();
   };
   const exit = new Promise(resolve => child.once('close', (code, signal) => {
-    exited = true; end(failure('power_worker_closed', 'The platform power worker closed.', { code, signal, stderr })); resolve({ code, signal });
+    exited = true; end(failure('power_worker_closed', 'The platform power worker closed.', { code, signal, stderr }));
+    resolve({ code, signal, error: terminalError });
   }));
   child.once('error', error => end(error));
   child.stdin.on('error', error => end(error));
@@ -44,7 +46,7 @@ async function openChildChannel(command, args, { env, timeoutMs = 5000, spawnChi
   let initial;
   try { initial = await ready; } finally { clearTimeout(timer); }
   function request(operation, fields = {}) {
-    if (exited) return Promise.reject(failure('power_worker_closed', 'The power worker is no longer running.'));
+    if (exited) return Promise.reject(terminalError);
     const requestId = randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { pending.delete(requestId); reject(failure('power_worker_timeout', 'The power worker did not confirm the request.')); }, timeoutMs);

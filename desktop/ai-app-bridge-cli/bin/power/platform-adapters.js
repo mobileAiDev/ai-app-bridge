@@ -49,6 +49,7 @@ function createPlatformAdapter({ platform = process.platform, spawnChild = spawn
 
 function channelAdapter(channel, { remoteProcess = false } = {}) {
   return { coverage: channel.initial.coverage,
+    ended: channel.exit.then(result => result.error),
     renew: ({ ttlMs }) => channel.request('renew', { ttlMs }),
     async release() {
       const result = await channel.release();
