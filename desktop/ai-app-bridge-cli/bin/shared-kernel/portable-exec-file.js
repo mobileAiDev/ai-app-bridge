@@ -45,7 +45,9 @@ function portableExecFile(file, args, options, callback) {
     : spawn(file, args, { ...spawnOptions, stdio: ['pipe', 'pipe', 'pipe'] });
   const streams = { stdout: { chunks: [], bytes: 0 }, stderr: { chunks: [], bytes: 0 } };
   let failure;
-  child.once('error', error => { failure ||= error; });
+  // Job cleanup can fail both when stopping and when the worker closes. Keep
+  // listening through close so a second failure cannot escape the Runtime.
+  child.on('error', error => { failure ||= error; });
   for (const [name, stream] of Object.entries(streams)) child[name].on('data', chunk => {
     const remaining = maxBuffer - stream.bytes;
     stream.chunks.push(chunk.subarray(0, Math.max(0, remaining)));
@@ -61,7 +63,15 @@ function portableExecFile(file, args, options, callback) {
       if (child.commandResult.failure) failure ||= Object.assign(new Error(child.commandResult.failure.message), child.commandResult.failure);
     }
     if (!failure && (code !== 0 || signal)) failure = Object.assign(new Error(`Command failed: ${file}`), { code, signal });
-    if (failure) failure.killed = child.killed;
+    if (failure) {
+      failure.killed = child.killed;
+      // ENOENT alone is insufficient: cross-spawn may already have started a
+      // shell. Only the worker's explicit no-child receipt proves no dispatch.
+      if (child.commandResult?.spawned === false) {
+        failure.dispatched = false;
+        failure.ambiguous = false;
+      }
+    }
     const output = name => {
       const bytes = Buffer.concat(streams[name].chunks);
       return encoding === null || encoding === 'buffer' ? bytes : bytes.toString(encoding);

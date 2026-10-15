@@ -29,7 +29,15 @@ function execFileBounded(file, args, { timeoutMs = 15000, mutation = false, exec
       clearTimeout(timer);
       clearTimeout(killTimer);
       scope?.signal.removeEventListener('abort', abort);
-      if (stopped) error = stopped;
+      if (stopped) {
+        // Cancellation may race a worker's definitive no-child receipt. Keep
+        // that command-local proof without resetting the execution's history.
+        if (error?.dispatched === false && error?.ambiguous === false) {
+          stopped.dispatched = false;
+          stopped.ambiguous = false;
+        }
+        error = stopped;
+      }
       if (error) {
         error.stdout = stdout;
         error.stderr = stderr;

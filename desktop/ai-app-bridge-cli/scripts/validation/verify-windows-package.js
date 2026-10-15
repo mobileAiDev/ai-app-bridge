@@ -79,7 +79,9 @@ async function main(directory) {
     client = current;
   };
   const disconnect = async () => {
-    await client.close({ stopRuntime: false, stdinEof: true });
+    const exit = await client.close({ stopRuntime: false, stdinEof: true });
+    assert.equal(exit.code, 0, JSON.stringify(exit));
+    assert.equal(exit.signal, null, JSON.stringify(exit));
     clients.delete(client);
     client = null;
   };
@@ -271,7 +273,11 @@ async function main(directory) {
   } finally {
     const failures = [];
     for (const open of clients) {
-      try { await open.close({ stopRuntime: false, stdinEof: true }); }
+      try {
+        const exit = await open.close({ stopRuntime: false, stdinEof: true });
+        assert.equal(exit.code, 0, JSON.stringify(exit));
+        assert.equal(exit.signal, null, JSON.stringify(exit));
+      }
       catch (error) { failures.push(error.message); }
     }
     if (cli) {
@@ -285,7 +291,11 @@ async function main(directory) {
         assert.equal(status.status, 'stopped', JSON.stringify(status));
         for (const pid of runtimePids) {
           let live = true;
-          try { process.kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') live = false; else throw error; }
+          const exitDeadline = Date.now() + 5000;
+          do {
+            try { process.kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') live = false; else throw error; }
+            if (live) await sleep(25);
+          } while (live && Date.now() < exitDeadline);
           assert.equal(live, false, 'Runtime process still alive: ' + pid);
         }
         report.checks.cleanup = { stopped: true, runtimePids: [...runtimePids], noRuntimeProcesses: true };

@@ -86,3 +86,15 @@ test('Windows command callback retains complete Unicode output before closing it
   assert.equal(result.stdout, text);
   assert.equal(result.stderr, '诊断结束');
 });
+
+test('Windows ENOENT distinguishes a missing shell from a shell that already started', windows, async t => {
+  const directory = fixture(t), missing = path.join(directory, 'absent-command.exe');
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'comspec'));
+  env.ComSpec = path.join(directory, 'absent-shell.exe');
+  await assert.rejects(execFileBounded(missing, [], { mutation: true, env }),
+    error => error.code === 'ENOENT' && error.dispatched === false && error.ambiguous === false);
+  // cross-spawn reports ENOENT after cmd.exe exits for an unresolved command.
+  // A created shell must remain dispatched even though the command is missing.
+  await assert.rejects(execFileBounded(missing, [], { mutation: true }),
+    error => error.code === 'ENOENT' && error.dispatched === true && error.ambiguous === true);
+});

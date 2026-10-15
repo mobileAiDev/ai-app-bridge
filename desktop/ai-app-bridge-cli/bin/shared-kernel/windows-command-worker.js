@@ -6,6 +6,8 @@ const spawn = require('cross-spawn');
 process.once('disconnect', () => process.exit(1));
 process.once('message', ({ file, args, options }) => {
   const child = spawn(file, args, { ...options, stdio: ['pipe', 'pipe', 'pipe'] });
+  let spawned = child.pid !== undefined;
+  child.once('spawn', () => { spawned = true; });
   process.stdin.pipe(child.stdin);
   child.stdout.pipe(process.stdout, { end: false });
   child.stderr.pipe(process.stderr, { end: false });
@@ -15,7 +17,7 @@ process.once('message', ({ file, args, options }) => {
     // IPC and stdout are different pipes: drain both output queues before
     // telling the parent it may close the Job (and any remaining descendants).
     process.stdout.write('', () => process.stderr.write('', () => {
-      process.send({ event: 'result', code, signal, failure }, () => {});
+      process.send({ event: 'result', code, signal, failure, spawned }, () => {});
     }));
   });
 });

@@ -31,7 +31,12 @@
       "conditions": [
         ["OS=='win'", {
           "defines": ["_CRT_SECURE_NO_WARNINGS", "WIN32_LEAN_AND_MEAN", "NOMINMAX", "_WIN32_WINNT=0x0A00"],
-          "msvs_settings": { "VCCLCompilerTool": { "AdditionalOptions": ["/std:c11", "/utf-8"] } }
+          "msvs_settings": { "VCCLCompilerTool": {
+            "AdditionalOptions!": ["-std:c++20"],
+            "AdditionalOptions": ["/utf-8"],
+            "LanguageStandard_C": "stdc11",
+            "LanguageStandard": "stdcpp20"
+          } }
         }],
         ["OS!='win'", {
           "defines": ["_POSIX_C_SOURCE=200809L"]
