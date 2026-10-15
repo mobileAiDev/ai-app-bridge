@@ -97,6 +97,9 @@ function createChildRuntimeAdapter({
         stdio: ['pipe', 'pipe', 'pipe'],
         env,
         windowsHide: true,
+        // Windows cancellation belongs to our gated execution Job. An outer
+        // libuv Job would kill released services when the Host later exits.
+        detached: process.platform === 'win32',
       });
       channel = createScriptSessionChannel(child, {
         maxFrameBytes: Math.max(spec.policy.maxOutputBytes, spec.policy.maxProgressBytes, 1024 * 1024) + 64 * 1024,

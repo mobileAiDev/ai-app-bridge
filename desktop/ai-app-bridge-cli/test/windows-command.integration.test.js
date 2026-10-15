@@ -109,7 +109,7 @@ test('Windows ADB keeps its independently owned server across completed commands
   await new Promise(resolve => reservation.close(resolve));
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
     !['adb_server_socket', 'android_adb_server_port', 'adb_server_port'].includes(name.toLowerCase())));
-  const run = command => execFileBounded(adb, ['-H', '127.0.0.1', '-P', String(port), command], { env, timeoutMs: 10000 });
+  const run = command => execFileBounded(adb, ['-P', String(port), command], { env, timeoutMs: 10000 });
   let cleaned = false;
   t.after(async () => { if (!cleaned) await run('kill-server'); });
   await run('start-server');

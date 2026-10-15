@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '../..');
 // Actual Win32 power/process calls plus shared execution, persistence and
 // recovery contracts. Device fixture suites have their own acceptance scope.
 const files = [
-  'windows-runtime-contract.test.js', 'windows-process.integration.test.js',
+  'windows-runtime-contract.test.js', 'windows-process.integration.test.js', 'windows-job-baseline.test.js',
   'windows-runtime.integration.test.js',
   'windows-command.integration.test.js', 'windows-power.integration.test.js',
   'durable-files.test.js', 'portable-exec-file.test.js',

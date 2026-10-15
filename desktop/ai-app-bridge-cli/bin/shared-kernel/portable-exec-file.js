@@ -8,6 +8,9 @@ const { createProcessScope } = require('./windows-process');
 function gatedWindowsSpawn(file, args, options) {
   const child = fork(path.join(__dirname, 'windows-command-worker.js'), [], {
     cwd: options.cwd, env: options.env, windowsHide: true, execArgv: [],
+    // Avoid libuv's Host-wide Job: the ready gate attaches our execution Job
+    // before starting the command, so its later release owns the full lifetime.
+    detached: true,
     stdio: ['pipe', 'pipe', 'pipe', 'ipc'], serialization: 'json',
   });
   child.dispatchPending = true;
