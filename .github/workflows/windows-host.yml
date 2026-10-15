@@ -64,6 +64,15 @@ jobs:
         id: test_dependencies
         working-directory: desktop/ai-app-bridge-cli
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Reproduce the old Job lifetime fault and restore exact candidate bytes
+        working-directory: desktop/ai-app-bridge-cli
+        run: |
+          git fetch --no-tags --depth=1 origin c5777d5df12539d42810b13b6a27d8e5cbe141a2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/validation/verify-windows-job-baseline.js ../../windows-evidence *> ../../windows-evidence/job-baseline-command.log
+          if ($LASTEXITCODE -ne 0) { Get-Content ../../windows-evidence/job-baseline-command.log; Get-Content ../../windows-evidence/job-baseline.log; exit $LASTEXITCODE }
+          git diff --exit-code -- bin/script/node-runtime-adapter.js bin/shared-kernel/portable-exec-file.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Windows Runtime, leases, execution and recovery
         working-directory: desktop/ai-app-bridge-cli
         run: |
