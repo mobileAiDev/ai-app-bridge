@@ -56,6 +56,8 @@ Current source and installation examples target the coordinated `0.4.15` release
 See the [review and acceptance scope](docs/OPTIMIZATION_EXECUTION_2026-10-15.md),
 [release changes](desktop/ai-app-bridge-cli/docs/RELEASE.md), and
 [release verification and publication status](docs/RELEASE_VERIFICATION_0.4.15_2026-10-15.md).
+For Maven builds, repository selection and release troubleshooting, see the
+[Android publication guide](docs/ANDROID_PUBLICATION.md).
 
 ## What It Solves
 
