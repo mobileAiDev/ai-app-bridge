@@ -116,7 +116,7 @@ The manager methods are `acquire({ownerId,target,mode,leaseMs,recovery?})`,
 | Target | Requested modes | Actual protection |
 | --- | --- | --- |
 | `{platform:'host'}` on macOS | `system`, `display`, `both` | Host idle sleep/display idle assertions through `caffeinate -i`/`-d`. No `-u` input/wakeup declaration or power-setting changes. |
-| `{platform:'host'}` Windows adapter | `system`, `display`, `both` | Implemented PowerShell worker uses `SetThreadExecutionState` and clears it on the same thread. The current CLI's native FactStore installation does not yet support Windows; this row is an adapter contract, not complete Windows Host availability. Screensavers and explicit manual sleep are outside the API. |
+| `{platform:'host'}` on Windows x64 | `system`, `display`, `both` | PowerShell worker uses `SetThreadExecutionState` and clears it on the same thread. Native API and lease-lifetime checks passed on Windows Server 2022 CI; physical display/system sleep remains unverified. Screensavers and explicit manual sleep are outside the API. |
 | `{platform:'android',serial}` | `system`, `display`, `both` | A separate shell-owned `app_process` holds timed `PowerManager` locks for the selected device. `system` is a CPU partial lock. `display` keeps an already awake display on; it also keeps CPU active while the display is on. `both` adds the independent partial lock so CPU remains protected when display is off. No second UI automation connection is opened. |
 | `{platform:'ios',deviceId,bundleId}` | `display` only | The selected SDK App's `UIApplication.isIdleTimerDisabled` while active in the foreground. It does not cover another foreground App or background CPU execution. |
 
@@ -206,11 +206,18 @@ Evidence is retained outside the repo in
   sample state were read back. A post-expiry status request also runs expiry
   reconciliation, so that response alone does not prove when the timer fired;
   the independent main-queue timer test supplies that narrower evidence.
-- Windows: adapter reviewed against the documented system API and automated
-  child protocol/lifecycle tests on macOS. The bundled native FactStore currently
-  rejects Windows installation, so full Windows Host support is not implemented.
-  Actual Windows power API and physical behavior also remain unverified. Shipping
-  the adapter source is not evidence that the normal Windows CLI can execute it.
+- Windows at the initial power checkpoint had only adapter review and macOS
+  child protocol/lifecycle tests; native FactStore installation was unsupported.
+  Subsequent Windows Server 2022 CI run `38734283036` at `6187bb5` passed native
+  FactStore, fresh package installation, shared CLI/MCP Runtime, JS/Python Script
+  and cancellation/recovery checks. The actual Windows power API passed all three
+  modes, same-thread release, renewal, expiry, EOF, overlapping leases and worker
+  death checks; Runtime-owned leases survived CLI return, Script completion and
+  MCP disconnect, then released at Runtime stop. Evidence is in sibling
+  `ai-app-bridge-release-evidence/windows-closeout-2026-10-15/ci/run-38734283036/`.
+  Physical Windows display/system sleep behavior remains unverified; software
+  API/lifecycle acceptance does not establish it. See [the Host installation
+  matrix](INSTALLATION.md) for supported platforms.
 - Installed CLI/MCP: `public-entrypoints-1792034976253/report.json` records ten
   real macOS checks, including shared lease visibility, reconnect, auto disable
   preserving explicit work, Script cancellation and Runtime shutdown. These

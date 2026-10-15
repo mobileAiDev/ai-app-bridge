@@ -1,3 +1,7 @@
+# 0.4.15
+
+- Align the optional executor identity and package version with coordinated release 0.4.15. The WidgetTester execution contract is unchanged from 0.4.14.
+
 # 0.4.14
 
 - Align the optional executor identity and package version with coordinated release 0.4.14. The WidgetTester execution contract is unchanged.

@@ -1,3 +1,7 @@
+# 0.4.15
+
+- Align the package, Android dependency and embedded iOS identity with coordinated release 0.4.15. Execution and storage contracts are unchanged from 0.4.14.
+
 # 0.4.14
 
 - Align the Android dependency, embedded iOS identity and package version with coordinated release 0.4.14.

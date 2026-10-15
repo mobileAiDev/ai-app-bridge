@@ -1,8 +1,13 @@
 # 0.4.14 coordinated release verification
 
-Status at source freeze: implementation, platform acceptance and final clean
-package verification passed; public publication and consumer upgrades are pending.
-These later gates are not implied by the platform results below.
+Status: npm, Pub, SwiftPM and GitHub public verification passed; local CLI and
+skill installation passed. Public Maven failed while downloading dependencies,
+before source compilation, so the four Android consumers were not upgraded.
+The user requested a new coordinated 0.4.15 build instead of clearing this failed
+build cache. Neither the 0.4.14 tag nor its published archives are replaced.
+
+Immutable source tag: `0.4.14`, commit
+`f3e5213195fa4578cc4b39db989e9203675000aa`.
 
 Evidence roots (siblings of this repository):
 
@@ -21,7 +26,7 @@ literal command-wrapper arguments, scoped process cancellation, completed
 daemon lifetimes and Runtime shutdown. SDK source exports now include the
 private C platform header. Swift/Flutter test maintenance corrects accepted
 record and action-phase assumptions without changing production queue limits
-or deadlines. See [release changes](../desktop/ai-app-bridge-cli/docs/RELEASE.md).
+or deadlines. See [release changes](https://github.com/mobileAiDev/ai-app-bridge/blob/0.4.14/desktop/ai-app-bridge-cli/docs/RELEASE.md).
 
 ## Platform acceptance
 
@@ -75,14 +80,34 @@ alone never converted an earlier lifecycle failure into a pass.
 - The remote Web smoke example keeps its previous manifest and lockfile until
   the new public npm version can resolve both together.
 
-## Remaining publication gates at this snapshot
+## Public results and incomplete gates
 
-Publish the new immutable tag and matching npm/Pub/Maven/GitHub artifacts,
-compare public downloads to the
-frozen archives, and build normal public-coordinate SDK consumers. Upgrade the
-four projects and local CLI/skill, then verify the shared Runtime and actual
-connected MCP version separately. Publication evidence is written under the
-0.4.14 evidence root; the 0.4.13 release and its evidence are not overwritten.
+- npm CLI and Web: both public archives match the frozen bytes, registry SHA-512
+  and SHA-1; both `latest` and `next` reached 0.4.14. One Web authentication
+  callback expired with HTTP 404; its failed attempt is retained, and a new
+  official authentication flow subsequently succeeded.
+- GitHub: public release and all three assets match the frozen files and hashes.
+- Pub: official SDK/helper archives contain 61/6 matching files. A normal hosted
+  consumer with an empty isolated cache resolves the official registry and
+  passes analyze. The earlier stale-cache resolution failure remains recorded.
+- SwiftPM: exact public tag and 160 source files match; a new unsigned generic
+  iOS consumer builds in 64.195 seconds, compiling the private platform header.
+- Local CLI: public-registry installation, 248 source files and two installed
+  skill files verified. Independent CLI/MCP share the new Runtime; Host doctor,
+  concurrent JavaScript reads and Python run successfully. The existing shared
+  Runtime and resident Codex MCP remain 0.4.13 until the coordinated switch.
+- Web remote-smoke: manifest and lockfile updated together from the public
+  package; its check, six installed files and archive integrity pass.
+- Maven: first public attempt failed in 4m38s with 114 HTTP 429 dependency-download
+  failures. It had not entered source compilation. The local publication pass
+  is not public publication success. Original response/logs are preserved under
+  `maven/jitpack/failed-attempt-1`; no successful artifact was overwritten.
+- POS, Reader, Duo and MeasureDevice remain at their previous public dependency
+  versions. Root-device regression is explicitly deferred until the next public
+  Maven build and artifact checks pass, as requested by the user.
+
+Publication evidence is under the 0.4.14 evidence root; the 0.4.13 release and its
+evidence are not overwritten.
 
 Frozen npm archive SHA-256 values:
 

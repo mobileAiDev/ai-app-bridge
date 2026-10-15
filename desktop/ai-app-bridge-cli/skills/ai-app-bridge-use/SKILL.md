@@ -29,7 +29,7 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 
 **工作期间防休眠：** 默认实际操作开启十分钟空闲保护，Intent/Script 另按自身期限保护并在终态释放；MCP 连接不能判断对话是否仍在工作。跨多个程序、子代理或长时间分析的设备任务，由主代理为 Host 和每个选中设备显式 `power acquire`，期限覆盖本轮工作，保留 `leaseId` 并在到期前续期，整项工作结束再统一释放。子任务只释放自己新增的保护。用 `power status` 核对实际保护；`power auto enabled:false` 关闭自动保护而保留显式租约。Mac/Windows 使用系统 API，Android 使用指定 serial 的独立锁；iOS 只覆盖前台 SDK App，可选 `recovery:"reacquire-ended"` 在原工作期限内恢复 SDK 明确丢失的断言。已锁屏状态和实际保持解锁分别核对；充电保活设置也要结合系统实际供电状态。保护失败作为信息返回，调用方仍可继续业务操作。更多见 `docs/POWER_LEASES.md`。
 
-Windows 电源适配代码已有，但当前原生 FactStore 安装矩阵尚不支持 Windows；不能将该适配器或 Mac 上的协议测试表述为完整 Windows CLI 已可用。安装范围见 `docs/INSTALLATION.md`。
+Windows x64 的原生 FactStore、常规 npm 安装、共享 Runtime、CLI/MCP、JS/Python Script 与取消/恢复已通过 Windows Server 2022 CI；电源 API 和租约生命周期也已实测，物理 Windows 电脑的屏幕/系统休眠效果仍待验证。安装范围见 `docs/INSTALLATION.md`。
 
 ## 响应与提取
 

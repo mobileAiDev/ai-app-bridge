@@ -67,7 +67,7 @@ function exportArchive({ namespace, operationId, outputDir, includeRecordedPaylo
   let cursor;
   let byteCount = 2;
   do {
-    const page = store.read({ targetKey, limit: 1000, ...(cursor === undefined ? {} : { cursor }) });
+    const page = store.read({ partitions: ['action', 'ui'], targetKey, limit: 1000, ...(cursor === undefined ? {} : { cursor }) });
     requireValue(page.ok === true, 'fact_store_read_failed', page.error);
     requireValue(page.gap === false && page.cursorExpired === false, 'evidence_gap');
     requireValue(Array.isArray(page.items) && typeof page.hasMore === 'boolean', 'invalid_store_page');

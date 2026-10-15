@@ -1,69 +1,59 @@
-# 0.4.14 coordinated release
+# 0.4.15 coordinated release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.14 together. This release adds Windows x64 Host implementation and repairs
-Host process lifetimes.
-Linux and Intel Mac were already supported in 0.4.13; their checks are regressions.
+0.4.15 together. This release corrects evidence queries and uses a new immutable
+version for public Android publication after the 0.4.14 dependency-download
+failure. Existing tags and published archives are preserved.
 
 ## Changes
 
-- Add a Win32 implementation of the embedded FactStore's platform boundary:
-  Unicode paths, mapped-file flushes, kernel locks and file publication. Preserve
-  the v1 record format, commit order, corruption recovery and Node-API 8 interface.
-  Ordinary installation loads a verified bundled binary without compiling it.
-- Publish Host ownership and evidence files through a flushed, write-through
-  rename on Windows. Exclusive creation remains exclusive. Removing an owner
-  first retires its active name; interrupted cleanup may leave inert retired
-  bytes. Required I/O failures remain visible.
-- Execute Windows command shims and Gradle wrappers with literal arguments.
-  Python Script's protocol uses UTF-8 independently of the console code page.
-  A missing executable, a created shell and a lost completion receipt retain
-  their distinct dispatch and ambiguity facts.
-- Attach unfinished Windows Script and command workers to individual Jobs before
-  starting requested code. Cancellation and Host death own those unfinished
-  trees. A complete ordinary-command receipt releases tool daemons, including
-  after a nonzero exit. Script release requires a returned result and normal SDK
-  exit. Independent controllers survive long enough to persist their result.
-- Check the process creation identity through the same handle used for a forced
-  stop. On cancellation, seal the owned Job against new children and wait for its
-  process handles to signal before reporting cleanup complete. Keep original
-  cleanup errors alongside the command's primary failure without replaying work.
-- Finish and send a Runtime stop reply before closing outstanding connections,
-  so an idle request cannot keep the stopped process alive.
-- Mirror the C platform header into the iOS, Flutter and WDA source packages.
-  Swift/Flutter test maintenance checks accepted records and actual action
-  phases instead of assuming offered records were accepted or a timeout always
-  happened after DOWN. Production queue limits and action deadlines are unchanged.
+- Read Script/Intent evidence only from its `action` and `ui` partitions. When
+  unrelated network records have been evicted, retained evidence can still be
+  listed, recovered and archived across internal pages. Actual evidence gaps,
+  cursor scope mismatches and changes during archive export remain explicit
+  failures; previously missing history remains unknown.
+- Correct installed guidance to describe the Windows x64 Host support already
+  implemented in 0.4.14. Physical Windows display/sleep testing remains deferred.
+- Advance the coordinated package versions. Android/iOS/Flutter/Web behavior
+  and native binaries otherwise retain the implementation validated for 0.4.14.
 
 ## Validation and limits
 
-Native format/recovery/golden tests and actual installed package checks passed
-on Windows x64, macOS arm64/x64 and Linux glibc arm64/x64. The final Windows Host
+The evidence-query fix passes 165 related checks, including multi-page retained
+history, large payload chunks, actual partition loss, cursor signatures and
+archive consistency. An independent review confirms the scope matches the
+existing writer. No native format or low-level retention rule changes.
+
+The 0.4.14 Windows x64 implementation covers the native FactStore, durable file
+publication, literal process arguments, UTF-8 Python transport, cancellation,
+completed daemon lifetimes and Runtime shutdown. Linux and Intel Mac support
+predate that release. The v1 store format and Node-API 8 interface are unchanged.
+
+Native format/recovery/golden tests and installed package checks passed on
+Windows x64, macOS arm64/x64 and Linux glibc arm64/x64. The final Windows Host
 run passed 206 cases, failed none and skipped two POSIX-only cases. Cancellation
 passed 20 immediate-completion repetitions and three nested-process stress
-repetitions. Intel Mac and both Linux targets each passed 369 shared Host checks,
-failed none and skipped one platform-specific case. Detailed results, prior
-failures and source identities are recorded in
-`docs/WINDOWS_HOST_VALIDATION_2026-10-15.md`.
+repetitions. Each existing Intel Mac/Linux target passed 369 shared Host cases,
+failed none and skipped one platform-specific case. These are inherited 0.4.14
+results, not newly repeated 0.4.15 runs. Detailed source and artifact identities
+remain in `docs/WINDOWS_HOST_VALIDATION_2026-10-15.md`.
 
-Windows power API and lease lifetime tests run on a Windows CI runner. Physical
-display/sleep testing on the user's Windows computer remains deferred. The
-adapter prevents idle sleep while its assertion is active; it does not unlock a
-password-protected screen or override explicit manual sleep.
+Windows power API and lease lifetime tests ran on a Windows CI runner. Physical
+display/sleep testing on the user's Windows computer remains deferred. An idle
+assertion cannot unlock a password-protected screen or override manual sleep.
+WDA and iOS build tools still require macOS/Xcode. Windows ARM64 and Linux musl
+are outside the validated native matrix.
 
-The device/Web behavior from 0.4.13 is inherited within its original acceptance
-scope. This release makes no new whole-App speed claim and does not substitute
-Host/package checks for new Android/iPhone business-flow acceptance. WDA and iOS
-build tools still require macOS/Xcode. Windows ARM64 and Linux musl are outside
-the validated native matrix. Existing unknown device outcomes, iOS permission
-usability limits and earlier Android remote-test failures retain their recorded
-boundaries.
+This release makes no new whole-App speed claim. Host/package checks do not
+replace Android/iPhone business-flow acceptance. Device outcomes retain their
+original identity and uncertainty; actions with unknown results are not replayed.
 
 ## Release procedure
 
-Freeze reviewed source and exact archives after the applicable gates pass.
-Publish a new Git tag and matching npm/Pub/Maven/GitHub artifacts; verify public
-downloads and SwiftPM resolution independently. Upgrade consumers from public
-coordinates while preserving their unrelated changes. Verify the installed CLI
-and actual connected MCP process separately from any older process. Existing
-tags, packages and historical evidence are not replaced.
+Freeze reviewed source and exact archives after applicable checks pass. Publish
+a new immutable Git tag and verify public Maven artifacts before proceeding
+with the other publication channels and Android consumer upgrades. Verify npm,
+Pub, GitHub downloads and SwiftPM resolution against their frozen inputs.
+Upgrade consumers from public coordinates while preserving unrelated changes.
+Check the installed CLI and actual resident MCP/Runtime separately. The user
+requested root-device regression only after public Maven verification passes.

@@ -113,7 +113,7 @@ function createSegmentedEvidenceAdapter(factStore, { ownsStore = false } = {}) {
       };
     },
     readById(evidenceId) {
-      const page = factStore.read({ actionId: evidenceId, limit: 1 });
+      const page = factStore.read({ partitions: ['action', 'ui'], actionId: evidenceId, limit: 1 });
       if (!page.ok) throw Object.assign(new Error(page.error || 'Evidence store read failed.'), { code: 'evidence_read_failed' });
       const item = page.items?.[0];
       return item?.payload || null;
@@ -123,6 +123,7 @@ function createSegmentedEvidenceAdapter(factStore, { ownsStore = false } = {}) {
       let cursor;
       do {
         const page = factStore.read({
+          partitions: ['action', 'ui'],
           targetKey: operationId ? `evidence:${namespace}:${operationId}` : undefined,
           cursor,
           limit: 1_000,

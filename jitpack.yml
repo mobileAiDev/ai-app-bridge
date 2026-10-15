@@ -2,4 +2,4 @@ jdk:
   - openjdk17
 
 install:
-  - ./gradlew --no-daemon clean publishToMavenLocal
+  - ./gradlew --no-daemon -PaiAppBridge.centralRepositoryUrl=https://maven.aliyun.com/repository/central clean publishToMavenLocal
