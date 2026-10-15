@@ -1,0 +1,81 @@
+name: Windows Host acceptance
+
+on:
+  push:
+    branches: [codex/windows-host-validation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 26.3.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Record runner and compiler provenance
+        run: |
+          New-Item -ItemType Directory windows-evidence | Out-Null
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $toolset = Get-ChildItem "$vs\VC\Tools\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $compiler = Join-Path $toolset.FullName 'bin\Hostx64\x64\cl.exe'
+          @{ commit=$env:GITHUB_SHA; os=[Environment]::OSVersion.VersionString; node=(& node --version); python=(& python --version); compiler=$compiler; compilerVersion=(Get-Item $compiler).VersionInfo.FileVersion } | ConvertTo-Json | Set-Content windows-evidence/provenance.json
+      - name: Build native Node-API artifact from this source
+        run: |
+          npm exec --yes --package=node-gyp@13.1.0 -- node-gyp rebuild --directory native/segmented-fact-store --verbose *> windows-evidence/native-build.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/native-build.log; exit $LASTEXITCODE }
+          node native/segmented-fact-store/scripts/stage-prebuild.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Native format, recovery and process tests
+        run: |
+          node --test native/segmented-fact-store/bindings/node/test/*.test.js *> windows-evidence/native-tests.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/native-tests.log; exit $LASTEXITCODE }
+          cmake -S native/segmented-fact-store -B windows-evidence/cmake -A x64 *> windows-evidence/cmake-configure.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/cmake-configure.log; exit $LASTEXITCODE }
+          cmake --build windows-evidence/cmake --config Release --target segmented_fact_store_tests sfs_generate_golden *> windows-evidence/cmake-build.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/cmake-build.log; exit $LASTEXITCODE }
+          ctest --test-dir windows-evidence/cmake -C Release --output-on-failure *> windows-evidence/cmake-tests.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/cmake-tests.log; exit $LASTEXITCODE }
+          & windows-evidence/cmake/Release/sfs_generate_golden.exe windows-evidence/generated-golden
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node native/segmented-fact-store/scripts/verify-golden.js windows-evidence/generated-golden *> windows-evidence/golden-tests.log
+          if ($LASTEXITCODE -ne 0) { Get-Content windows-evidence/golden-tests.log; exit $LASTEXITCODE }
+      - name: Install development test dependencies
+        working-directory: desktop/ai-app-bridge-cli
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Windows Runtime, leases, execution and recovery
+        working-directory: desktop/ai-app-bridge-cli
+        run: |
+          npm run test:windows *> ../../windows-evidence/host-tests.log
+          if ($LASTEXITCODE -ne 0) { Get-Content ../../windows-evidence/host-tests.log; exit $LASTEXITCODE }
+      - name: Fresh packaged install and CLI MCP continuation
+        working-directory: desktop/ai-app-bridge-cli
+        run: |
+          npm run verify:windows -- "${{ github.workspace }}/windows-evidence/package" *> ../../windows-evidence/package-tests.log
+          if ($LASTEXITCODE -ne 0) { Get-Content ../../windows-evidence/package-tests.log; exit $LASTEXITCODE }
+      - name: Preserve native artifact and manifest
+        if: always()
+        run: |
+          if (Test-Path native/segmented-fact-store/prebuilds/win32-x64) { Copy-Item native/segmented-fact-store/prebuilds/win32-x64 windows-evidence/win32-x64 -Recurse }
+          Copy-Item native/segmented-fact-store/prebuilds/manifest.json windows-evidence/native-manifest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-host-${{ github.sha }}
+          path: |
+            windows-evidence/*.log
+            windows-evidence/*.json
+            windows-evidence/win32-x64
+            windows-evidence/package
+          retention-days: 14
