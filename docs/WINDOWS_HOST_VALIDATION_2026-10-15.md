@@ -46,15 +46,15 @@ Evidence roots are sibling directories
 | Gate | Current evidence |
 | --- | --- |
 | macOS native store | C suite, 17 Node cases and byte-for-byte v1 golden parity passed. |
-| macOS integrated Host | Before the final Windows Job lifetime correction: 1,881 passed, zero failed, 20 Windows-only cases skipped. Final-source regression is pending. |
+| macOS integrated Host | Integrated lifecycle regression: 1,887 passed, zero failed, 22 Windows-only cases skipped. Subsequent Windows-only release-diagnostic and detached-worker changes passed focused suites of 36 and 42 cases. These Mac checks do not execute Win32 APIs. |
 | macOS SDK source mirror | Swift suite: 82 passed; canonical C source and private platform header are mirrored into iOS/Flutter/WDA packaging. |
 | Test-fixture maintenance | Swift/Flutter acceptance-count and action-phase assertions corrected with original red evidence retained; each full suite passed 82 cases. |
 | Fresh installed package on macOS | Actual prebuilt installation, CLI/MCP continuation, JS/Python, checkpoint/recording recovery and cancellation passed. This is not Windows evidence. |
-| Windows native build | Second real run compiled successfully with MSVC. The first run's C/C++ standard flag conflict is fixed. Final-source rebuild is pending. |
-| Windows native format/recovery | Second real run passed all 17 Node cases, the C suite and byte-for-byte golden parity. Final-source rerun is pending. |
-| Windows Runtime/process/power | Second real run: 160 passed, six failed, two skipped. Actual Win32 process and PowerShell lease cases passed. Five failures were Windows fixture assumptions; one exposed an overbroad Runtime Job. Corrections require another real run. |
-| Windows fresh installed package | Second run skipped this step after Host failures. Pending actual installation with build tools disabled; the workflow now retains this independent evidence even when another Host check fails. |
-| All published native targets | Final source-specific artifacts and regression checks pending. Old artifacts cannot be relabeled as built from this source. |
+| Windows native build | Run 38729796010 compiled with MSVC; its binary and all seven source hashes match the uploaded manifest and installed package. The verified candidate binary has not yet been imported into the release tree. |
+| Windows native format/recovery | Run 38729796010 passed all 17 Node cases, the C suite and byte-for-byte golden parity. |
+| Windows Runtime/process/power | Run 38729796010: 177 passed, one failed, two skipped. Actual ADB and the completed-service/Host-death comparison passed. Cancellation still returned while an owned process was reported live; this remains a release blocker. |
+| Windows fresh installed package | Run 38729796010 passed all nine checks against the installed 248-file package in 18.013 seconds, with build tools disabled and no remaining test Runtime. |
+| Existing Intel Mac and Linux targets | Run 38727503505 passed on darwin-x64, linux-x64-glibc and linux-arm64-glibc. Each passed native 17, C/golden, 365 Host tests (one platform skip) and all nine installation checks. Seven native source hashes match the current tree. These are regressions of targets already shipped in 0.4.13. |
 | Physical Windows display/system sleep | Deferred by the user; CI cannot establish physical sleep behavior. |
 
 The first Windows run is
@@ -72,6 +72,38 @@ to prove rejected writes, and read only data segments rather than the mandatory
 lock file. The process correction also adds a real SDK ADB server test on an
 isolated port: inspect its listener before a second ADB call, verify the same
 process survives, then explicitly stop that server. It uses no mobile devices.
+
+The third Windows run,
+[38727503138](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38727503138),
+passed 172 Host cases and failed two. One test accidentally supplied ADB's remote
+host option, which prevents server startup. The other exposed libuv's enclosing
+Host Job: releasing the Bridge Job still left completed daemons subject to Host
+death. The trusted workers now detach from that enclosing Job, and Bridge attaches
+its own Job before allowing the requested code to start. General breakaway flags
+are not enabled.
+
+The fourth Windows run,
+[38729796010](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38729796010),
+tests commit `cae2137570c33378e34e22ed57950f8b055adf7e`. It reproduces the old
+failure using the two production files from `c5777d5`, then restores their exact
+candidate bytes. In the old control, completed command/JavaScript/Python daemons
+die with the Host while an independent process survives; in the candidate all
+four retain their original process identities. The real ADB server test also
+passes. This comparison does not close the separate cancellation failure in
+`windows-command.integration.test.js`. The failing run and all logs are retained
+in `ci/verified-artifacts-38729796010.json` under the evidence root.
+
+A focused 20-repeat diagnostic,
+[38731842230](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38731842230),
+tests commit `a669c0867200122de69f0592df8a0a59198dba8b`. Seven repeats still saw
+the selected command's original creation identity at callback completion; each
+became stopped in the bounded diagnostic tail. The descendant had stopped and
+the independent command remained alive. No native cleanup error was returned.
+This identifies a completion-order problem rather than PID reuse: Job accounting
+reported zero active members before every process object was signaled. The
+immediate assertion remains strict; tail observations do not turn failures into
+passes. The corrective process-handle synchronization still requires real
+Windows validation.
 
 ## Release boundary
 

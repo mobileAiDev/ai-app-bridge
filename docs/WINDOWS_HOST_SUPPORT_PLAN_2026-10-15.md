@@ -73,15 +73,18 @@ Evidence is in sibling directory
 The isolated `codex/windows-host-validation` candidate implements the native
 platform boundary, Windows Host file/process operations and command shims.
 Actual Windows CI has now passed native compilation, 17 Node storage cases,
-the C suite and golden-format parity. It also exposed Host lifecycle and test
-fixture problems; the candidate is still under correction and has not replaced
-the installed 0.4.13. See the source-specific gates and retained failures in
+the C suite, golden-format parity and all nine fresh-package installation checks.
+The latest Host run passed 177 cases, failed one cancellation-cleanup case and
+skipped two. ADB service lifetime and the completed-service/Host-death comparison
+passed. The candidate is still under correction and has not replaced the
+installed 0.4.13. Existing Intel Mac/Linux targets passed their regression matrix;
+they are not newly added platforms. See the source-specific gates and failures in
 [Windows Host validation](WINDOWS_HOST_VALIDATION_2026-10-15.md).
 
 Retain the existing Windows power implementation and the tested process-exit
 diagnostic repair. Treat the missing Windows Host installation/runtime support
-as open implementation work, not merely an untested device checkbox. Do not
-publish or report complete Windows support from the current Mac protocol tests.
+as open acceptance work, not merely an untested device checkbox. Do not
+publish or report complete Windows support while the cancellation gate fails.
 
 The API's scope is idle system/display prevention; explicit manual sleep and
 screen savers remain outside its guarantees, as documented by
