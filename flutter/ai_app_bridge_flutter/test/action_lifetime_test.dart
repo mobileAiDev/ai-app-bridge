@@ -185,16 +185,47 @@ void main() {
     expect(scroll.offset, stoppedAt);
   });
 
-  managedTest('the native remaining budget times out a held tap with CANCEL',
+  managedTest('the native remaining budget expires without a successful tap',
       (h) async {
     final touches = <String>[];
-    await h.mount(touchSurface(touches));
+    var taps = 0;
+    await h.mount(touchSurface(touches, onTap: () => taps++));
     h.remainingMs = 20;
     final result =
         await h.finish(h.send({'action': 'tapAt', 'x': 100, 'y': 100}));
     expect(result['error'], 'flutter_action_timeout');
-    expect(touches, ['down', 'cancel']);
-    expect(result['dispatched'], true);
+    // The budget includes channel latency: under load it may expire before DOWN.
+    // Both valid timings must settle with no UP and truthful dispatch evidence.
+    expect(touches, anyOf(isEmpty, equals(['down', 'cancel'])));
+    expect(result['dispatched'], touches.isNotEmpty);
+    expect(result['ambiguous'], false);
+    final settledTouches = List<String>.of(touches);
+    await h.tester.pump(const Duration(milliseconds: 300));
+    expect(touches, settledTouches);
+    expect(taps, 0);
+  });
+
+  managedTest('native channel latency consumes the budget before DOWN',
+      (h) async {
+    final touches = <String>[];
+    var taps = 0;
+    await h.mount(touchSurface(touches, onTap: () => taps++));
+    h.remainingMs = 20;
+    h.permission = (_) async {
+      final delay = Stopwatch()..start();
+      while (delay.elapsedMilliseconds < 40) {
+        // Controlled native-channel latency; the production deadline stays unchanged.
+      }
+      return h.grant();
+    };
+    final result = await h.finish(h.send({'action': 'tapAt', 'x': 100, 'y': 100}));
+    expect(result['error'], 'flutter_action_timeout');
+    expect(touches, isEmpty);
+    expect(result['dispatched'], false);
+    expect(result['ambiguous'], false);
+    await h.tester.pump(const Duration(milliseconds: 300));
+    expect(touches, isEmpty);
+    expect(taps, 0);
   });
 
   managedTest('a stale cancel identity cannot stop the active action',

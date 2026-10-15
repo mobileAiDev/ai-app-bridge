@@ -59,16 +59,21 @@ final class LogSystemStressTests: XCTestCase {
 
     func testMeasuresCpuMemoryAndDiskAcrossPersistLoadTiers() throws {
         let tiers = [("low", 200), ("medium", 2_000), ("high", 10_000)]
-        var previousDisk: UInt64 = 0
         for (name, count) in tiers {
             let row = try runPersistLoad(tier: name, count: count)
-            XCTAssertEqual(row["written"] as? UInt64, UInt64(count))
-            XCTAssertEqual(row["dropped"] as? UInt64, 0)
-            let disk = row["diskDeltaBytes"] as? UInt64 ?? 0
-            XCTAssertGreaterThan(disk, previousDisk, "\(name) disk")
-            previousDisk = disk
+            XCTAssertEqual(row["offered"] as? Int, count)
+            // Segments are preallocated, so disk size need not grow at every tier.
+            XCTAssertGreaterThan(try XCTUnwrap(row["diskDeltaBytes"] as? UInt64), 0)
             print("AAB_LOG_LOAD ios \(row)")
         }
+    }
+
+    func testPersistLoadKeepsAcceptedRecordsWhenTheWriterQueueFills() throws {
+        let row = try runPersistLoad(tier: "held-writer", count: 257, holdWriter: true)
+        XCTAssertEqual(row["accepted"] as? Int, 256)
+        XCTAssertEqual(row["queueFull"] as? Int, 1)
+        XCTAssertEqual(row["written"] as? UInt64, 256)
+        XCTAssertEqual(row["dropped"] as? UInt64, 1)
     }
 
     func testPersistPipelineWritesLogEnvelopesToMappedStore() throws {
@@ -108,30 +113,17 @@ final class LogSystemStressTests: XCTestCase {
         XCTAssertTrue(awaitOperation { store.open(options, completion: $0) }.isSuccess)
 
         let startedAt = DispatchTime.now()
-        var accepted = 0
-        for index in 0..<2_000 {
-            let payload = try SanitizedFactPayload.log(
-                context: context,
-                record: [
-                    "type": "log",
-                    "source": "nslog",
-                    "message": "aab-log-stress-\(index)"
-                ]
-            )
-            XCTAssertEqual(store.record(payload.data, partitionId: payload.partitionId), .accepted)
-            accepted += 1
-        }
-        let status = awaitStatus(store, writtenAtLeast: accepted)
+        let offered = try offerLogs(store, context: context, count: 2_000)
+        let status = try awaitStatus(store)
         let elapsedMs = elapsedMs(since: startedAt)
 
-        XCTAssertEqual(status.acceptedRecords, 2_000)
-        XCTAssertEqual(status.writtenRecords, 2_000)
-        XCTAssertEqual(status.droppedRecords, 0)
+        assertAccounting(status, accepted: offered.accepted, queueFull: offered.queueFull, offered: 2_000)
         XCTAssertTrue(awaitOperation { store.close(completion: $0) }.isSuccess)
-        print("AAB_LOG_STRESS ios-persist-pipeline count=2000 written=\(status.writtenRecords) elapsedMs=\(elapsedMs)")
+        try assertPersisted(options: options, accepted: offered.accepted)
+        print("AAB_LOG_STRESS ios-persist-pipeline offered=2000 accepted=\(offered.accepted.count) queueFull=\(offered.queueFull) written=\(status.writtenRecords) elapsedMs=\(elapsedMs)")
     }
 
-    private func runPersistLoad(tier: String, count: Int) throws -> [String: Any] {
+    private func runPersistLoad(tier: String, count: Int, holdWriter: Bool = false) throws -> [String: Any] {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
             "aab-log-load-\(tier)-\(UUID().uuidString)",
             isDirectory: true
@@ -164,40 +156,88 @@ final class LogSystemStressTests: XCTestCase {
             occurredAtMs: 1_000,
             observedAtMs: 1_010
         )
-        let store = SegmentedFactStore(maxQueuedRecords: 256)
+        let writer = DispatchQueue(label: "aab-log-load-writer")
+        let store = SegmentedFactStore(nativeFactory: { CSegmentedFactStoreNative() },
+                                       writer: writer, maxQueuedRecords: 256)
         XCTAssertTrue(awaitOperation { store.open(options, completion: $0) }.isSuccess)
         var before = rusage()
         getrusage(RUSAGE_SELF, &before)
         let startedAt = DispatchTime.now()
-        for index in 0..<count {
-            let payload = try SanitizedFactPayload.log(
-                context: context,
-                record: [
-                    "type": "log",
-                    "source": "nslog",
-                    "message": "aab-log-stress-\(index)"
-                ]
-            )
-            XCTAssertEqual(store.record(payload.data, partitionId: payload.partitionId), .accepted)
-        }
-        let status = awaitStatus(store, writtenAtLeast: count, timeout: 30)
+        let offered = try { () throws -> (accepted: [Data], queueFull: Int) in
+            if holdWriter { writer.suspend() }
+            defer { if holdWriter { writer.resume() } }
+            return try offerLogs(store, context: context, count: count)
+        }()
+        let status = try awaitStatus(store)
+        assertAccounting(status, accepted: offered.accepted, queueFull: offered.queueFull, offered: count)
         let elapsed = elapsedMs(since: startedAt)
         var after = rusage()
         getrusage(RUSAGE_SELF, &after)
         XCTAssertTrue(awaitOperation { store.close(completion: $0) }.isSuccess)
         let cpuMs = cpuMillis(after) - cpuMillis(before)
+        let diskBytes = directoryBytes(directory)
+        try assertPersisted(options: options, accepted: offered.accepted)
         return [
             "tier": tier,
             "offered": count,
+            "accepted": offered.accepted.count,
+            "queueFull": offered.queueFull,
             "written": status.writtenRecords,
             "dropped": status.droppedRecords,
             "elapsedMs": elapsed,
             "cpuMs": cpuMs,
             "cpuPercent": elapsed == 0 ? 0 : Double(cpuMs) / Double(elapsed) * 100,
             "maxRssBytes": after.ru_maxrss,
-            "diskDeltaBytes": directoryBytes(directory),
+            "diskDeltaBytes": diskBytes,
             "storePayloadBytes": status.payloadBytes
         ]
+    }
+
+    private func offerLogs(_ store: SegmentedFactStore, context: MobileFactEnvelopeContext,
+                           count: Int) throws -> (accepted: [Data], queueFull: Int) {
+        var accepted: [Data] = []
+        var queueFull = 0
+        for index in 0..<count {
+            let payload = try SanitizedFactPayload.log(context: context,
+                record: ["type": "log", "source": "nslog", "message": "aab-log-stress-\(index)"])
+            switch store.record(payload.data, partitionId: payload.partitionId) {
+            case .accepted: accepted.append(payload.data)
+            case .queueFull: queueFull += 1
+            default: XCTFail("unexpected admission result")
+            }
+        }
+        return (accepted, queueFull)
+    }
+
+    private func assertAccounting(_ status: SegmentedFactStoreStatus, accepted: [Data],
+                                  queueFull: Int, offered: Int) {
+        XCTAssertGreaterThan(accepted.count, 0)
+        XCTAssertEqual(accepted.count + queueFull, offered)
+        XCTAssertEqual(status.acceptedRecords, UInt64(accepted.count))
+        XCTAssertEqual(status.writtenRecords, UInt64(accepted.count))
+        XCTAssertEqual(status.droppedRecords, UInt64(queueFull))
+        XCTAssertEqual(status.queuedRecords, 0)
+        XCTAssertEqual(status.payloadBytes, UInt64(accepted.reduce(0) { $0 + $1.count }))
+        XCTAssertTrue(status.operation.isSuccess)
+    }
+
+    private func assertPersisted(options: SegmentedFactStoreOptions, accepted: [Data]) throws {
+        let reopened = SegmentedFactStore(maxQueuedRecords: 256)
+        XCTAssertTrue(awaitOperation { reopened.open(options, completion: $0) }.isSuccess)
+        defer { XCTAssertTrue(awaitOperation { reopened.close(completion: $0) }.isSuccess) }
+        let read = expectation(description: "read persisted accepted records")
+        var records: [SegmentedFactStoreRecord] = []
+        var end: SegmentedFactStoreReadResult?
+        reopened.readPage(cursor: .init(partitionId: MobileFactPartition.appLog.rawValue),
+                          maxRecords: accepted.count + 1,
+                          maxBytes: accepted.reduce(1) { $0 + $1.count }) {
+            records = $0; end = $1; read.fulfill()
+        }
+        wait(for: [read], timeout: 5)
+        XCTAssertTrue(try XCTUnwrap(end).isEnd)
+        XCTAssertEqual(records.map(\.payload), accepted)
+        XCTAssertEqual(records.map(\.sequence), (0..<accepted.count).map { UInt64($0 + 1) })
+        XCTAssertTrue(records.allSatisfy { $0.partitionId == MobileFactPartition.appLog.rawValue })
     }
 
     private func awaitOperation(
@@ -213,27 +253,13 @@ final class LogSystemStressTests: XCTestCase {
         return result
     }
 
-    private func awaitStatus(
-        _ store: SegmentedFactStore,
-        writtenAtLeast: Int,
-        timeout: TimeInterval = 15
-    ) -> SegmentedFactStoreStatus {
-        let deadline = Date().addingTimeInterval(timeout)
-        var last: SegmentedFactStoreStatus?
-        while Date() < deadline {
-            let expectation = expectation(description: "status")
-            var result: SegmentedFactStoreStatus?
-            store.status {
-                result = $0
-                expectation.fulfill()
-            }
-            wait(for: [expectation], timeout: 5)
-            last = result
-            if let result, result.writtenRecords >= UInt64(writtenAtLeast), result.queuedRecords == 0 {
-                return result
-            }
-        }
-        return last!
+    private func awaitStatus(_ store: SegmentedFactStore) throws -> SegmentedFactStoreStatus {
+        // status is queued after all offered writes on the same serial writer.
+        let ready = expectation(description: "status")
+        var result: SegmentedFactStoreStatus?
+        store.status { result = $0; ready.fulfill() }
+        wait(for: [ready], timeout: 5)
+        return try XCTUnwrap(result)
     }
 
     private func elapsedMs(since startedAt: DispatchTime) -> UInt64 {
