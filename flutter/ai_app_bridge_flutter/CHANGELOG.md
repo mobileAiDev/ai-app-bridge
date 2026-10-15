@@ -1,3 +1,7 @@
+# 0.4.13
+
+- Coordinated release: Android Maven publication now builds its publication artifacts independently of regression tests.
+
 ## 0.4.12
 
 - Align the Android dependency, embedded iOS identity and package version with coordinated release 0.4.12. SDK execution behavior is unchanged.

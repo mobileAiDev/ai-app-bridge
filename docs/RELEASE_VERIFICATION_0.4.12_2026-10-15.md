@@ -1,8 +1,7 @@
 # 0.4.12 release verification
 
-Status: preparing and validating the coordinated recovery release. The user
-authorized a new unified version after the third public Maven build of 0.4.11
-failed. No public 0.4.12 channel is claimed available yet.
+Status: source/tag published, public Android Maven build failed; superseded by
+the coordinated 0.4.13 publication. No npm or Pub 0.4.12 package was published.
 
 Evidence root: sibling `ai-app-bridge-release-evidence/0.4.12-2026-10-15/`.
 
@@ -43,12 +42,17 @@ Windows normal CLI installation is still not implemented; see
 - Host functional 1,857/1,857, performance 50/50, Web 38/38 and clean CLI package
   checks passed. Swift/Flutter and generic iOS validation continue independently
   of the Android public build.
-- Reviewed source and immutable tag, public Maven 16-artifact parity: pending.
-  This gate precedes the remaining 0.4.12 public channels.
-- npm, Pub, GitHub assets and remote SwiftPM content/integrity checks: pending.
-- Local CLI, installed skill, actual Codex MCP and Web smoke dependency: pending.
-- Four consumer projects: seven version references now target 0.4.12; public
-  dependency resolution, seven Gradle checks and six APK checks remain pending.
+- Reviewed source/tag: `6206322a9feeb559f840eee53d9ce3b244cd4e57`, pushed
+  unchanged. Public Maven failed at `ProductionCaptureStartupTest`'s five-second
+  attachment wait (220 debug tests, one failure); API Error at
+  2026-10-15 09:27:14.542 UTC with no published modules. The new log contains no
+  HTTP 429 or heap exhaustion. The previous log-pressure failure did not recur.
+- Full remote log SHA256:
+  `6a5060be93a0b1aae36b684f7dfd618fb3491d39a0e7876c3e67c704c537b622`.
+  The short remote report does not identify the final attachment state; this
+  evidence alone cannot distinguish slow scheduling from a runtime defect.
+- Remaining public channels, installation and consumer builds did not proceed
+  under 0.4.12. Consumers were subsequently prepared for 0.4.13.
 
 Consumers retain their branches, staged state and unrelated changes. No consumer
 commit, push or device installation is included. The K2 cashier is excluded.

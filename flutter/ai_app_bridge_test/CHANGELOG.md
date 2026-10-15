@@ -1,3 +1,7 @@
+# 0.4.13
+
+- Coordinated release: Android Maven publication now builds its publication artifacts independently of regression tests.
+
 ## 0.4.12
 
 - Align the optional executor identity and package version with coordinated release 0.4.12. The WidgetTester execution contract is unchanged.

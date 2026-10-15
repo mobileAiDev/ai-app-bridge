@@ -2,4 +2,4 @@ jdk:
   - openjdk17
 
 install:
-  - ./gradlew --no-daemon clean build publishToMavenLocal
+  - ./gradlew --no-daemon clean publishToMavenLocal

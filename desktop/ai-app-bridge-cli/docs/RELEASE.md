@@ -1,13 +1,18 @@
-# 0.4.12 coordinated patch release
+# 0.4.13 coordinated patch release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.12 together. Device/Web protocols and the private FactStore version are
+0.4.13 together. Device/Web protocols and the private FactStore version are
 unchanged. This release carries the Host execution repairs prepared in 0.4.11
-and fixes the Android publication checks that prevented its public Maven build.
+and separates Android Maven publication from the regression suite.
 SDK execution behavior differs from 0.4.11 only in version identities.
 
 ## Changes
 
+- Build Maven publications through `clean publishToMavenLocal`. Gradle still
+  compiles and packages each publication and generates its metadata, but the
+  publication service no longer also runs the unrelated `build` lifecycle.
+  Tests and Lint retain their independent commands and results; a successful
+  publication does not imply that a previously failed test passed.
 - Verify log-pressure persistence against records actually accepted by the
   bounded queue. Higher offered load can legitimately produce more rejected
   records and equal disk usage. The tests retain resource measurements and now
@@ -57,10 +62,16 @@ Windows full Host support is not implemented: the bundled native store rejects
 Windows installation. The Windows power adapter source and protocol tests do
 not establish a working Windows CLI or real Windows API behavior.
 
+The unchanged Host/Web implementation also passed the 0.4.12 source checks:
+1,857 functional tests, 50 performance tests, 38 Web tests and clean-package
+verification. The Android local full build passed 498 tests and Lint, while
+the public 0.4.12 build failed a five-second capture-attachment test wait.
+That remote failure is retained and investigated separately from publication.
+
 The repository records detailed evidence in
 `docs/PHYSICAL_DEVICE_SUPPLEMENT_0.4.10_2026-10-15.md` and publication checks in
-`docs/RELEASE_VERIFICATION_0.4.12_2026-10-15.md`. The partial 0.4.11 publication,
-its three Maven attempts and the earlier release evidence are retained. Existing
+`docs/RELEASE_VERIFICATION_0.4.13_2026-10-15.md`. The partial 0.4.11 publication,
+its three Maven attempts, the failed 0.4.12 Maven build and earlier release evidence are retained. Existing
 public tags and packages are not replaced.
 
 ## Release procedure
