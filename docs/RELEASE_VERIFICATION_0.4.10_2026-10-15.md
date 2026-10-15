@@ -1,9 +1,9 @@
 # 0.4.10 release verification
 
-Status: release incomplete. Source and immutable artifacts are frozen. Git and
-Pub publication and standard remote SwiftPM consumption are verified. npm awaits
-fresh human authentication; Maven is blocked by repeated upstream HTTP 429.
-Consumer versions are unchanged and the GitHub Release remains a draft. This is
+Status: release incomplete. Source and immutable artifacts are frozen. Git, Pub,
+public Maven artifacts and standard remote SwiftPM consumption are verified.
+npm awaits fresh human authentication. Four consumer upgrades and builds have
+passed, and the GitHub Release remains a draft. This is
 not an all-channel publication completion record.
 
 ## Frozen source
@@ -46,9 +46,11 @@ Runtime/experimental evidence is in `optimization-next-2026-10-15/`.
 - Flutter SDK/helper publication dry-runs: zero warnings; source inventories verified.
 - Maven clean release build: 496 tests passed, eight modules/16 artifacts checked, lint zero errors.
 - Final CLI archive differs from the execution-tested archive only in README and installation wording; all execution bytes and file modes are unchanged.
-- Public Git/Pub checks: passed; other channel checks are tracked below.
+- Public Git/Pub/Maven checks: passed; other channel checks are tracked below.
 - Local frozen-archive CLI/MCP and skill upgrade: passed; public-registry
-  installation and four consumer upgrades remain pending.
+  installation and Web remote-smoke upgrade remain pending.
+- Four Android consumer projects: seven exact version replacements, seven
+  Gradle checks and six APK packaging checks passed against public `0.4.10`.
 
 Final review found and fixed two retained-evidence bugs: repeated recovery
 could advance the default read boundary before a new program checkpoint;
@@ -72,14 +74,22 @@ to repair either view.
   A fresh-cache standard hosted consumer resolved both packages in 7.405 seconds;
   analysis passed in 5.513 seconds. Two early index-propagation failures are
   retained rather than discarded or repaired by re-uploading.
-- Maven/JitPack: both public attempts failed while downloading dependencies from
-  Maven Central, each logging 114 `HTTP 429` responses and failing in 2m49s before
-  compilation. Before the single retry, the failed build's version, commit and
-  empty module list were checked and only that failed record was removed through
-  the official API. The retry kept the identical tag/commit. It again ended in
-  `Error` with no public artifacts. No further rebuild is in flight; local build
-  success is not public publication. The two complete logs and deletion receipt
-  are retained in the release evidence.
+- Maven/JitPack: the first two public attempts failed while downloading
+  dependencies from Maven Central, each logging 114 `HTTP 429` responses and
+  failing in 2m49s before compilation. After at least 15 minutes of cooldown, a
+  third build of the identical tag/commit succeeded in 3m27s with 540 tasks.
+  Before each retry, the failed build's version, commit and empty module list
+  were checked; only that failed build record was removed through the official
+  API. All eight modules/16 public artifacts were downloaded and verified;
+  341 compiled classes match the frozen local build byte for byte. The public
+  annotated tag was independently checked through GitHub's ref and tag-object
+  APIs and still resolves to the frozen commit.
+  The successful remote build used JitPack's `legacy` image (`default` in its
+  log), unlike the earlier `latest` builds. Its lint process reported heap-space
+  and seven partial-result XML read errors, so remote lint is not counted as a
+  complete pass. The separate local full lint result remains zero errors and
+  24 warnings. All three logs, the two retry receipts and the CI limitation are
+  retained in the release evidence.
 - Swift: standard remote SwiftPM resolution passed in 31.104 seconds with
   `exact: "0.4.10"`. `Package.resolved` pins the frozen commit and all 94 relevant
   remote checkout files match it. The first attempt's HTTP/2/TLS transport
@@ -97,20 +107,26 @@ explicitly stopped before installation.
 
 This verifies new processes, not the already connected Codex MCP process. The
 active connection still needs a reconnect after the public installation finishes.
-The POS, Reader, Duo and MeasureDevice dependency updates wait for verified public
-Maven artifacts. Their dependency versions remain `0.4.9`; only read-only
-snapshots and upgrade/build runners were prepared. No consumer build or device
-installation is claimed for `0.4.10` at this checkpoint.
+POS, Reader, Duo and MeasureDevice now reference public `0.4.10` in all seven
+planned locations. All seven Gradle checks passed, covering six APKs (POS SIT,
+Reader, Duo, Measure app, receiver and protocol app). Eight resolved SDK/plugin
+artifacts match the public AAR/JAR hashes. APK ZIP integrity, Manifest and DEX
+presence checks passed; two concurrent Gradle projects took 73.382 seconds in
+total. This is dependency and build verification, not additional device testing.
+
+Before/after checks preserve all four repositories' HEAD, branch, index, staged
+patches, unrelated dirty/untracked files and original line endings. Changes are
+exact version replacements only. No consumer commit, push or device installation
+was performed. The full record is `consumers-four/closeout.json` under the release
+evidence root.
 
 ## Remaining release steps
 
 1. Complete fresh npm account verification, publish the frozen CLI/Web archives,
    and verify public bytes and both `latest`/`next` tags.
-2. Retry the unchanged Maven release after the upstream rate limit clears, then
-   verify all eight modules/16 public artifacts before consumer upgrades.
-3. Build the four consumer projects and update Web remote-smoke from the public
-   registry; preserve their unrelated worktree changes.
-4. Install the verified public CLI package, repeat new-process MCP verification,
+2. Update and verify Web remote-smoke from the public registry after npm Web is
+   available; preserve unrelated worktree changes.
+3. Install the verified public CLI package, repeat new-process MCP verification,
    reconnect the existing Codex MCP client, and publish the GitHub draft.
 
 No phone calls, installations, or cashier-device substitution are part of these
