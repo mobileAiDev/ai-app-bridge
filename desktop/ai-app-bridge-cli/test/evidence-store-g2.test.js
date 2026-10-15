@@ -228,6 +228,8 @@ test('G2 segmented production adapter persists and reads an evidence id', async 
 
 test('G2 segmented evidence adapter paginates beyond 1000 records and does not close a shared store', () => {
   const records = Array.from({ length: 1_005 }, (_, index) => ({
+    partition: 'action',
+    globalSeq: index + 1,
     payload: {
       namespace: 'script',
       operationId: 'many-records',
@@ -237,19 +239,23 @@ test('G2 segmented evidence adapter paginates beyond 1000 records and does not c
   let closeCount = 0;
   const factStore = {
     record() { return { ok: true, receipt: { ok: true, stored: true, globalSeq: 1 } }; },
-    read({ cursor, limit }) {
+    read({ partitions, cursor, limit }) {
       const offset = cursor ? Number(cursor) : 0;
-      const items = records.slice(offset, offset + limit);
+      const selected = records.filter(record => partitions.includes(record.partition));
+      const items = selected.slice(offset, offset + limit);
       const next = offset + items.length;
       return {
         ok: true,
         items,
         count: items.length,
+        gap: false,
+        cursorExpired: false,
         cursor: String(next),
-        hasMore: next < records.length,
+        hasMore: next < selected.length,
       };
     },
-    status() { return { ok: true }; },
+    status() { return { ok: true, storeId: 'fixture-store', sequences: { nextGlobalSeq: records.length + 1 },
+      quota: { partitions: { action: { evictedRecords: 0 }, ui: { evictedRecords: 0 } } } }; },
     close() { closeCount += 1; },
   };
 

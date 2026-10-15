@@ -130,9 +130,11 @@ function fakeStore(facts, options = {}) {
       if (options.read) return options.read(query, calls.length);
       assert.equal(query.targetKey, `evidence:${options.namespace || facts[0]?.payload.namespace || 'intent'}:${OPERATION}`);
       assert.equal(query.limit, 1000);
+      assert.equal(query.partitions.length, 1);
+      const selected = facts.filter(fact => query.partitions.includes(fact.partition));
       const offset = query.cursor === undefined ? 0 : Number(query.cursor.slice('page:'.length));
-      const items = facts.slice(offset, offset + query.limit);
-      return { ok: true, items, gap: false, cursorExpired: false, hasMore: offset + items.length < facts.length,
+      const items = selected.slice(offset, offset + query.limit);
+      return { ok: true, items, gap: false, cursorExpired: false, hasMore: offset + items.length < selected.length,
         cursor: `page:${offset + items.length}` };
     },
   };
@@ -207,7 +209,8 @@ test('pages more than 1000 records and preserves noncontiguous global sequences'
   const { result, store } = await exportFacts(outputDir, facts);
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(result.recordCount, 1003);
-  assert.deepEqual(store.calls.map(call => call.cursor), [undefined, 'page:1000']);
+  assert.deepEqual(store.calls.map(call => [call.partitions, call.cursor]),
+    [[['action'], undefined], [['action'], 'page:1000'], [['ui'], undefined]]);
   assert.equal(manifestAt(outputDir).lastGlobalSeq, 3007);
   assert.equal((await verify(outputDir, result.manifestSha256)).ok, true);
 });

@@ -224,7 +224,9 @@ test('recovery without a terminal checkpoint reports an interrupted action and n
 });
 
 test('a failed durable read cannot masquerade as an unknown operation or missing record', () => {
-  const adapter = createSegmentedEvidenceAdapter({ record: () => {}, read: () => ({ ok: false, error: 'segment_unavailable' }) });
+  const adapter = createSegmentedEvidenceAdapter({ record: () => {}, read: () => ({ ok: false, error: 'segment_unavailable' }),
+    status: () => ({ ok: true, storeId: 'unreadable-store', sequences: { nextGlobalSeq: 1 },
+      quota: { partitions: { action: { evictedRecords: 0 }, ui: { evictedRecords: 0 } } } }) });
   const store = createIntentEvidenceStore({ adapter });
   assert.throws(() => entry.handle({ operation: 'status', operationId: 'unreadable-lifetime', store }), { code: 'evidence_read_failed' });
   assert.throws(() => store.read('unreadable-record'), { code: 'evidence_read_failed' });

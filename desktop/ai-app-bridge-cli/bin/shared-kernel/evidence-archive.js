@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { checksumOf, canonicalJson, validateArchivedRecord, verifyChecksum, NAMESPACES } = require('./evidence-schema');
 const { analyzeRecordedPayloads } = require('./recorded-payload-archive');
 const { readRegularFile: readRecordedFile } = require('./evidence-recording');
+const { readRetainedEvidenceFacts } = require('./evidence-scan');
 
 const SCHEMA = 'aab.evidence-archive/v1';
 const PAYLOAD_ARCHIVE_SCHEMA = 'aab.evidence-archive/v2';
@@ -62,26 +63,22 @@ function exportArchive({ namespace, operationId, outputDir, includeRecordedPaylo
   requireValue(typeof status.storeId === 'string' && status.storeId.length > 0 && Number.isSafeInteger(throughGlobalSeq)
     && throughGlobalSeq >= 0, 'invalid_store_snapshot');
   const targetKey = `evidence:${namespace}:${operationId}`;
-  const facts = [];
-  const cursors = new Set();
-  let cursor;
   let byteCount = 2;
-  do {
-    const page = store.read({ partitions: ['action', 'ui'], targetKey, limit: 1000, ...(cursor === undefined ? {} : { cursor }) });
-    requireValue(page.ok === true, 'fact_store_read_failed', page.error);
-    requireValue(page.gap === false && page.cursorExpired === false, 'evidence_gap');
-    requireValue(Array.isArray(page.items) && typeof page.hasMore === 'boolean', 'invalid_store_page');
-    for (const fact of page.items) {
-      byteCount += Buffer.byteLength(JSON.stringify(fact)) + 1;
-      requireValue(facts.length < MAX_RECORDS && byteCount <= MAX_BYTES, 'archive_limit_exceeded');
-      facts.push(fact);
-    }
-    if (!page.hasMore) break;
-    requireValue(page.items.length > 0 && typeof page.cursor === 'string' && page.cursor.length > 0 && !cursors.has(page.cursor),
-      'invalid_store_cursor');
-    cursors.add(page.cursor);
-    cursor = page.cursor;
-  } while (true);
+  let recordCount = 0;
+  let facts;
+  try {
+    facts = readRetainedEvidenceFacts(store, { targetKey, snapshot: status,
+      acceptFact(fact) {
+        requireValue(fact.globalSeq <= throughGlobalSeq, 'invalid_record_sequence');
+        byteCount += Buffer.byteLength(JSON.stringify(fact)) + 1;
+        requireValue(recordCount < MAX_RECORDS && byteCount <= MAX_BYTES, 'archive_limit_exceeded');
+        recordCount += 1;
+      },
+    });
+  } catch (error) {
+    requireValue(error.code !== 'store_changed_during_read', 'store_changed_during_export');
+    throw error;
+  }
   requireValue(facts.length > 0, 'operation_not_found');
   const after = store.status();
   requireValue(after.ok === true && after.storeId === status.storeId

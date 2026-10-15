@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { readRetainedEvidenceFacts } = require('./evidence-scan');
 
 function createMemoryEvidenceAdapter({ maxBytes = Number.MAX_SAFE_INTEGER, fault = null } = {}) {
   const records = new Map();
@@ -119,19 +120,15 @@ function createSegmentedEvidenceAdapter(factStore, { ownsStore = false } = {}) {
       return item?.payload || null;
     },
     list({ namespace, operationId } = {}) {
-      const items = [];
-      let cursor;
-      do {
-        const page = factStore.read({
-          partitions: ['action', 'ui'],
+      let items;
+      try {
+        items = readRetainedEvidenceFacts(factStore, {
           targetKey: operationId ? `evidence:${namespace}:${operationId}` : undefined,
-          cursor,
-          limit: 1_000,
         });
-        if (!page.ok) throw Object.assign(new Error(page.error || 'Evidence store read failed.'), { code: 'evidence_read_failed' });
-        items.push(...(page.items || []));
-        cursor = page.hasMore ? page.cursor : null;
-      } while (cursor);
+      } catch (error) {
+        if (error.code !== 'fact_store_read_failed') throw error;
+        throw Object.assign(new Error(error.detail || 'Evidence store read failed.'), { code: 'evidence_read_failed' });
+      }
       return items
         .map((item) => item.payload)
         .filter((payload) => payload

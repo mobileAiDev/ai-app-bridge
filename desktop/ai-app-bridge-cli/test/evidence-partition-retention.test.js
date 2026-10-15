@@ -100,7 +100,8 @@ test('retained evidence crosses pages and large-fact chunks despite unrelated ne
 });
 
 test('unrelated partition eviction between internal pages does not invalidate selected evidence', t => {
-  const h = fixture(t); const expected = h.seed(); const read = h.adapter.read.bind(h.adapter); let injected = false;
+  const h = fixture(t); const expected = h.seed({ mixed: false, partition: 'ui' });
+  const read = h.adapter.read.bind(h.adapter); let injected = false;
   h.adapter.read = query => {
     if (query.cursor && !injected) { injected = true; h.evict(); }
     return read(query);
@@ -120,7 +121,11 @@ for (const partition of ['ui', 'action']) test(`selected ${partition} eviction b
   const inventory = readScriptInventory({ store: h.store, view: 'attention', limit: 100 });
   assert.equal(injected, true); assert.equal(inventory.ok, false);
   assert.equal(inventory.error, 'evidence_read_failed'); assert.equal(inventory.message, 'cursor_expired');
+  // Export is a new scan. Inject a new loss during it, rather than treating the
+  // previous scan's already-reported retention floor as another cursor gap.
+  injected = false;
   const exported = await h.exportEvidence();
+  assert.equal(injected, true);
   assert.equal(exported.ok, false); assert.equal(exported.error, 'fact_store_read_failed');
   assert.equal(exported.detail, 'cursor_expired'); assert.equal(fs.existsSync(h.outputDir), false);
 });
@@ -129,7 +134,7 @@ test('archive still rejects global snapshot changes during scoped evidence trave
   const h = fixture(t); h.seed(); const read = h.adapter.read.bind(h.adapter); let injected = false;
   h.adapter.read = query => {
     const result = read(query);
-    if (!injected && result.hasMore) { injected = true; h.evict(); }
+    if (!injected) { injected = true; h.evict(); }
     return result;
   };
   const exported = await h.exportEvidence();
@@ -143,4 +148,66 @@ test('evidence partition selection does not relax cursor scope signatures', t =>
   assert.equal(first.ok, true); assert.equal(first.hasMore, true);
   assert.equal(h.factStore.read({ partitions: ['action'], cursor: first.cursor }).error, 'invalid_cursor');
   assert.equal(h.factStore.read({ cursor: first.cursor }).error, 'invalid_cursor');
+});
+
+for (const partition of ['action', 'ui']) test(`fresh evidence scanning accepts pre-existing ${partition} retention without losing the other retained prefix`, async t => {
+  const h = fixture(t, { smallPartition: partition });
+  const expected = h.seed({ mixed: false, partition: partition === 'action' ? 'ui' : 'action' });
+  h.evict(partition);
+  expected.push(partition === 'action'
+    ? h.append('checkpoint', { stepId: 'retained-latest', status: 'running' })
+    : h.append('observation', { target: TARGET, provider: 'native', capturedAtMs: 9999,
+      rawTreeId: 'retained-latest-tree', rawTree: { text: 'retained-latest' } }));
+  const before = h.adapter.status();
+  const oldFirst = h.factStore.read({ partitions: ['action', 'ui'], targetKey: `evidence:script:${OPERATION}`, limit: 1000 });
+  assert.equal(oldFirst.ok, true); assert.equal(oldFirst.hasMore, true);
+  assert.equal(h.factStore.read({ partitions: ['action', 'ui'], targetKey: `evidence:script:${OPERATION}`,
+    cursor: oldFirst.cursor, limit: 1000 }).error, 'cursor_expired', 'global cursor contract is unchanged');
+  assert.deepEqual(h.store.list(OPERATION), expected.map(row => row.envelope));
+  assert.deepEqual(h.store.read(expected[0].envelope.evidenceId).record, expected[0].envelope);
+  const inventory = readScriptInventory({ store: h.store });
+  assert.equal(inventory.ok, true, JSON.stringify(inventory));
+  assert.equal(inventory.coverage.completeHistory, false);
+  assert.equal(readScriptRecovery({ store: h.store, operationId: OPERATION }).ok, true);
+  const exported = await h.exportEvidence();
+  assert.equal(exported.ok, true, JSON.stringify(exported));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(h.outputDir, 'records.json'))).map(row => row.globalSeq),
+    expected.map(row => row.sequence));
+  assert.equal(exported.coverage.priorHistoryComplete, 'unknown');
+  assert.equal((await archive.handle({ operation: 'verify', archiveDir: h.outputDir,
+    manifestSha256: exported.manifestSha256 })).ok, true);
+  assert.equal(h.adapter.status().sequences.nextGlobalSeq, before.sequences.nextGlobalSeq);
+});
+
+test('fresh evidence scan pins the initial watermark when both partitions receive newer records', t => {
+  const h = fixture(t);
+  const expected = [h.append('checkpoint', { stepId: 'old-action', status: 'running' }),
+    h.append('observation', { target: TARGET, provider: 'native', capturedAtMs: 1, rawTree: { text: 'old-ui' } })];
+  const read = h.adapter.read.bind(h.adapter); let injected = false;
+  h.adapter.read = query => {
+    const page = read(query);
+    if (!injected && query.partitions[0] === 'action') {
+      injected = true;
+      h.append('checkpoint', { stepId: 'new-action', status: 'running' });
+      h.append('observation', { target: TARGET, provider: 'native', capturedAtMs: 2, rawTree: { text: 'new-ui' } });
+    }
+    return page;
+  };
+  assert.deepEqual(h.store.list(OPERATION), expected.map(row => row.envelope));
+  assert.equal(injected, true);
+});
+
+for (const partition of ['action', 'ui']) test(`fresh scan reports new ${partition} eviction across single-page partition reads`, t => {
+  const h = fixture(t, { smallPartition: partition });
+  h.append('checkpoint', { stepId: 'start', status: 'running' });
+  h.append('observation', { target: TARGET, provider: 'native', capturedAtMs: 1, rawTree: { text: 'old' } });
+  const read = h.adapter.read.bind(h.adapter); let injected = false;
+  h.adapter.read = query => {
+    const page = read(query);
+    if (!injected && query.partitions[0] === 'action') { injected = true; h.evict(partition); }
+    return page;
+  };
+  const inventory = readScriptInventory({ store: h.store });
+  assert.equal(injected, true); assert.equal(inventory.error, 'evidence_read_failed');
+  assert.equal(inventory.message, 'cursor_expired');
 });
