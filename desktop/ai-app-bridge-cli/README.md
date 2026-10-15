@@ -10,11 +10,11 @@ never replayed on another route. For forward cleanup, pass the exact serial and
 returned Host port to `remove-forward`. See [Android execution and evidence
 policies](docs/ANDROID_EXECUTION_POLICY.md) for diagnostics, server namespaces and recovery.
 
-This release uses version `0.4.13`; see [changes and acceptance boundaries](docs/RELEASE.md).
+This release uses version `0.4.14`; see [changes and acceptance boundaries](docs/RELEASE.md).
 Android foreground facts and warnings are separate from action execution. Window
 formatting, mismatch or changes do not veto an explicit action or switch its target.
 The SDK and UIA executors retain exact node/reference validation and original receipts.
-This coordinated release uses `0.4.13` for the Host and device/Web SDKs. The
+This coordinated release uses `0.4.14` for the Host and device/Web SDKs. The
 existing device and Web protocols remain unchanged.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
@@ -79,7 +79,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # After publication; before then use a reviewed local tarball (docs/INSTALLATION.md).
-npm install -g @mobileaidev/ai-app-bridge@0.4.13
+npm install -g @mobileaidev/ai-app-bridge@0.4.14
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample

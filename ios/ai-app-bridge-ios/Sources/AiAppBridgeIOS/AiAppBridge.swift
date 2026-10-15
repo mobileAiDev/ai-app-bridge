@@ -7,7 +7,7 @@ import WebKit
 public final class AiAppBridge {
     public static let shared = AiAppBridge()
 
-    private let bridgeVersion = "0.4.13"
+    private let bridgeVersion = "0.4.14"
     private let runtimeEpoch = UUID().uuidString
     private lazy var h5Bridge = IOSH5Bridge(runtimeEpoch: runtimeEpoch)
     private lazy var powerLeases = IOSPowerLeaseController.application()

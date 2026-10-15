@@ -1,3 +1,8 @@
+# 0.4.14
+
+- Align the Android dependency, embedded iOS identity and package version with coordinated release 0.4.14.
+- Package the shared native store platform header in the embedded iOS SDK; the storage format and Flutter action contracts remain unchanged.
+
 # 0.4.13
 
 - Coordinated release: Android Maven publication now builds its publication artifacts independently of regression tests.
