@@ -1,0 +1,159 @@
+name: POSIX Host release-prebuild acceptance
+
+"on":
+  push:
+    branches: [codex/windows-host-validation]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    name: ${{ matrix.runner }} / ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux
+            arch: x64
+            target: linux-x64-glibc
+          - runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+            target: linux-arm64-glibc
+          - runner: macos-15-intel
+            platform: darwin
+            arch: x64
+            target: darwin-x64
+    defaults:
+      run:
+        shell: bash
+    env:
+      AAB_EXPECTED_PLATFORM: ${{ matrix.platform }}
+      AAB_EXPECTED_ARCH: ${{ matrix.arch }}
+      AAB_EXPECTED_TARGET: ${{ matrix.target }}
+      AAB_RUNNER_LABEL: ${{ matrix.runner }}
+    steps:
+      - name: Preserve source bytes across platforms
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 26.3.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Record runner, compiler and checked-in prebuild identity
+        run: |
+          mkdir host-evidence
+          node <<'NODE' 2>&1 | tee host-evidence/prebuild-verification.log
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const os = require('node:os');
+          const assert = require('node:assert/strict');
+          const { createHash } = require('node:crypto');
+          const { execFileSync } = require('node:child_process');
+          const nativeRoot = path.resolve('native/segmented-fact-store');
+          const source = require(path.join(nativeRoot, 'scripts/source-identity')).sourceIdentity();
+          const manifest = JSON.parse(fs.readFileSync(path.join(nativeRoot, 'prebuilds/manifest.json'), 'utf8'));
+          const sha256 = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+          const output = (file, args) => execFileSync(file, args, { encoding: 'utf8' }).trim();
+          const provenance = {
+            commit: output('git', ['rev-parse', 'HEAD']), expectedCommit: process.env.GITHUB_SHA,
+            runner: process.env.AAB_RUNNER_LABEL, imageOS: process.env.ImageOS, imageVersion: process.env.ImageVersion,
+            os: { type: os.type(), release: os.release(), version: os.version(), platform: process.platform, arch: process.arch },
+            node: { version: process.version, executable: process.execPath, napi: process.versions.napi },
+            python: output('python', ['--version']), compiler: output('cc', ['--version']), cmake: output('cmake', ['--version']),
+            expectedTarget: process.env.AAB_EXPECTED_TARGET, sourceSha256: source, checkedInManifest: manifest,
+            scope: 'POSIX Host/prebuild regression; no device, Windows API or physical sleep acceptance',
+          };
+          fs.writeFileSync('host-evidence/provenance.json', JSON.stringify(provenance, null, 2) + '\n');
+          assert.equal(provenance.commit, process.env.GITHUB_SHA);
+          assert.equal(process.platform, process.env.AAB_EXPECTED_PLATFORM);
+          assert.equal(process.arch, process.env.AAB_EXPECTED_ARCH);
+          assert.equal(process.version, 'v26.3.0');
+          assert.match(provenance.python, /^Python 3\.13\./);
+          const checked = [];
+          for (const [target, artifact] of Object.entries(manifest.artifacts)) {
+            assert.deepEqual(artifact.sourceSha256, source, 'Stale declared source identity: ' + target);
+            const file = path.join(nativeRoot, 'prebuilds', target, 'segmented_fact_store.node');
+            const actual = sha256(file);
+            assert.equal(actual, artifact.sha256, 'Checked-in prebuild checksum mismatch: ' + target);
+            checked.push({ target, sha256: actual, sourceSha256: artifact.sourceSha256, compiler: artifact.compiler });
+          }
+          const selected = require(path.join(nativeRoot, 'binding-path')).resolveBinding();
+          assert.equal(selected.target, process.env.AAB_EXPECTED_TARGET);
+          require(nativeRoot); // Load the checked-in artifact, without staging or rebuilding it.
+          const result = { ok: true, selected, checked, sourceMatches: true, sourceBuildDuringAcceptance: false };
+          fs.writeFileSync('host-evidence/prebuild-verification.json', JSON.stringify(result, null, 2) + '\n');
+          console.log(JSON.stringify(result));
+          NODE
+      - name: Native Node format, storage and process tests against the release prebuild
+        run: |
+          node --test native/segmented-fact-store/bindings/node/test/*.test.js 2>&1 | tee host-evidence/native-tests.log
+      - name: C native tests and cross-platform golden format
+        run: |
+          cmake -S native/segmented-fact-store -B host-evidence/cmake -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Release -DSFS_BUILD_TESTS=ON 2>&1 | tee host-evidence/cmake-configure.log
+          cmake --build host-evidence/cmake --parallel 2 --target segmented_fact_store_tests sfs_generate_golden 2>&1 | tee host-evidence/cmake-build.log
+          ctest --test-dir host-evidence/cmake --output-on-failure 2>&1 | tee host-evidence/cmake-tests.log
+          host-evidence/cmake/sfs_generate_golden host-evidence/generated-golden 2>&1 | tee host-evidence/golden-generate.log
+          node native/segmented-fact-store/scripts/verify-golden.js host-evidence/generated-golden 2>&1 | tee host-evidence/golden-tests.log
+      - name: Install development test dependencies without rebuilding the release prebuild
+        id: test_dependencies
+        working-directory: desktop/ai-app-bridge-cli
+        run: npm ci --ignore-scripts --no-audit --no-fund 2>&1 | tee ../../host-evidence/dependency-install.log
+      - name: Host persistence, entrypoints, recovery and power lifecycle contracts
+        working-directory: desktop/ai-app-bridge-cli
+        run: |
+          node --import ./test-support/ownership-test-sandbox.js --test --test-concurrency=2 \
+            test/durable-files.test.js test/portable-exec-file.test.js \
+            test/script-module-loading.test.js test/runtime-entrypoints.test.js \
+            test/script-production-recovery.test.js test/script-original-spec-recovery.test.js \
+            test/script-recording-restart.test.js test/script-durable-result.test.js \
+            test/p7-durable-restore.test.js test/script-recovery-view.test.js \
+            test/device-ownership.test.js test/ownership-archives.test.js \
+            test/executor-preparation.test.js test/fact-store.test.js test/segmented-fact-store.test.js \
+            test/evidence-recording.test.js test/evidence-archive.test.js test/evidence-archive-mcp.test.js \
+            test/power-leases.test.js test/power-command.test.js test/power-work-lifecycle.test.js \
+            test/power-activity.test.js test/power-activity-recovery.test.js \
+            test/power-assertion-recovery.test.js test/power-child-channel.test.js \
+            test/power-worker-exit.test.js test/power-adapter-timeout.test.js \
+            test/power-ios-lifecycle.test.js \
+            2>&1 | tee ../../host-evidence/host-tests.log
+      - name: Fresh packaged install and actual CLI MCP continuation on this POSIX runner
+        if: ${{ !cancelled() && steps.test_dependencies.outcome == 'success' }}
+        working-directory: desktop/ai-app-bridge-cli
+        run: |
+          # The verifier keeps its explicit NOT Windows runtime acceptance scope on POSIX.
+          npm run verify:windows -- "${{ github.workspace }}/host-evidence/package" 2>&1 | tee ../../host-evidence/package-tests.log
+      - name: Confirm tests did not replace the release artifacts or source
+        run: |
+          git diff --exit-code -- native/segmented-fact-store desktop/ai-app-bridge-cli 2>&1 | tee host-evidence/source-after-tests.log
+      - name: Preserve artifact identity and available C diagnostics
+        if: always()
+        run: |
+          mkdir -p host-evidence/prebuild
+          cp native/segmented-fact-store/prebuilds/manifest.json host-evidence/native-manifest.json
+          if [ -f "native/segmented-fact-store/prebuilds/$AAB_EXPECTED_TARGET/segmented_fact_store.node" ]; then
+            cp "native/segmented-fact-store/prebuilds/$AAB_EXPECTED_TARGET/segmented_fact_store.node" host-evidence/prebuild/
+          fi
+          if [ -f host-evidence/cmake/CMakeCache.txt ]; then cp host-evidence/cmake/CMakeCache.txt host-evidence/; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: posix-host-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            host-evidence/*.log
+            host-evidence/*.json
+            host-evidence/CMakeCache.txt
+            host-evidence/cmake/Testing/Temporary
+            host-evidence/cmake/CMakeFiles/CMakeConfigureLog.yaml
+            host-evidence/generated-golden
+            host-evidence/prebuild
+            host-evidence/package
+          include-hidden-files: true
+          retention-days: 14
