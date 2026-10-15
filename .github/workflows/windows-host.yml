@@ -16,6 +16,8 @@ jobs:
       run:
         shell: pwsh
     steps:
+      - name: Preserve source bytes across platforms
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -30,6 +32,8 @@ jobs:
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $toolset = Get-ChildItem "$vs\VC\Tools\MSVC" -Directory | Sort-Object Name -Descending | Select-Object -First 1
           $compiler = Join-Path $toolset.FullName 'bin\Hostx64\x64\cl.exe'
+          "SFS_PREBUILD_COMPILER=$compiler $((Get-Item $compiler).VersionInfo.FileVersion)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NODE_GYP_FORCE_PYTHON=$env:pythonLocation\python.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           @{ commit=$env:GITHUB_SHA; os=[Environment]::OSVersion.VersionString; node=(& node --version); python=(& python --version); compiler=$compiler; compilerVersion=(Get-Item $compiler).VersionInfo.FileVersion } | ConvertTo-Json | Set-Content windows-evidence/provenance.json
       - name: Build native Node-API artifact from this source
         run: |
