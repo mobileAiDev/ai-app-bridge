@@ -1,3 +1,8 @@
+## 0.4.11
+
+- Align the optional executor identity with the coordinated 0.4.11 patch; the WidgetTester execution contract is unchanged.
+- The companion Host fixes work-power continuity and supplies original-connection iOS WDA recovery guidance.
+
 ## 0.4.10
 
 - Align the optional executor identity with the coordinated 0.4.10 release. The WidgetTester execution contract is unchanged.

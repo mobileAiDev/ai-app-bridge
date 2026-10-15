@@ -1,3 +1,9 @@
+## 0.4.11
+
+- Align the Android dependency, embedded iOS runtime identity and package version with the coordinated 0.4.11 patch.
+- SDK behavior is unchanged. The companion Host fixes iOS power renewal after a command returns and adds explicit recovery of a confirmed ended foreground assertion.
+- Physical iPhone Flutter persistence/restart and OPPO mixed-workflow evidence from the unchanged 0.4.10 SDK is recorded separately from publication checks.
+
 ## 0.4.10
 
 - Add explicit Android profile support with `--dart-define=AI_APP_BRIDGE_PROFILE=true`; debug defaults remain unchanged and release initialization stays disabled.

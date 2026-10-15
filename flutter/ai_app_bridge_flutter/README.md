@@ -1,6 +1,6 @@
 # AI App Bridge Flutter
 
-This source targets 0.4.10; registry publication is a separate step. Use a local path dependency before that version is published.
+This source targets 0.4.11; registry publication is a separate step. Use a local path dependency before that version is published.
 
 Flutter plugin for AI App Bridge. It exposes Flutter widget snapshots, runtime actions, structured logs, network records, state records, events, and H5 adapter registration so local AI agents can inspect, operate, verify, and iterate on Flutter apps on Android and iOS.
 
@@ -22,10 +22,10 @@ To pin this release, use:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.10
+  ai_app_bridge_flutter: 0.4.11
 ```
 
-The plugin's Android debug variant includes the `0.4.10` Android runtime from
+The plugin's Android debug variant includes the `0.4.11` Android runtime from
 JitPack and starts the bridge server on the device. The iOS debug plugin starts
 the Swift runtime from the app process. Release builds do not initialize the
 Dart bridge and do not receive an Android SDK dependency from this plugin.
@@ -66,9 +66,9 @@ changes. Tree commands pull a fresh snapshot through MethodChannel and release
 their temporary Semantics handle afterwards. Status heartbeats do not scan UI.
 Call `AiAppBridge.instance.shutdown()` when a debug harness tears down the engine.
 
-## Opt-in Android profile builds (0.4.10)
+## Opt-in Android profile builds (since 0.4.10)
 
-This option is introduced in 0.4.10. Version `0.4.9` initializes the Flutter
+This option was introduced in 0.4.10. Version `0.4.9` initializes the Flutter
 bridge in debug only.
 
 Android profile support is enabled by one Flutter build option:

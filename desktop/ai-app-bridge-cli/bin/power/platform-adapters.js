@@ -112,7 +112,9 @@ async function androidAssertion({ target, leaseId, mode, ttlMs }, { spawnChild, 
   const digest = createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   const remote = `/data/local/tmp/aab-power-${digest}.jar`;
   // Content-addressed code is shared; each process owns only its own Binder locks.
-  await run(adb, ['-s', target.serial, 'push', file, remote], { timeout: 10000, maxBuffer: 1024 * 1024 });
+  // A transport that ignores SIGTERM must not hold acquisition and Host
+  // shutdown open after the upload deadline. Only this owned process is killed.
+  await run(adb, ['-s', target.serial, 'push', file, remote], { timeout: 10000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });
   const channel = await openChildChannel(adb, ['-s', target.serial, 'shell', `CLASSPATH=${remote}`, 'app_process', '/system/bin',
     'io.github.mobileaidev.aiappbridge.power.PowerLease', leaseId, mode, String(ttlMs)], { spawnChild });
   return channelAdapter(channel, { remoteProcess: true });

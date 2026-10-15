@@ -14,6 +14,10 @@ async function startShutdownScripts({ out, run }) {
 const fs = require('node:fs');
 const call = require(${JSON.stringify(require.resolve('../../test-support/android-shell-fixture'))}).handleAndroidShellFixture(process.argv.slice(2), { pending: true });
 if (call.handled) process.exit(0);
+if (JSON.stringify(call.args) !== ${JSON.stringify(JSON.stringify(['-s', 'shutdown-' + language, 'shell', 'input', 'keyevent', '0']))}) {
+  process.stderr.write('Unsupported shutdown fixture command: ' + JSON.stringify(call.args) + '\\n');
+  process.exit(1);
+}
 process.on('SIGTERM', () => {});
 fs.writeFileSync(${JSON.stringify(ready + '.tmp')}, String(process.pid));
 fs.renameSync(${JSON.stringify(ready + '.tmp')}, ${JSON.stringify(ready)});

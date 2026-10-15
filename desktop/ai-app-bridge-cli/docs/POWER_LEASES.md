@@ -223,13 +223,13 @@ unplugging. That historical result retains the platform TTL as its release bound
 
 The user subsequently reconnected both phones. The physical supplement exposed
 a Host command-context bug that the earlier direct SDK checks did not cover.
-With the unpublished timer-scope repair, Kiwix stayed foreground with its actual
+With the timer-scope repair included in 0.4.11, Kiwix stayed foreground with its actual
 SDK assertion and idle flag active for 75.017 seconds without touch input. Explicit
 release restored the original flag. The combined candidate then passed one real
 Kiwix process restart: its default heartbeat made one confirmed replacement in
 479 ms, retained the original work deadline, and protected a further 75.012-second
-no-touch foreground window. Release restored the prior flag. These are unpublished
-candidate results, not evidence that public 0.4.10 contains the repair. On OPPO,
+no-touch foreground window. Release restored the prior flag. These candidate
+results validate the repair included in 0.4.11; public 0.4.10 does not contain it. On OPPO,
 an 80.590-second positive run
 retained App foreground and an unlocked keyguard while the assertion renewed;
 its original ten-minute screen timeout and stay-on settings were unchanged, so

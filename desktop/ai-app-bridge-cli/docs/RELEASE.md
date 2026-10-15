@@ -1,71 +1,60 @@
-# 0.4.10 coordinated release
+# 0.4.11 coordinated patch release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.10 together. Device/Web protocol identities and the private FactStore
-component version remain unchanged. Public-channel verification is recorded
-separately in `docs/RELEASE_VERIFICATION_0.4.10_2026-10-15.md` in the repository;
-source version numbers alone do not establish publication or device acceptance.
+0.4.11 together. Device/Web protocols and the private FactStore version are
+unchanged. SDK changes only align version identities and dependencies; the
+execution repairs are in the Host.
 
 ## Changes
 
-- Script recovery exposes command names, optional caller labels, original
-  dispatch markers and receipts through `ctx.recovery()` and the public
-  `recovery` operation. `inventory` lists retained work needing inspection.
-  Read-only queries preserve unknown outcomes and do not replay effects.
-- Checkpoint recovery supports independent recording attempts. Repeated Host
-  or program crashes retain the original recovery boundary until the program
-  commits a new checkpoint; retained unknown receipts remain discoverable even
-  when their earlier markers have expired.
-- `ctx.assert({coverageScope:"observed", ...})` explicitly tests returned values
-  from partial/unknown observations. Default complete-source checks and
-  identity/freshness checks remain; this cannot prove whole-App absence.
-- Bounded work power leases use native Host/device mechanisms. Actual activity
-  owns a ten-minute idle window; workflows additionally own their deadline.
-  Clients may disable automatic protection or acquire/release explicit leases.
-  Failure is diagnostic and does not veto App operations. iOS scope is the
-  foreground SDK App, and Windows physical validation remains outstanding.
-- Android Flutter profile initialization and its native dependency are enabled
-  explicitly with `--dart-define=AI_APP_BRIDGE_PROFILE=true`. Debug defaults stay
-  unchanged; release initialization remains disabled.
-- Web DOM failures retain their known diagnostics instead of being turned into
-  unknown execution. Usage guidance routes ordinary screenshots/ADB/tree work
-  through Bridge without unnecessary second UiAutomation connections.
+- Keep power renewal outside the asynchronous scope of a completed command.
+  Previously, iOS renewal could fail with `runtime_stopped` while the logical
+  work lease was still live.
+- Add explicit `recovery:"reacquire-ended"` for a selected iOS SDK target.
+  Automatic work chooses this policy; explicit leases default to manual.
+  A confirmed ended assertion gets one replacement on the normal heartbeat,
+  preserving the target and original deadline. Transport, identity and
+  foreground failures remain visible; there is no action replay or unlock.
+- Reflect a confirmed power-worker exit immediately, retain its original
+  cause, and prevent an old handle from invalidating a replacement. Preserve
+  normal release and expiry outcomes.
+- Bound Android power-helper uploads even when the selected ADB transport
+  ignores SIGTERM. After the existing ten-second deadline, terminate only that
+  owned transfer process so it cannot hold acquisition and shutdown indefinitely.
+- Supply concise, schema-valid WDA session and transport diagnosis for the
+  original connection. Unknown effects first query their original action ID
+  and epoch; guidance does not start sessions or replay actions.
+- Document parent-task ownership of explicit power leases across command
+  return, analysis and subtask completion.
 
-## Acceptance boundaries
+## Validation and limits
 
-Detailed evidence and retained failures are in the repository documents
-`docs/OPTIMIZATION_EXECUTION_2026-10-15.md`,
-`docs/IOS_DEVICE_REGRESSION_2026-10-15.md`, and the external
-`optimization-next-2026-10-15/` evidence directory. This release does not claim
-universal speedups or one-minute coverage of unfamiliar applications.
+The execution candidate passed 1,855 functional tests, 50 performance tests
+and clean-package CLI/MCP/Script/recovery checks. A physical iPhone confirmed
+one App restart, one heartbeat assertion replacement in 479 ms, and a further
+75.012-second foreground interval without touch input; release restored the
+prior idle setting. The later worker-exit repair passed actual child-process
+tests on macOS. These scopes have separate source identities in the evidence.
 
-Android mixed workflows, actual OPPO flows, Web Memos and Host crash/recovery
-were exercised. Some Android capture experiments used an isolated candidate
-APK/CLI and are kept distinct from the shipping package. Flutter's 32-run matrix
-completed 31 business flows; one debug network failure remains unexplained,
-while all 12 profile runs passed. A separate explicit timeout-and-retry workflow
-passed and does not replace the failed sample.
+The unchanged device SDKs also received post-0.4.10 physical supplement checks:
+Kiwix Python/native/H5 and recovery, Flexify persistence and restart, and OPPO
+Native/H5/Flutter-search workflows with independent business-state checks.
+Those are bounded workflows, not whole-App or universal speed claims. iOS
+permission takeover remains a usability gap; this patch does not claim a new
+fast permission workflow or protection for arbitrary external iOS Apps.
 
-On iPhone, SDK Native/H5 actions, Kiwix Intent and a continuous JavaScript flow
-ran; the latter took 73.885 seconds for 34 device calls, 18 assertions and four
-screenshots. Twelve physical iPhone power checks passed. The user disconnected
-the phones and requested release closeout before iPhone Python, Flutter,
-independent database and unknown-effect recovery tests completed. Those scopes
-remain unverified. No cashier device was substituted. Windows implementation,
-review and automated protocol checks are included; real Windows testing was
-explicitly deferred by the user.
+Windows full Host support is not implemented: the bundled native store rejects
+Windows installation. The Windows power adapter source and protocol tests do
+not establish a working Windows CLI or real Windows API behavior.
 
-Console screenshots, portable visual readiness, persistence group commit,
-general exploration export and device UI mirrors are not shipped in this
-release. Their experiments and adoption limits remain documented. Existing
-0.4.9 Host speedups retain their original evidence and are not recounted as new
-0.4.10 gains.
+The repository records detailed evidence in
+`docs/PHYSICAL_DEVICE_SUPPLEMENT_0.4.10_2026-10-15.md` and publication checks in
+`docs/RELEASE_VERIFICATION_0.4.11_2026-10-15.md`. Public 0.4.10 remains immutable.
 
 ## Release procedure
 
-Freeze the reviewed source, run automated and clean-package checks, then
-publish the exact archives and matching Git tag. Independently compare public
-npm/Pub/Maven/Swift contents and update current consumer dependencies from
-public coordinates. Preserve historical test versions, private component
-versions and unrelated consumer changes. The installed CLI and a newly started
-MCP must be checked separately from an already connected desktop process.
+Freeze reviewed source and exact archives; run package/version checks and publish
+the matching Git tag. Independently compare public npm/Pub/Maven/Swift contents
+and upgrade consumers from public coordinates. Preserve historical evidence,
+private component versions and unrelated consumer changes. Verify the installed
+CLI and a fresh MCP process separately from any already connected desktop process.
