@@ -178,8 +178,9 @@ Swift/Flutter 两组错误测试前提的修正已进入候选源码，分别保
 已经淘汰的记录、补造未知动作回执或重放动作。精确安装包、Maven/npm/Pub/
 SwiftPM/GitHub 公开产物、四个 Android 项目及 Web 示例现已通过核验。本机
 CLI 和默认 Runtime 已升级 0.4.16，真实默认库的五页、401 个原操作和原恢复
-视图回读通过。npm latest/next 均已核对；现有 Codex MCP 的重连仍待收尾，
-新进程 MCP 验证不能代替仍驻留 0.4.13 的实际连接。
+视图回读通过。npm latest/next 均已核对；2026-10-16 本地时间，实际 Codex
+MCP 重连后报告 0.4.16、compatible:true，五页 401 个原操作、原 recovery 和
+JS/Python 实际调用均通过，发布与本机升级门槛已收尾。
 
 本次只收束已证实的读取缺陷，前述后置研究仍保留各自裁决与证据范围。
 实际状态见 [0.4.16 发布核验](RELEASE_VERIFICATION_0.4.16_2026-10-15.md)。

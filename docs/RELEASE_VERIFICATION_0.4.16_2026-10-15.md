@@ -1,8 +1,9 @@
 # 0.4.16 coordinated release verification
 
-Status: public packages, all npm labels, consumer builds, installed CLI/skill
-and the default Runtime have passed. Reconnection of the existing Codex MCP
-process remains open; its current process still reports client 0.4.13.
+Status: release and upgrade verification complete. Public packages, npm
+latest/next labels, consumer builds, installed CLI/skill, the default Runtime
+and the actual resident Codex MCP have passed. The final MCP connection check
+completed on 2026-10-16 local time.
 
 Evidence root: repository sibling
 `ai-app-bridge-release-evidence/0.4.16-2026-10-15/`.
@@ -154,11 +155,31 @@ Evidence: `cli-package/CLI_PACKAGE_ACCEPTANCE.json`,
 `local/public-install/global-mcp-report.json`, and
 `local/shared-history/report.json` under the evidence root.
 
-## Outstanding release gates
+## Actual resident MCP reconnection
 
-- Reconnect the actual resident Codex MCP. A real call currently reports
-  client 0.4.13 versus Runtime 0.4.16 and `compatible:false`. The separately
-  launched new MCP passed, but does not stand in for this resident connection.
+The initial actual connection reported client 0.4.13 versus Runtime 0.4.16
+and `compatible:false`; that observation is retained. On the final check the
+Runtime was stopped. Starting it through the actual MCP created Runtime
+`cd088152-8b0e-4814-b928-2ed1e5117d64` (PID 46405), with the same 0.4.16 code
+fingerprint and original fact-store directory. A subsequent actual MCP call
+reported `compatible:true`.
+
+Through this resident connection, all five inventory pages exactly matched
+the 401 original Script IDs and order; an original recovery query also
+passed. JavaScript and Python each completed a read-only Runtime query,
+returned version 0.4.16 with `compatible:true`, and persisted their results.
+These two verification Scripts have new operation IDs; the 401 original
+operations were neither replayed nor reset. This closes the resident-process
+gate independently of the earlier isolated MCP check.
+
+Evidence: `local/resident-mcp-before-reconnect.json`,
+`local/resident-mcp-after-reconnect.json`,
+`local/resident-mcp-execution-verification.json`, and
+`local/resident-mcp-original-recovery.json`.
+
+There are no outstanding publication or local-upgrade gates. The inherited
+device coverage limits and deferred research above remain separate from
+release completion.
 
 One CLI `next` verification expired with an npm callback 404. A fresh
 verification and the Web verification subsequently succeeded; both final
