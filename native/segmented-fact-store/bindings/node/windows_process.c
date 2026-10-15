@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <tlhelp32.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,6 +94,51 @@ static void scope_finalize(napi_env env, void *data, void *hint)
     free(scope);
 }
 
+static DWORD scope_process_handles(HANDLE job, HANDLE **handles, DWORD *count)
+{
+    DWORD capacity = 16, error = ERROR_SUCCESS;
+    JOBOBJECT_BASIC_PROCESS_ID_LIST *members;
+    *handles = NULL;
+    *count = 0;
+    for (;;) {
+        size_t bytes = offsetof(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) + (size_t)capacity * sizeof(ULONG_PTR);
+        if (bytes > MAXDWORD) return ERROR_NOT_ENOUGH_MEMORY;
+        members = calloc(1, bytes);
+        if (!members) return ERROR_NOT_ENOUGH_MEMORY;
+        if (QueryInformationJobObject(job, JobObjectBasicProcessIdList, members, (DWORD)bytes, NULL)) break;
+        error = GetLastError();
+        DWORD required = members->NumberOfAssignedProcesses;
+        free(members);
+        if (error != ERROR_MORE_DATA) return error;
+        if (required <= capacity) return ERROR_MORE_DATA;
+        capacity = required;
+    }
+    HANDLE *opened = calloc(members->NumberOfProcessIdsInList, sizeof(HANDLE));
+    if (!opened && members->NumberOfProcessIdsInList) { free(members); return ERROR_NOT_ENOUGH_MEMORY; }
+    error = ERROR_SUCCESS;
+    for (DWORD i = 0; i < members->NumberOfProcessIdsInList; i++) {
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, (DWORD)members->ProcessIdList[i]);
+        if (!process) {
+            error = GetLastError();
+            if (error == ERROR_INVALID_PARAMETER) { error = ERROR_SUCCESS; continue; }
+            break;
+        }
+        BOOL member;
+        if (!IsProcessInJob(process, job, &member)) {
+            error = GetLastError();
+            CloseHandle(process);
+            break;
+        }
+        // A member may have exited and its PID may have been reused between
+        // enumeration and OpenProcess. Never wait on an unrelated replacement.
+        if (member) opened[(*count)++] = process;
+        else CloseHandle(process);
+    }
+    free(members);
+    *handles = opened;
+    return error;
+}
+
 static napi_value scope_close(napi_env env, napi_callback_info info)
 {
     napi_value self, result;
@@ -105,8 +151,45 @@ static napi_value scope_close(napi_env env, napi_callback_info info)
             napi_throw_error(env, "process_scope_self_close", "The caller cannot terminate its own process scope.");
             return NULL;
         }
-        if (!TerminateJobObject(scope->job, 1)) return windows_error(env, "TerminateJobObject", GetLastError());
+        // Seal only a cancelling Job before taking its member snapshot. The
+        // zero limit rejects new process associations, including descendants
+        // in nested Jobs, so a concurrent spawn cannot escape the handle wait.
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+        DWORD error = ERROR_SUCCESS, count = 0;
+        const char *operation = "QueryInformationJobObject for termination";
+        if (!QueryInformationJobObject(scope->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits), NULL)) error = GetLastError();
+        if (!error) {
+            limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+            limits.BasicLimitInformation.ActiveProcessLimit = 0;
+            if (!SetInformationJobObject(scope->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
+                error = GetLastError(); operation = "SetInformationJobObject for termination";
+            }
+        }
+        HANDLE *processes = NULL;
+        if (!error) {
+            error = scope_process_handles(scope->job, &processes, &count);
+            operation = "Open process handles for termination";
+        }
+        // A failed observation must still request termination of this owned
+        // Job. Keep the first failure: partial cleanup cannot prove completion.
+        BOOL terminated = TerminateJobObject(scope->job, 1);
+        if (!terminated && !error) { error = GetLastError(); operation = "TerminateJobObject"; }
         ULONGLONG deadline = GetTickCount64() + 5000;
+        for (DWORD i = 0; terminated && i < count; i++) {
+            ULONGLONG now = GetTickCount64();
+            DWORD wait = WaitForSingleObject(processes[i], now < deadline ? (DWORD)(deadline - now) : 0);
+            if (wait != WAIT_OBJECT_0 && !error) {
+                error = wait == WAIT_FAILED ? GetLastError() : WAIT_TIMEOUT;
+                operation = "WaitForSingleObject for termination";
+            }
+        }
+        // ActiveProcesses can reach zero before process handles are signaled.
+        // Conversely, an association rejected by the active-process limit can
+        // stay counted until its last handle closes. Release our handles before
+        // the final accounting check, after waiting on the actual processes.
+        for (DWORD i = 0; i < count; i++) CloseHandle(processes[i]);
+        free(processes);
+        if (error) return windows_error(env, operation, error);
         JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
         for (;;) {
             if (!QueryInformationJobObject(scope->job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), NULL))

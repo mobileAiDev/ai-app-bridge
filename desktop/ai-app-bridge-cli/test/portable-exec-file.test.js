@@ -12,6 +12,7 @@ const { fork } = require('node:child_process');
 const { createRequire } = require('node:module');
 const { portableExecFile } = require('../bin/shared-kernel/portable-exec-file');
 const { execFileBounded } = require('../bin/shared-kernel/execution-io');
+const { commandFailure } = require('../bin/command-errors');
 const { runExecution, currentExecution } = require('../bin/shared-kernel/execution-scope');
 
 function run(file, args, options = {}) {
@@ -81,6 +82,55 @@ test('Windows cancelled command does not release its Job when a result races ter
   child.emit('message', { event: 'result', code: 0, signal: null, spawned: true });
   child.emit('close', 1, null);
   assert.deepEqual(methods, ['terminate']);
+});
+
+for (const nativeFailure of [false, true]) test(`Windows cancellation preserves cleanup diagnostics=${nativeFailure} without replaying a dispatched command`, async () => {
+  const original = Object.assign(new Error('WaitForSingleObject for termination failed (Win32 error 258).'), { code: 'windows_process_failed' });
+  const { child, execute } = windowsCommand(() => { if (nativeFailure) throw original; });
+  const controller = new AbortController();
+  let sends = 0;
+  child.send = () => { sends++; };
+  const result = runExecution({ mutation: true, signal: controller.signal }, async () => {
+    const pending = execFileBounded('command', [], { mutation: true, execFileImpl: execute });
+    child.emit('message', { event: 'ready' });
+    controller.abort({ code: 'cancelled' });
+    child.emit('close', 1, null);
+    return pending;
+  });
+  await assert.rejects(result, error => {
+    assert.equal(error.code, 'cancelled');
+    assert.equal(error.dispatched, true); assert.equal(error.ambiguous, true);
+    if (nativeFailure) {
+      assert.equal(error.cause, original);
+      assert.deepEqual(JSON.parse(JSON.stringify(commandFailure(error))).details.cleanup, { code: original.code, message: original.message });
+    } else {
+      assert.equal(error.cause, undefined);
+      assert.equal(error.details, undefined, 'ordinary termination exit codes are not cleanup failures');
+    }
+    return true;
+  });
+  assert.equal(sends, 1, 'a failed cleanup must never replay the command');
+});
+
+for (const cancel of [false, true]) test(`Windows cleanup failure survives an earlier output failure with cancellation=${cancel}`, async () => {
+  const original = Object.assign(new Error('TerminateJobObject failed (Win32 error 5).'), { code: 'windows_process_failed' });
+  const { child, execute } = windowsCommand(() => { throw original; });
+  const controller = new AbortController();
+  const result = runExecution({ mutation: true, signal: controller.signal }, async () => {
+    const pending = execFileBounded('command', [], { mutation: true, maxBuffer: 1, execFileImpl: execute });
+    child.emit('message', { event: 'ready' });
+    child.stdout.write('xx');
+    if (cancel) controller.abort({ code: 'cancelled' });
+    child.emit('close', 1, null);
+    return pending;
+  });
+  await assert.rejects(result, error => {
+    assert.equal(error.code, cancel ? 'cancelled' : 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER');
+    assert.equal(error.dispatched, true); assert.equal(error.ambiguous, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(commandFailure(error))).details?.cleanup, { code: original.code, message: original.message });
+    assert.equal(error.cause, original);
+    return true;
+  });
 });
 
 for (const spawned of [false, true, undefined]) test(`Windows ENOENT with spawned=${spawned} retains the proven dispatch state`, async () => {

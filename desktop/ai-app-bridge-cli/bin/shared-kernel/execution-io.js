@@ -30,6 +30,10 @@ function execFileBounded(file, args, { timeoutMs = 15000, mutation = false, exec
       clearTimeout(killTimer);
       scope?.signal.removeEventListener('abort', abort);
       if (stopped) {
+        if (error?.details?.cleanup) {
+          stopped.cause = error.cause ?? error;
+          stopped.details = { ...stopped.details, cleanup: error.details.cleanup };
+        }
         // Cancellation may race a worker's definitive no-child receipt. Keep
         // that command-local proof without resetting the execution's history.
         if (error?.dispatched === false && error?.ambiguous === false) {

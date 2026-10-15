@@ -2,42 +2,42 @@
   "napi": 8,
   "artifacts": {
     "darwin-arm64": {
-      "sha256": "3aa8603c3b10bede5d082749a30d6ee721c0092c1390266145278381dfabcc4f",
+      "sha256": "4b6ff599a7a120f30c84d3b27072549c0c6c08fde668f246e1664411f912cf4c",
       "sourceSha256": {
         "binding.gyp": "5c60f9923fe95d63f906a6410677247844725ccd0566a3a38ec37eddac13e38e",
         "include/sfs.h": "90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7",
         "src/sfs.c": "9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14",
         "src/sfs_platform.h": "e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d",
         "bindings/node/sfs_node.c": "b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380",
-        "bindings/node/windows_process.c": "3628ba1c1c28402b98206e83a34c165d4feb0788ed1c67fabaecd5ab5d357890",
+        "bindings/node/windows_process.c": "307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef",
         "bindings/node/windows_process.h": "e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526"
       },
       "minSystem": "macOS 13.5",
       "compiler": "Apple clang, -O2 -mmacosx-version-min=13.5"
     },
     "darwin-x64": {
-      "sha256": "1f75c5bbc243d86d010207ade5cdef481f9d40acdcbe1d330f35572f650ee736",
+      "sha256": "5a5e5c1c30e498b12bc183958032be1dbef34121d6119a591adfe5456b6d5760",
       "sourceSha256": {
         "binding.gyp": "5c60f9923fe95d63f906a6410677247844725ccd0566a3a38ec37eddac13e38e",
         "include/sfs.h": "90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7",
         "src/sfs.c": "9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14",
         "src/sfs_platform.h": "e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d",
         "bindings/node/sfs_node.c": "b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380",
-        "bindings/node/windows_process.c": "3628ba1c1c28402b98206e83a34c165d4feb0788ed1c67fabaecd5ab5d357890",
+        "bindings/node/windows_process.c": "307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef",
         "bindings/node/windows_process.h": "e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526"
       },
       "minSystem": "macOS 13.5",
       "compiler": "Apple clang, -O2 -mmacosx-version-min=13.5"
     },
     "linux-arm64-glibc": {
-      "sha256": "b533762eb20936db9403fde316b8891989c7a3f131896d60c191c2a1eb273410",
+      "sha256": "21b5e4e1264e32b71e1d991b39d8423c2fbc43d3fe06ab02260a51aaf38cb6e3",
       "sourceSha256": {
         "binding.gyp": "5c60f9923fe95d63f906a6410677247844725ccd0566a3a38ec37eddac13e38e",
         "include/sfs.h": "90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7",
         "src/sfs.c": "9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14",
         "src/sfs_platform.h": "e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d",
         "bindings/node/sfs_node.c": "b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380",
-        "bindings/node/windows_process.c": "3628ba1c1c28402b98206e83a34c165d4feb0788ed1c67fabaecd5ab5d357890",
+        "bindings/node/windows_process.c": "307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef",
         "bindings/node/windows_process.h": "e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526"
       },
       "minGlibc": "2.28",
@@ -45,14 +45,14 @@
       "compiler": "zig cc 0.15.2, -O2 -target *-linux-gnu.2.28"
     },
     "linux-x64-glibc": {
-      "sha256": "c4c000d217c4cdd88b87f513a30a7b479e6219c32f046ec884a4b27d9034b82b",
+      "sha256": "1d86ca1a3ba15716b853ff1fe58c9d8dacdfe4fb9bc1cf87815bf906ebd34b34",
       "sourceSha256": {
         "binding.gyp": "5c60f9923fe95d63f906a6410677247844725ccd0566a3a38ec37eddac13e38e",
         "include/sfs.h": "90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7",
         "src/sfs.c": "9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14",
         "src/sfs_platform.h": "e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d",
         "bindings/node/sfs_node.c": "b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380",
-        "bindings/node/windows_process.c": "3628ba1c1c28402b98206e83a34c165d4feb0788ed1c67fabaecd5ab5d357890",
+        "bindings/node/windows_process.c": "307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef",
         "bindings/node/windows_process.h": "e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526"
       },
       "minGlibc": "2.28",

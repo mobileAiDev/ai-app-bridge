@@ -20,7 +20,7 @@ function gatedWindowsSpawn(file, args, options) {
   const closeScope = (release = false) => {
     if (!scope) return true;
     try { if (release) scope.release(); else scope.close(); scope = null; return true; }
-    catch (error) { child.emit('error', error); return false; }
+    catch (error) { child.processScopeFailure ||= error; child.emit('error', error); return false; }
   };
   child.kill = signal => { stopped = true; closeScope(); return kill(signal); };
   child.on('message', message => {
@@ -69,6 +69,12 @@ function portableExecFile(file, args, options, callback) {
       if (child.commandResult.failure) failure ||= Object.assign(new Error(child.commandResult.failure.message), child.commandResult.failure);
     }
     if (!failure && (code !== 0 || signal)) failure = Object.assign(new Error(`Command failed: ${file}`), { code, signal });
+    if (child.processScopeFailure) {
+      const cleanup = child.processScopeFailure;
+      failure ||= cleanup;
+      failure.details = { ...failure.details, cleanup: { code: cleanup.code, message: cleanup.message } };
+      if (failure !== cleanup) failure.cause = cleanup;
+    }
     if (failure) {
       failure.killed = child.killed;
       // ENOENT alone is insufficient: cross-spawn may already have started a

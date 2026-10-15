@@ -42,7 +42,7 @@ function command(directory, name, timeoutMs = 10000) {
           // Record any native cleanup error before execFileBounded chooses the
           // enclosing cancellation reason. This does not change event order.
           completion = error ? { code: error.code, message: error.message, signal: error.signal,
-            dispatched: error.dispatched, ambiguous: error.ambiguous } : null;
+            dispatched: error.dispatched, ambiguous: error.ambiguous, details: error.details } : null;
           callback(error, stdout, stderr);
         });
       } }));
@@ -87,6 +87,7 @@ async function verifyCancellation(t) {
   t.diagnostic(JSON.stringify({ kind: 'windows-command-cancellation', rawCompletion: a.completion(),
     outcome: { code: error?.code, dispatched: error?.dispatched, ambiguous: error?.ambiguous }, observations }));
   assert.equal(error.code, 'cancelled');
+  assert.equal(error.details?.cleanup, undefined, 'the cancellation must finish its process cleanup');
   assert.equal(error.dispatched, true); assert.equal(error.ambiguous, true);
   assert.equal(after.processes[0].observedStart, null, JSON.stringify(after.processes[0]));
   assert.equal(after.processes[1].observedStart, null, JSON.stringify(after.processes[1]));
@@ -99,6 +100,69 @@ test('Windows bounded command cancellation closes descendants without stopping a
   assert.ok(Number.isInteger(repetitions) && repetitions >= 1 && repetitions <= 20, 'AAB_WINDOWS_CANCEL_REPETITIONS must be an integer from 1 to 20.');
   if (repetitions === 1) return verifyCancellation(t);
   for (let iteration = 1; iteration <= repetitions; iteration++) await t.test(`iteration ${iteration}`, verifyCancellation);
+});
+
+test('Windows bounded command cancellation drains more than sixteen concurrent descendants in a nested Job', { ...windows, timeout: 60000 }, async t => {
+  const nativePath = require.resolve('@mobileaidev/segmented-fact-store-native'), native = require(nativePath);
+  for (let iteration = 1; iteration <= 3; iteration++) await t.test(`spawn race ${iteration}`, async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-nested-jobs-'));
+    const worker = path.join(directory, 'spawn-worker.cjs'), main = path.join(directory, 'main.cjs');
+    fs.writeFileSync(worker, `
+      const fs=require('node:fs'), path=require('node:path'), cp=require('node:child_process'), native=require(${JSON.stringify(nativePath)});
+      function record(pid){const value={pid,start:native.windowsProcessStart(pid)}, file=path.join(__dirname,pid+'.process.json');
+        fs.writeFileSync(file+'.tmp',JSON.stringify(value));fs.renameSync(file+'.tmp',file);}
+      record(process.pid);
+      process.send({ready:true});
+      process.once('message',()=>{
+        let count=0;
+        const timer=setInterval(()=>{
+          const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',windowsHide:true});
+          child.once('error',()=>{}); // Cancellation can reject a concurrent association before user code starts.
+          if(child.pid)record(child.pid);
+          if(++count===40)clearInterval(timer);
+        },1);
+      });
+      setInterval(()=>{},1000);
+    `);
+    fs.writeFileSync(main, `
+      const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),native=require(${JSON.stringify(nativePath)});
+      const file=path.join(__dirname,process.pid+'.process.json');
+      fs.writeFileSync(file+'.tmp',JSON.stringify({pid:process.pid,start:native.windowsProcessStart(process.pid)}));fs.renameSync(file+'.tmp',file);
+      const child=cp.fork(${JSON.stringify(worker)},[],{stdio:['ignore','ignore','ignore','ipc'],windowsHide:true});
+      child.once('message',()=>{
+        global.scope=native.windowsCreateProcessScope(child.pid);
+        child.send({start:true});
+      });
+      setInterval(()=>{},1000);
+    `);
+    const readProcesses = () => fs.readdirSync(directory).filter(name => name.endsWith('.process.json'))
+      .map(name => JSON.parse(fs.readFileSync(path.join(directory, name))));
+    const controller = new AbortController();
+    const outcome = runExecution({ signal: controller.signal, mutation: true }, () =>
+      execFileBounded(process.execPath, [main], { mutation: true, timeoutMs: 20000 }))
+      .then(value => ({ value }), error => ({ error }));
+    t.after(async () => {
+      try {
+        controller.abort(); await outcome;
+        for (const process of readProcesses()) if (process.start) native.windowsTerminateProcess(process.pid, process.start);
+      } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+    });
+    for (let i = 0; readProcesses().length < 22 && i < 1000; i++) await delay(5);
+    const before = readProcesses();
+    assert.ok(before.length >= 22, 'the running nested tree must exceed the native initial member buffer');
+    assert.ok(before.every(process => process.start && native.windowsProcessStart(process.pid) === process.start), JSON.stringify(before));
+    controller.abort({ code: 'cancelled' });
+    const { error } = await outcome;
+    const after = readProcesses().map(process => ({ ...process, observedStart: native.windowsProcessStart(process.pid) }));
+    t.diagnostic(JSON.stringify({ kind: 'windows-nested-spawn-cancellation', iteration,
+      outcome: { code: error?.code, details: error?.details, dispatched: error?.dispatched, ambiguous: error?.ambiguous }, before, after }));
+    assert.equal(error.code, 'cancelled');
+    assert.equal(error.details?.cleanup, undefined, 'every handle wait and accounting check must succeed');
+    assert.equal(error.dispatched, true); assert.equal(error.ambiguous, true);
+    assert.ok(after.every(process => process.observedStart === null), JSON.stringify(after));
+    await delay(30);
+    assert.equal(readProcesses().length, after.length, 'no descendant may continue producing effects after cancellation returns');
+  });
 });
 
 test('Windows bounded command timeout waits for the complete Job to terminate', windows, async t => {
