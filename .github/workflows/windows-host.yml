@@ -84,6 +84,8 @@ jobs:
       - name: Windows Runtime, leases, execution and recovery
         if: ${{ inputs.suite != 'cancellation' }}
         working-directory: desktop/ai-app-bridge-cli
+        env:
+          AAB_WINDOWS_CANCEL_REPETITIONS: '20'
         run: |
           npm run test:windows *> ../../windows-evidence/host-tests.log
           if ($LASTEXITCODE -ne 0) { Get-Content ../../windows-evidence/host-tests.log; exit $LASTEXITCODE }
