@@ -189,7 +189,7 @@ test('range violations quote the documented meaning, including how to keep waiti
   assert.match(wait.message, /^waitMs must be <= 60000\. .*afterSequence set to the last eventSequence\.$/);
   assert.match(rejection('intent', { operation: 'status', operationId: 'op', limit: 0 }).message, /^limit must be >= 1\. .*not response bytes\.$/);
   assert.deepEqual(rejection('script', { operation: 'foo', operationId: 'op' }),
-    { code: 'invalid_argument', field: 'operation', message: 'operation must be one of: start, result, status, wait, pause, resume, cancel, decide, runtime-status, recipes.' });
+    { code: 'invalid_argument', field: 'operation', message: 'operation must be one of: start, result, inventory, recovery, status, wait, pause, resume, cancel, decide, runtime-status, recipes.' });
 });
 
 test('the two continuation cursors are documented in the exposed schemas', () => {

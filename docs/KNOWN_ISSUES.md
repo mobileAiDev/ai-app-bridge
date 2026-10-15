@@ -9,6 +9,63 @@ to match the current public repository naming. They are retained as issue
 evidence, not as release instructions. Use `README.md` and `docs/INTEGRATION.md`
 for current dependency coordinates.
 
+## Persistent UIA and external instrumentation can conflict during capture
+
+- Status: confirmed capture-path conflict and guidance gap, observed on
+  2026-10-15. Command discovery, the usage skill and CLI documentation now direct
+  screenshot-only callers to the existing Bridge capture path. The test-side
+  View-rendering workaround passed; Bridge capture at the original checkpoints
+  has not yet been retested. This occurrence does not establish that a new UIA
+  handover mechanism is needed for screenshots.
+- Trigger: with Bridge's persistent UIA service running, an external
+  `AndroidJUnitRunner` launched through `adb-exec` called
+  `Instrumentation.getUiAutomation().takeScreenshot()`.
+- Evidence: the first capture failed with `IllegalStateException:
+  UiAutomationService ... already registered!` in
+  `IUiAutomationConnection.connect` / `Instrumentation.getUiAutomation`.
+  The other two cases then failed with `UiAutomation not connected!` at the
+  same capture helper. Local evidence is in
+  `../pos-android/tmp/pos-permission-qa-20261015/round1-device.txt`.
+- Cause and scope: the contested resource is the accessibility-backed
+  UiAutomation registration, not all Android screenshot facilities. Bridge's
+  `UiaConnection` retains that registration while its runtime is alive. Android
+  permits only one such registration at a time; see
+  [AOSP UiAutomationManager](https://android.googlesource.com/platform/frameworks/base/+/master/services/accessibility/java/com/android/server/accessibility/UiAutomationManager.java).
+  This is a tooling integration failure, not evidence that the app's permission
+  business logic failed.
+- Existing routes: Bridge `screenshot` uses `adb exec-out screencap -p` and does
+  not request a second UiAutomation connection. For screenshot-only needs,
+  prefer this existing Host command at the test's capture checkpoint; keep the
+  page in place until capture completes. Capturing after the whole test has
+  advanced or finished does not establish evidence for an earlier checkpoint.
+  This path does not require UIA handover. Managed optional executors
+  already define explicit UIA handover in
+  [OPTIONAL_EXECUTORS.md](../desktop/ai-app-bridge-cli/docs/OPTIONAL_EXECUTORS.md).
+  Common non-capture needs also have shared-runtime entries: `uia-tree`,
+  `tap-uia`, and `wait-text` with `provider:"uia"`. Select by the actual operation
+  before assuming that a `getUiAutomation()` call requires handover. These entries
+  do not transparently proxy arbitrary test-process APIs.
+  Neither fact establishes acceptance of this external instrumentation path;
+  the historical fix for concurrent shell `uiautomator dump` below does not
+  close this persistent-runtime conflict either.
+- Verified workaround: the test replaced UiAutomation capture with
+  `activity.window.decorView.draw(Canvas(bitmap))`. The original three cases
+  then passed in 10.723 seconds; evidence is in
+  `../pos-android/tmp/pos-permission-qa-20261015/round1-device-retest-02.txt`.
+  These images render the app's View hierarchy, not the composed device
+  display. They cannot prove the absence of a keyboard, system dialog or
+  another window covering the app. The changed evidence source must remain
+  explicit; passing this rerun does not fix the Bridge interoperability issue.
+- Screenshot-path closure: verify the existing Bridge full-display capture at
+  the original test checkpoints while UIA is running; avoid adding a new
+  handover mechanism solely to take screenshots. For external instrumentation
+  that genuinely needs UiAutomation, separately verify concise conflict
+  diagnosis, explicit handover/reacquisition, and interrupted-run recovery.
+  Preserve unresolved action records
+  and obtain fresh identities after a runtime restart. Do not silently kill an
+  active owner, replay unknown effects, replace full-display evidence with a
+  View rendering, or block the general ADB entry point to avoid the conflict.
+
 ## Current triage snapshot, 2026-05-20
 
 - Standard MCP stdio is working with desktop package `0.2.4`: `initialize`

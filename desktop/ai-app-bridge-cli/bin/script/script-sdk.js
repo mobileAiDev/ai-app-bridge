@@ -162,6 +162,7 @@ async function run(start, inputParseMs) {
     assert: assertion => request({ type: 'assert', assertion }),
     progress: event => request({ type: 'progress', event }),
     checkpoint: (name, state) => request({ type: 'checkpoint', name, state }),
+    recovery: (options = {}) => request({ type: 'recovery', options }),
     askAgent: value => request({ type: 'ask', request: value }),
     controlPoint: () => control,
     resume: () => {

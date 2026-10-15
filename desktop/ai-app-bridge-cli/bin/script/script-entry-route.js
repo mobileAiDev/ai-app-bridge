@@ -13,6 +13,7 @@ function scriptInput(args) {
 
 async function handleCodeOrRemoved(args = {}, supervisor) {
   if (args.operation === 'recipes') return require('./recipes').read(args);
+  if (['recovery', 'inventory'].includes(args.operation)) return supervisor.handle(args);
   const script = scriptInput(args);
   if (args.operation === 'result' && args.store) return readScriptResult(args);
   if ((args.operation || 'start') === 'start') {

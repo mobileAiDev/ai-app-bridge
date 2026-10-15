@@ -23,6 +23,16 @@ const {
 const iosProvider = new IOSBridgeProvider();
 const webProvider = new WebBridgeProvider();
 const targetExecution = new TargetExecution();
+let powerManager = null;
+let workPower = null;
+function getPowerManager() {
+  return powerManager ||= require('./power').createPowerManager({
+    acquireAdapter: require('./power/platform-adapters').createPlatformAdapter({
+      iosRequest: async (target, body) => (await iosProvider.runtimePort(target)).post('/v1/power', body),
+    }),
+  });
+}
+function getWorkPower() { return workPower ||= require('./power/work-activity').createWorkPower({ manager: getPowerManager() }); }
 let browserExecutor = null;
 let androidExecutor = null;
 let flutterExecutor = null;
@@ -58,6 +68,8 @@ function close() {
     await androidExecutor?.close();
     await flutterExecutor?.close();
     await Promise.allSettled([...activeRuns]);
+    await workPower?.close();
+    await powerManager?.close();
     try { await sharedObservationCollector?.stop(); }
     finally {
       sharedObservationCollector = null;
@@ -180,6 +192,7 @@ function wrapIsolatedEntry(entry, namespace) {
         });
       }
       if (namespace === 'intent' && !args.commands) args.commands = dispatchProviderCommand;
+      args.workPower = getWorkPower();
       return entry.handle(args);
     },
   };
@@ -647,6 +660,14 @@ function getSharedObservationCollector(factRecorder) {
 }
 
 async function runRawCommand(command, args = {}) {
+  const warnings = await getWorkPower().beforeCommand(command, args);
+  const result = await runPlatformCommand(command, args);
+  return warnings.length && result && typeof result === 'object' && !Buffer.isBuffer(result)
+    ? { ...result, warnings: [...(result.warnings || []), ...warnings] } : result;
+}
+
+async function runPlatformCommand(command, args) {
+  if (command === 'power') return require('./power/command').handle(args, getPowerManager(), getWorkPower());
   if (command === 'executor-prepare') return require('./executors/preparation').prepareExecutor(args);
   if (command === 'android-executor') {
     androidExecutor ||= new (require('./executors/android-host').AndroidExecutorHost)();

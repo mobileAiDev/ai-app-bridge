@@ -1,8 +1,14 @@
-## 0.4.9 (Unreleased; pending acceptance)
+## 0.4.10
+
+- Add explicit Android profile support with `--dart-define=AI_APP_BRIDGE_PROFILE=true`; debug defaults remain unchanged and release initialization stays disabled.
+- Include bounded foreground idle protection in the embedded iOS SDK; leases expire on the device and restore the previous setting when released or when the App leaves the foreground.
+- Align the Android dependency, embedded iOS identity and package version with 0.4.10. Android profile workflows and recovery were exercised; iOS Flutter runtime regression was not completed before the test phone was disconnected.
+
+## 0.4.9
 
 - Align the Flutter package, Android dependency and embedded iOS runtime with the coordinated 0.4.9 candidate.
 - Include the Android runtime's explicit malformed HTTP framing failures and bounded request parsing; valid request contracts remain unchanged.
-- Final package and complex workflow acceptance remain pending; version alignment does not establish device coverage.
+- Public package verification completed; version alignment does not establish device coverage. See the repository's 0.4.9 release verification for its actual scope.
 
 ## 0.4.8
 

@@ -165,6 +165,7 @@ function requestDigest(command, args) {
 }
 
 function targetFor(command, args) {
+  if (command === 'power') return { kind: 'host', platform: 'host', key: `power:${args.leaseId || JSON.stringify(args.target || null)}` };
   if (command === 'executor-prepare') return { kind: 'host', platform: 'host',
     key: `executor-prepare:${JSON.stringify([args.platform, args.projectDir ?? null])}` };
   if (command === 'logcat' && String(args.deviceLogScope || '').toLowerCase() === 'device') {

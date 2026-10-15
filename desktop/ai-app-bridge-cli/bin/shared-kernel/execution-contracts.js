@@ -166,9 +166,10 @@ function executionCommandSchema(command, permissionNames) {
       examples: scriptStartExamples,
       allOf: [
         { if: { required: ['pythonPath'] }, then: { properties: { script: { properties: { language: { const: 'python' } } } } } },
-        { if: { required: ['recordingDir'] }, then: { properties: { script: { properties: { policy: { properties: { restartPolicy: { const: 'none' } } } } } } } },
       ] },
     control('result'),
+    operation('inventory', require('../script/script-inventory').inventorySchema.properties),
+    control('recovery', require('../script/script-recovery-view').recoveryReadSchema.properties),
     control('status', scriptRead), control('wait', { ...scriptRead,
       until: { enum: ['attention', 'event'], default: 'attention', description: 'By default wait for completion, failure, cancellation, pause, or an Agent question. Select event for progress streaming.' },
       waitMs: { ...integer(0, 60000), default: 30000,

@@ -1,5 +1,6 @@
 'use strict';
 
+const { randomUUID } = require('node:crypto');
 const { bindCommandTarget } = require('../shared-kernel/execution-target');
 const { authorizeCommand } = require('./script-catalog');
 
@@ -25,8 +26,12 @@ const {
 } = require('./script-durable-restore');
 const { scriptError } = require('./script-errors');
 const { planRecovery } = require('./script-recovery');
-const { createEvidenceRecording } = require('../shared-kernel/evidence-recording');
+const { createScriptRecording } = require('./script-recording');
 const { prepareScriptResult, resultReference, readScriptResult } = require('./script-result');
+
+function recoveryReadOptions(args) {
+  return Object.fromEntries(['checkpointId', 'cursor', 'limit'].filter(key => args[key] !== undefined).map(key => [key, args[key]]));
+}
 
 function createDefaultRuntime(opts = {}) {
   if (opts.language === 'javascript') return createNodeRuntimeAdapter(opts);
@@ -49,6 +54,13 @@ function createScriptSupervisor({
     const operation = args.operation || 'start';
     if (operation === 'start') return args.waitMs > 0 ? runAndWait(args, start) : start(args);
     if (operation === 'result') return readScriptResult({ ...args, store: registry.get(args.operationId)?.store || args.store });
+    if (operation === 'inventory') return require('./script-inventory').readScriptInventory({
+      store: args.store, registry, ...Object.fromEntries(['cursor', 'limit', 'view'].filter(key => args[key] !== undefined).map(key => [key, args[key]])),
+    });
+    if (operation === 'recovery') return require('./script-recovery-view').readScriptRecovery({
+      store: registry.get(args.operationId)?.store || args.store, operationId: args.operationId,
+      ...recoveryReadOptions(args),
+    });
     if (operation === 'status') {
       const limitGate = rejectBadLimit(args);
       if (limitGate) return limitGate;
@@ -91,13 +103,10 @@ function createScriptSupervisor({
       return scriptError('operation_exists', { operationId });
     }
     let recording = null;
-    if (args.recordingDir !== undefined) {
-      if (compiled.spec.policy.restartPolicy !== 'none') {
-        return scriptError('recording_restart_unsupported', { field: 'recordingDir', dispatched: false, ambiguous: false });
-      }
+    if (args.recordingDir !== undefined || args[RESTORE_CONTEXT]?.recording) {
       try {
-        recording = createEvidenceRecording({ directory: args.recordingDir, namespace: 'script',
-          operationId, store: args.store, now });
+        recording = createScriptRecording({ directory: args.recordingDir, previous: args[RESTORE_CONTEXT]?.recording,
+          checkpointEnabled: compiled.spec.policy.restartPolicy === 'checkpoint', operationId, store: args.store, now });
       } catch (error) { return scriptError(error.code || 'recording_failed', {
         field: 'recordingDir', message: error.detail || error.message, dispatched: false, ambiguous: false,
       }); }
@@ -114,6 +123,9 @@ function createScriptSupervisor({
       handlers: args.handlers,
       permissions: compiled.spec.permissions,
       executionId: operationId,
+      // A restored Host has a new read-call counter; retain unique observation
+      // identities without changing the durable mutation action sequence.
+      ...(args[RESTORE_CONTEXT] ? { callIdPrefix: `call-${randomUUID()}-` } : {}),
       runner: args.runner,
       actions: args.actions,
       query: args.query,
@@ -132,7 +144,7 @@ function createScriptSupervisor({
     if (runtime.unavailable) {
       return scriptError('runtime_unavailable', { language: compiled.spec.language });
     }
-    if (args.store && typeof args.store.persist === 'function' && !args[RESTORE_CONTEXT]) {
+    if (args.store && typeof args.store.persist === 'function' && (!args[RESTORE_CONTEXT] || recording)) {
       return persistStart(args, {
         compiled,
         operationId,
@@ -155,18 +167,25 @@ function createScriptSupervisor({
   }
 
   async function persistStart(args, parts) {
+    const restore = args[RESTORE_CONTEXT];
+    const checkpoint = { ...codeStartCheckpoint(parts.compiled, parts.operationId),
+      ...(restore ? { revision: restore.revision + 1, stepId: restore.checkpoint.name,
+        checkpoint: restore.checkpoint, actionSequence: restore.actionSequence,
+        checkpointActionSequence: restore.checkpointActionSequence,
+        ...(restore.durableCheckpoint.recovery ? { recovery: restore.durableCheckpoint.recovery } : {}) } : {}),
+      ...(parts.recording ? { recording: parts.recording.info() } : {}) };
     const persisted = await args.store.persist(
       'checkpoint',
-      { ...codeStartCheckpoint(parts.compiled, parts.operationId),
-        ...(parts.recording ? { recording: parts.recording.info() } : {}) },
+      checkpoint,
     );
     if (!persisted.ok) {
       return scriptError(persisted.error || 'checkpoint_not_persisted', { operationId: parts.operationId });
     }
-    return finishStart(args, parts);
+    if (restore) args[RESTORE_CONTEXT] = { ...restore, revision: checkpoint.revision };
+    return finishStart(args, { ...parts, checkpointEvidenceId: persisted.evidenceId });
   }
 
-  function finishStart(args, { compiled, operationId, events, agent, host, runtime, recording }) {
+  function finishStart(args, { compiled, operationId, events, agent, host, runtime, recording, checkpointEvidenceId }) {
     const startedAtMs = now();
     const restoreContext = args[RESTORE_CONTEXT] || null;
     const record = {
@@ -196,6 +215,9 @@ function createScriptSupervisor({
       ledger: scriptLedger,
       store: args.store || null,
       recording,
+      workPower: args.workPower,
+      lastCheckpointEvidenceId: checkpointEvidenceId || restoreContext?.durableCheckpoint?.evidenceId,
+      recovery: restoreContext?.durableCheckpoint?.recovery || null,
       lastCheckpoint: restoreContext && restoreContext.checkpoint,
       checkpointRevision: Number(restoreContext && restoreContext.revision) || 1,
       actionSequence: Number(restoreContext && restoreContext.actionSequence) || 0,
@@ -216,6 +238,7 @@ function createScriptSupervisor({
   }
 
   function startRuntime(record, now) {
+    record.workPower?.begin({ ownerId: `script:${record.operationId}`, target: record.spec.target, timeoutMs: record.spec.policy.timeoutMs });
     record.controller = new AbortController();
     record.deadlineMs = Date.now() + record.spec.policy.timeoutMs;
     record.cancelling = false;
@@ -394,6 +417,7 @@ function createScriptSupervisor({
     if (record.finished) {
       const previous = {
         operationId: record.operationId,
+        evidenceId: record.lastCheckpointEvidenceId,
         revision: record.checkpointRevision,
         policy: record.spec.policy,
         checkpoint: record.lastCheckpoint,
@@ -405,10 +429,19 @@ function createScriptSupervisor({
         const recovered = planRecovery({ base: codeStartCheckpoint({ spec: record.spec, hash: record.hash }, record.operationId),
           previous, actionSequence: record.actionSequence, recovery: args.recovery });
         if (!recovered.ok) return recovered;
+        let recording = record.recording;
+        if (record.recording) {
+          try { recording = createScriptRecording({ previous: record.recording.info(), checkpointEnabled: true,
+            operationId: record.operationId, store: record.store, now }); }
+          catch (error) { return scriptError(error.code || 'recording_failed', { operationId: record.operationId, message: error.detail || error.message }); }
+          recovered.checkpoint.recording = recording.info();
+        }
         record.recovering = true;
         const persisted = await persistRecord(record, 'checkpoint', recovered.checkpoint);
         record.recovering = false;
         if (!persisted.ok) return scriptError(persisted.error || 'checkpoint_not_persisted', { operationId: record.operationId });
+        record.recording = recording;
+        record.recovery = recovered.checkpoint.recovery;
         record.lastCheckpoint = recovered.checkpoint.checkpoint;
         record.checkpointRevision = recovered.checkpoint.revision;
         record.checkpointActionSequence = record.actionSequence;
@@ -420,6 +453,22 @@ function createScriptSupervisor({
       } else {
         const gate = restartGate(previous, record.actionsSinceCheckpoint);
         if (!gate.ok) return { ...gate, operationId: record.operationId };
+        if (record.recording) {
+          let recording;
+          try { recording = createScriptRecording({ previous: record.recording.info(), checkpointEnabled: true,
+            operationId: record.operationId, store: record.store, now }); }
+          catch (error) { return scriptError(error.code || 'recording_failed', { operationId: record.operationId, message: error.detail || error.message }); }
+          const checkpoint = { ...codeRuntimeCheckpoint(record, record.lastCheckpoint, record.checkpointRevision + 1),
+            checkpointActionSequence: record.checkpointActionSequence,
+            ...(record.recovery ? { recovery: record.recovery } : {}), recording: recording.info() };
+          record.recovering = true;
+          const persisted = await persistRecord(record, 'checkpoint', checkpoint);
+          record.recovering = false;
+          if (!persisted.ok) return scriptError(persisted.error || 'checkpoint_not_persisted', { operationId: record.operationId });
+          record.recording = recording;
+          record.checkpointRevision = checkpoint.revision;
+          record.checkpointActionSequence = checkpoint.checkpointActionSequence;
+        }
       }
       record.finished = false;
       record.status = 'running';
@@ -578,6 +627,7 @@ function persistRecord(record, kind, body) {
   const pending = record.persistTail.then(async () => {
     try {
       const result = await record.store.persist(kind, body);
+      if (result?.ok && kind === 'checkpoint') record.lastCheckpointEvidenceId = result.evidenceId;
       return result?.ok ? result : { ok: false, error: result?.error || 'persist_failed' };
     } catch (error) {
       return { ok: false, error: error?.code || error?.message || 'persist_failed' };
@@ -613,6 +663,7 @@ async function commitTerminal(record, status, error, now, result) {
     resultRef,
     ...(record.diagnostics ? { diagnostics: record.diagnostics } : {}),
     ...(record.recording ? { recording: record.recording.info() } : {}),
+    ...(record.recovery ? { recovery: record.recovery } : {}),
   };
   let persisted = await persistRecord(record, 'checkpoint', checkpoint);
   // The terminal write shares a bounded partition with its result. A successful
@@ -646,6 +697,7 @@ async function commitTerminal(record, status, error, now, result) {
     persisted: persisted.persisted === true,
   }, now);
   stopHeartbeat(record);
+  await record.workPower?.end({ ownerId: `script:${record.operationId}` });
   return record.status === 'completed' ? { ok: true, resultRef: record.resultRef }
     : { ok: false, error: record.error || record.status };
 }
@@ -679,6 +731,8 @@ function trackHost(host, record, now) {
     }
     const gate = authorizeCommand(command, record.spec.permissions, args);
     if (!gate.ok) return rejectCall(gate.error, { message: gate.message });
+    if (options.label !== undefined && (typeof options.label !== 'string' || !options.label.length || options.label.length > 256))
+      return rejectCall('invalid_argument', { field: 'options.label', message: 'Call label must be a nonempty string of at most 256 characters.' });
     let boundTarget = null;
     if (command !== 'page-summary') {
       try {
@@ -702,6 +756,8 @@ function trackHost(host, record, now) {
           revision: record.checkpointRevision,
           actionSequence,
           actionId,
+          command,
+          ...(options.label === undefined ? {} : { label: options.label }),
           target: boundTarget,
           actionSpecHash: checksumOf({ command, args }),
           planStepId: actionId,
@@ -733,6 +789,8 @@ function trackHost(host, record, now) {
           revision: record.checkpointRevision,
           actionSequence,
           actionId,
+          command,
+          ...(options.label === undefined ? {} : { label: options.label }),
           startedAtMs,
           completedAtMs: now(),
           mechanicalStatus: result.ok === false ? 'failed' : 'ok',
@@ -825,6 +883,7 @@ function trackHost(host, record, now) {
       name: result.name,
       verdict: result.verdict,
       scope: result.scope,
+      coverageScope: assertion.coverageScope ?? 'complete',
       reason: result.reason,
       predicateSummary: assertion.predicateSummary,
       condition: assertion.condition,
@@ -841,6 +900,9 @@ function trackHost(host, record, now) {
 
   return {
     call,
+    recovery: options => require('./script-recovery-view').readScriptRecovery({
+      ...options, store: record.store, operationId: record.operationId,
+    }),
     assert(assertion) {
       if (stopped()) return Promise.resolve({ ok: false, verdict: 'inconclusive', reason: 'runtime_stopped' });
       return trackPending(record, assertTracked(assertion));
@@ -916,6 +978,7 @@ async function emitRuntimeRecord(record, type, extra, now) {
   }
   record.checkpointRevision = revision;
   record.lastCheckpoint = checkpoint;
+  record.recovery = null;
   record.mutationUnknown = false;
   record.checkpointActionSequence = record.actionSequence;
   record.actionsSinceCheckpoint = [];

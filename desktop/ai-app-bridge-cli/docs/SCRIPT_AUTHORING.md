@@ -357,10 +357,40 @@ Use `status` or `wait` for progress; there is no separate `progress` operation.
 
 For a portable evidence run, add `recordingDir` to the start arguments with
 a new or empty output directory. The Host records returned calls, assertions and
-referenced screenshots before bounded events are evicted. With
-`restartPolicy: "none"`, use public `evidence export` with
+referenced screenshots before bounded events are evicted. Checkpoint-enabled
+programs create a separate `attempt-*` directory and recording ID for each
+restart; previous files are never reopened for writing. The durable checkpoint
+records the attempt before the resumed program starts. Use public `evidence export` with
 `includeRecordedPayloads: true`, then offline `evidence verify` with the
 saved manifest hash. See [the recording and archive contract](EVIDENCE_ARCHIVE.md).
+
+Use `await ctx.recovery()` in JavaScript or `ctx.recovery()` in Python to read
+retained action facts after the checkpoint. The same read is available outside
+the program as `script {operation:"recovery",operationId:"…"}`. It does not
+dispatch or cancel work. After explicit recovery, its initial boundary is the
+previous checkpoint; a new program checkpoint establishes a new boundary.
+Pass `checkpointId` to select another retained checkpoint. Paginate with the
+returned `cursor` and a `limit` (default 20, maximum 100); each page retains the
+same upper fact boundary even while the program continues.
+
+Facts include the original action ID, target, command, optional caller label,
+receipt references and execution receipt. For example,
+`ctx.call('tap-text', {text:'Submit'}, {label:'submit-order'})` records the label
+without storing the call's input values in the dispatch marker. Labels describe
+steps; avoid putting credentials or private business data in them. A missing
+receipt stays ambiguous. Check `coverage.gaps` and `missingMarkers`: absence of
+retained evidence is not proof that an effect did not happen. Query the original
+receipt or business state and choose an explicit continuation.
+
+After losing an operation ID, use `script {operation:"inventory"}` to list
+retained operations needing inspection. Use `view:"all"` to include completed
+programs. Pages pin a durable upper boundary; use their `cursor` to continue.
+The result separates `durableStatus` from the current Host's `liveStatus` and
+gives an original-operation query. A running checkpoint without a live local
+runtime is not proof that another process has died. Completed programs with
+unsettled effects remain visible. Missing retained history is never proof that
+an operation did not execute. One corrupt operation is reported in place without
+hiding other readable operations.
 
 For successive progress waits, set `afterSequence` to the previous response's
 **`eventSequence`**. `history.lastSequence` belongs to the history page; there
@@ -772,6 +802,16 @@ that distinction in `evidence.coverage`; it does not turn a truncated result
 into complete evidence. Full Flutter layout coverage includes every requested
 source, so an available operable tree does not hide a failed diagnostic source.
 Use `flutter-nodes` when the decision only needs operable controls.
+
+For a predicate about the values actually returned, explicitly choose
+`coverageScope: 'observed'`. For example, a WDA tree can prove that the returned
+input field has the expected value even when WDA does not report whole-tree
+coverage. This mode returns its `coverageScope` and the unchanged source
+`coverage`; it does not prove that omitted controls or records are absent.
+The default remains `coverageScope: 'complete'`. Observed checks still require
+Host-issued, unedited, committed evidence with the requested references in the
+current action window. Failed reads, stale evidence and missing references
+remain inconclusive. Both JavaScript and Python accept the same option.
 
 Compact `uia-tree` reads show visible nodes by default. Hidden and offscreen
 nodes are filtered before `maxNodes`, so retained background pages cannot fill

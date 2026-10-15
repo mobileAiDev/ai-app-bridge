@@ -2,6 +2,43 @@
 
 Bridge keeps its existing SDK paths and exposes optional executors through `capabilities`, `run`, and JavaScript/Python Script. Select an executor explicitly. No command silently changes a touch into a setter, switches framework after failure, or repeats an uncertain action.
 
+## Choose an Android execution path
+
+Choose the operation you need before opening another UiAutomation connection.
+The existing Bridge commands cover many uses of `uiautomator dump` and
+`Instrumentation.getUiAutomation()` without a new instrumentation session:
+
+| Need | Existing Bridge entry | Connection behavior |
+| --- | --- | --- |
+| Accessibility hierarchy, instead of a separate `uiautomator dump` | `uia-tree` | Reuses the persistent Bridge UIA runtime; normal observation limits and filters apply |
+| Accessibility node click or visible text condition | `tap-uia`, `wait-text` with `provider:"uia"` | Uses that same runtime |
+| Actual display screenshot | `screenshot` | ADB screencap; no UiAutomation connection |
+| Device-coordinate touch, swipe, system key | `tap` with `scope:"device"`, `swipe`, `keyevent` | ADB input; no UiAutomation connection |
+| Shell command, installation or file transfer | `adb-exec` with explicit argv | ADB itself needs no UiAutomation; the invoked program may request one |
+| Espresso, Compose or AndroidX UI Automator test-thread operations | `android-executor` | Host coordinates ownership for one persistent instrumentation session |
+
+These are choices for the requested operation, not interchangeable API
+implementations. For example, an accessibility click and a coordinate touch
+exercise different mechanisms. Select the intended mechanism before dispatch.
+Raw ADB remains available; Bridge does not rewrite its argv into another action.
+
+When using `android-executor`, open once, reuse its session for the workflow's
+`observe`/`act`/`receipt` calls, then close. Its UI Automator adapter handles
+accessibility observation within that session; ordinary `uia-tree` uses the
+separate persistent runtime and is not a proxy into the instrumentation session.
+The Host checks that original UIA effects have settled before handover, and
+releases instrumentation ownership after the original process has ended. Opening
+the session restarts the target app and requires the test integration below.
+
+Bridge does not transparently replace arbitrary existing Java/Kotlin calls to
+`getUiAutomation()`. Its [Android API](https://developer.android.com/reference/android/app/UiAutomation)
+also includes test-process permission identity and accessibility-event callbacks,
+which are not equivalent to Host shell commands or text polling. Existing tests
+that depend on those semantics need an explicit adapter or coordinated ownership;
+the current executor does not remotely invoke arbitrary existing `@Test` methods.
+For screenshot-only checkpoints, keep the page in place, capture from the Host,
+then let the test continue.
+
 ## What is installed
 
 | Capability | Dependency location | Integration requirement |

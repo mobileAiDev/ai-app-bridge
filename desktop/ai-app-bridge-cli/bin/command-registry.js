@@ -8,14 +8,15 @@ const { executionCommandSchema, nativeGestureSchema, nativeSelector, flutterSele
 const { flutterActionSchema, webCommandSchema } = require('./shared-kernel/provider-command-contracts');
 
 const commandDefinitions = [
+  { command: 'power', domain: 'execution', summary: 'Keep the Host or a selected device awake for an explicit bounded work lease. Acquire, renew, inspect or release through CLI, MCP, Intent or Script. OS assertions do not click the App or unlock a locked device. iOS protects only the selected foreground SDK App; capabilities reports actual platform scope.', targetKind: 'host', options: ['operation', 'ownerId', 'target', 'mode', 'leaseMs', 'leaseId'] },
   { command: 'doctor', domain: 'diagnostics', summary: 'Collect client/Runtime identity, device and provider status, ownership and recovery choices without starting the shared Runtime or gating actions. Android is the default; platform host/ios/web selects another view. Device-only diagnosis does not require an app. Normal actions do not run this diagnostic bundle.', targetKind: 'diagnostic-target', options: ['platform', 'serial', 'packageName', 'adb', 'port', 'deviceId', 'bundleId', 'runtimeUrl', 'iosHost', 'iosPort', 'wdaUrl', 'wdaRunnerBundleId', 'devicectl', 'xcodebuild', 'sessionId', 'runtimeEpoch', 'targetId', 'timeoutMs', 'full'] },
-  { command: 'adb-exec', domain: 'advanced', summary: 'Execute explicit ADB argv without a Host shell or command allowlist. Optional serial adds -s. Returns stdout, stderr and the ADB process exit code; this is not verification of application behavior. Use outFile for binary stdout. readOnly opts out of the device mutation lease for diagnostic calls.', targetKind: 'android-device', options: ['argv', 'serial', 'adb', 'timeoutMs', 'readOnly', 'outFile'] },
+  { command: 'adb-exec', domain: 'advanced', summary: 'Execute explicit ADB argv without a Host shell or command allowlist. Optional serial adds -s. Returns stdout, stderr and the ADB process exit code; this is not verification of application behavior. Use outFile for binary stdout. readOnly opts out of the device mutation lease for diagnostic calls. ADB itself needs no UIA handover. Prefer uia-tree for hierarchy reads and screenshot for display capture; external uiautomator dump or instrumentation getUiAutomation() can request a conflicting second connection.', targetKind: 'android-device', options: ['argv', 'serial', 'adb', 'timeoutMs', 'readOnly', 'outFile'] },
   { command: 'response', domain: 'evidence', summary: 'Read and re-extract one saved response using its unchanged control.source.ref. This never repeats the original action or refreshes an observation.', targetKind: 'host', options: ['operation', 'ref'] },
   { command: 'executor-prepare', domain: 'advanced', summary: 'Prepare optional test executors from the existing project: generate Android androidTest entry/dependencies and matching APKs, add Flutter dev dependency and build the generated entrypoint, prepare managed iOS WDA, or install pinned Playwright/browser. Host preparation does not install or launch a mobile application. No application ID is changed. Requires app.test in Script.', targetKind: 'host', options: ['platform'] },
   { command: 'ui-observation', domain: 'core', summary: 'Start a bounded UI observation window (100–5000 ms), inspect it, or stop its lease. Off by default; provider selects native or Flutter. New windows establish a fresh baseline.', targetApp: true, options: ['operation', 'provider', 'durationMs', 'leaseId', 'packageName', 'serial'] },
   { command: 'ios-ui-observation', domain: 'ios', summary: 'Control bounded iOS native or Flutter UI observation. Off by default; expires locally even if the Host exits.', targetKind: 'ios-app', options: ['operation', 'provider', 'durationMs', 'leaseId', 'deviceId', 'bundleId'] },
   { command: 'web-ui-observation', domain: 'web', summary: 'Control bounded Web DOM change observation. Off by default; expires locally even if the Host exits.', targetKind: 'web-target', options: ['operation', 'durationMs', 'leaseId', 'sessionId', 'runtimeEpoch', 'targetId'] },
-  { command: 'android-executor', domain: 'advanced', summary: 'Optional AndroidX UI Automator, Espresso and registered WebView/Compose test adapters. Open an installed androidTest build, observe, act on observed nodes, query original receipts and close. Opening instrumentation restarts the target application. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
+  { command: 'android-executor', domain: 'advanced', summary: 'Optional AndroidX UI Automator, Espresso and registered WebView/Compose test adapters. Reuse one installed androidTest session for observe, act and original receipts, then close; Host coordinates UIA ownership. Opening instrumentation restarts the target application. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
   { command: 'flutter-executor', domain: 'advanced', summary: 'Optional Flutter integration_test executor on Android. Open the installed application test entrypoint, observe widgets, run WidgetTester actions, query receipts and close the test process. Requires app.test in Script.', targetKind: 'android-app', options: ['operation'] },
   { command: 'web-executor', domain: 'web', summary: 'Optional Playwright executor: inspect readiness, prepare pinned browser dependencies, open a browser, observe bound frames, act, wait, query original receipts, or close. Browser input and test operations retain their actual mechanisms. Script requires app.test.', targetKind: 'web-target', options: ['operation'] },
   { command: 'runtime', domain: 'execution', summary: 'Inspect, start, stop or force-stop the shared local runtime. force-stop uses an independent owner identity even when endpoint.json is broken; ownerPid explicitly selects a Bridge Host if both records are lost. Evidence is retained and device effects remain unknown. From Script/Intent, stop requests use an independent controller and return acceptance plus resultPath.', targetKind: 'host-runtime', options: ['operation', 'timeoutMs', 'ownerPid'] },
@@ -23,8 +24,8 @@ const commandDefinitions = [
   { command: 'uia-runtime', domain: 'advanced', summary: 'Read, start, stop or force-reset the Android API 25+ UIA node runtime. Start checks the process lock; force-reset archives UIA sessions with unknown outcomes without stopping the Bridge Host or SDK apps.', targetKind: 'android-device', options: ['operation', 'serial', 'adb', 'timeoutMs'] },
   { command: 'status', domain: 'core', summary: 'Read bridge status, app/device metadata, capture counts, and Flutter summary.', targetApp: true, options: ['packageName', 'port', 'serial', 'full'] },
   { command: 'tree', domain: 'core', summary: 'Read Android View tree from the in-app bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
-  { command: 'uia-tree', domain: 'core', summary: 'Read UIAutomator accessibility windows. Compact reads show visible nodes by default; visibleOnly=false includes hidden nodes. Optional packageFilter is applied before the node budget, including controls without resource IDs.', options: ['serial', 'packageFilter', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
-  { command: 'screenshot', domain: 'core', summary: 'Capture a screenshot, with foreground package verification when packageName is supplied.', options: ['serial', 'packageName', 'outFile', 'artifactDir'] },
+  { command: 'uia-tree', domain: 'core', summary: 'Read accessibility windows through the shared Bridge UIA runtime instead of launching a separate uiautomator dump. Compact reads show visible nodes by default; visibleOnly=false includes hidden nodes. Optional packageFilter is applied before the node budget, including controls without resource IDs.', options: ['serial', 'packageFilter', 'compact', 'textFilter', 'resourceIdFilter', 'classFilter', 'visibleOnly', 'maxNodes', 'maxDepth'] },
+  { command: 'screenshot', domain: 'core', summary: 'Capture the actual Android display through adb screencap; no UiAutomation connection or UIA handover is needed. Includes foreground package evidence when packageName is supplied. For test checkpoints, hold the page until Host capture completes.', options: ['serial', 'packageName', 'outFile', 'artifactDir'] },
   { command: 'logs', domain: 'core', summary: 'Read in-app log records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'network', domain: 'core', summary: 'Read in-app network records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'compact', 'urlFilter', 'method', 'statusCode', 'noBodies', 'bodyMaxBytes', 'sinceId', 'sinceMs', 'limit'] },
   { command: 'state', domain: 'core', summary: 'Read in-app state records from the bridge.', targetApp: true, options: ['packageName', 'port', 'serial', 'sinceId', 'sinceMs', 'limit'] },
@@ -253,6 +254,7 @@ const commandByName = new Map(commandDefinitions.map(d => [d.command, d]));
 const isolatedByName = new Map(isolatedCommandDefinitions.map(d => [d.command, d]));
 
 function isMutationCommand(command, args = {}) {
+  if (command === 'power') return !['status', 'capabilities'].includes(args.operation);
   if (command === 'script' || command === 'intent') return ['start', 'decide', 'pause', 'resume', 'cancel', 'intervene'].includes(args.operation);
   if (command === 'runtime') return args.operation !== 'status';
   if (command === 'adb-exec') return args.readOnly !== true;
@@ -278,7 +280,7 @@ function isAndroidMutation(command, args = {}) {
 // Workflow/control commands manage their own operations and device admission.
 // Holding a caller's device lock across start/wait/cancel can deadlock the child.
 function ownsCommandLifecycle(command) {
-  return ['script', 'intent', 'install-apk', 'permission-dialog', 'runtime', 'device-ownership', 'executor-prepare'].includes(command);
+  return ['script', 'intent', 'install-apk', 'permission-dialog', 'runtime', 'device-ownership', 'executor-prepare', 'power'].includes(command);
 }
 
 function executionTimeoutMs(command, args = {}) {
@@ -306,7 +308,7 @@ const scriptPermissions = Object.freeze({
   'app.expert': ['adb-exec', 'uia-runtime', 'h5-eval', 'flutter-h5-eval', 'ios-h5-eval', 'web-command', 'flutter-action', 'ios-flutter-action', 'forward', 'remove-forward'],
   'app.lifecycle': ['clear-app-data', 'freeze-app', 'thaw-app', 'ios-install-app', 'ios-setup'],
   'app.permissions': ['permission-grant', 'permission-revoke', 'appops-set'],
-  'app.workflow': ['intent', 'script', 'install-apk', 'permission-dialog', 'runtime', 'device-ownership', 'ios-execution', 'web-execution', 'web-session-start', 'web-session-stop'],
+  'app.workflow': ['intent', 'script', 'install-apk', 'permission-dialog', 'runtime', 'device-ownership', 'power', 'ios-execution', 'web-execution', 'web-session-start', 'web-session-stop'],
   'evidence.read': ['evidence', 'response'],
 });
 const scriptPermissionByCommand = new Map(Object.entries(scriptPermissions).flatMap(([permission, commands]) => commands.map(command => [command, permission])));
@@ -327,9 +329,9 @@ function commandContract(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw unknownCommand(command);
   const isolated = isolatedByName.has(command);
-  const platform = command === 'doctor' ? 'multi' : ['runtime', 'executor-prepare', 'response'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
+  const platform = ['doctor', 'power'].includes(command) ? 'multi' : ['runtime', 'executor-prepare', 'response'].includes(command) ? 'host' : isolated ? (command === 'evidence' ? 'host' : 'multi')
     : definition.domain === 'ios' ? 'ios' : definition.domain === 'web' ? 'web' : 'android';
-  const role = command === 'runtime' || command === 'intent' || command === 'script' || workflowCommands.has(command) ? 'execution'
+  const role = ['runtime', 'intent', 'script', 'power'].includes(command) || workflowCommands.has(command) ? 'execution'
     : ['evidence', 'response'].includes(command) ? 'evidence' : expertCommands.has(command) ? 'expert' : 'capability';
   const permission = scriptPermissionByCommand.get(command) || null;
   return {
@@ -354,6 +356,7 @@ function commandSchema(command) {
   const definition = commandByName.get(command) || isolatedByName.get(command);
   if (!definition) throw unknownCommand(command);
   if (command === 'response') return require('./response-store').responseSchema();
+  if (command === 'power') return require('./power/command').schema();
   if (command === 'doctor') return require('./doctor').schema();
   if (command === 'executor-prepare') return require('./executors/preparation').preparationSchema();
   if (require('./ui-observation').commands.has(command)) return require('./ui-observation').schema(command, optionTypes);

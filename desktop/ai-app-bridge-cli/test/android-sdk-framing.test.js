@@ -25,6 +25,10 @@ async function fixture(t, reject, bodyLimit = Infinity) {
     const declaredBytes = Number(request.headers['content-length'] || 0);
     if (declaredBytes > bodyLimit) {
       requests.push({ path: request.url, bytes: declaredBytes });
+      // This fixture tests receipt classification, not the SDK's parser. Drain
+      // without retaining the body so Node's TCP close cannot race the chosen
+      // refusal with ECONNRESET. A lost response is covered separately below.
+      for await (const _chunk of request) { /* discard */ }
       return reject(response, null, declaredBytes);
     }
     let body = ''; for await (const chunk of request) body += chunk;

@@ -48,7 +48,6 @@ function invalidCases({ adb = '/unusable-adb', source = 'module.exports.main = (
   add('script-restart-enum', 'script', { ...scriptStart, script: { ...script, policy: { restartPolicy: 'auto' } } }, 'script.policy.restartPolicy');
   add('script-permissions-unique', 'script', { ...scriptStart, script: { ...script, permissions: ['app.read', 'app.read'] } }, 'script.permissions');
   add('script-python-path-is-python-only', 'script', { ...scriptStart, pythonPath: '/unusable-python' }, 'script.language');
-  add('script-recording-requires-no-restart', 'script', { ...scriptStart, recordingDir: '/unusable-recording', script: { ...script, policy: { restartPolicy: 'checkpoint' } } }, 'script.policy.restartPolicy');
   add('script-status-no-payload', 'script', { operation: 'status', operationId: 'x', script }, 'script', 'unsupported_argument');
   add('script-wait-budget', 'script', { operation: 'wait', operationId: 'x', waitMs: 60001 }, 'waitMs');
   add('script-decision-required', 'script', { operation: 'decide', operationId: 'x', requestId: 'r', revision: 1 }, 'decision', 'missing_argument');

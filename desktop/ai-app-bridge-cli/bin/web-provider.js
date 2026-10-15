@@ -210,13 +210,18 @@ class WebBridgeProvider {
   async dom(args) {
     const session = this.connected(args);
     const result = await this.request(session, 'read', { name: 'domSnapshot', args: select(args, ['selector', 'query', 'offset', 'maxControls']) }, args.timeoutMs ?? 5000);
-    if (result.ok !== true || !object(result.dom) || result.dom.ok !== true)
-      return failure(result.error || result.dom?.error || 'invalid_web_dom', { ...targetOf(session) });
+    // A returned read failure is a confirmed outcome. Preserve the SDK's
+    // diagnostic; transport failures still throw with their original uncertainty.
+    const readOutcome = { ...targetOf(session), dispatched: true, ambiguous: false, settled: true };
+    if (result.ok === false) return { ...result, ...readOutcome };
+    if (object(result.dom) && result.dom.ok === false) return { ...result.dom, ...readOutcome };
+    if (!object(result.dom) || result.dom.ok !== true)
+      return failure('invalid_web_dom', { ...readOutcome, message: 'The Web SDK did not return a valid DOM snapshot.' });
     if ((args.query !== undefined || args.offset !== undefined)
       && (result.dom.offset !== (args.offset ?? 0) || !require('node:util').isDeepStrictEqual(result.dom.query, args.query)))
-      return failure('web_dom_query_unsupported', { ...targetOf(session), message: 'This SDK did not apply the requested query/page. Update the Web SDK, or use its existing CSS selector observation.' });
+      return failure('web_dom_query_unsupported', { ...readOutcome, message: 'This SDK did not apply the requested query/page. Update the Web SDK, or use its existing CSS selector observation.' });
     try { validateSnapshot(result.dom, targetOf(session)); }
-    catch (error) { return failure('invalid_web_dom_target', { ...targetOf(session), message: error.message }); }
+    catch (error) { return failure('invalid_web_dom_target', { ...readOutcome, message: error.message }); }
     const receipt = this.store.record(targetOf(session), 'dom', result.dom, { captureId: randomUUID() });
     return { ok: true, ...targetOf(session), connected: true, webTargetSchema: result.dom.targetSchema,
       pageRef: result.dom.pageRef, dom: result.dom, receipt };

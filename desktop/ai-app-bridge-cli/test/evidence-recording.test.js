@@ -291,15 +291,24 @@ test('a recording persistence failure prevents the child from dispatching its ne
   assert.equal(state.status, 'failed'); assert.equal(state.error, 'recording_not_persisted');
 });
 
-test('rejects checkpoint restart recording before runtime start or directory creation', async t => {
+test('checkpoint recording claims an independent attempt before runtime start', async t => {
   const f = setup(t);
-  const output = path.join(f.root, 'unsupported');
-  const supervisor = createScriptSupervisor({ createRuntime() { assert.fail('must reject before runtime creation'); } });
+  const output = path.join(f.root, 'checkpoint-recording');
+  const supervisor = createScriptSupervisor({ createRuntime: () => ({ start: async () => {
+    assert.equal(JSON.parse(fs.readFileSync(path.join(output, 'script-recording.json'))).operationId, 'with-recording');
+    const checkpoint = f.store.latest('with-recording', 'checkpoint');
+    assert.equal(checkpoint.recording.rootDirectory, output);
+    assert(fs.existsSync(path.join(checkpoint.recording.directory, 'recording.json')));
+    return { ok: true };
+  } }) });
   const result = await supervisor.handle({ operation: 'start', store: f.store, recordingDir: output,
+    operationId: 'with-recording',
+    actions: async () => { assert.fail('This recording setup must not dispatch any actions'); },
     script: { schemaVersion: 'aab.code-script/v1', language: 'javascript', source: 'fixture', target: TARGET,
       policy: { restartPolicy: 'checkpoint' } } });
-  assert.equal(result.error, 'recording_restart_unsupported');
-  assert.equal(fs.existsSync(output), false);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  await supervisor.registry.get('with-recording').running;
+  assert.equal(supervisor.handle({ operation: 'status', operationId: 'with-recording' }).status, 'completed');
 });
 
 for (const [field, value, error] of [

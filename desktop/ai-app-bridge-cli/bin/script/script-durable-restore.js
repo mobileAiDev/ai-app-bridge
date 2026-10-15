@@ -108,6 +108,7 @@ function codeRuntimeCheckpoint(record, checkpoint, revision) {
     checkpoint,
     actionSequence: record.actionSequence,
     checkpointActionSequence: record.actionSequence,
+    ...(record.recording ? { recording: record.recording.info() } : {}),
   };
 }
 
@@ -193,7 +194,7 @@ async function restoreUnknownOperation(args = {}) {
     try { persisted = await store.persist('checkpoint', recovered.checkpoint); }
     catch (error) { return scriptError(error.code || error.message || 'checkpoint_not_persisted', { operationId }); }
     if (!persisted?.ok) return scriptError(persisted?.error || 'checkpoint_not_persisted', { operationId });
-    checkpoint = recovered.checkpoint;
+    checkpoint = { ...recovered.checkpoint, evidenceId: persisted.evidenceId };
   }
   return supervisor.handle({
     ...args,
@@ -205,6 +206,8 @@ async function restoreUnknownOperation(args = {}) {
       revision: checkpoint.revision,
       actionSequence: loaded.actionSequence,
       checkpointActionSequence: checkpoint.checkpointActionSequence || 0,
+      recording: checkpoint.recording,
+      durableCheckpoint: checkpoint,
     },
   });
 }

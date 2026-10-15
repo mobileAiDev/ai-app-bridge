@@ -1,7 +1,12 @@
-## 0.4.9 (Unreleased; pending acceptance)
+## 0.4.10
+
+- Align the optional executor identity with the coordinated 0.4.10 release. The WidgetTester execution contract is unchanged.
+- The companion Host adds read-only recovery and interruption inventory, independent recording attempts, and bounded work power leases.
+
+## 0.4.9
 
 - Align the optional executor identity with the coordinated 0.4.9 candidate. The WidgetTester execution contract is unchanged.
-- Final package and complex workflow acceptance remain pending.
+- Public package verification completed; device acceptance remains limited to the repository's 0.4.9 release verification.
 
 ## 0.4.8
 

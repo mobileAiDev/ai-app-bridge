@@ -91,6 +91,14 @@ class HostContext:
         self._safe_point()
         return reply["value"]
 
+    def recovery(self, options=None):
+        self._safe_point()
+        message_id = self._id("v")
+        send({"type": "recovery", "id": message_id, "options": options or {}})
+        reply = self._read_reply(message_id)
+        self._safe_point()
+        return reply["value"]
+
     def assert_(self, assertion):
         self._safe_point()
         message_id = self._id("a")

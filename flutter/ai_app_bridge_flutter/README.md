@@ -1,6 +1,6 @@
 # AI App Bridge Flutter
 
-This source targets 0.4.9; registry publication is a separate step. Use a local path dependency before that version is published.
+This source targets 0.4.10; registry publication is a separate step. Use a local path dependency before that version is published.
 
 Flutter plugin for AI App Bridge. It exposes Flutter widget snapshots, runtime actions, structured logs, network records, state records, events, and H5 adapter registration so local AI agents can inspect, operate, verify, and iterate on Flutter apps on Android and iOS.
 
@@ -22,13 +22,13 @@ To pin this release, use:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.9
+  ai_app_bridge_flutter: 0.4.10
 ```
 
-The plugin's Android debug variant includes the `0.4.9` Android runtime from
-JitPack and starts the bridge server on the device. The iOS plugin starts the
-Swift runtime from the app process. Release builds should not expose the debug
-runtime automatically.
+The plugin's Android debug variant includes the `0.4.10` Android runtime from
+JitPack and starts the bridge server on the device. The iOS debug plugin starts
+the Swift runtime from the app process. Release builds do not initialize the
+Dart bridge and do not receive an Android SDK dependency from this plugin.
 The iOS sources and C store are included in the Flutter package. Flutter's own
 Swift Package Manager integration supplies its generated `FlutterFramework`
 package; native iOS consumers use the separate repository-root Swift package.
@@ -65,6 +65,56 @@ snapshots, even during a window. Frame events describe rendering, not semantic
 changes. Tree commands pull a fresh snapshot through MethodChannel and release
 their temporary Semantics handle afterwards. Status heartbeats do not scan UI.
 Call `AiAppBridge.instance.shutdown()` when a debug harness tears down the engine.
+
+## Opt-in Android profile builds (0.4.10)
+
+This option is introduced in 0.4.10. Version `0.4.9` initializes the Flutter
+bridge in debug only.
+
+Android profile support is enabled by one Flutter build option:
+
+```sh
+flutter build apk --profile --dart-define=AI_APP_BRIDGE_PROFILE=true
+```
+
+Keep the same `initialize()` call and application source in both debug and
+profile builds. The option enables Dart initialization in Android profile mode
+and includes the matching Android runtime in the plugin's profile variant.
+Omitting it, or setting it to `false`, leaves profile initialization disabled.
+The option accepts exactly one `true` or `false` value. Debug remains enabled
+by default. Release remains disabled even when the option is `true`.
+
+Full snapshots report `app.mode` as `debug` or `profile`; public tree and node
+results also carry `buildMode`. In profile mode,
+`layout.widgetInspector` and `layout.widgetDump` return `ok: false`,
+`error: "flutter_diagnostics_unavailable_in_profile"`, and
+`reason: "debug_build_required"`. An empty diagnostic tree is not reported as
+a successful observation. Secure-input suppression still applies. Operable
+Element snapshots, target bindings, actions, H5 adapters and automatic capture
+remain enabled; Semantics reports its actual collection result, which can be
+unavailable in either build mode. Requesting operable scope still collects only
+the operable source.
+
+For add-to-app, pass the same option when generating the Flutter AAR:
+
+```sh
+flutter build aar --no-debug --no-release --dart-define=AI_APP_BRIDGE_PROFILE=true
+```
+
+Use that generated module's `flutter_profile` artifact and its generated
+repository. The option must reach the Flutter build; setting a property only
+on a later native-host build does not change an already compiled Dart AAR.
+When a native host already supplies the Android SDK, use one matching SDK
+version and normal Gradle dependency exclusions/substitution to avoid bundling
+another SDK. The plugin's profile variant explicitly selects the Android SDK's
+debug variant for local project dependencies. The host application's
+`debuggable` setting is independent of Dart AOT and must satisfy the Android
+SDK's runtime contract.
+
+This option currently enables Android only. iOS profile builds remain disabled;
+the bundled Swift runtime is compiled behind `DEBUG`. Profile measurements on
+an emulator do not establish physical-device performance or compatibility with
+every Flutter plugin and route. Keep debug builds for full framework diagnostics.
 
 ## Executing observed targets
 
@@ -136,7 +186,9 @@ AiAppBridge.instance.registerH5Adapter(
 );
 ```
 
-AI App Bridge is intended for debug builds. Do not expose runtime control surfaces in production builds without a deliberate security review.
+AI App Bridge is intended for debug builds and explicit Android profile test
+builds. Do not expose runtime control surfaces in production builds without a
+deliberate security review.
 
 ## iOS Notes
 

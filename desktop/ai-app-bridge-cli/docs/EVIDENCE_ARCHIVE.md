@@ -169,9 +169,11 @@ screenshots. With no `require` streams, Intent has no mobile payload to record.
 The existing Host FactStore stores small `attachment` records containing
 file hashes and execution bindings; the payload files remain in the explicit
 output directory. The live mobile query path never consults those files.
-Script recording currently requires `restartPolicy: "none"`; a checkpoint
-restart request with recording is rejected as `recording_restart_unsupported`.
-Live pause/resume can continue the same recording. No recording is silently
+Checkpoint-enabled Scripts claim an operation-bound recording root, then a
+new `attempt-*` directory and recording ID at each process restart. The next
+attempt is persisted before the child starts; earlier payloads remain unchanged.
+Live pause/resume without a new child continues the current attempt. An offline
+archive includes all retained attempts and distinct call identities. No recording is silently
 reopened after Host or child loss.
 
 Limits are 10,000 attachments, 16 MiB per JSON/PNG file and 256 MiB per

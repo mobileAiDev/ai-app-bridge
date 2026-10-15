@@ -23,7 +23,9 @@ function planRecovery({ base, previous, actionSequence, recovery }) {
     checkpoint: decision.checkpoint,
     actionSequence,
     checkpointActionSequence: actionSequence,
+    ...(previous.recording ? { recording: previous.recording } : {}),
     recovery: { previousCheckpoint: previous.checkpoint?.name || null, previousStatus: previous.status,
+      ...(previous.evidenceId ? { previousCheckpointId: previous.evidenceId } : {}),
       ...(decision.reason === undefined ? {} : { reason: decision.reason }) },
   } };
 }

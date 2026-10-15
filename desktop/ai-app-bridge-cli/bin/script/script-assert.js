@@ -52,6 +52,7 @@ function issueObservation(observations, evidence, { afterActionId, mutationRevis
 
 function judgeAssertion(assertion, observations, { afterActionId = null, mutationRevision = 0, pendingMutation = false } = {}) {
   const scope = assertion.scope || 'device';
+  const coverageScope = assertion.coverageScope ?? 'complete';
   const result = (verdict, reason) => ({
     verdict,
     name: assertion.name || null,
@@ -59,9 +60,10 @@ function judgeAssertion(assertion, observations, { afterActionId = null, mutatio
     ...(reason ? { reason } : {}),
   });
   if (scope !== 'device' && scope !== 'code') return result('inconclusive', 'assertion_scope_invalid');
+  if (!['complete', 'observed'].includes(coverageScope)) return result('inconclusive', 'assertion_coverage_scope_invalid');
   if (typeof assertion.condition !== 'boolean') return result('inconclusive', 'assertion_condition_not_boolean');
   if (scope === 'code') {
-    if (assertion.evidence != null || (assertion.requiredEvidence || []).length > 0) {
+    if (assertion.evidence != null || (assertion.requiredEvidence || []).length > 0 || coverageScope === 'observed') {
       return result('inconclusive', 'code_assertion_cannot_claim_device_evidence');
     }
     return result(assertion.condition ? 'passed' : 'failed');
@@ -72,7 +74,8 @@ function judgeAssertion(assertion, observations, { afterActionId = null, mutatio
     return result('inconclusive', 'evidence_not_host_issued');
   }
   const coverage = issued.evidence.coverage;
-  if (coverage.status !== 'complete' || coverage.gap !== false || coverage.committed !== true) {
+  if (coverage.committed !== true || !['complete', 'partial', 'unknown'].includes(coverage.status)
+      || coverageScope === 'complete' && (coverage.status !== 'complete' || coverage.gap !== false)) {
     return result('inconclusive', 'evidence_coverage_incomplete');
   }
   if (
@@ -89,7 +92,8 @@ function judgeAssertion(assertion, observations, { afterActionId = null, mutatio
   if ((assertion.requiredEvidence || []).some((stream) => !streams.has(stream))) {
     return result('inconclusive', 'required_evidence_missing');
   }
-  return result(assertion.condition ? 'passed' : 'failed');
+  const verdict = result(assertion.condition ? 'passed' : 'failed');
+  return coverageScope === 'observed' ? { ...verdict, coverageScope, coverage: structuredClone(coverage) } : verdict;
 }
 
 module.exports = { createObservationRegistry, issueObservation, judgeAssertion };

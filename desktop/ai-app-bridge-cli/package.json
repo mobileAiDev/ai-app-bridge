@@ -1,7 +1,7 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.4.9",
-  "sdkReleaseVersion": "0.4.9",
+  "version": "0.4.10",
+  "sdkReleaseVersion": "0.4.10",
   "description": "Desktop CLI and MCP server for AI App Bridge across Android, iOS, Flutter, WebView, and Web targets.",
   "repository": {
     "type": "git",
@@ -50,6 +50,7 @@
     "bin/command-router.js",
     "bin/script",
     "bin/intent",
+    "bin/power",
     "bin/shared-kernel",
     "bin/executors",
     "runtime/executors",
@@ -75,6 +76,7 @@
     "docs/COMMAND_CONTRACT.md",
     "docs/ANDROID_EXECUTION_POLICY.md",
     "docs/OPTIONAL_EXECUTORS.md",
+    "docs/POWER_LEASES.md",
     "bin/ios-wda-port.js",
     "bin/ios-wda-project.js",
     "bin/ios-wda-execution.js",

@@ -103,6 +103,7 @@ async function start(args) {
     store,
     adapter: resolveAdapter(args),
     commands: args.commands,
+    workPower: args.workPower,
     mode: args.mode || 'supervised',
     agent: resolveAgent(args),
     budget: resolveBudget(args),

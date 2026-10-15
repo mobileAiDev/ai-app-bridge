@@ -44,3 +44,32 @@ test('page-summary retains provider and projection coverage', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.evidence.coverage.status, 'partial');
 });
+
+test('explicit observed assertions check returned values without inventing complete WDA coverage', async () => {
+  const host = createScriptHostPort({ target: { platform: 'ios', deviceId: 'phone', bundleId: 'sample' },
+    actions: async command => command === 'ios-uia-tree' ? { ok: true, source: { value: 'entered' } } : { ok: true, dispatched: true } });
+  const read = await host.call('ios-uia-tree');
+  const check = extra => host.assert({ name: 'observed field value', condition: read.result.source.value === 'entered',
+    coverageScope: 'observed', evidence: read.evidence, requiredEvidence: ['tree'], ...extra });
+  const verdict = await check();
+  assert.equal(verdict.verdict, 'passed'); assert.equal(verdict.coverageScope, 'observed');
+  assert.deepEqual(verdict.coverage, { status: 'unknown', gap: true, committed: true });
+  assert.equal((await check({ condition: false })).verdict, 'failed');
+  assert.equal((await check({ coverageScope: 'complete' })).verdict, 'inconclusive');
+  assert.equal((await check({ coverageScope: 'anything' })).reason, 'assertion_coverage_scope_invalid');
+  assert.equal((await check({ requiredEvidence: ['network'] })).reason, 'required_evidence_missing');
+  const edited = structuredClone(read.evidence); edited.coverage.status = 'complete';
+  assert.equal((await check({ evidence: edited })).reason, 'evidence_not_host_issued');
+  await host.call('ios-tap', { tapX: 1, tapY: 1 });
+  assert.equal((await check()).reason, 'evidence_action_window_stale');
+});
+
+test('observed assertions do not accept provider failure or missing references', async () => {
+  const host = createScriptHostPort({ target: { platform: 'android', serial: 'coverage-device', packageName: 'sample' },
+    actions: async command => command === 'tree'
+    ? { ok: false, error: 'device_disconnected' } : { ok: true } });
+  const failed = await host.call('tree');
+  assert.equal((await host.assert({ condition: true, coverageScope: 'observed', evidence: failed.evidence })).reason, 'evidence_coverage_incomplete');
+  const status = await host.call('status');
+  assert.equal((await host.assert({ condition: true, coverageScope: 'observed', evidence: status.evidence })).reason, 'device_evidence_refs_empty');
+});

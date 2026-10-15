@@ -30,6 +30,7 @@ function createIntentWorker({
   capturePort = null,
   captureRequirements = null,
   recording = null,
+  workPower = null,
 } = {}) {
   const target = normalizeIntentTarget(requestedTarget);
   const runtime = createIntentRuntime({ operationId, now });
@@ -119,6 +120,7 @@ function createIntentWorker({
         runtime.emit('terminal_persistence_failed', { error: runtime.state.error, requestedStatus: stopping.status });
       }
       finished = true;
+      await workPower?.end({ ownerId: `intent:${operationId}` });
       return snapshotResult(runtime.state.status === 'completed');
     })();
     return finalizing;
@@ -154,6 +156,7 @@ function createIntentWorker({
 
   async function start() {
     if (runtime.state.status !== 'created') return intentError('operation_already_started', snapshotResult(false));
+    workPower?.begin({ ownerId: `intent:${operationId}`, target, timeoutMs: effectiveTimeoutMs });
     startedAt = now(); lifetime.start();
     runtime.state.status = 'observing';
     if (ownsOutcome) {

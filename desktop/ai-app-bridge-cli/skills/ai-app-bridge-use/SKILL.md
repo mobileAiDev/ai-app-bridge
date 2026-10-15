@@ -27,6 +27,8 @@ CLI 与 MCP 共用独立执行 Runtime、命令合同和 operationId。CLI 响�
 
 **卡死 / 换 agent：** 先读 `device-ownership {operation:"status",serial:"原设备"}`。旧 Host 已消失的未知记录会归档，新明确动作可继续；archives/archive 可读原记录，reconcile-archive 只查询原动作，不取消或重放。活跃 owner 需要继续、取消，或由 agent 明确接管。决定强制接管时可用 `ai-app-bridge device-ownership --operation force-stop --serial 原设备`：无需旧回执，结束旧 Host/共享 Runtime 的相关任务并重置设备执行器；同 Host 的其他任务可能一起结束，已派发效果记为未知。读取 ownershipReleased/remoteResetPending，再观察当前状态。仅 UIA 卡住时优先考虑其 uia-runtime start/force-reset，按返回影响范围选择。
 
+**工作期间防休眠：** 默认实际操作开启十分钟空闲保护，Intent/Script 另按自身期限保护并在终态释放；MCP 常驻连接本身不算活动。用 `power {operation:"status"}` 看实际范围，`power {operation:"auto",enabled:false}` 可做休眠测试（不释放显式租约）。长会话可显式 `acquire`，结束按原 `leaseId` 释放。Mac/Windows 是系统电源 API，Android 是指定 serial 的独立锁，iOS 只覆盖前台 SDK App；不会解锁设备或模拟点击。保护失败是信息，不阻断已授权业务操作。更多见 `docs/POWER_LEASES.md`。
+
 ## 响应与提取
 
 先看 `execution` 的原执行事实及 `failureStage`，再消费 `value`；Script 内部 `ctx.call` 仍按 `ok/result` 处理，不加 extract。`control` 保留续跑字段和采集覆盖；当前 Script 问题从 `control.pendingQuestion` 读取，即使 events 被游标过滤也可回答。
@@ -67,6 +69,11 @@ Script 恢复可用 `resume {waitMs:60000}`，回答问题可用 `decide {...,wa
 
 需要标准命令之外的诊断、安装或传输时，用 `adb-exec` 的 `argv` 数组；`serial` 可直接绑定设备，Host ADB 查询可省略。输出含 stdout/stderr/exitCode，二进制写 `outFile`。`completionScope:adb-process` 只证明 ADB 进程结束，设备效果另行观察。
 
+**Android 截图与 UIA 共存：** 整屏取证直接用 `run({command:"screenshot",arguments:{serial:"设备"}})`；CLI 为 `ai-app-bridge screenshot --serial 设备 --out-file /absolute/step.png`。它走 ADB screencap，无需申请另一个 UiAutomation 连接或交接现有 UIA。测试到取证点后保持页面，由 Host 截图完成再继续；App View 绘图只作为 App 内部画面证据。
+
+**复用现有执行器：** 层级读取用 `uia-tree`，节点点击用 `tap-uia`，文字条件用 `wait-text {provider:"uia"}`；它们复用 Bridge UIA。普通 ADB 安装、传输和 shell 命令可直接用 `adb-exec`。遇到 `UiAutomationService ... already registered!`，先按实际需求选择这些命令；调用 `getUiAutomation()` 不代表需求一定要另起连接。已有动作的执行机制与未知结果仍按原回执保留。
+
+确需 Espresso、Compose 或 AndroidX UI Automator 测试线程能力时，用 `android-executor` 一次 open 后在同一 session 内连续 observe/act，结束再 close，Host 协调 UIA 占用；open 会重启目标 App。普通命令不透明代理测试进程的权限身份或任意 UiAutomation 回调。外部测试必须保留这些语义时，再处理专门的连接协调。能力对应表及现有 JUnit 的边界见 `docs/OPTIONAL_EXECUTORS.md` **Choose an Android execution path**。
 
 `wait-text` 会在原 timeoutMs 内继续只读观察，保留尝试次数和最后失败原因，不重放动作。已发现的完整标签可在部分树中匹配；被截断的文本前缀不是完整标签。absentText 默认要求 provider 的完整观察范围；仅检查已返回部分时显式选择 `absenceScope:"observed"`，结果会保留 partial/unknown 范围。Intent summary 与 compact tree 的 `coverage.source`、`coverage.projection` 分别表示设备采集和 Host 投影，不能把投影完整当作源头完整。
 
@@ -97,12 +104,14 @@ Runtime 卡住可先 `runtime {operation:"stop",timeoutMs:5000}`，仍无响应�
 用原 operationId 查询 `status`/`wait`；每次 `waitMs` 最多 60000，`running` 或 `finishing` 时用上一响应的 `eventSequence` 作为 `afterSequence` 继续等待。
 `waiting_for_agent` 是源码的 `ctx.askAgent`：用 `control.pendingQuestion`（或本页 `agent_question_created` 事件）里的 `requestId`/`revision` 调 `decide {...,waitMs:60000}`，或 `cancel`；不要等到超时。先检查 status 再读问题，其他状态下问题可能为空。一次等待超时后继续 `wait`，不重发业务动作。完整 start → wait → result 范例见 `SCRIPT_AUTHORING.md` **Lifecycle: start, wait, result**。
 停止后的 checkpoint Script 可由 Agent 在原 `resume` 请求中传 `recovery.checkpoint:{name,state}`，明确选择新的 `ctx.resume()` 状态；适用于中断后先查询原结果、或取消后另选续跑位置。原回执和未知结果保留，具体合同与示例见 `SCRIPT_AUTHORING.md` **Recover a stopped Script**。
+中断后可先 `script {operation:"inventory"}` 找需要检查的原操作，再用 `recovery {operationId}` 或源码内 `ctx.recovery()` 读取 checkpoint 之后的命令、标签、派发标记与原回执；这只读取事实，不恢复或重放。调用可附 `ctx.call(command,args,{label:"业务步骤"})`。恢复后再次崩溃仍保留旧恢复边界，成功写入新的 `ctx.checkpoint` 后才推进；缺失记录保持缺失。checkpoint 模式允许 `recordingDir`，每次重启产生独立 attempt，不覆盖前次文件。
 `completed` 仅说明源码返回并持久化；status/wait 的 `resultRef` 不是最终值。
 start 已返回 `value.result` 时直接检查断言和持久化状态；仅在还没有返回值且存在 `resultRef` 时调用 `operation:"result"`。失败操作若源码返回了诊断也会保留结果，`status:"failed"` 和 `executionError` 仍表示原执行没有成功。读取失败保留错误，不从进度事件拼出返回值。
 
 ## 验证与证据
 
 按用户要求的结果选取本轮证据；动作回执、UI 变化、业务结果和证据覆盖分别判断，证据不足保留为 inconclusive。
+`ctx.assert` 默认要求完整来源；只对已经返回的控件值或存在性作判断时，可显式 `coverageScope:"observed"`。它保留 partial/unknown 覆盖，仍验证证据身份和新鲜度；不能把未返回项目推断为不存在。
 要保留可移交的过程文件，在 Intent/Script start 时设置新的 `recordingDir`；已有操作的保留记录可通过 `evidence` 导出。
 `evidence export` 使用原 operationId 和对应 namespace（intent/script）；包含已记录文件需 `includeRecordedPayloads:true`。保存返回的 manifestSha256，交给离线 `evidence verify`。
 归档校验只证明保留内容的完整性和覆盖范围；缺页、缺引用或已淘汰记录仍需如实报告，不能据此推断业务通过。

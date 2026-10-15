@@ -10,11 +10,11 @@ never replayed on another route. For forward cleanup, pass the exact serial and
 returned Host port to `remove-forward`. See [Android execution and evidence
 policies](docs/ANDROID_EXECUTION_POLICY.md) for diagnostics, server namespaces and recovery.
 
-This source version is the `0.4.9` candidate; final package acceptance and registry publication are pending.
+This release uses version `0.4.10`; see [changes and acceptance boundaries](docs/RELEASE.md).
 Android foreground facts and warnings are separate from action execution. Window
 formatting, mismatch or changes do not veto an explicit action or switch its target.
 The SDK and UIA executors retain exact node/reference validation and original receipts.
-This coordinated release uses `0.4.9` for the Host and device/Web SDKs. The
+This coordinated release uses `0.4.10` for the Host and device/Web SDKs. The
 existing device and Web protocols remain unchanged.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
@@ -33,6 +33,15 @@ installation and permission flows. A CLI command can start a task and a later MC
 connection can observe or decide the same operation ID. Disconnecting either
 client leaves tasks running. Use `runtime --operation status --extract null` to inspect its
 owner, `runtime --operation stop --extract null` to drain it, and task `cancel` to stop one task.
+
+Active operations now own bounded idle protection on the Host and supported selected
+devices. Inspect or explicitly control it with `power`; automatic protection can
+be disabled for sleep tests, and failure does not veto App actions. See
+[work power leases](docs/POWER_LEASES.md) for CLI examples and platform limits.
+
+Stopped Scripts expose `inventory` and `recovery` facts, including command labels
+and original action identities. Checkpoint recovery can retain independent
+recording attempts. See [Script recovery](docs/SCRIPT_AUTHORING.md).
 
 Omitted `extract` uses auto: complete results fit the budget directly or in a
 lossless compact representation; larger results include a partial preview and
@@ -53,7 +62,7 @@ Flutter expert payloads are JSON objects; Web App actions use the explicit
 
 Command domains:
 
-- `execution`: `intent`, `script`, `runtime`, `device-ownership`
+- `execution`: `intent`, `script`, `runtime`, `device-ownership`, `power`
 - `evidence`: archive export and offline verification
 
 - `core`: `status`, `tree`, `uia-tree`, `screenshot`, `logs`, `network`, `state`, `events`
@@ -70,7 +79,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # After publication; before then use a reviewed local tarball (docs/INSTALLATION.md).
-npm install -g @mobileaidev/ai-app-bridge@0.4.9
+npm install -g @mobileaidev/ai-app-bridge@0.4.10
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
@@ -406,6 +415,16 @@ real-device results do not establish complete complex-App acceptance.
 `input-text` uses the native SDK endpoint for Unicode text and returns its actual
 failure without retrying through ADB. `clear-app-data` chooses `method:"pm-clear"`
 (default) or `"runtime"` before dispatch; there is no retry through another method.
+
+Android `screenshot` captures the actual display through `adb screencap` and
+needs no UiAutomation connection or UIA handover. Use it from the Host at an
+instrumentation test's capture checkpoint, holding the page until capture
+finishes. `adb-exec` can also run ordinary ADB commands while UIA is active;
+use `uia-tree` for hierarchy reads and `tap-uia` for accessibility node clicks
+through the shared runtime. Test-thread operations can use one persistent
+`android-executor` session with Host-managed ownership. See the
+[Android execution choices](docs/OPTIONAL_EXECUTORS.md#choose-an-android-execution-path)
+for capability mappings and external test APIs that still need coordination.
 
 When `screenshot` runs without `--out-file`, the CLI writes a unique
 PNG under a git-ignored project artifact directory. Gradle, Android, and Flutter

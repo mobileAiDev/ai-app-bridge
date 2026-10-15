@@ -25,6 +25,7 @@ function createScriptHostPort({
   target = null,
   permissions,
   executionId,
+  callIdPrefix = 'call-',
 } = {}) {
   if (typeof actions !== 'function') {
     throw new TypeError('actions');
@@ -45,7 +46,7 @@ function createScriptHostPort({
 
   async function call(command, args = {}, options = {}) {
     calls += 1;
-    const callId = `call-${calls}`;
+    const callId = `${callIdPrefix}${calls}`;
     const gate = authorizeCommand(command, permissions, args);
     if (!gate.ok) {
       return { ...unavailableEnvelope({ command, error: gate.error, executionId, callId }), message: gate.message };

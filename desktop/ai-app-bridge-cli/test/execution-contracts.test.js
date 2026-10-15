@@ -64,6 +64,7 @@ test('all canonical execution operations preserve their permitted input', () => 
     ['intent', { operation: 'intervene', operationId: 'x', reason: 'Manual reconciliation required' }],
     ['intent', { operation: 'decide', operationId: 'x', decision: { decisionId: 'd', basedOnRevision: 1, agentDecision: 'complete' } }],
     ['script', { operation: 'start', script }],
+    ['script', { operation: 'start', recordingDir: '/recording', script: { ...script, policy: { restartPolicy: 'checkpoint' } } }],
     ['script', { operation: 'start', script: { ...script, language: 'python', source: 'def main(ctx): return True' }, pythonPath: '/python' }],
     ...['status', 'wait', 'pause', 'resume', 'cancel'].map(operation => ['script', { operation, operationId: 'x' }]),
     ['script', { operation: 'decide', operationId: 'x', requestId: 'r', revision: 1, decision: null }],

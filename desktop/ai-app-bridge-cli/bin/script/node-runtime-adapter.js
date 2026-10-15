@@ -149,7 +149,7 @@ function createChildRuntimeAdapter({
         ]);
         // Reads submitted together can overlap. Writes, assertions, decisions
         // and checkpoints retain their position after all preceding reads.
-        if (['assert', 'checkpoint', 'ask', 'return'].includes(message.type)
+        if (['assert', 'checkpoint', 'ask', 'return', 'recovery'].includes(message.type)
           || (message.type === 'call' && isMutationCommand(message.command, message.args))) {
           const settled = await rpc(Promise.all([...reads]));
           if (settled?.type === 'timeout') message = settled;
@@ -169,6 +169,12 @@ function createChildRuntimeAdapter({
             return { ok: false, error: 'timeout' };
           }
           channel.send({ type: 'result', id: message.id, value, control: readControl() });
+          continue;
+        }
+        if (message.type === 'recovery') {
+          const value = await rpc(waitUntilRunning().then(() => host.recovery(message.options)));
+          if (value?.type === 'timeout') { await terminate(); return { ok: false, error: 'timeout' }; }
+          channel.send({ type: 'recovery-result', id: message.id, value, control: readControl() });
           continue;
         }
         if (message.type === 'assert') {

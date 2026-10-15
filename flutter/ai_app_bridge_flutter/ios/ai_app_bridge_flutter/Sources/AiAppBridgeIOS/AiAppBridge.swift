@@ -7,9 +7,10 @@ import WebKit
 public final class AiAppBridge {
     public static let shared = AiAppBridge()
 
-    private let bridgeVersion = "0.4.9"
+    private let bridgeVersion = "0.4.10"
     private let runtimeEpoch = UUID().uuidString
     private lazy var h5Bridge = IOSH5Bridge(runtimeEpoch: runtimeEpoch)
+    private lazy var powerLeases = IOSPowerLeaseController.application()
     private let captureQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.capture")
     private let serverQueue = DispatchQueue(label: "io.github.mobileaidev.aiappbridge.ios.server")
     private let maxCapturedBodyChars = 20_000
@@ -258,12 +259,14 @@ public final class AiAppBridge {
                 self.activePort = 0
                 self.writePortState(ok: false, port: 0, error: String(describing: error))
             case .failed(let error):
+                self.runOnMain { self.powerLeases.releaseAll() }
                 self.activePort = 0
                 self.writePortState(ok: false, port: 0, error: String(describing: error))
                 listener.cancel()
                 self.listener = nil
                 self.started = false
             case .cancelled:
+                self.runOnMain { self.powerLeases.releaseAll() }
                 self.activePort = 0
                 self.writePortState(ok: false, port: 0, error: "listener_cancelled")
                 self.listener = nil
@@ -325,6 +328,17 @@ public final class AiAppBridge {
         switch (request.method, request.path) {
         case ("GET", "/v1/status"):
             runOnMain { completion(200, self.buildStatus()) }
+        case ("POST", "/v1/power"):
+            #if DEBUG
+            runOnMain {
+                guard let body = Self.parseJson(request.body) as? [String: Any] else {
+                    completion(200, ["ok": false, "error": "invalid_power_request", "message": "Supply a JSON power request."]); return
+                }
+                completion(200, self.powerLeases.control(body))
+            }
+            #else
+            completion(404, ["ok": false, "error": "debug_only"])
+            #endif
         case ("GET", "/v1/flutter/snapshot"):
             runOnMain {
                 if self.captureQueue.sync(execute: { self.flutterActionHandler != nil }) {

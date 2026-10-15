@@ -4,6 +4,9 @@
 // Their subprocesses inherit one namespace per file; production never derives
 // device ownership from a FactStore path or an individual package installation.
 if (process.env.NODE_TEST_CONTEXT && (process.argv[1] || '').endsWith('.test.js')) {
+  // Controlled peers are not physical devices. Power integration has dedicated
+  // adapter tests and real-device acceptance; ordinary fixtures opt out.
+  process.env.AI_APP_BRIDGE_POWER_AUTO = 'off';
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');

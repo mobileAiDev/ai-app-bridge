@@ -49,6 +49,9 @@ class AiAppBridge {
 
   static const MethodChannel _channel = MethodChannel('ai_app_bridge');
   static const String _baseEndpoint = 'http://127.0.0.1:18080';
+  // The Android plugin reads the same Flutter dart-define to include its SDK.
+  static const bool _profileEnabled =
+      bool.fromEnvironment('AI_APP_BRIDGE_PROFILE');
   static const int _maxDumpLength = 200000;
   static const int _maxSemanticsDepth = 24;
   static const int _maxSemanticsNodes = 600;
@@ -99,14 +102,14 @@ class AiAppBridge {
     bool captureFlutterErrors = true,
     bool captureHttpClient = true,
   }) {
-    if (!kDebugMode) {
+    if (!kDebugMode && !(kProfileMode && _profileEnabled && Platform.isAndroid)) {
       return;
     }
     if (!_enabled) _targets.reset();
     _enabled = true;
     _app = <String, Object?>{
       'name': appName,
-      'mode': 'debug',
+      'mode': kDebugMode ? 'debug' : 'profile',
       'platform': Platform.operatingSystem,
       'initializedAtMs': DateTime.now().millisecondsSinceEpoch,
     };
@@ -653,6 +656,7 @@ class AiAppBridge {
     final List<Map<String, Object?>> secureInputs = _secureInputSummaries();
     final bool hasSecureInputs = secureInputs.isNotEmpty;
     final Map<String, Object?> result = <String, Object?>{
+      'buildMode': _app['mode'],
       // Flutter's diagnostic trees include TextEditingController values even
       // when an EditableText is obscured. Suppress both raw diagnostic sources
       // while a secure input exists; the semantic and operable trees below
@@ -928,6 +932,7 @@ class AiAppBridge {
         'visitedCount': visitedCount,
         'textCount': textCount,
         'actionCount': actionCount,
+        'buildMode': _app['mode'],
         'sampleWidgetTypes': sampleWidgetTypes,
         'truncated': truncated,
         'coverage': <String, Object?>{
@@ -962,6 +967,14 @@ class AiAppBridge {
   }
 
   Object? _widgetInspectorTree() {
+    if (!kDebugMode) {
+      return <String, Object?>{
+        'ok': false,
+        'error': 'flutter_diagnostics_unavailable_in_profile',
+        'source': 'widgetInspector',
+        'reason': 'debug_build_required',
+      };
+    }
     try {
       final String raw = WidgetInspectorService.instance
           .getRootWidgetSummaryTree('ai_app_bridge');
@@ -1609,6 +1622,14 @@ class AiAppBridge {
   }
 
   Map<String, Object?> _widgetDump() {
+    if (!kDebugMode) {
+      return <String, Object?>{
+        'ok': false,
+        'error': 'flutter_diagnostics_unavailable_in_profile',
+        'source': 'widgetDump',
+        'reason': 'debug_build_required',
+      };
+    }
     try {
       final Element? rootElement = WidgetsBinding.instance.rootElement;
       if (rootElement == null) {

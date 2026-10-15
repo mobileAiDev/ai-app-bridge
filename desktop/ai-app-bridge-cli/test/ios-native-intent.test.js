@@ -96,6 +96,7 @@ test('public native iOS Intent publishes real iOS selectors and binds original a
     if (!edited.ok) throw new Error(JSON.stringify(edited));
     const observed = await ctx.call('ios-uia-tree',{feedback:'off'});
     await ctx.assert({name:'record value',condition:observed.result.source.children.some(n=>n.value==='Script record'),requiredEvidence:['tree'],evidence:observed.evidence});
+    await ctx.assert({name:'observed record value',coverageScope:'observed',condition:observed.result.source.children.some(n=>n.value==='Script record'),requiredEvidence:['tree'],evidence:observed.evidence});
   };` };
   result = await run('script', { operation: 'start', script });
   const scriptId = result.operationId;
@@ -107,7 +108,7 @@ test('public native iOS Intent publishes real iOS selectors and binds original a
   assert.equal(result.status, 'completed', JSON.stringify(result));
   // WDA supplies the observed controls but does not report whole-tree coverage.
   // The action succeeds; its read must not invent complete device evidence.
-  assert.deepEqual(result.rollingSummary.assertions, { passed: 0, failed: 0, inconclusive: 1 });
+  assert.deepEqual(result.rollingSummary.assertions, { passed: 1, failed: 0, inconclusive: 1 });
   assert.equal(h.state.tree.children.find(n => n.rawIdentifier === 'title').value, 'Script record');
   assert.deepEqual(h.state.actions.filter(a => a.operation === 'set-orientation').map(a => a.payload),
     [{ orientation: 'landscapeLeft' }, { orientation: 'portrait' }]);

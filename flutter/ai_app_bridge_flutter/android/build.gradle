@@ -1,5 +1,5 @@
 group = 'io.github.mobileaidev.aiappbridge.flutter'
-version = '0.4.9'
+version = '0.4.10'
 
 buildscript {
     ext.kotlin_version = '2.1.0'
@@ -25,6 +25,18 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
+// Flutter forwards --dart-define to Gradle as comma-separated base64 entries.
+// Keep the native dependency and Dart initialization behind the same option.
+def profileDefines = (project.findProperty('dart-defines') ?: '').split(',')
+    .findAll { !it.isEmpty() }
+    .collect { new String(it.decodeBase64(), java.nio.charset.StandardCharsets.UTF_8) }
+    .findAll { it.startsWith('AI_APP_BRIDGE_PROFILE=') }
+if (profileDefines.size() > 1 ||
+    (!profileDefines.isEmpty() && !(profileDefines[0] in ['AI_APP_BRIDGE_PROFILE=true', 'AI_APP_BRIDGE_PROFILE=false']))) {
+    throw new GradleException('AI_APP_BRIDGE_PROFILE must be specified once with true or false.')
+}
+def profileBridgeEnabled = profileDefines == ['AI_APP_BRIDGE_PROFILE=true']
+
 android {
     namespace 'io.github.mobileaidev.aiappbridge.flutter'
     compileSdk 35
@@ -45,8 +57,20 @@ android {
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
+
+    if (profileBridgeEnabled) {
+        buildTypes {
+            profile {
+                // Select debug when the SDK is supplied as a local Android project.
+                matchingFallbacks = ['debug']
+            }
+        }
+    }
 }
 
 dependencies {
-    debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.9'
+    debugImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.10'
+    if (profileBridgeEnabled) {
+        profileImplementation 'com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.10'
+    }
 }

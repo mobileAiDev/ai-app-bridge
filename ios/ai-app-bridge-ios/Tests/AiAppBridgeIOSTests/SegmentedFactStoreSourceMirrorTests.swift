@@ -69,6 +69,7 @@ final class SegmentedFactStoreSourceMirrorTests: XCTestCase {
         [
             "AiAppBridge.swift",
             "IOSRuntimeIdentity.swift",
+            "IOSPowerLeaseController.swift",
             "IOSHttpRequest.swift",
             "IOSManagedExecution.swift",
             "IOSManagedTasks.swift",
