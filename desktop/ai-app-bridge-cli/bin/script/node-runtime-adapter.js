@@ -259,7 +259,12 @@ function createChildRuntimeAdapter({
           } else {
             await finished;
             if (active && ended.code === 0 && processScope) {
-              processScope.release();
+              try { processScope.release(); }
+              catch (error) {
+                const diagnostics = { stage: 'release', code: error.code, message: error.message };
+                emit('script_failed', { error: 'script_process_scope_failed', diagnostics });
+                return { ok: false, error: 'script_process_scope_failed', diagnostics };
+              }
               processScope = null;
             }
           }

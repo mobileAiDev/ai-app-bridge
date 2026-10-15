@@ -81,3 +81,25 @@ for (const returns of [true, false]) test(`Script ${returns ? 'natural return re
   assert.equal(result.ok, returns);
   assert.deepEqual(methods, [returns ? 'release' : 'terminate']);
 });
+
+test('a failed Job release keeps its native diagnostic, cleans up and never replays the returned Script', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aab-scope-release-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const marker = path.join(directory, 'executions'), methods = [], events = [];
+  const failure = Object.assign(new Error('SetInformationJobObject for release failed (Win32 error 5).'), { code: 'windows_process_failed' });
+  const runtime = createChildRuntimeAdapter({ kind: 'javascript', executable: process.execPath, sdkFile: 'script-sdk.js', extension: '.js',
+    createProcessScope: () => ({ release() { methods.push('release'); throw failure; }, close() { methods.push('terminate'); } }) });
+  t.after(() => runtime.stop());
+  const compiled = compileScriptSpec({ schemaVersion: 'aab.code-script/v1', language: 'javascript',
+    source: `module.exports.main=()=>{require('node:fs').appendFileSync(${JSON.stringify(marker)},'once\\n');return 42;};` });
+  const result = await runtime.start({ spec: compiled.spec, host: {}, emit: (type, value) => events.push({ type, value }),
+    control: () => ({ status: 'running' }) });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'script_process_scope_failed');
+  assert.deepEqual(result.diagnostics, { stage: 'release', code: failure.code, message: failure.message });
+  assert.deepEqual(events.filter(event => event.type === 'script_failed').map(event => event.value),
+    [{ error: 'script_process_scope_failed', diagnostics: result.diagnostics }]);
+  assert.equal(events.some(event => event.type === 'script_completed'), false);
+  assert.deepEqual(methods, ['release', 'terminate']);
+  assert.equal(fs.readFileSync(marker, 'utf8'), 'once\n');
+});
