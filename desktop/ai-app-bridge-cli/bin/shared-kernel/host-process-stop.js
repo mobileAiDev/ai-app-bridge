@@ -56,8 +56,8 @@ async function stopHosts(owner, endpoint) {
     if (!identified) continue;
     try {
       if (process.platform === 'win32') {
-        // The Runtime's Job owns its descendants. Check and terminate through
-        // one kernel handle, rather than reinterpreting a PID in taskkill.
+        // Host exit closes its unfinished execution Jobs. Check and terminate
+        // through one kernel handle, rather than reinterpreting a PID in taskkill.
         if (!require('@mobileaidev/segmented-fact-store-native').windowsTerminateProcess(item.pid, info.start)) continue;
       }
       else if (info.group === item.pid) process.kill(-item.pid, 'SIGKILL');
