@@ -33,6 +33,7 @@ shared Runtime: an older client should be upgraded without stopping a newer owne
 | Host runtime | Node >=26.3.0 <27; validation baseline 26.3.0 |
 | macOS Host | arm64 or x64, macOS 13.5+ |
 | Linux Host | arm64 or x64, glibc 2.28+, kernel 4.18+; Node's libstdc++ and libatomic runtime requirements |
+| Windows Host | x64, Node's Windows 10 / Server 2016 or newer baseline; validated on Windows Server 2022 CI |
 | Native store | Bundled Node-API 8 addon selected by OS/architecture/libc, checksum checked; no compiler/Python during normal install |
 | JS/regex extraction and ordinary commands | No Python interpreter needed |
 | Python Script/extraction | Python 3.9+; optionally set AI_APP_BRIDGE_PYTHON |
@@ -41,9 +42,11 @@ shared Runtime: an older client should be upgraded without stopping a newer owne
 | Web providers | Browser/App connection required by the selected provider |
 
 The Node OS/library baseline follows [Node 26.3.0 build/platform requirements](https://github.com/nodejs/node/blob/v26.3.0/BUILDING.md#platform-list).
-It does not imply validation on every later OS or Node minor release. Native
-Windows, musl/Alpine and other architectures are outside this native Host matrix;
-the POSIX store does not acquire Windows support from a sample cmd.exe config.
+It does not imply validation on every later OS or Node minor release. Windows
+ARM64, musl/Alpine and other architectures are outside this native Host matrix.
+Windows uses its own verified native store and process-lifetime implementation.
+Windows power API/lifetime checks passed on CI; physical display and sleep
+behavior on the user's Windows computer remains deferred.
 WDA 14.1.1 is installed as an npm dependency on all platforms, but preparation
 and execution use macOS. No split WDA package is required for basic MCP use.
 

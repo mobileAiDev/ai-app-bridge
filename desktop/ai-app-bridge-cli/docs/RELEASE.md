@@ -1,9 +1,8 @@
-# 0.4.14 coordinated release candidate
+# 0.4.14 coordinated release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.14 together. This candidate adds Windows x64 Host implementation and repairs
-Host process lifetimes. The public release is still 0.4.13 until the remaining
-Windows cancellation check passes and the new public artifacts are verified.
+0.4.14 together. This release adds Windows x64 Host implementation and repairs
+Host process lifetimes.
 Linux and Intel Mac were already supported in 0.4.13; their checks are regressions.
 
 ## Changes
@@ -26,7 +25,9 @@ Linux and Intel Mac were already supported in 0.4.13; their checks are regressio
   after a nonzero exit. Script release requires a returned result and normal SDK
   exit. Independent controllers survive long enough to persist their result.
 - Check the process creation identity through the same handle used for a forced
-  stop. Keep original scope-release errors in diagnostics without replaying work.
+  stop. On cancellation, seal the owned Job against new children and wait for its
+  process handles to signal before reporting cleanup complete. Keep original
+  cleanup errors alongside the command's primary failure without replaying work.
 - Finish and send a Runtime stop reply before closing outstanding connections,
   so an idle request cannot keep the stopped process alive.
 - Mirror the C platform header into the iOS, Flutter and WDA source packages.
@@ -36,12 +37,13 @@ Linux and Intel Mac were already supported in 0.4.13; their checks are regressio
 
 ## Validation and limits
 
-The candidate has passed native format/recovery/golden tests and actual installed
-package checks on Windows x64, macOS arm64/x64 and Linux glibc arm64/x64. The
-latest Windows Host run passed 177 cases and failed one cancellation-cleanup
-case, with two skips. That remaining failure blocks release; a successful
-package install does not replace it. Detailed results, prior failures and source
-identities are recorded in
+Native format/recovery/golden tests and actual installed package checks passed
+on Windows x64, macOS arm64/x64 and Linux glibc arm64/x64. The final Windows Host
+run passed 206 cases, failed none and skipped two POSIX-only cases. Cancellation
+passed 20 immediate-completion repetitions and three nested-process stress
+repetitions. Intel Mac and both Linux targets each passed 369 shared Host checks,
+failed none and skipped one platform-specific case. Detailed results, prior
+failures and source identities are recorded in
 `docs/WINDOWS_HOST_VALIDATION_2026-10-15.md`.
 
 Windows power API and lease lifetime tests run on a Windows CI runner. Physical

@@ -39,7 +39,7 @@ CLI 与 MCP 共用独立的本地执行 Runtime 和命令合同。Intent、Scrip
 
 `0.4.6` 统一 CLI、Android SDK/plugin、Flutter、Web 和 iOS 源码版本，重点改善效率、能力和故障恢复。Script 默认支持全部注册命令，独立读取可并行；Intent 支持调用 Bridge 命令、Script 和子 Intent。省略 extract 时优先完整或无损压缩返回。前台与历史恢复诊断交给 agent 决策，同时保留真实目标、执行回执和未知结果。详见[全项目审查及验证](docs/AGENT_CHOICE_AUDIT_2026-10-12.md)与[命令合同](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md)。
 
-当前源码和安装示例目标版本为统一的 `0.4.14`。详见[审查与验收范围](docs/OPTIMIZATION_EXECUTION_2026-10-15.md)、[发行变化](desktop/ai-app-bridge-cli/docs/RELEASE.md)和[上一公开版本制品核验](docs/RELEASE_VERIFICATION_0.4.13_2026-10-15.md)。
+当前源码和安装示例目标版本为统一的 `0.4.14`。详见[审查与验收范围](docs/OPTIMIZATION_EXECUTION_2026-10-15.md)、[发行变化](desktop/ai-app-bridge-cli/docs/RELEASE.md)和[制品核验与发布进度](docs/RELEASE_VERIFICATION_0.4.14_2026-10-15.md)。
 
 ## 解决的问题
 

@@ -74,17 +74,50 @@ The isolated `codex/windows-host-validation` candidate implements the native
 platform boundary, Windows Host file/process operations and command shims.
 Actual Windows CI has now passed native compilation, 17 Node storage cases,
 the C suite, golden-format parity and all nine fresh-package installation checks.
-The latest Host run passed 177 cases, failed one cancellation-cleanup case and
-skipped two. ADB service lifetime and the completed-service/Host-death comparison
-passed. The candidate is still under correction and has not replaced the
-installed 0.4.13. Existing Intel Mac/Linux targets passed their regression matrix;
-they are not newly added platforms. See the source-specific gates and failures in
+An intermediate Host run passed 177 cases, failed one cancellation-cleanup case
+and skipped two. A focused diagnostic then reproduced early cancellation return
+in 7 of 20 repeats: Job accounting reached zero before the original process
+handle was signaled. These failures and the earlier build/lifetime failures
+remain recorded in
 [Windows Host validation](WINDOWS_HOST_VALIDATION_2026-10-15.md).
 
-Retain the existing Windows power implementation and the tested process-exit
-diagnostic repair. Treat the missing Windows Host installation/runtime support
-as open acceptance work, not merely an untested device checkbox. Do not
-publish or report complete Windows support while the cancellation gate fails.
+The final software gates now pass at
+`6187bb57a389aeab37b4ec4e2a4c5a5c28cb9621`:
+
+- [Windows run 38734283036](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38734283036):
+  **206 passed, 0 failed, 2 POSIX signal-fixture skips**. All 20 immediate
+  cancellation checks and three concurrent nested-Job checks (23/24/25 recorded
+  members) passed. Other tasks and completed daemons retain their original
+  identities. The independent stop controller and real isolated-port ADB
+  lifecycle passed.
+- [Existing POSIX targets run 38734289532](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38734289532):
+  darwin-x64, linux-x64-glibc and linux-arm64-glibc each passed **369 Host cases,
+  0 failed, 1 platform skip**, native 17, C/golden and nine clean-install checks.
+  These are regressions of already published targets, not additional platform
+  expansion. Windows also passed native 17, C/golden and the nine installed
+  0.4.14 CLI/MCP/Script/recovery checks without invoking a compiler.
+
+The cancellation implementation waits for real process handles with one shared
+deadline, prevents new associations only while closing that Job, and preserves
+cleanup diagnostics instead of losing them behind an earlier error. Normal
+completion still releases the tool's managed daemon. The final actual Windows
+artifact is imported, with SHA-256
+`50c6f2196be218c277939060e6c97cf6e644fd5c999938f1a97320c72adcc49b`.
+Its process source hash is
+`307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef`;
+all seven native source hashes and five binary hashes are recorded in the
+validation document and match the release manifest. The evidence index is
+`ai-app-bridge-release-evidence/windows-closeout-2026-10-15/ci/verified-final-artifacts-6187bb5.json`,
+with the subsequent import recorded in `ci/windows-prebuild-import-6187bb5.json`.
+
+The win32-x64 installation/runtime software acceptance is therefore complete
+for the coordinated 0.4.14 candidate. The actual PowerShell API and persistent
+work-lease tests passed on Windows CI, including system/display/both modes,
+renewal, deadline, EOF, overlapping leases and worker death. **Physical Windows
+display/system idle prevention and restoration remain untested**, as the user
+explicitly deferred that check. Publication and local upgrades remain separate
+release work; this acceptance must not be presented as a completed physical
+Windows power test or support for untested Windows architectures.
 
 The API's scope is idle system/display prevention; explicit manual sleep and
 screen savers remain outside its guarantees, as documented by

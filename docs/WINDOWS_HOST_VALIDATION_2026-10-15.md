@@ -2,8 +2,11 @@
 
 This work follows the remaining implementation requirement in
 [the Windows support plan](WINDOWS_HOST_SUPPORT_PLAN_2026-10-15.md).
-It is isolated on `codex/windows-host-validation`. Public 0.4.13, `main`,
-installed consumer dependencies and the shared production Runtime are unchanged.
+The experiments began on `codex/windows-host-validation`, leaving public
+0.4.13, installed consumers and the shared production Runtime unchanged during
+acceptance. Final software evidence covers the coordinated 0.4.14 candidate at
+`6187bb57a389aeab37b4ec4e2a4c5a5c28cb9621`; publication and local upgrades are
+separate release steps.
 
 ## Candidate scope
 
@@ -50,11 +53,11 @@ Evidence roots are sibling directories
 | macOS SDK source mirror | Swift suite: 82 passed; canonical C source and private platform header are mirrored into iOS/Flutter/WDA packaging. |
 | Test-fixture maintenance | Swift/Flutter acceptance-count and action-phase assertions corrected with original red evidence retained; each full suite passed 82 cases. |
 | Fresh installed package on macOS | Actual prebuilt installation, CLI/MCP continuation, JS/Python, checkpoint/recording recovery and cancellation passed. This is not Windows evidence. |
-| Windows native build | Run 38729796010 compiled with MSVC; its binary and all seven source hashes match the uploaded manifest and installed package. The verified candidate binary has not yet been imported into the release tree. |
-| Windows native format/recovery | Run 38729796010 passed all 17 Node cases, the C suite and byte-for-byte golden parity. |
-| Windows Runtime/process/power | Run 38729796010: 177 passed, one failed, two skipped. Actual ADB and the completed-service/Host-death comparison passed. Cancellation still returned while an owned process was reported live; this remains a release blocker. |
-| Windows fresh installed package | Run 38729796010 passed all nine checks against the installed 248-file package in 18.013 seconds, with build tools disabled and no remaining test Runtime. |
-| Existing Intel Mac and Linux targets | Run 38727503505 passed on darwin-x64, linux-x64-glibc and linux-arm64-glibc. Each passed native 17, C/golden, 365 Host tests (one platform skip) and all nine installation checks. Seven native source hashes match the current tree. These are regressions of targets already shipped in 0.4.13. |
+| Windows native build | Final run 38734283036 compiled the current source with MSVC; its binary and all seven source hashes match the manifest and installed package. The exact verified win32-x64 binary is now imported into the release tree. |
+| Windows native format/recovery | Final run 38734283036 passed all 17 Node cases, the C suite and byte-for-byte golden parity. |
+| Windows Runtime/process/power | Final run 38734283036: 206 passed, zero failed, two POSIX signal-fixture skips. All 20 immediate cancellation checks and three nested concurrent-spawn checks passed, alongside real ADB, independent controllers and native power-worker tests. |
+| Windows fresh installed package | Final run 38734283036 passed all nine checks against the installed 248-file 0.4.14 package in 14.361 seconds, with build tools disabled and no remaining test Runtime. |
+| Existing Intel Mac and Linux targets | Final run 38734289532 passed on darwin-x64, linux-x64-glibc and linux-arm64-glibc at the same source revision. Each passed native 17, C/golden, 369 Host cases with zero failures and one platform skip, plus all nine installation checks. These are regressions of targets already shipped in 0.4.13. |
 | Physical Windows display/system sleep | Deferred by the user; CI cannot establish physical sleep behavior. |
 
 The first Windows run is
@@ -84,12 +87,14 @@ are not enabled.
 
 The fourth Windows run,
 [38729796010](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38729796010),
-tests commit `cae2137570c33378e34e22ed57950f8b055adf7e`. It reproduces the old
+tests commit `cae2137570c33378e34e22ed57950f8b055adf7e`: 177 Host cases passed,
+one cancellation case failed and two were skipped. Its fresh 248-file package
+passed nine checks in 18.013 seconds. It reproduces the old
 failure using the two production files from `c5777d5`, then restores their exact
 candidate bytes. In the old control, completed command/JavaScript/Python daemons
 die with the Host while an independent process survives; in the candidate all
 four retain their original process identities. The real ADB server test also
-passes. This comparison does not close the separate cancellation failure in
+passes. At that revision, this comparison did not close the separate cancellation failure in
 `windows-command.integration.test.js`. The failing run and all logs are retained
 in `ci/verified-artifacts-38729796010.json` under the evidence root.
 
@@ -102,14 +107,90 @@ the independent command remained alive. No native cleanup error was returned.
 This identifies a completion-order problem rather than PID reuse: Job accounting
 reported zero active members before every process object was signaled. The
 immediate assertion remains strict; tail observations do not turn failures into
-passes. The corrective process-handle synchronization still requires real
-Windows validation.
+passes. The corrective process-handle synchronization therefore required a new
+real Windows run, recorded below. These failed runs remain part of the evidence.
+
+## Final source-specific acceptance
+
+Both final runs test `6187bb57a389aeab37b4ec4e2a4c5a5c28cb9621`:
+[Windows 38734283036](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38734283036)
+and [existing POSIX targets 38734289532](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38734289532).
+Windows ran on x64 Windows Server 2022 (10.0.20348), Node 26.3.0 and MSVC
+19.44.35229.0. This validates win32-x64, not untested Windows architectures.
+The earlier POSIX run 38727503505 passed 365 Host cases per target; the final
+run repeats acceptance with the rebuilt artifacts and 369 passing cases each.
+
+The cancellation correction seals only a cancelling Job against new process
+associations, opens and verifies its member process handles, then waits for
+those actual handles to become signaled. Its shared deadline covers the entire
+wait. It closes its handles before checking final Job accounting. Snapshot
+failures still request termination of the owned Job and remain explicit errors;
+they do not become a successful cancellation. Normal completion still releases
+the Job without terminating independently managed daemons. Cleanup errors are
+retained in `details.cleanup`, including after output overflow or cancellation.
+
+All 20 ordinary cancellation cases show both selected original processes gone
+at callback completion, the other command's two identities unchanged and no
+cleanup error. The three nested-Job cases recorded 23, 24 and 25 members, with
+continued spawn attempts before cancellation: every recorded member had exited
+at return and no later effects appeared. The original immediate assertions were
+not weakened to wait for late cleanup.
+
+The same final run reproduces the old daemon-loss fault using the fixed old
+production sources and then restores the exact candidate bytes. The candidate
+preserves completed command, JavaScript and Python daemons plus an independent
+process after Host death, while unfinished trees terminate. Real SDK ADB keeps
+the same isolated-port server across completed commands. Independent Runtime
+stop controllers finish their receipts; normal stop delivers its response and
+closes incomplete HTTP connections while retaining original Script records.
+
+Clean installed-package checks cover shared CLI/MCP Runtime identity, Unicode
+Python, disconnect continuation, `askAgent`, original-operation checkpoint
+recovery with one recorded effect, cancellation and final Runtime cleanup. The
+PowerShell tests execute the native system/display/both API modes, same-thread
+release, renewal, deadline, EOF, overlapping leases and worker death. Physical
+Windows display/system idle-prevention and restoration remain **not tested**.
+
+The evidence index is `ci/verified-final-artifacts-6187bb5.json`; actual Windows
+import is recorded separately in `ci/windows-prebuild-import-6187bb5.json`.
+Process records are in `runtime/cancellation-acceptance.json`. The verification
+index precedes import and retains its original `imported: false` snapshot.
+
+### Source and artifact identity
+
+All five native manifest entries share these source hashes, verified against
+the tested commit and current files under `native/segmented-fact-store/`:
+
+| Source | SHA-256 |
+| --- | --- |
+| `binding.gyp` | `5c60f9923fe95d63f906a6410677247844725ccd0566a3a38ec37eddac13e38e` |
+| `include/sfs.h` | `90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7` |
+| `src/sfs.c` | `9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14` |
+| `src/sfs_platform.h` | `e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d` |
+| `bindings/node/sfs_node.c` | `b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380` |
+| `bindings/node/windows_process.c` | `307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef` |
+| `bindings/node/windows_process.h` | `e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526` |
+
+These are the SHA-256 values of the actual `segmented_fact_store.node` files,
+not merely names of build targets. CI verifies installed-package parity for
+Windows and the three POSIX matrix targets; darwin-arm64 has the local native
+17-case result in `integration/final-source-mac-native.log`.
+
+| Target | Binary SHA-256 |
+| --- | --- |
+| `win32-x64` | `50c6f2196be218c277939060e6c97cf6e644fd5c999938f1a97320c72adcc49b` |
+| `darwin-arm64` | `4b6ff599a7a120f30c84d3b27072549c0c6c08fde668f246e1664411f912cf4c` |
+| `darwin-x64` | `5a5e5c1c30e498b12bc183958032be1dbef34121d6119a591adfe5456b6d5760` |
+| `linux-arm64-glibc` | `21b5e4e1264e32b71e1d991b39d8423c2fbc43d3fe06ab02260a51aaf38cb6e3` |
+| `linux-x64-glibc` | `1d86ca1a3ba15716b853ff1fe58c9d8dacdfe4fb9bc1cf87815bf906ebd34b34` |
 
 ## Release boundary
 
 The coordinated 0.4.13 release and local upgrade are complete as recorded in
 [the release verification](RELEASE_VERIFICATION_0.4.13_2026-10-15.md).
-Windows support is separate pending implementation/acceptance work. This
-candidate makes no new whole-App speed claim and is not a replacement for
-physical Android/iOS or complex-App acceptance. Update the support matrix and
-ship a new coordinated version only after the applicable software gates pass.
+The win32-x64 software gates for coordinated 0.4.14 are now complete, including
+the exact imported prebuild. Windows physical sleep validation remains deferred
+by the user and must remain marked pending in release materials. This candidate
+makes no new whole-App speed claim and does not replace physical Android/iOS or
+complex-App acceptance. Publication and local upgrades require their own release
+verification; passing these gates alone does not claim they have happened.

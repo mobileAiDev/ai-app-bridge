@@ -136,11 +136,16 @@ P13合批、P09缓存协议、W02完整连接并发、O10通用探索导出和R0
 
 0.4.13 发布升级完成时，Windows 正常 CLI 的原生 FactStore 与 Host 支持尚未
 实现；用户延期的是 Windows 实机验证。随后隔离的 0.4.14 候选已实现平台层，
-通过真实 Windows native、格式恢复及干净安装检查，但最新 Host 回归仍有一项
-取消清理失败，必须修复后才能发布。已有 Intel Mac/Linux 目标的回归全部通过，
-本轮没有新增这两个平台。详见 [Windows 验证](WINDOWS_HOST_VALIDATION_2026-10-15.md)。
+并修复实际 CI 暴露的进程生命周期与取消完成竞争。最终 Windows Host 206 项
+通过、0 失败、2 项 POSIX 专属跳过；20 轮取消及 3 轮多层进程压力验证通过。
+真实 Windows native、格式恢复及干净安装检查通过，五平台源码和二进制哈希
+一致。已有 Intel Mac/Linux 三目标各 369 项共享 Host 检查通过，本轮没有新增
+这两个平台。Windows 实机显示/休眠仍待后补。详见
+[Windows 验证](WINDOWS_HOST_VALIDATION_2026-10-15.md)及
+[0.4.14 发布进度](RELEASE_VERIFICATION_0.4.14_2026-10-15.md)。
 
 Swift/Flutter 两组错误测试前提的修正已进入候选源码，分别保留接受记录、持久化
 序号与实际触摸阶段断言；本轮两个套件各通过 82 项。SDK 新私有平台头的最终
-打包消费仍按本版门槛核验。Android 远程五秒等待超时的实际原因仍为 UNKNOWN。
+打包消费已通过本地 SwiftPM 和 Flutter 导出 CocoaPods 构建，公共包消费仍按
+本版发布门槛核验。Android 远程五秒等待超时的实际原因仍为 UNKNOWN。
 这些维护项、Windows 实现工作和前述未成熟实验各自保留，不能用发布成功替代验收。

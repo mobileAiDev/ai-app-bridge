@@ -58,6 +58,28 @@
       "minGlibc": "2.28",
       "minSystem": "Linux glibc 2.28",
       "compiler": "zig cc 0.15.2, -O2 -target *-linux-gnu.2.28"
+    },
+    "win32-x64": {
+      "sha256": "50c6f2196be218c277939060e6c97cf6e644fd5c999938f1a97320c72adcc49b",
+      "minSystem": "Windows 10 x64",
+      "sourceBuild": true,
+      "sourceSha256": {
+        "binding.gyp": "5c60f9923fe95d63f906a6410677247844725ccd0566a3a38ec37eddac13e38e",
+        "include/sfs.h": "90f7249662a6768a46dc1760aaf69fd8a1ba94b1694a23c790321c9339073ab7",
+        "src/sfs.c": "9dfe2752d58a243f66ec220096e9ba84f8ff371201bf9b1e84dd63787ac79c14",
+        "src/sfs_platform.h": "e8d220aba32a15bbcee3ce8a6fdb1a620833f4458be43812de319c189594262d",
+        "bindings/node/sfs_node.c": "b8593c6f3e3e73c137bd6727e0e4da78debf6857c39615c5edad57a68d887380",
+        "bindings/node/windows_process.c": "307b8d8f9638f554b2ec17d29e2f551d54c2964e426e897041f27bd5842be7ef",
+        "bindings/node/windows_process.h": "e8d26287a70321daf86191ba3a0c7a6146b5faecce9ec3030a9db6a1ecf7a526"
+      },
+      "buildHost": {
+        "platform": "win32",
+        "arch": "x64",
+        "release": "10.0.20348",
+        "node": "26.3.0",
+        "napi": 10
+      },
+      "compiler": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe 19.44.35229.0"
     }
   }
 }
