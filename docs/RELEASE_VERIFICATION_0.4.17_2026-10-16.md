@@ -34,13 +34,77 @@ no extra I/O. No production evidence-integrity check was removed for these tests
 
 ## Publication
 
-Prepublication checks above are complete. Public tag, Maven, npm, Pub and GitHub
-verification will be recorded here after publication; no registry success is
-inferred from local builds. The native FactStore binaries, Node-API 8, disk format
-and WDA upstream version are unchanged. Windows physical sleep, physical iOS,
-UIA refs retained longer than 60 seconds on a phone, and POS business acceptance
-are not newly established by this release.
+Published source is immutable tag `0.4.17`, commit
+`2cbe03a785c843acb198e88e0640074b5f9fc74d`, including power commit `6ac2e1c`.
+All public channels and local upgrade checks below are complete.
+
+- JitPack built the exact tagged commit. All eight modules' 16 POM/AAR/JAR
+  artifacts and both relocated Gradle plugin markers are public HTTP 200.
+  Coordinates and internal dependencies are 0.4.17; all 341 class hashes match
+  the local reference build.
+- npm CLI and Web archives were downloaded anonymously and match the frozen
+  archives byte for byte. Both `latest` and `next` are 0.4.17. CLI SHA-256 is
+  `3e753e4e2296f924ff99a705ae3425f485f6175f897cb5d9849e9b1b1189a270`;
+  Web is `b636186580e21e9ceb4bbbaadcc16abb627fb2883028b03d62d522d24221a132`.
+- Both Pub packages are public at 0.4.17. Their 61/6 archive files match the
+  frozen exports. A hosted consumer resolves both from pub.dev, its lock hashes
+  match those public archives, and Flutter analysis passes. The first consumer
+  resolution saw a cached 0.4.16 version list; refreshing that metadata resolved
+  the published version without changing its dependency constraints.
+- A fresh public SwiftPM consumer resolves exact 0.4.17 to the tagged commit;
+  its unsigned generic iOS build passes and source hashes match the frozen SDK.
+- The [GitHub release](https://github.com/mobileAiDev/ai-app-bridge/releases/tag/0.4.17)
+  is public and latest. Both downloadable npm archives and SHA256SUMS match
+  the frozen files.
+- [Linux x64/arm64 and Intel macOS CI](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38876855013)
+  passes. [Windows CI](https://github.com/mobileAiDev/ai-app-bridge/actions/runs/38876859250)
+  passes on an unchanged second attempt. The first attempt failed only in the
+  temporary-directory cleanup hook with EPERM after the assertions completed;
+  that initial failure log is retained.
+
+## Installed and resident verification
+
+The global CLI was installed from npm at 0.4.17; all 250 archive files match the
+public tarball. The installed skill matches its packaged source. The user
+explicitly authorized interruption of shared work for this upgrade. The old
+Runtime was stopped, and old MCP processes were reconnected to the new package.
+
+The actual Codex MCP reports Runtime 0.4.17 and `compatible:true` with the
+original differing configuration fingerprints (`e23f4f8c…` versus `2fdd4eae…`).
+An actual MCP Script completes a Runtime query with that same compatible
+version. All 410 pre-upgrade retained Script IDs remain queryable in inventory;
+the verification Script adds one new ID. Original operations were not replayed.
+
+The OPPO UIA executor was explicitly restarted to load the rebuilt bundle.
+Actual MCP UIA observation then reports complete source coverage, with its
+20-node projection intentionally limited by maxNodes. A 1080×2414 display
+screenshot also succeeds. K2's separate sample returned no accessible windows
+and an Android power-worker failure; it is not claimed as device acceptance.
+
+## Common consumer projects
+
+Seven dependency references were updated to public 0.4.17 across POS, Reader,
+the current Duo `clone-master` checkout, and MeasureDevice. All seven
+resolution/build checks pass, producing six debug APKs:
+
+- POS `sitDebug`;
+- Reader and Duo `debug`;
+- MeasureDevice app and receiver `debug`;
+- MeasureDevice protocol-lab `debug`.
+
+All eight resolved Bridge dependency occurrences match the public artifact
+hashes. The Bridge Web smoke consumer also installs public 0.4.17 and passes its
+load check. Consumer heads, branches, staged patches and unrelated dirty or
+untracked files remain unchanged. These dependency updates remain in the
+consumer working trees; no consumer APK was installed and no business-flow
+acceptance is inferred from compilation. The previous Duo worktree path no
+longer exists; the current checkout was inspected before editing.
+
+The native FactStore binaries, Node-API 8, disk format and WDA upstream version
+are unchanged. Windows physical sleep, physical iOS, UIA refs retained longer
+than 60 seconds on a phone, and POS business acceptance are not newly established
+by this release.
 
 Detailed logs and frozen package evidence are under the local release-evidence
-folder `0.4.17-2026-10-16`, adjacent to the repository. Public artifact identities
-and installed/resident versions must be checked separately during closeout.
+folder `0.4.17-2026-10-16`, adjacent to the repository. Public artifacts,
+installed files and resident execution were verified separately.
