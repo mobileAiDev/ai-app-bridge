@@ -57,8 +57,6 @@ function runtimeLocation() {
 }
 
 function runtimeIdentity(location = runtimeLocation()) {
-  if (fingerprintError) throw new CommandError('client_installation_invalid', 'The client cannot verify its installed runtime dependencies. Use doctor to inspect the installation.',
-    { details: { cause: fingerprintError.message } });
   const names = ['AI_APP_BRIDGE_ADB_TIMEOUT_MS', 'AI_APP_BRIDGE_DEVICECTL', 'AI_APP_BRIDGE_FACT_CACHE',
     'AI_APP_BRIDGE_IOS_TEAM_ID', 'AI_APP_BRIDGE_PYTHON', 'AI_APP_BRIDGE_EXECUTOR_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'DEVELOPMENT_TEAM', 'DEVELOPER_DIR', 'XCODEBUILD'];
   const config = { facts: location.facts, profile: location.profile, ownership: canonicalPath(ownershipDirectory()),
@@ -66,30 +64,29 @@ function runtimeIdentity(location = runtimeLocation()) {
     adbServerSocket: require('./shared-kernel/android-adb-route').adbServerSocket(),
     environment: Object.fromEntries(names.map(name => [name, process.env[name] ?? null])) };
   return { protocol, code: fingerprint, config: createHash('sha256').update(JSON.stringify(config)).digest('hex'),
+    providers: { adb: config.adb, adbServerSocket: config.adbServerSocket, ownership: config.ownership },
+    requestedProviders: { ...(process.env.ADB ? { adb: config.adb } : {}),
+      ...(['ADB_SERVER_SOCKET', 'ANDROID_ADB_SERVER_ADDRESS', 'ANDROID_ADB_SERVER_PORT'].some(name => process.env[name])
+        ? { adbServerSocket: config.adbServerSocket } : {}) },
+    ...(fingerprintError ? { installationDiagnostic: { code: 'client_installation_invalid', message: fingerprintError.message } } : {}),
     version: packageVersion, node: { version: process.versions.node, modules: process.versions.modules, napi: process.versions.napi } };
 }
 
+// The wire protocol is the compatibility boundary. Build/config fingerprints
+// describe the processes; they cannot prove that a supported request will fail.
 function requireCompatible(status, client) {
   const runtime = status.identity;
-  const codeMismatch = runtime?.code !== client?.code;
-  const configMismatch = runtime?.config !== client?.config;
-  if (!codeMismatch && !configMismatch) return;
-  const parse = version => typeof version === 'string' && /^\d+\.\d+\.\d+$/.test(version) ? version.split('.').map(Number) : null;
-  const runtimeVersion = parse(runtime?.version), clientVersion = parse(client?.version);
-  let outdatedSide = 'undetermined';
-  if (runtimeVersion && clientVersion) {
-    const index = runtimeVersion.findIndex((part, i) => part !== clientVersion[i]);
-    if (index >= 0) outdatedSide = runtimeVersion[index] < clientVersion[index] ? 'runtime' : 'client';
-  }
-  const describe = identity => `package ${identity?.version ?? 'unknown'}, Node ${identity?.node?.version ?? 'unknown'}, ABI ${identity?.node?.modules ?? 'unknown'}, code ${identity?.code ?? 'unknown'}, config ${identity?.config ?? 'unknown'}`;
-  let next;
-  if (!codeMismatch) next = 'Use matching persistent/provider configuration; the running Runtime was not restarted.';
-  else if (outdatedSide === 'client') next = 'The client package is older. Update and reconnect the client; do not stop the newer Runtime to fix this client.';
-  else if (outdatedSide === 'runtime') next = 'The Runtime package is older. Finish its active tasks, then explicitly run runtime --operation stop --extract null and reconnect with the updated installation. If a device task is stuck, device-ownership --operation force-stop --serial <serial> --extract null forcibly stops old tasks and resets occupancy.';
-  else next = 'Builds or Node environments differ. Align the installations and reconnect; fingerprints alone cannot identify an older side.';
-  throw new CommandError(codeMismatch ? 'runtime_code_mismatch' : 'runtime_configuration_mismatch',
-    `Client: ${describe(client)}. Runtime: ${describe(runtime)}. ${next}`,
-    { details: { runtimeId: status.runtimeId, pid: status.pid, client, runtime, outdatedSide } });
+  if (runtime?.protocol !== protocol || client?.protocol !== protocol)
+    throw new CommandError('runtime_protocol_error', 'Client and Runtime must support the same wire protocol.',
+      { details: { runtime: runtime?.protocol, client: client?.protocol } });
+  const warnings = [];
+  for (const field of ['code', 'config']) if (runtime[field] !== client[field]) warnings.push({
+    code: field === 'code' ? 'runtime_code_differs' : 'runtime_configuration_differs',
+    message: 'The request uses the running Runtime implementation and settings.',
+    field, client: client[field] ?? null, runtime: runtime[field] ?? null,
+  });
+  if (client.installationDiagnostic) warnings.push(client.installationDiagnostic);
+  return warnings;
 }
 
 function prepareDirectory(location) {
@@ -148,6 +145,7 @@ function readRuntimeOwner(location) {
   catch { throw new CommandError('runtime_owner_invalid', 'The independent runtime owner record is invalid.'); }
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.protocol !== protocol || typeof value.runtimeId !== 'string' || !value.runtimeId
     || !Number.isSafeInteger(value.pid) || value.pid < 1 || typeof value.processStart !== 'string' || !value.processStart
+    || (value.ownership !== undefined && (typeof value.ownership !== 'string' || !path.isAbsolute(value.ownership)))
     || value.facts !== location.facts) throw new CommandError('runtime_owner_invalid', 'The independent runtime owner identity is invalid.');
   return value;
 }

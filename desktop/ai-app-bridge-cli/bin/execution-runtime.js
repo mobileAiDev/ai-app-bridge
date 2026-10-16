@@ -21,8 +21,9 @@ async function start() {
   let identity, host;
   try {
     archiveRuntimeRecords(location, 'restart');
-    publishRuntimeOwner(location, { protocol, runtimeId, pid: process.pid, processStart, startedAtMs, facts: location.facts });
     identity = runtimeIdentity(location);
+    publishRuntimeOwner(location, { protocol, runtimeId, pid: process.pid, processStart, startedAtMs, facts: location.facts,
+      ownership: identity.providers.ownership });
     host = require('./execution-host');
   } catch (error) { owner.close(); throw error; }
   const token = randomBytes(32).toString('hex');
@@ -71,16 +72,13 @@ async function start() {
       }
       if (message.method !== 'execute') throw new CommandError('runtime_protocol_error', 'Unknown runtime method.');
       if (phase !== 'running') throw new CommandError('runtime_stopping', 'The runtime is stopping.');
-      require('./runtime-directory').requireCompatible({ identity, runtimeId, pid: process.pid }, message.identity);
-      let validDirectory = false;
-      if (typeof message.cwd === 'string' && path.isAbsolute(message.cwd)) {
-        try { validDirectory = fs.statSync(message.cwd).isDirectory(); }
-        catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
-      }
-      if (!validDirectory) throw new CommandError('invalid_request_directory', 'The request working directory must exist and be absolute.', { field: 'cwd' });
+      const warnings = require('./runtime-directory').requireCompatible({ identity, runtimeId, pid: process.pid }, message.identity);
+      if (typeof message.cwd !== 'string' || !path.isAbsolute(message.cwd))
+        throw new CommandError('invalid_request_directory', 'The request working directory must be absolute.', { field: 'cwd' });
       // Closing this HTTP connection never cancels the admitted work. Its
       // original runtime, deadline and explicit cancel operation own settlement.
-      send(await inRequestDirectory(message.cwd, () => host.run(message.arguments)));
+      const reply = await inRequestDirectory(message.cwd, () => host.run(message.arguments), { runtime: identity, client: message.identity, runtimeId, warnings });
+      send(reply);
     } catch (error) { send(failure(error)); }
   });
   server.requestTimeout = 30000;

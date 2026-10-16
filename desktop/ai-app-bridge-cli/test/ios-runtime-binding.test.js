@@ -86,9 +86,8 @@ test('container-selected endpoint and UDID resolve to the canonical device witho
   assert.equal(h.device.calls()[1][4], 'iphone-wire');
 });
 
-test('explicit endpoints cannot bypass device readiness, identity, or descriptor validation', async t => {
+test('explicit endpoints still validate device identity and the live descriptor', async t => {
   const cases = [
-    ['unavailable', { device: { deviceProperties: { developerModeStatus: 'enabled', ddiServicesAvailable: true }, connectionProperties: { tunnelState: 'unavailable' } } }, 'ios_tunnel_unavailable'],
     ['missing descriptor', { absent: true }, 'ios_runtime_descriptor_absent'],
     ['malformed descriptor', { rawDescriptor: '{broken' }, 'invalid_ios_runtime_descriptor'],
     ['oversized descriptor', { rawDescriptor: 'x'.repeat(4097) }, 'invalid_ios_runtime_descriptor'],
@@ -241,4 +240,15 @@ test('lost control response retains ambiguity after HTTP cancellation', async t 
   assert.equal(result.dispatched, null);
   assert.equal(result.ambiguous, true);
   await disconnected;
+});
+
+
+test('stale developer-service flags do not block a valid explicitly bound endpoint', async t => {
+  const h = await fixture(t);
+  h.device.update({ device: { ...h.device.config.device,
+    deviceProperties: { developerModeStatus: 'disabled', ddiServicesAvailable: false },
+    connectionProperties: { tunnelState: 'unavailable' } } });
+  const result = await h.run('ios-status', {});
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.ok(h.calls.length > 0);
 });

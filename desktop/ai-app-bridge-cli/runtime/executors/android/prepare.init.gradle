@@ -39,7 +39,7 @@ gradle.beforeProject { consumer ->
                 agp: agp, gradle: consumer.gradle.gradleVersion, java: System.getProperty('java.version')]
             def issues = []
             def unresolved = actual.compileSdk == null || actual.compileSdkPreview != null || !(agp ==~ /\d+\.\d+\.\d+/)
-            if (actual.compileSdk == null || actual.compileSdkPreview != null) issues.add('A numeric stable compileSdk is required to check the selected dependencies')
+            if (actual.compileSdk == null || actual.compileSdkPreview != null) issues.add('compileSdk is a preview or was not reported numerically; compilation will check compatibility')
             else if (actual.compileSdk < config.requirements.minCompileSdk) issues.add('compileSdk ' + actual.compileSdk + ' < required ' + config.requirements.minCompileSdk)
             if (!(agp ==~ /\d+\.\d+\.\d+/)) issues.add('AGP version could not be compared: ' + agp)
             else {
@@ -52,7 +52,8 @@ gradle.beforeProject { consumer ->
                 status: issues.empty ? 'compatible' : (unresolved ? 'unresolved' : 'incompatible'), issues: issues,
                 impact: 'Selected application module and its androidTest variant; temporary runner, test sources and dependencies are added for this invocation. compileSdk is unchanged.']
             new File(config.directory, 'android-preflight.json').text = groovy.json.JsonOutput.toJson(report)
-            if (!issues.empty) throw new GradleException('[AiAppBridge] Executor preflight: ' + issues.join('; ') + '. No project configuration was upgraded.')
+            // These are diagnostic estimates. Gradle dependency metadata and
+            // compilation decide whether this exact variant can actually build.
             if (!android.defaultConfig.testInstrumentationRunner) {
                 android.defaultConfig.testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
             }

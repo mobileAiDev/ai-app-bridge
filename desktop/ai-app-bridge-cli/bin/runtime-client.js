@@ -72,7 +72,11 @@ async function inspect({ signal } = {}) {
   const client = { version: require('../package.json').version, node: process.version, executable: process.execPath };
   try {
     const location = runtimeLocation();
-    try { client.identity = runtimeIdentity(location); }
+    try {
+      client.identity = runtimeIdentity(location);
+      if (client.identity.installationDiagnostic) Object.assign(client, {
+        error: client.identity.installationDiagnostic.code, message: client.identity.installationDiagnostic.message });
+    }
     catch (error) { client.error = error.code; client.message = error.message; client.details = error.details; }
     const observed = await probe(location, signal, true);
     let ownerRecord;
@@ -84,7 +88,7 @@ async function inspect({ signal } = {}) {
       paths: { directory: location.directory, logFile: location.logFile, facts: location.facts, ownerFile: location.ownerFile,
         endpointFile: location.endpointFile, lockFile: location.lockFile } };
     if (observed.status && client.identity) {
-      try { requireCompatible(observed.status, client.identity); result.compatible = true; }
+      try { result.warnings = requireCompatible(observed.status, client.identity); result.compatible = true; }
       catch (error) { result.compatible = false; result.mismatch = { error: error.code, message: error.message, details: error.details }; }
     }
     return result;
@@ -167,10 +171,10 @@ async function runtimeCommand(args, { signal } = {}) {
       recovery: 'The OS lock is free. The next explicit start archives old records and creates a fresh runtime.' }] } : {}) };
   if (state.state !== 'running') throw new CommandError('runtime_unresponsive', 'A runtime owns the OS lock but has not answered. It was not restarted.');
   if (args.operation === 'stop') return (await exchange(state.endpoint, 'stop', {}, { signal, timeoutMs: args.timeoutMs ?? 5000 })).value;
-  let compatible = false, clientError;
-  try { requireCompatible(state.status, runtimeIdentity(location)); compatible = true; }
+  let compatible = false, clientError, warnings;
+  try { warnings = requireCompatible(state.status, runtimeIdentity(location)); compatible = true; }
   catch (error) { clientError = { error: error.code, message: error.message }; }
-  return { ...state.status, compatible, ...(clientError ? { clientError } : {}) };
+  return { ...state.status, compatible, warnings, ...(clientError ? { clientError } : {}) };
 }
 
 // The reply is always the public reply of the request. Executed commands
@@ -195,10 +199,12 @@ async function run(request, { signal } = {}) {
     if (request.command === 'doctor') return local({ value: await require('./doctor').doctor(request.arguments, { signal, inspectRuntime: inspect }) });
     if (request.command === 'script' && request.arguments.operation === 'recipes') return local({ value: require('./script/recipes').read(request.arguments) });
     if (request.command === 'device-ownership' && request.arguments.operation === 'force-stop') {
-      return local({ value: await require('./shared-kernel/device-force-stop').forceStopDevice(request.arguments) });
+      return local({ value: await require('./shared-kernel/device-force-stop').forceStopDevice(request.arguments, { directory: readRuntimeOwner(runtimeLocation())?.ownership }) });
     }
     if (request.command === 'device-ownership' && require('./shared-kernel/ownership-archives').operations.has(request.arguments.operation)) {
-      return local({ value: await require('./shared-kernel/device-ownership-recovery').deviceOwnership(request.arguments) });
+      return local({ value: await require('./shared-kernel/device-ownership-recovery').deviceOwnership(request.arguments, {
+        lease: require('./shared-kernel/device-mutation-lease').createDeviceMutationLease({ directory: readRuntimeOwner(runtimeLocation())?.ownership }),
+      }) });
     }
     // Verification is an offline command in both transports; it neither
     // opens FactStore nor depends on a running owner or valid store profile.

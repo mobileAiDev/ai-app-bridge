@@ -50,8 +50,9 @@ test('repeated Host restarts create immutable recording attempts, export all ret
     targetKey: 'evidence:script:recorded', runtimeEpoch: 'recorded', actionId: payload.evidenceId }));
   const exported = await archive.handle({ operation: 'export', namespace: 'script', operationId: 'recorded',
     outputDir: path.join(f.root, 'export'), includeRecordedPayloads: true }, { getFactStore: () => ({
-    drain: async () => {}, status: () => ({ ok: true, authoritative: true, persistence: true, storeId: 'test-store', sequences: { nextGlobalSeq: facts.length + 1 } }),
-    read: () => ({ ok: true, items: facts, gap: false, cursorExpired: false, hasMore: false }),
+    drain: async () => {}, status: () => ({ ok: true, authoritative: true, persistence: true, storeId: 'test-store', sequences: { nextGlobalSeq: facts.length + 1 },
+      quota: { partitions: { action: { evictedRecords: 0 }, ui: { evictedRecords: 0 } } } }),
+    read: ({ partitions }) => ({ ok: true, items: partitions.includes('action') ? facts : [], gap: false, cursorExpired: false, hasMore: false }),
   }) });
   assert.equal(exported.ok, true, JSON.stringify(exported));
   assert.equal(exported.recordedPayloads.counts.scriptCalls, 3);

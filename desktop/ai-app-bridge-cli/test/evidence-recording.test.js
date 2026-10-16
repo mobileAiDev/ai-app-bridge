@@ -29,8 +29,9 @@ function setup(t, namespace = 'script') {
     operation: 'export', operationId, namespace, outputDir, includeRecordedPayloads,
   }, { getFactStore: () => ({ drain: async () => {},
     status: () => ({ ok: true, authoritative: true, persistence: true, storeId: 'test-store',
-      sequences: { nextGlobalSeq: facts().length + 1 } }),
-    read: () => ({ ok: true, items: facts(), gap: false, cursorExpired: false, hasMore: false }),
+      sequences: { nextGlobalSeq: facts().length + 1 },
+      quota: { partitions: { action: { evictedRecords: 0 }, ui: { evictedRecords: 0 } } } }),
+    read: ({ partitions }) => ({ ok: true, items: partitions.includes('action') ? facts() : [], gap: false, cursorExpired: false, hasMore: false }),
   }) });
   return { root, operationId, store, recording, directory, facts, exportArchive };
 }

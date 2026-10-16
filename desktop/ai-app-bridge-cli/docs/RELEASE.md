@@ -1,53 +1,47 @@
-# 0.4.16 coordinated release
+# 0.4.17 coordinated release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.16 together. This patch corrects fresh retained-history pagination when
-the action and UI partitions have different retention boundaries.
+0.4.17 together. This release removes unrelated prerequisites from execution
+and includes the pending macOS power-readiness and power-status corrections.
 
 ## Changes
 
-Previously, a fresh Script inventory or long operation-history read could
-return `cursor_expired` on its second internal page even when no evidence had
-been evicted during the read. The first mixed page could end before another
-selected partition's already-existing retention boundary.
+A client whose ANDROID_HOME, Python path, cache profile or code fingerprint
+differs from a healthy shared Runtime can use its supported commands without
+restarting its tasks. The wire protocol still must match. Differences identify
+the actual owner and appear as diagnostics. Explicit conflicting Android routes
+are checked only for new Android I/O; original-operation recovery retains its
+route and ownership. Read-only diagnosis can locate a Runtime with an invalid
+client cache profile; creating that cache still validates the profile.
 
-Evidence lists and archive exports now scan each selected partition with its
-own signed continuation, retain the initial sequence boundary and merge facts
-in order. Actual eviction during the read, bad cursors, missing chunks and
-archive consistency failures remain explicit. Missing history and unknown
-device outcomes are preserved; no action is replayed by this change.
+Android device inventory failure no longer suppresses independent probes.
+iOS runtime/WDA operations try their actual endpoint instead of refusing stale
+Developer Mode, DDI or tunnel readiness summaries. Flutter preparation accepts
+prerelease and future version strings and lets Pub/build constraints decide
+compatibility. Android preview/AGP estimates are advisory; real build errors and
+their diagnostic preflight are retained. APK verification accepts any absolute
+installed package path while keeping exact package bytes and split limitations.
 
-Android, iOS, Flutter and Web changes align release metadata. Native binaries,
-the v1 store format, low-level retention semantics and Node-API 8 are unchanged.
-The explicit Maven mirror configuration validated for 0.4.15 is retained.
+Web compares identity fields without depending on JSON key order. Flutter
+references tolerate text/value/semantics changes while retaining actual Element,
+controller, focus, scroll and view identities. iOS native actions tolerate label
+changes on the same UID/type. H5 input permits same-editor focus formatting and
+H5 scroll permits disabled controls. Android traversal reaches enabled children
+of disabled containers. UIA references expire on eviction/replacement rather
+than an arbitrary 60-second age; the eight-snapshot capacity remains.
+
+macOS power confirmation takes a fresh OS sample even after event-loop delay
+exceeds the polling budget. Foreign or absent assertions still fail. A stored
+lease failure remains `leaseError` in successful status/release replies rather
+than changing the new command's outcome.
 
 ## Validation and limits
 
-The correction passes 211 related regressions. Independent review includes
-asymmetric retention, a newly appended-facts counterexample, actual eviction,
-cursor signatures, large-record chunks, recovery and archive boundaries.
-
-On a consistent copy of the real long-lived store, public 0.4.15 reproduces the
-failure; the candidate matches all 14,682 retained action/UI facts and recovery
-views for 401 original Script operations against independent retained facts.
-On the completed OPPO test store, four inventory pages, ten original Script
-IDs and recovery views, and ten offline-verified archives also match. The
-original unknown action and missing Host receipt remain visible after a
-successful verification-only continuation. These are correctness checks,
-not a new throughput claim.
-
-Public 0.4.15 root OPPO acceptance covers eight Native/H5/Flutter, JavaScript,
-Python, Intent and fault-recovery scenarios. Those device results are inherited
-within the unchanged SDK/execution boundary, not claimed as newly repeated
-0.4.16 business flows. Five final screenshots retained transition frames;
-complete UI login, booking, payment/refund and whole-App coverage were not
-established. See the repository's release-verification reports for exact
-package, device and evidence identities.
-
-Existing Windows x64, macOS arm64/x64 and Linux glibc arm64/x64 Host acceptance
-is inherited from 0.4.14 within its unchanged native boundary. Windows physical
-display/sleep testing remains deferred. Windows ARM64 and Linux musl are
-outside the validated native matrix. WDA and iOS build tools require macOS.
+See the repository's 0.4.17 release-verification report and validation audit for
+current test, build, package and public-registry evidence. Host fixtures and
+unsigned iOS builds do not establish physical iOS or Windows sleep acceptance.
+No POS login, checkout or printing flow is claimed by these changes.
+Native FactStore binaries, Node-API 8 and the v1 storage format are unchanged.
 
 ## Release procedure
 
@@ -55,6 +49,5 @@ Freeze reviewed source and exact archives after applicable checks pass. Publish
 a new immutable Git tag and verify all public Maven artifacts before publishing
 the other channels and upgrading Android consumers. Verify npm, Pub, GitHub
 downloads and SwiftPM resolution against frozen inputs. Preserve unrelated
-consumer changes and use public coordinates. Check the installed CLI and the
-actual resident MCP/Runtime separately; fresh installed files do not prove that
-an existing process has reloaded.
+consumer changes and use public coordinates. Check installed files and resident
+MCP/Runtime processes separately; installation does not reload a live process.

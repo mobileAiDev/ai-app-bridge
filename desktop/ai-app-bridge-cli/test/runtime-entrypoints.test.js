@@ -203,9 +203,8 @@ test('CLI PATH lookup and explicit MCP ADB share one runtime and Script result',
   const owner = await run('runtime', { operation: 'status' });
   assert.equal((await f.cli('runtime', { operation: 'status' }, { env: automatic })).value.runtimeId, owner.runtimeId);
   const other = path.join(f.directory, 'other-adb'); fs.copyFileSync(adb, other); fs.chmodSync(other, 0o755);
-  const rejected = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: { ADB: other } });
-  assert.equal(rejected.value.error, 'runtime_configuration_mismatch');
-  assert.equal(rejected.value.dispatched, false);
+  const anotherProvider = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: { ADB: other } });
+  assert.deepEqual(anotherProvider.value.result, result.value.result);
   if (process.platform !== 'win32') {
     const alias = path.join(f.directory, 'adb-alias'); fs.symlinkSync(adb, alias);
     const aliased = await f.cli('script', { operation: 'result', operationId: waiting.operationId }, { env: { ADB: alias } });
@@ -411,11 +410,18 @@ test('normal Runtime stop delivers its response, closes incomplete HTTP connecti
   assert.notEqual((await run('runtime', { operation: 'status' })).runtimeId, owner.runtimeId);
 });
 
-test('a different build or configuration cannot execute on the live runtime, while explicit inspection and stop remain possible', { timeout: 20000 }, async t => {
+test('build and unrelated environment differences use the live runtime without restarting work', { timeout: 20000 }, async t => {
   const f = fixture(t);
   const started = await f.cli('runtime', { operation: 'start' });
   const configured = await f.cli('script', { operation: 'runtime-status' }, { env: { AI_APP_BRIDGE_FACT_CACHE_PROFILE: '256mb' } });
-  assert.equal(configured.value.error, 'runtime_configuration_mismatch');
+  assert.equal(configured.value.ok, true, JSON.stringify(configured));
+  assert.ok(configured.reply.control.runtime.warnings.some(item => item.code === 'runtime_configuration_differs'));
+  for (const env of [{ ANDROID_HOME: '/unused/sdk' }, { AI_APP_BRIDGE_PYTHON: '/unused/python' },
+    { AI_APP_BRIDGE_FACT_CACHE_PROFILE: 'not-a-profile' }, { AI_APP_BRIDGE_ADB_TIMEOUT_MS: '30000' }]) {
+    const result = await f.cli('script', { operation: 'runtime-status' }, { env });
+    assert.equal(result.value.ok, true, JSON.stringify(result));
+    assert.equal((await f.cli('runtime', { operation: 'status' }, { env })).value.runtimeId, started.value.runtimeId);
+  }
   const installation = path.join(f.directory, 'other-build'); fs.mkdirSync(installation);
   fs.cpSync(path.resolve(__dirname, '../bin'), path.join(installation, 'bin'), { recursive: true });
   fs.cpSync(path.resolve(__dirname, '../runtime'), path.join(installation, 'runtime'), { recursive: true });
@@ -423,9 +429,32 @@ test('a different build or configuration cannot execute on the live runtime, whi
   fs.symlinkSync(path.resolve(__dirname, '../node_modules'), path.join(installation, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   fs.appendFileSync(path.join(installation, 'bin/command-discovery.js'), '\n// Another build.\n');
   const cliPath = path.join(installation, 'bin/ai-app-bridge.js');
-  const rejected = await f.cli('script', { operation: 'runtime-status' }, { cliPath });
-  assert.equal(rejected.value.error, 'runtime_code_mismatch', JSON.stringify(rejected));
+  const changed = await f.cli('script', { operation: 'runtime-status' }, { cliPath });
+  assert.equal(changed.value.ok, true, JSON.stringify(changed));
+  assert.ok(changed.reply.control.runtime.warnings.some(item => item.code === 'runtime_code_differs'));
   const status = await f.cli('runtime', { operation: 'status' }, { cliPath });
-  assert.equal(status.value.compatible, false); assert.equal(status.value.runtimeId, started.value.runtimeId);
+  assert.equal(status.value.compatible, true); assert.equal(status.value.runtimeId, started.value.runtimeId);
   assert.equal((await f.cli('runtime', { operation: 'stop' }, { cliPath })).value.status, 'stopped');
+});
+
+
+test('an explicit different Android server is never silently replaced, while host commands still run', { timeout: 20000 }, async t => {
+  const f = fixture(t);
+  await f.cli('runtime', { operation: 'start' }, { env: { ADB_SERVER_SOCKET: 'tcp:127.0.0.1:5037' } });
+  const env = { ADB_SERVER_SOCKET: 'tcp:127.0.0.1:5038' };
+  const host = await f.cli('script', { operation: 'runtime-status' }, { env });
+  assert.equal(host.value.ok, true, JSON.stringify(host));
+  const android = await f.cli('adb-exec', { argv: ['devices'], readOnly: true }, { env });
+  assert.equal(android.value.error, 'android_runtime_route_mismatch', JSON.stringify(android));
+  assert.equal(android.value.dispatched, false);
+  assert.equal(android.value.details.field, 'adbServerSocket');
+});
+
+test('equivalent ADB server spellings do not reject Android execution', () => {
+  const { inRequestDirectory } = require('../bin/shared-kernel/request-context');
+  const { requireCommandRoute } = require('../bin/runtime-admission');
+  assert.doesNotThrow(() => inRequestDirectory(process.cwd(), () => requireCommandRoute('adb-exec', { argv: ['devices'], readOnly: true }), {
+    runtime: { providers: { adbServerSocket: 'tcp:127.0.0.1:5037' } },
+    client: { requestedProviders: { adbServerSocket: 'tcp:5037' } },
+  }));
 });

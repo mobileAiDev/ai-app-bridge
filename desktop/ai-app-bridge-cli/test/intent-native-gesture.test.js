@@ -87,7 +87,7 @@ test('native swipe requires one explicit exact selector and an eligible observed
     [spec({ selector: { text: 'Task' } }), tree(), 'native_selector_not_found'],
     [spec(), tree([node(), node()]), 'native_selector_ambiguous'],
     [spec(), tree([node({ effectiveVisible: false })]), 'native_selector_not_found'],
-    [spec(), tree([node({ enabled: false })]), 'native_selector_not_found'],
+    [spec(), tree([node({ enabled: false })]), 'native_target_disabled'],
     [spec(), tree([node({ bounds: { left: 600, top: 200, right: 700, bottom: 260 } })]), 'native_selector_not_found'],
     [spec(), null, 'visible_observed_window_required'],
   ];

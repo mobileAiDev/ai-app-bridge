@@ -1,9 +1,8 @@
 'use strict';
 
-const { isDeepStrictEqual } = require('node:util');
 const { selectH5Node, schema: h5Schema } = require('../shared-kernel/ios-h5-target');
 const { IOSBridgeProvider } = require('../ios-provider');
-const { selectFlutterNode, flutterNodeIdentity, flutterTargetRequest } = require('../shared-kernel/flutter-target');
+const { selectFlutterNode, flutterTargetRequest } = require('../shared-kernel/flutter-target');
 const { checkExecution } = require('../shared-kernel/execution-scope');
 const { selectNativeNode, sessionRef, schema: nativeSchema } = require('../shared-kernel/ios-native-target');
 
@@ -31,7 +30,7 @@ function createIOSIntentDeviceAdapter({ provider = new IOSBridgeProvider() } = {
       if (spec.provider === 'h5') {
         const commands = { tap: 'ios-h5-click', inputText: 'ios-h5-input', scroll: 'ios-h5-scroll' };
         if (!commands[spec.action]) return reject('unsupported_ios_intent_action');
-        const observed = selectH5Node(rawTree, spec.selector);
+        const observed = selectH5Node(rawTree, spec.selector, undefined, { requireEnabled: spec.action !== 'scroll' });
         if (!observed.ok) return observed;
         const result = await provider.run(commands[spec.action], { ...argumentsFor(target),
           webViewId: observed.targetRef.pageRef.webViewId, selector: { elementId: observed.node.elementId },
@@ -61,15 +60,7 @@ function createIOSIntentDeviceAdapter({ provider = new IOSBridgeProvider() } = {
       else {
         const observed = selectFlutterNode(rawTree, spec);
         if (!observed.ok) return observed;
-        const fresh = await provider.run('ios-flutter-nodes', argumentsFor(target));
-        if (fresh.ok !== true) return fresh;
-        const current = selectFlutterNode(fresh, spec);
-        checkExecution();
-        if (!current.ok) return current;
-        if (!isDeepStrictEqual(flutterNodeIdentity(observed.node), flutterNodeIdentity(current.node))) {
-          return reject('reobserve_required');
-        }
-        const guarded = flutterTargetRequest(current.node, spec.selector);
+        const guarded = flutterTargetRequest(observed.node, spec.selector);
         if (!guarded.ok) return guarded;
         payload = { ...guarded.request, ...(spec.action === 'tap' ? { action: 'tapTarget' }
           : spec.action === 'inputText' ? { action: 'inputText', text: spec.value,

@@ -6,7 +6,8 @@ const context = new AsyncLocalStorage();
 
 const requestDirectory = () => context.getStore()?.cwd ?? process.cwd();
 const resolveRequestPath = value => path.resolve(requestDirectory(), value);
-const inRequestDirectory = (cwd, action) => context.run({ cwd }, action);
+const inRequestDirectory = (cwd, action, admission) => context.run({ ...context.getStore(), cwd, ...(admission ? { admission } : {}) }, action);
+const requestAdmission = () => context.getStore()?.admission;
 const localPaths = ['outFile', 'artifactDir', 'apkPath', 'appPath', 'recordingDir', 'outputDir', 'archiveDir', 'wdaProjectPath', 'agentModule', 'projectDir', 'testPackagePath'];
 const executables = ['adb', 'aaptPath', 'apksignerPath', 'devicectl', 'xcodebuild', 'pythonPath', 'flutterPath', 'gradlePath'];
 
@@ -32,4 +33,4 @@ function resolveCommandPaths(command, args) {
   return resolved;
 }
 
-module.exports = { requestDirectory, resolveRequestPath, inRequestDirectory, resolveCommandPaths, resolveExecutablePaths };
+module.exports = { requestAdmission, requestDirectory, resolveRequestPath, inRequestDirectory, resolveCommandPaths, resolveExecutablePaths };

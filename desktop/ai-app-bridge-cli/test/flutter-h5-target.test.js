@@ -107,8 +107,11 @@ test('Flutter renderer rejects duplicate/hidden/disabled targets and focus repla
   let selected = h5.selectH5Node(snapshot(), { elementId: 'e1' });
   const make = () => { const request = { operation: 'action', action: 'input', text: '', ...selected.targetRef }; request.geometry = p.run({ ...request, operation: 'prepare' }).geometry; return request; };
   editor.onfocus = () => { editor.value = 'callback'; };
-  assert.equal(p.run(make()).error, 'flutter_h5_target_changed');
-  assert.equal(editor.value, 'callback'); assert.deepEqual(p.events, []);
+  const focused = p.run(make());
+  assert.equal(focused.ok, true);
+  assert.equal(focused.warnings[0].code, 'target_value_changed_on_focus');
+  assert.equal(editor.value, ''); assert.deepEqual(p.events, ['input:editor', 'change:editor']);
+  p.events.length = 0;
   editor.onfocus = null; selected = h5.selectH5Node(snapshot(), { elementId: 'e1' });
   assert.equal(p.run(make()).ok, true); assert.equal(editor.value, '');
   assert.deepEqual(p.events, ['input:editor', 'change:editor']);

@@ -126,14 +126,11 @@ async function prepareAndroid(args, { run = execFileBounded, home } = {}) {
     directory, 'gradle-build', { cwd: project, timeoutMs: args.timeoutMs ?? 600000 }); }
     catch (error) {
       const preflight = readJson(preflightFile);
-      if (preflight && preflight.status !== 'compatible') throw new CommandError(
-        preflight.status === 'incompatible' ? 'executor_prepare_incompatible' : 'executor_prepare_configuration_unresolved',
-        `Android executor requirements were not met before compilation: ${preflight.issues.join('; ')}. No project configuration was upgraded.`,
-        { details: { ...error.details, preflight, preflightFile } });
+      if (preflight) error.details = { ...error.details, preflight, preflightFile };
       throw error;
     }
     const preflight = readJson(preflightFile);
-    if (preflight?.status !== 'compatible' || preflight.module !== args.module || preflight.variant !== args.variant)
+    if (!preflight || preflight.module !== args.module || preflight.variant !== args.variant)
       throw new CommandError('executor_prepare_configuration_unresolved', 'The build did not report the selected module and variant preflight.', { details: { preflightFile } });
     const build = readJson(path.join(directory, 'android-build.json'));
     if (build?.schemaVersion !== 'aab.android-prepared-build/v1' || build.variant !== args.variant || build.module !== args.module
@@ -159,9 +156,6 @@ async function prepareFlutter(args, { run = execFileBounded, home } = {}) {
       throw new CommandError('invalid_argument', 'The Bridge test entrypoint owns INTEGRATION_TEST_SHOULD_REPORT_RESULTS_TO_NATIVE.');
     const probe = await loggedRun(run, flutter, ['--version', '--machine'], directory, 'flutter-version', { cwd: project, timeoutMs: 30000 });
     const sdk = JSON.parse(probe.stdout);
-    const version = /^(\d+)\.(\d+)\.(\d+)$/.exec(sdk.frameworkVersion);
-    if (!version || Number(version[1]) !== 3 || Number(version[2]) < 41)
-      throw new CommandError('executor_flutter_sdk_unsupported', `Flutter ${sdk.frameworkVersion} is outside the supported stable Flutter 3.41+ profile.`);
     // Establish the baseline from the existing lock, even on a clean computer.
     // A normal pub get could silently change versions before our comparison.
     await loggedRun(run, flutter, ['pub', 'get', '--enforce-lockfile'], directory, 'flutter-pub-get', { cwd: project, timeoutMs: args.timeoutMs ?? 600000 });

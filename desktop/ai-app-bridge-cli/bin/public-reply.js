@@ -206,6 +206,8 @@ function boundedReply(body, limitBytes = DEFAULT_OUTPUT_BYTES) {
 }
 
 async function finishReply({ body, extract, output, frozen, getStore, sourceReason = 'offline' }) {
+  const admission = require('./shared-kernel/request-context').requestAdmission();
+  if (admission?.warnings?.length) body.control.runtime = { runtimeId: admission.runtimeId, version: admission.runtime.version, warnings: admission.warnings };
   const limitBytes = output?.maxBytes ?? DEFAULT_OUTPUT_BYTES;
   body.delivery.limitBytes = limitBytes;
   if (body.delivery.reason === 'response_serialization_failed') return boundedReply(body, limitBytes);

@@ -76,7 +76,7 @@ test('Android preparation keeps Host identity independent from SDK coordinates a
     const config = JSON.parse(fs.readFileSync(args.find(arg => arg.startsWith('-Daab.prepare.config=')).split('=').slice(1).join('=')));
     generatedConfig = config;
     assert.equal(config.requirements.minCompileSdk, 35);
-    fs.writeFileSync(path.join(config.directory, 'android-preflight.json'), JSON.stringify({ status: 'compatible', module: ':app', variant: 'sitDebug' }));
+    fs.writeFileSync(path.join(config.directory, 'android-preflight.json'), JSON.stringify({ status: 'unresolved', actual: { compileSdkPreview: 'Preview' }, module: ':app', variant: 'sitDebug' }));
     const application = path.join(config.directory, 'original-app.apk'), tests = path.join(config.directory, 'original-app-test.apk');
     fs.writeFileSync(application, 'original app'); fs.writeFileSync(tests, 'instrumentation');
     fs.writeFileSync(path.join(config.directory, 'android-build.json'), JSON.stringify({ schemaVersion: 'aab.android-prepared-build/v1',
@@ -129,7 +129,7 @@ test('a failed or cancelled prepare retains its log and releases the project loc
   assert.equal((await withProject(project, async () => ({ prepared: true }), { home })).prepared, true);
 });
 
-test('Android preflight exposes compileSdk conflicts before build and retains actual/required values', async t => {
+test('Android build failures retain their original error alongside preflight diagnostics', async t => {
   const { project, home } = fixture(t);
   for (const adapters of [[], ['compose']]) {
     await assert.rejects(prepareAndroid({ projectDir: project, module: ':app', variant: 'debug', adapters }, { home,
@@ -141,10 +141,11 @@ test('Android preflight exposes compileSdk conflicts before build and retains ac
         fs.writeFileSync(path.join(config.directory, 'android-preflight.json'), JSON.stringify(preflight));
         throw Object.assign(new Error('configuration failed'), { stdout: 'preflight only, no compilation', stderr: '', code: 1 });
       } }), error => {
-      assert.equal(error.code, 'executor_prepare_incompatible');
+      assert.equal(error.code, 'executor_prepare_build_failed');
       assert.equal(error.details.preflight.actual.compileSdk, 33);
       assert.equal(error.details.preflight.requirements.minCompileSdk, adapters.length ? 35 : 34);
-      assert.match(error.message, /No project configuration was upgraded/);
+      assert.match(error.message, /gradle-build failed/);
+      assert.match(fs.readFileSync(error.details.logFile, 'utf8'), /preflight only, no compilation/);
       assert.equal(fs.readFileSync(path.join(project, 'business.txt'), 'utf8'), 'original business source');
       return true;
     });
@@ -251,3 +252,15 @@ test('Flutter rejects a helper resolved to the Host version and restores the ori
   assert.ok(f.calls.some(args => args.includes('--offline') && args.includes('--enforce-lockfile')));
   assert.equal(f.calls.some(args => args[0] === 'build'), false);
 });
+
+
+for (const frameworkVersion of ['3.42.0-0.1.pre', '4.0.0', 'custom-sdk']) {
+  test(`Flutter preparation lets Pub and the build decide support for ${frameworkVersion}`, async t => {
+    const h = flutterFixture(t, 'reuse');
+    const run = (file, args, options) => args[0] === '--version'
+      ? Promise.resolve({ stdout: JSON.stringify({ frameworkVersion }), stderr: '' }) : h.run(file, args, options);
+    const result = await prepareFlutter({ projectDir: h.project }, { home: h.home, run });
+    assert.equal(result.lifecycle, 'built-not-installed');
+    assert.ok(h.calls.some(args => args[0] === 'build'));
+  });
+}

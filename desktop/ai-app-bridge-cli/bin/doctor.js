@@ -107,7 +107,7 @@ async function doctor(args = {}, dependencies = {}) {
         if (owner.facts.unresolved) nextActions.push(hint('device-ownership', { operation: 'archives', serial: args.serial }));
       }
       const target = inventory.facts?.devices.find(device => device.serial === args.serial);
-      if (target?.state !== 'device') {
+      if (target && target.state !== 'device') {
         add('android.transport', 'issue', { facts: target || { serial: args.serial },
           message: target?.state === 'unauthorized' ? 'Unlock the device and accept its USB debugging authorization, then run doctor again.'
             : 'The requested ADB transport is not connected. Check its USB/network connection; no downstream probes were attempted.' }); return;

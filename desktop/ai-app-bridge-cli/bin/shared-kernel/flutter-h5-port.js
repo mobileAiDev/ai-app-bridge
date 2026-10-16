@@ -32,7 +32,7 @@ function createFlutterH5Port(invoke, { actionId } = {}) {
       return mutate({ action: 'h5Control', operation, expectedPage: tree.pageRef,
         deltaX: options.deltaX, deltaY: options.deltaY });
     }
-    const selected = h5.selectH5Node(tree, options.selector, options.expectedTarget);
+    const selected = h5.selectH5Node(tree, options.selector, options.expectedTarget, { requireEnabled: operation !== 'scroll' });
     if (!selected.ok) return selected;
     return mutate({ action: 'h5Control', operation, expectedTarget: selected.targetRef,
       ...(operation === 'input' ? { text: options.text } : {}) });

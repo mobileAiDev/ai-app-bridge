@@ -129,3 +129,17 @@ test('managed native input can outlast the five-second read budget without cance
   assert.equal(h.readEffects().length, 1);
   assert.ok(!h.state.calls.some(call => call.route === '/aab/execution/cancel'));
 });
+
+
+test('same iOS element allows changed label and identifier but explicit selectors remain exact', async t => {
+  const h = await createWDAFixture(t), args = nativeFixture(h);
+  const selected = selectNativeNode(await h.run('ios-uia-tree', args), { elementId: 'save-1' });
+  h.state.tree.children[0].label = 'Save (2)';
+  h.state.tree.children[0].rawIdentifier = 'save-updated';
+  const staleSelector = await h.run('ios-tap-native', { ...args, selector: { label: 'Save' }, expectedTarget: selected.targetRef });
+  assert.equal(staleSelector.error, 'ios_native_selector_not_found');
+  const result = await h.run('ios-tap-native', { ...args, selector: { elementId: 'save-1' }, expectedTarget: selected.targetRef });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.warnings.at(-1).code, 'target_attributes_changed');
+  assert.equal(h.readEffects().length, 1);
+});

@@ -110,10 +110,10 @@ function createFakeWebSocket() {
       this.onclose && this.onclose();
     }
 
-    async command(name, args, actionId = 'action-1') {
+    async command(name, args, actionId = 'action-1', overrides = {}) {
       const target = { sessionId: this.binding.sessionId, runtimeEpoch: this.binding.runtimeEpoch, targetId: this.binding.targetId };
-      this.onmessage({ data: JSON.stringify({ type: 'command', requestId: 'request-1', binding: this.binding,
-        payload: { actionId, target, command: { name, args }, execution: {
+      this.onmessage({ data: JSON.stringify({ type: 'command', requestId: 'request-1', binding: overrides.binding ?? this.binding,
+        payload: { actionId, target: overrides.target ?? target, command: { name, args }, execution: {
           schemaVersion: 'aab.web-execution/v1', runtimeEpoch: target.runtimeEpoch, actionId, timeoutMs: 1000 } } }) });
       await wait(5);
       return this.sent.find(message => message.type === 'completion' && message.result.actionId === actionId)?.result;
@@ -1353,4 +1353,40 @@ test('stop cancels a reconnect that was already scheduled by a remote close', as
 
   assert.equal(WebSocket.instances.length, 1);
   assert.equal(bridge.isConnected(), false);
+});
+
+
+test('Web binding and target compare identity fields independently of JSON key order', async t => {
+  const WebSocket = createFakeWebSocket();
+  let effects = 0;
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'ordered-fields', WebSocket }).start();
+  t.after(() => bridge.stop());
+  bridge.registerAction('count', () => ++effects);
+  const socket = WebSocket.instances[0]; socket.open();
+  const binding = Object.fromEntries(Object.entries(socket.binding).reverse());
+  const target = { targetId: binding.targetId, runtimeEpoch: binding.runtimeEpoch, sessionId: binding.sessionId };
+  const result = await socket.command('action', { name: 'count' }, 'ordered-action', { binding, target });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(effects, 1);
+});
+
+for (const field of ['sessionId', 'runtimeEpoch', 'targetId']) test(`Web rejects an actual ${field} target mismatch before executing`, async t => {
+  const WebSocket = createFakeWebSocket(); let effects = 0;
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'identity-fields', WebSocket }).start();
+  t.after(() => bridge.stop()); bridge.registerAction('count', () => ++effects);
+  const socket = WebSocket.instances[0]; socket.open();
+  const target = { sessionId: socket.binding.sessionId, runtimeEpoch: socket.binding.runtimeEpoch, targetId: socket.binding.targetId, [field]: 'other' };
+  await socket.command('action', { name: 'count' }, 'wrong-target', { target });
+  assert.equal(socket.sent.find(message => message.type === 'response').result.error, 'invalid_web_execution');
+  assert.equal(effects, 0);
+});
+
+test('Web rejects a different connection even when its other identity fields match', async t => {
+  const WebSocket = createFakeWebSocket(); let effects = 0;
+  const bridge = createAiAppBridge({ endpoint: 'ws://example.test', sessionId: 'connection-fields', WebSocket }).start();
+  t.after(() => bridge.stop()); bridge.registerAction('count', () => ++effects);
+  const socket = WebSocket.instances[0]; socket.open();
+  await socket.command('action', { name: 'count' }, 'wrong-binding', { binding: { ...socket.binding, connectionId: 'other' } });
+  assert.equal(bridge.isConnected(), false);
+  assert.equal(effects, 0);
 });

@@ -1,3 +1,7 @@
+# 0.4.17
+
+- Keep Flutter target references valid across text, value and semantics changes; preserve actual Element, controller and focus identities. H5 allows same-editor focus formatting and scrolling disabled controls.
+
 # 0.4.16
 
 - Align the package, Android dependency and embedded iOS identity with coordinated release 0.4.16. Execution and storage contracts are unchanged from 0.4.15.

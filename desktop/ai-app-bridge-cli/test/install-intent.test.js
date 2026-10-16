@@ -235,3 +235,26 @@ test('ownership persistence failure releases the inspected private APK without p
   } }), { code: 'ENOSPC' });
   assert.equal(releases, 1);
 });
+
+
+for (const devicePath of ['/mnt/expand/storage/app/example/base.apk', '/data/app/example.apk']) {
+  test(`installed identity verifies exact bytes at ${devicePath}`, async () => {
+    let calls = 0;
+    const result = await installedIdentity({ serial: 'device' }, artifact, async (_file, args) => {
+      calls++;
+      return { stdout: args.includes('path') ? `package:${devicePath}\n` : `${artifact.sha256}  ${devicePath}\n` };
+    });
+    assert.equal(result.identityMatches, true);
+    assert.equal(result.path, devicePath);
+    assert.equal(calls, 2);
+  });
+}
+
+test('multiple installed APKs still cannot prove the identity of a single APK artifact', async () => {
+  let calls = 0;
+  const result = await installedIdentity({ serial: 'device' }, artifact, async () => {
+    calls++; return { stdout: 'package:/data/app/base.apk\npackage:/data/app/split.apk\n' };
+  });
+  assert.equal(result.error, 'installed_apk_layout_unsupported');
+  assert.equal(calls, 1);
+});

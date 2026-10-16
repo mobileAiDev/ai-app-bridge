@@ -165,7 +165,8 @@
         state.binding = message.binding; state.connected = true; state.reconnectDelay = 1000;
         sendCompletion(); flushQueue(); return;
       }
-      if (!state.binding || JSON.stringify(message.binding) !== JSON.stringify(state.binding)) throw new Error('web_binding_mismatch');
+      if (!state.binding || !['schemaVersion', 'providerEpoch', 'connectionId', 'sessionId', 'runtimeEpoch', 'targetId']
+        .every(key => message.binding?.[key] === state.binding[key])) throw new Error('web_binding_mismatch');
       if (message.type === 'captureAck') {
         state.lastReceipt = { captureId: message.captureId, ...message.receipt };
         if (!message.receipt?.stored) { state.rejected++; state.lastError = message.error; } return;
@@ -205,7 +206,7 @@
       if (execution?.schemaVersion !== executionSchema || execution.runtimeEpoch !== state.runtimeEpoch
           || typeof execution.actionId !== 'string' || request.actionId !== execution.actionId
           || !Number.isInteger(execution.timeoutMs) || execution.timeoutMs < 1 || execution.timeoutMs > 2147483647
-          || JSON.stringify(request.target) !== JSON.stringify(target())) { reject('invalid_web_execution'); return; }
+          || !['sessionId', 'runtimeEpoch', 'targetId'].every(key => request.target?.[key] === target()[key])) { reject('invalid_web_execution'); return; }
       if (state.active || state.completion) { sendCompletion(); reject('web_action_busy'); return; }
       const controller = new AbortController();
       const task = { actionId: request.actionId, issued: false, stopReason: null, timer: null, queued: null,

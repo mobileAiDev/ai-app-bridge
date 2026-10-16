@@ -121,13 +121,15 @@ test('a system ANR dialog is visible in bounded wait diagnostics without another
   } }));
   assert.equal(result.error, 'deadline_exceeded');
   assert.deepEqual(result.observedText, { labels: ["Example app isn't responding", 'Close app', 'Wait'], truncated: false });
-  assert.equal(reads, result.successfulReads);
+  // A read may reach the deadline before its result is counted.
+  const readsBeforeGuidance = reads;
+  assert.ok(result.successfulReads > 0 && result.successfulReads <= reads);
   const guided = withActionGuidance('wait-text', args, result);
   const inspect = guided.guidance.nextActions.find(call => call.command === 'uia-tree');
   assert(inspect); validateCommandArguments(inspect.command, inspect.arguments);
   assert.equal(inspect.arguments.serial, 'phone');
   assert.equal(inspect.arguments.packageFilter, undefined, 'system overlays must remain observable');
-  assert.equal(reads, result.successfulReads, 'guidance never runs recovery commands');
+  assert.equal(reads, readsBeforeGuidance, 'guidance never runs recovery commands');
 });
 
 test('wait failure previews bound long text without changing exact matching', async () => {

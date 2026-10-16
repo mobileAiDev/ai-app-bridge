@@ -26,7 +26,15 @@ class _FlutterExecutionTargets {
       'tapAt': ['x', 'y'],
       'tapText': ['text'],
       'tapTarget': ['selector', 'targetRef'],
-      'inputText': ['text', 'selector', 'targetRef', 'x', 'y', 'hideKeyboard', 'focus'],
+      'inputText': [
+        'text',
+        'selector',
+        'targetRef',
+        'x',
+        'y',
+        'hideKeyboard',
+        'focus'
+      ],
       'swipe': ['startX', 'startY', 'endX', 'endY'],
       'scrollBy': ['delta', 'selector', 'targetRef'],
       'scrollUntilText': ['text', 'maxSwipes', 'selector', 'targetRef'],
@@ -54,8 +62,10 @@ class _FlutterExecutionTargets {
       if (!allowed.contains(field))
         throw _FlutterTargetFailure('unsupported_argument', field: field);
     }
-    if (request.containsKey('hideKeyboard') && request['hideKeyboard'] is! bool) {
-      throw const _FlutterTargetFailure('invalid_argument', field: 'hideKeyboard');
+    if (request.containsKey('hideKeyboard') &&
+        request['hideKeyboard'] is! bool) {
+      throw const _FlutterTargetFailure('invalid_argument',
+          field: 'hideKeyboard');
     }
     if (request.containsKey('focus') && request['focus'] is! bool) {
       throw const _FlutterTargetFailure('invalid_argument', field: 'focus');
@@ -122,17 +132,25 @@ class _FlutterExecutionTargets {
     }
   }
 
-  bool _validSelector(Object? selector) => selector is Map && selector.isNotEmpty &&
+  bool _validSelector(Object? selector) =>
+      selector is Map &&
+      selector.isNotEmpty &&
       (!selector.containsKey('nodeId') || selector.length == 1) &&
-      selector.entries.every((entry) => ['text', 'nodeId', 'label', 'hint', 'role', 'widgetType'].contains(entry.key) &&
-          entry.value is String && (entry.value as String).isNotEmpty);
+      selector.entries.every((entry) =>
+          ['text', 'nodeId', 'label', 'hint', 'role', 'widgetType']
+              .contains(entry.key) &&
+          entry.value is String &&
+          (entry.value as String).isNotEmpty);
 
-  bool _matchesSelector(Map<String, Object?> node, Map selector) => selector.entries.every((entry) {
-    if (entry.key == 'nodeId') return node['id'] == entry.value;
-    if (entry.key == 'text') return node['textTruncated'] != true && node['text'] == entry.value ||
-        node['valueTruncated'] != true && node['value'] == entry.value;
-    return node['${entry.key}Truncated'] != true && node[entry.key] == entry.value;
-  });
+  bool _matchesSelector(Map<String, Object?> node, Map selector) =>
+      selector.entries.every((entry) {
+        if (entry.key == 'nodeId') return node['id'] == entry.value;
+        if (entry.key == 'text')
+          return node['textTruncated'] != true && node['text'] == entry.value ||
+              node['valueTruncated'] != true && node['value'] == entry.value;
+        return node['${entry.key}Truncated'] != true &&
+            node[entry.key] == entry.value;
+      });
 
   String identity(Object object) =>
       _identities[object] ??= 'e${++_nextIdentity}';
@@ -160,7 +178,7 @@ class _FlutterExecutionTargets {
         },
       });
     }
-    final signature = _signature(element, node['actions'], tap, scroll);
+    final signature = _signature(element, tap, scroll);
     var guard = _guards[element];
     if (guard == null || guard.signature != signature) {
       guard = _FlutterTargetGuard(signature, 'g${++_nextGuard}');
@@ -177,30 +195,20 @@ class _FlutterExecutionTargets {
         _BoundFlutterTarget(element, node, ref, tap, scroll, signature);
   }
 
-  String _signature(Element element, Object? actions, _ActionTarget? tap,
-      _ActionTarget? scroll) {
+  String _signature(
+      Element element, _ActionTarget? tap, _ActionTarget? scroll) {
     final widget = element.widget;
-    final description =
-        widget is EditableText ? _editorDescription(element) : null;
     final scrollState = scroll?.element is StatefulElement
         ? (scroll!.element as StatefulElement).state as ScrollableState
         : null;
     return jsonEncode([
       widget.runtimeType.toString(),
-      bridge._widgetText(element),
-      bridge._widgetValue(widget),
-      actions,
       if (tap != null) identity(tap.element),
       if (scroll != null) identity(scroll.element),
       if (scrollState != null) identity(scrollState.position),
       if (widget is EditableText) ...[
         identity(widget.controller),
         identity(widget.focusNode),
-        widget.readOnly,
-        widget.obscureText,
-        widget.focusNode.canRequestFocus,
-        description?.label,
-        description?.hint,
       ],
       View.of(element).viewId,
     ]);
@@ -338,13 +346,7 @@ class _FlutterExecutionTargets {
       inspect(element);
       return tap == null || scroll == null;
     });
-    final widget = target.element.widget;
-    final actions = <String>[
-      if (bridge._widgetText(target.element).isNotEmpty) 'tap',
-      if (widget is EditableText) 'input',
-      if (scroll != null) 'scroll',
-    ]..sort();
-    if (_signature(target.element, actions, tap, scroll) != target.signature) {
+    if (_signature(target.element, tap, scroll) != target.signature) {
       throw const _FlutterTargetFailure('flutter_target_changed',
           dispatched: true);
     }
@@ -425,7 +427,11 @@ class _FlutterExecutionTargets {
     await bridge._waitForFrame();
     if (request['hideKeyboard'] == true) {
       await bridge._hideKeyboard();
-      result['keyboard'] = {'ok': true, 'dismissalRequested': true, 'source': 'flutter-text-input'};
+      result['keyboard'] = {
+        'ok': true,
+        'dismissalRequested': true,
+        'source': 'flutter-text-input'
+      };
     }
     bridge.recordEvent(
         category: 'ui.interaction', name: 'input.changed', data: result);

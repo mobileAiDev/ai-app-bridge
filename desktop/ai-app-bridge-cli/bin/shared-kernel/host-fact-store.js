@@ -12,13 +12,13 @@ let exitInstalled = false;
 function hostFactStoreTarget() {
   const explicit = process.env.AI_APP_BRIDGE_FACT_STORE_DIR, legacy = process.env.AI_APP_BRIDGE_FACT_CACHE_PATH;
   const profile = process.env.AI_APP_BRIDGE_FACT_CACHE_PROFILE || 'auto';
-  if (!['auto', '64mb', '256mb', '512mb', '1gb'].includes(profile))
-    throw new CommandError('invalid_fact_store_profile', 'FactStore profile must be auto, 64mb, 256mb, 512mb or 1gb.');
   return { directory: canonicalPath(explicit || (legacy ? path.join(path.dirname(path.resolve(legacy)), 'fact-store-v1') : defaultSegmentedFactStorePath())),
     profile };
 }
 
 function open(target) {
+  if (!['auto', '64mb', '256mb', '512mb', '1gb'].includes(target.profile ?? 'auto'))
+    throw new CommandError('invalid_fact_store_profile', 'FactStore profile must be auto, 64mb, 256mb, 512mb or 1gb.');
   try { return createFactStore(target); }
   catch (error) {
     if (error.code === 'sfs_busy') throw new CommandError('fact_store_writer_busy',

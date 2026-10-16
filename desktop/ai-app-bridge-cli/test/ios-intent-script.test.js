@@ -160,17 +160,20 @@ for (const language of ['javascript', 'python']) {
   });
 }
 
-test('iOS Intent rejects a replaced Flutter Element without dispatching to the new element', async () => {
+test('iOS Intent passes the original Flutter ref to the SDK to reject a replaced Element', async () => {
   const original = { ok: true, nodes: [node('original', 'Settings', 'tap')] };
-  let dispatched = false;
-  const adapter = createIOSIntentDeviceAdapter({ provider: { async run(command) {
-    if (command === 'ios-flutter-nodes') return { ok: true, nodes: [node('replacement', 'Settings', 'tap')] };
-    dispatched = true; return { ok: true };
+  const calls = [];
+  const adapter = createIOSIntentDeviceAdapter({ provider: { async run(command, args) {
+    calls.push(command);
+    assert.equal(command, 'ios-flutter-action');
+    assert.deepEqual(args.payload.targetRef, original.nodes[0].targetRef);
+    return { ok: false, error: 'flutter_target_replaced', dispatched: false };
   } } });
   const result = await adapter.action({ deviceId: 'phone', bundleId: 'sample.flutter', actionId: 'intent:one',
     rawTree: original, spec: { provider: 'flutter', action: 'tap', selector: { text: 'Settings' } } });
-  assert.equal(result.error, 'reobserve_required');
-  assert.equal(dispatched, false);
+  assert.equal(result.error, 'flutter_target_replaced');
+  assert.equal(result.dispatched, false);
+  assert.deepEqual(calls, ['ios-flutter-action']);
 });
 
 test('iOS typed control rejects a missing target before executing', async t => {

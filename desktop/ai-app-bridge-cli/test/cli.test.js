@@ -944,8 +944,8 @@ test('iOS default screenshots use the shared bounded artifact lifecycle', async 
   }
 });
 
-test('iOS doctor probes selected device details before refusing an unavailable debug runtime tunnel', async () => {
-  let unexpectedDeviceCalls = 0;
+test('iOS doctor attempts the runtime descriptor despite unavailable readiness hints', async () => {
+  let descriptorCalls = 0;
   let detailCalls = 0;
   let httpCalls = 0;
   const provider = new IOSBridgeProvider({
@@ -986,8 +986,9 @@ test('iOS doctor probes selected device details before refusing an unavailable d
         callback(Object.assign(new Error('Device details unavailable'), { code: 1 }), '', '');
         return;
       }
-      unexpectedDeviceCalls += 1;
-      callback(new Error('unexpected devicectl call'), '', '');
+      descriptorCalls += 1;
+      assert.ok(args.includes('copy'));
+      callback(new Error('Runtime descriptor unavailable'), '', '');
     },
     httpRequest: async () => {
       httpCalls += 1;
@@ -1002,8 +1003,8 @@ test('iOS doctor probes selected device details before refusing an unavailable d
 
   assert.equal(result.ok, true);
   assert.equal(result.ready, false);
-  assert.equal(result.checks.find((check) => check.name === 'runtime').error, 'ios_tunnel_unavailable');
-  assert.equal(unexpectedDeviceCalls, 0);
+  assert.equal(result.checks.find((check) => check.name === 'runtime').error, 'ios_command_failed');
+  assert.equal(descriptorCalls, 1);
   assert.equal(detailCalls, 1);
   assert.equal(result.selectedDevice.connectionProbe.ok, false);
   assert.equal(httpCalls, 0);

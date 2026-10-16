@@ -1,7 +1,7 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.4.16",
-  "sdkReleaseVersion": "0.4.16",
+  "version": "0.4.17",
+  "sdkReleaseVersion": "0.4.17",
   "description": "Desktop CLI and MCP server for AI App Bridge across Android, iOS, Flutter, WebView, and Web targets.",
   "repository": {
     "type": "git",
@@ -46,6 +46,7 @@
     "bin/runtime-client.js",
     "bin/runtime-force-stop.js",
     "bin/runtime-directory.js",
+    "bin/runtime-admission.js",
     "bin/runtime-protocol.js",
     "bin/command-router.js",
     "bin/script",

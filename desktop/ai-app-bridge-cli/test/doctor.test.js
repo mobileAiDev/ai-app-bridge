@@ -183,7 +183,7 @@ test('CLI diagnosis reports invalid configuration and broken dependencies instea
   const invalid = spawnSync(process.execPath, [cli, 'doctor', '--platform', 'host'], {
     env: { ...f.env, AI_APP_BRIDGE_FACT_CACHE_PROFILE: 'invalid' }, encoding: 'utf8' });
   assert.equal(invalid.status, 0, invalid.stderr + invalid.stdout);
-  assert.equal(JSON.parse(invalid.stdout).value.checks[0].facts.error, 'invalid_fact_store_profile');
+  assert.equal(JSON.parse(invalid.stdout).value.checks[0].facts.runtime.state, 'stopped');
   const preload = path.join(f.directory, 'missing-dependency.cjs');
   fs.writeFileSync(preload, `const M=require('node:module'),original=M._resolveFilename;
     M._resolveFilename=function(name,...rest){if(name==='ws/package.json')throw Object.assign(new Error('missing fixture dependency'),{code:'MODULE_NOT_FOUND'});return original.call(this,name,...rest)};`);
@@ -204,7 +204,7 @@ test('doctor inspects a mismatched authenticated Runtime through status only', a
     let text = ''; for await (const chunk of request) text += chunk;
     const message = JSON.parse(text); methods.push(message.method); assert.equal(message.arguments.diagnostics, true);
     response.end(JSON.stringify({ protocol, runtimeId, reply: { kind: 'json', value: { ok: true, runtimeId,
-      identity: { code: 'old-code', config: 'old-config', version: '0.4.4' }, diagnostics: { web: { running: false }, sessions: { sessions: [] } } } } }));
+      identity: { protocol, code: 'old-code', config: 'old-config', version: '0.4.4' }, diagnostics: { web: { running: false }, sessions: { sessions: [] } } } } }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -214,8 +214,24 @@ test('doctor inspects a mismatched authenticated Runtime through status only', a
   fs.writeFileSync(path.join(directory, 'endpoint.json'), JSON.stringify({ protocol, runtimeId, token, facts, pid: process.pid, port: server.address().port }));
   const { stdout } = await promisify(execFile)(process.execPath, [cli, 'doctor', '--platform', 'web'], { env: f.env });
   const report = JSON.parse(stdout).value;
-  assert.equal(report.checks[0].facts.compatible, false); assert.equal(report.checks[0].facts.mismatch.details.outdatedSide, 'runtime');
+  assert.equal(report.checks[0].facts.compatible, true);
+  assert.ok(report.checks[0].facts.warnings.some(w => w.code === 'runtime_code_differs'));
   assert.deepEqual(methods, ['status']); assert.equal(JSON.stringify(report).includes(token), false);
   assert.ok(report.checks.some(item => item.name === 'web.provider'));
   for (const action of report.nextActions) validateCommandArguments(action.command, action.arguments);
+});
+
+
+test('unknown inventory does not prevent independent probes of an explicit device', async () => {
+  let probed = 0;
+  const report = await doctor({ serial: 'phone' }, { inspectRuntime: async () => hostStatus,
+    execFile: async (_program, argv) => {
+      if (argv[0] === 'devices') throw new Error('inventory unavailable');
+      return { stdout: '' };
+    }, lease: { status: () => ({ ok: true }) },
+    uiaStatus: async () => { probed++; return { ok: true, running: true }; },
+  });
+  assert.equal(probed, 1);
+  assert.equal(report.checks.find(item => item.name === 'android.devices').status, 'issue');
+  assert.equal(report.checks.find(item => item.name === 'android.uia').facts.ok, true);
 });

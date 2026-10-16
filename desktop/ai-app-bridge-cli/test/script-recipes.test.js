@@ -163,13 +163,13 @@ test('CLI and MCP read doctor/recipes locally even with an invalid FactStore pro
   t.after(() => client.close({ stopRuntime: false }));
   await client.initialize();
   const diagnose = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command: 'doctor', arguments: { platform: 'host' } } }));
-  assert.equal(diagnose.ok, true); assert.equal(diagnose.checks[0].facts.error, 'invalid_fact_store_profile');
+  assert.equal(diagnose.ok, true); assert.equal(diagnose.checks[0].facts.runtime.state, 'stopped');
   const recipes = payloadOf(await client.request('tools/call', { name: 'run', arguments: { command: 'script', arguments: { operation: 'recipes', name: 'android-test-session' } } }));
   assert.equal(recipes.recipe.source, fs.readFileSync(sourcePath, 'utf8'));
   const cli = await require('../test-support/cli-client').runCli('script', { operation: 'recipes', name: 'android-test-session' }, { env });
   assert.equal(cli.code, 0); assert.deepEqual(cli.value, recipes);
   assert.equal(fs.existsSync(env.AI_APP_BRIDGE_FACT_STORE_DIR), false);
-  assert.equal(fs.existsSync(env.AI_APP_BRIDGE_RUNTIME_HOME), false);
+  assert.equal(fs.existsSync(env.AI_APP_BRIDGE_RUNTIME_HOME) && fs.readdirSync(env.AI_APP_BRIDGE_RUNTIME_HOME, { recursive: true }).some(name => /(?:owner|endpoint)\.json$/.test(name)), false);
 });
 
 function webPage(epoch = 'current') {

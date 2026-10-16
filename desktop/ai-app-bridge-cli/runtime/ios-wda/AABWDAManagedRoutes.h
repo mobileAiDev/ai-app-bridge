@@ -87,10 +87,7 @@ static XCUIElement *AABWDANativeElement(AABWDATask *task, BOOL resolve)
     element = [cache elementForUUID:uid checkStaleness:YES];
   }
   FBXCElementSnapshotWrapper *snapshot = [FBXCElementSnapshotWrapper ensureWrapped:[element fb_standardSnapshot]];
-  NSString *identifier = snapshot.identifier;
-  id actualIdentifier = identifier.length ? identifier : NSNull.null;
-  return [snapshot.wdUID isEqual:uid] && [actualIdentifier isEqual:ref[@"identifier"]]
-    && [(snapshot.wdLabel ?: NSNull.null) isEqual:ref[@"label"]]
+  return [snapshot.wdUID isEqual:uid]
     && [[FBElementTypeTransformer shortStringWithElementType:snapshot.elementType] isEqual:ref[@"type"]]
     && snapshot.isWDEnabled && snapshot.isWDVisible ? element : nil;
 }

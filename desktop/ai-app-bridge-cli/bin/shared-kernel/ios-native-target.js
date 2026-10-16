@@ -66,7 +66,15 @@ function selectNativeNode(tree, selector) {
 function bindNativeTarget(tree, selector, expectedTarget) {
   const selected = selectNativeNode(tree, selector);
   if (!selected.ok) return selected;
-  if (expectedTarget !== undefined && !isDeepStrictEqual(selected.targetRef, expectedTarget)) return reject('reobserve_required');
+  if (expectedTarget !== undefined) {
+    const { element, ...identity } = selected.targetRef;
+    const { element: expectedElement, ...expectedIdentity } = expectedTarget;
+    if (!isDeepStrictEqual(identity, expectedIdentity) || element.elementId !== expectedElement.elementId
+      || element.type !== expectedElement.type) return reject('reobserve_required');
+    const fields = ['identifier', 'label'].filter(key => element[key] !== expectedElement[key]);
+    if (fields.length) selected.warnings = [{ code: 'target_attributes_changed', fields,
+      message: 'The same iOS element is still selected; its attributes changed.' }];
+  }
   return selected;
 }
 

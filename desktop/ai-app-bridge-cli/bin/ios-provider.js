@@ -524,7 +524,7 @@ class IOSBridgeProvider {
   async h5Control(command, args, context) {
     const tree = await this.runtimeGet(args, withQuery('/v1/h5/dom', args.webViewId === undefined ? {} : { webViewId: args.webViewId }), context);
     if (tree.ok !== true) return tree;
-    const selected = h5Target.selectH5Node(tree, args.selector, args.expectedTarget);
+    const selected = h5Target.selectH5Node(tree, args.selector, args.expectedTarget, { requireEnabled: h5Controls.get(command) !== 'scroll' });
     if (!selected.ok) return selected;
     return this.runtimePost(args, '/v1/h5/action', { payload: { action: h5Controls.get(command),
       ...selected.targetRef, ...(command === 'ios-h5-input' ? { text: args.text } : {}) } }, context);
@@ -592,11 +592,6 @@ class IOSBridgeProvider {
     const device = options.device ?? await this.requireDevice(args);
     if (![device.identifier, device.udid].includes(target.deviceId)) {
       throw bindingFailure('ios_device_not_found', 'deviceId must match the selected devicectl identifier or UDID.');
-    }
-    if (device.developerModeStatus !== 'enabled' || device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') {
-      throw bindingFailure('ios_tunnel_unavailable', device.connectionProbe?.ok === false
-        ? `The selected iPhone did not become ready after a targeted device details request: ${device.connectionProbe.message}`
-        : 'The selected iPhone does not expose ready developer services after the device details request. Inspect ios-doctor for the observed device state.');
     }
     const runtimeBinding = await this.readRuntimePortFile(args, device);
     const host = target.iosHost ?? device.tunnelIPAddress;
@@ -710,7 +705,8 @@ class IOSBridgeProvider {
       ...(operation === 'native-input' ? { text: args.text, clearFirst: true } : {}) };
     const result = await executeWDAAction({ port, args, operation, selected: observation.session, payload });
     return { ...result, transport: 'wda-managed-native', action: operation, session: observation.session,
-      resolved: selected.targetRef, matched: 1, runtimeBinding: port.runtimeBinding };
+      resolved: selected.targetRef, matched: 1, runtimeBinding: port.runtimeBinding,
+      ...(selected.warnings ? { warnings: [...(result.warnings || []), ...selected.warnings] } : {}) };
   }
 
   async wdaTap(args = {}) {

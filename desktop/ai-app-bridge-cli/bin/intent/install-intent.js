@@ -84,7 +84,7 @@ async function installedIdentity(args, artifact, run = execute) {
   }
   const paths = output.stdout.trim().split(/\r?\n/).filter(Boolean);
   if (!paths.length) return { known: true, installed: false, identityMatches: false };
-  if (paths.length !== 1 || !paths[0].startsWith('package:/data/app/') || !paths[0].endsWith('/base.apk')) {
+  if (paths.length !== 1 || !paths[0].startsWith('package:/') || paths[0].includes('\0')) {
     return { known: true, installed: true, identityMatches: false, error: 'installed_apk_layout_unsupported' };
   }
   const devicePath = paths[0].slice('package:'.length);

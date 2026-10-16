@@ -80,3 +80,14 @@ test('ambiguous, noneditable and unbound editors stop; atomic SDK replacement re
     assert.equal(result.error, error, scenario);
   }
 });
+
+
+test('an enabled native child remains selectable under a disabled visible container', () => {
+  const { selectNativeNode } = require('../bin/shared-kernel/native-target');
+  const bounds = { left: 0, top: 0, right: 100, bottom: 100 };
+  const child = { visible: true, enabled: true, text: 'Choose', bounds };
+  const tree = { root: { visible: true, enabled: false, bounds, children: [child] } };
+  assert.equal(selectNativeNode(tree, { selector: { text: 'Choose' } }).node, child);
+  child.enabled = false;
+  assert.equal(selectNativeNode(tree, { selector: { text: 'Choose' } }).error, 'native_target_disabled');
+});

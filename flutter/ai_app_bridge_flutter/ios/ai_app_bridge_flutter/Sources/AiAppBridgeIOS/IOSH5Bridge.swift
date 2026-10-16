@@ -250,7 +250,7 @@ final class IOSH5Bridge {
         actual=ref(element);
         const fields=Object.keys(actual).filter(key=>actual[key]!==expected[key]);
         warnings=fields.length?[{code:'target_attributes_changed',fields,message:'The observed DOM element is still present; its attributes changed.'}]:[];
-        return !disabled(element)&&visible(element);
+        return (request.action==='scroll'||!disabled(element))&&visible(element);
       };
       if (!current()) return fail('reobserve_required');
       if (request.action==='scroll') {
@@ -273,7 +273,8 @@ final class IOSH5Bridge {
         if (!editable(element)) return fail('ios_h5_target_not_editable');
         const before=valueControl?element.value:element.innerText;
         element.focus();
-        if (!current()||!editable(element)||(valueControl?element.value:element.innerText)!==before) return fail('ios_h5_target_changed',true);
+        if (!current()||!editable(element)) return fail('ios_h5_target_changed',true);
+        if ((valueControl?element.value:element.innerText)!==before) warnings.push({code:'target_value_changed_on_focus',message:'The same editor changed its value during focus.'});
         if (valueControl) Object.getOwnPropertyDescriptor(tag==='input'?HTMLInputElement.prototype:HTMLTextAreaElement.prototype,'value').set.call(element,request.text);
         else element.innerText=request.text;
         element.dispatchEvent(new Event('input',{bubbles:true}));

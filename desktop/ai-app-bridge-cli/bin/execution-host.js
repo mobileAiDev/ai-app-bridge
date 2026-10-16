@@ -103,6 +103,7 @@ const commandRouter = createCommandRouter({
 async function dispatchProviderCommand(command, args, options = {}) {
   try {
     const validated = resolveCommandPaths(command, validateCommandArguments(command, args));
+    require('./runtime-admission').requireCommandRoute(command, validated);
     if (command === 'response') return responseReply(getResponseStore().read(validated.ref));
     if (command === 'runtime') {
       if (validated.operation === 'stop' || validated.operation === 'force-stop') {
@@ -214,6 +215,7 @@ async function runGeneric(args = {}, dependencies = {}) {
     extract = prepareExtraction(request.extract);
   } catch (error) { return { value: publicFailure({ command, stage: 'validation', error, maxBytes }) }; }
   try {
+    require('./runtime-admission').requireCommandRoute(request.command, commandArguments);
     const getStore = () => dependencies.responseStore || getResponseStore();
     if (command === 'response') {
       const frozen = getStore().read(commandArguments.ref);

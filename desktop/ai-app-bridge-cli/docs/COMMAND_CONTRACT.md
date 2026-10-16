@@ -136,14 +136,20 @@ SQLite lock controls ownership; a stale PID or failed health probe never permits
 replacing a live owner. Startup candidates can repeat the ownership election
 only after proving the lock is free and before dispatching any command.
 
-Code, bundled runtime artifacts, native-store binary, Node version, FactStore
-profile and provider configuration must match the owner. Mismatch rejects
-execution with `runtime_code_mismatch` or `runtime_configuration_mismatch`.
-ADB is compared by its resolved executable path: automatic PATH lookup, an
-explicit path and symlinks to the same executable share the same configuration.
-Startup pins that executable for subsequent requests; selecting a different ADB
-still requires an explicit runtime stop. Missing ADB does not block capabilities
-that do not use it.
+The wire protocol must match. Code, bundled artifacts, Node version, cache
+profile and unrelated environment differences are diagnostic warnings, not
+execution gates. Requests use the running owner's implementation and settings;
+`runtime status` and replies identify differences without restarting tasks.
+Client-side missing build tools do not invalidate an already running owner.
+Provider prerequisites are checked only by operations that actually use them.
+
+An explicitly selected different ADB executable or server is checked only when
+admitting new Android I/O. It returns `android_runtime_route_mismatch` instead
+of silently using a different route. Equivalent server spellings and executable
+symlinks are accepted. Explicit command route arguments take precedence. Host,
+iOS, Web, history and original-operation recovery are independent of this gate.
+Local device recovery uses the running owner's recorded ownership directory.
+
 `runtime status` reports the owner and compatibility; explicit `runtime stop`
 remains available from a different build/configuration. An unresponsive owner
 returns `runtime_unresponsive` without killing or replacing it. Lost execution
@@ -1191,9 +1197,10 @@ archives prior UIA records.
 Reference actions use the retained node from that exact snapshot. The phone
 locates the same accessibility source in its original window and checks current
 operability before requesting the click. Attribute changes are warnings, while
-replaced nodes, expired snapshots and foreign runtime references fail before dispatch; they are never replaced with a fresh text
-match. UIA retains at most eight snapshots for 60 seconds, so Scripts observe
-immediately before selecting and acting. This is a runtime reference, not a
+replaced nodes, evicted snapshots and foreign runtime references fail before dispatch; they are never replaced with a fresh text
+match. UIA retains at most eight snapshots; elapsed time alone does not invalidate a
+retained reference. Scripts observe again when the target is replaced or its
+snapshot is evicted. This is a runtime reference, not a
 persistent selector to save between runs.
 
 The convenience text commands below match display text and, for Native/UIA,

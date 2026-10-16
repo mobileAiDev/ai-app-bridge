@@ -90,17 +90,15 @@ test('Python version probing has a deadline even if an executable ignores TERM',
   assert.ok(Date.now() - start < 6500);
 });
 
-test('identity mismatch names both sides and only directs stopping an actually older Runtime', () => {
-  const identity = (version, code, node = '26.3.0') => ({ version, code, config: 'configuration', node: { version: node, modules: '148' } });
-  for (const [client, runtime, side, instruction] of [
-    [identity('0.3.8', 'old'), identity('0.4.0', 'new'), 'client', /do not stop the newer Runtime/],
-    [identity('0.4.0', 'new'), identity('0.3.8', 'old'), 'runtime', /runtime --operation stop --extract null/],
-    [identity('0.4.0', 'a'), identity('0.4.0', 'b'), 'undetermined', /fingerprints alone cannot identify/],
-    [identity('0.4.0', 'a', '26.3.0'), identity('0.4.0', 'b', '26.4.0'), 'undetermined', /fingerprints alone cannot identify/],
-  ]) assert.throws(() => requireCompatible({ identity: runtime, runtimeId: 'test', pid: 1 }, client), error => {
-    assert.equal(error.details.outdatedSide, side); assert.deepEqual(error.details.client, client); assert.deepEqual(error.details.runtime, runtime);
-    assert.match(error.message, instruction); return true;
-  });
+test('build and Node differences are diagnostics; wire protocol differences still reject', () => {
+  const identity = (version, code, node = '26.3.0') => ({ protocol: 'aab.runtime/v1', version, code, config: 'configuration', node: { version: node, modules: '148' } });
+  for (const [client, runtime] of [
+    [identity('0.3.8', 'old'), identity('0.4.0', 'new')],
+    [identity('0.4.0', 'new'), identity('0.3.8', 'old')],
+    [identity('0.4.0', 'a'), identity('0.4.0', 'b', '26.4.0')],
+  ]) assert.equal(requireCompatible({ identity: runtime }, client)[0].code, 'runtime_code_differs');
+  assert.throws(() => requireCompatible({ identity: identity('0.4.0', 'a') }, { protocol: 'other/v1' }),
+    { code: 'runtime_protocol_error' });
 });
 
 test('a loaded client pins its fingerprint before its first request even if installed files change', t => {

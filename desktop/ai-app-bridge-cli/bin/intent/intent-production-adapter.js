@@ -121,7 +121,7 @@ function createProductionIntentDeviceAdapter({
           if (spec.provider === 'h5') {
             const action = { tap: 'click', inputText: 'input', scroll: 'scroll' }[spec.action];
             if (!action) return finish({ ok: false, error: 'unsupported_android_h5_intent_action', dispatched: false });
-            const observed = h5Target.selectH5Node(rawTree, spec.selector);
+            const observed = h5Target.selectH5Node(rawTree, spec.selector, undefined, { requireEnabled: spec.action !== 'scroll' });
             if (!observed.ok) return finish(observed);
             return finish(await actionPorts.h5Control(ctx, action, {
               webViewId: observed.targetRef.pageRef.webViewId, selector: { elementId: observed.node.elementId },

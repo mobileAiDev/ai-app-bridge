@@ -63,7 +63,7 @@ test('native longPress rejects ambiguous/hidden/out-of-window nodes and invalid 
     [action({ selector: { text: 'Note A', clickable: 'true' } }), tree(), 'explicit_native_selector_required'],
     [action(), tree([node(), node()]), 'native_selector_ambiguous'],
     [action(), tree([node({ visible: false })]), 'native_selector_not_found'],
-    [action(), tree([node({ enabled: false })]), 'native_selector_not_found'],
+    [action(), tree([node({ enabled: false })]), 'native_target_disabled'],
     [action(), tree([node({ bounds: { left: 600, top: 200, right: 700, bottom: 260 } })]), 'native_selector_not_found'],
     [action(), tree([node({ bounds: { left: NaN, top: 200, right: 300, bottom: 260 } })]), 'native_selector_not_found'],
     [action(), null, 'visible_observed_window_required'],
@@ -88,7 +88,6 @@ test('native longPress uses only the foreground dialog and rejects a covered act
 test('unknown or ineligible foreground windows block longPress instead of falling back to the activity', async () => {
   for (const foreground of [
     { root: node({ text: 'Dialog', bounds: { left: 0, top: 0, right: NaN, bottom: 400 } }) },
-    { root: node({ text: 'Dialog', enabled: false }) },
     { root: node({ text: 'Dialog', visible: undefined, effectiveVisible: undefined }) },
     { root: null },
   ]) {

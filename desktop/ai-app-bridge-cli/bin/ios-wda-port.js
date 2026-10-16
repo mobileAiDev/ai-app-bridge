@@ -30,8 +30,8 @@ function target(value, session = false) {
 async function openWdaPort(provider, args, device) {
   if (!args.deviceId || !args.wdaRunnerBundleId) throw fail('ios_wda_target_required', 'WDA requires deviceId and the actual wdaRunnerBundleId from ios-setup.');
   device ??= await provider.requireDevice(args);
-  if (![device.identifier, device.udid].includes(args.deviceId) || device.developerModeStatus !== 'enabled'
-    || device.ddiServicesAvailable !== true || device.tunnelState !== 'connected') throw fail('ios_tunnel_unavailable', 'The selected WDA device must have a connected developer tunnel.');
+  if (![device.identifier, device.udid].includes(args.deviceId))
+    throw fail('ios_device_not_found', 'deviceId must match the selected devicectl identifier or UDID.');
   const descriptor = await provider.readContainerDescriptor(args, device, args.wdaRunnerBundleId, 'ai_app_bridge_wda.json');
   const runtime = binding(descriptor);
   if (descriptor.ok !== true || runtime.bundleId !== args.wdaRunnerBundleId) throw fail('ios_wda_binding_mismatch', 'The selected Runner container has no matching ready WDA descriptor.');

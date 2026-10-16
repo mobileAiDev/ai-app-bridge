@@ -16,7 +16,7 @@ const nativeCandidates = nodes => nodes.map(node => ({ text: node.text, contentD
 
 function visible(node) {
   return node && (node.effectiveVisible === true || node.visible === true)
-    && node.effectiveVisible !== false && node.visible !== false && node.enabled !== false
+    && node.effectiveVisible !== false && node.visible !== false
     && node.visibility !== 'gone' && node.visibility !== 'invisible' && node.alpha !== 0;
 }
 
@@ -97,6 +97,7 @@ function selectNativeNode(rawTree, spec, editable, selectedWindowId) {
     && (!roots || roots.some(root => item.node === root || item.ancestors.includes(root))));
   if (selectedMatches.length !== 1) return selectionFailure(selectedMatches.length ? 'native_selector_ambiguous' : 'native_selector_not_found', nativeCandidates(selectedMatches.map(item => item.node)));
   const selected = selectedMatches[0];
+  if (selected.node.enabled === false) return reject('native_target_disabled');
   if (editable && selected.node.editable !== true) return reject('native_target_not_editable');
   return { ok: true, ...selected, windowBounds: window.bounds, window };
 }

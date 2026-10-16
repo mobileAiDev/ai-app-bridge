@@ -105,8 +105,11 @@ test('H5 actions check viewport, DOM occlusion, focus callbacks and secret value
   const request = requestFor(p, { elementId: 'e1' }, 'input', { text: '' });
   assert.equal(tree(p).dom.controls[0].value, '[REDACTED]');
   input.onfocus = () => { input.value = 'callback-change'; };
-  assert.equal(p.run(request).error, 'ios_h5_target_changed');
-  assert.equal(input.value, 'callback-change'); assert.deepEqual(p.events, []);
+  const focused = p.run(request);
+  assert.equal(focused.ok, true);
+  assert.equal(focused.warnings[0].code, 'target_value_changed_on_focus');
+  assert.equal(input.value, ''); assert.deepEqual(p.events, ['input:editor', 'change:editor']);
+  p.events.length = 0;
   delete input.onfocus;
   assert.equal(p.run(request).ok, true); assert.equal(input.value, '');
   assert.deepEqual(p.events, ['input:editor', 'change:editor']);
@@ -217,4 +220,16 @@ test('public MCP Intent and continuous Script execute the exact H5 renderer and 
   assert.deepEqual(Object.keys(actions[1].payload.pageRef), Object.keys(tree(p).pageRef));
   assert.deepEqual(Object.keys(actions[1].payload.element), ['elementId', 'tag', 'id', 'name', 'type', 'text', 'ariaLabel', 'href']);
   assert.deepEqual(p.events, ['click:article', 'click:article']);
+});
+
+test('disabled H5 controls remain scroll targets but reject editing and clicking', () => {
+  const p = page(), input = new p.Element('field', '', 'INPUT');
+  input.disabled = true; p.hit = input;
+  const raw = tree(p);
+  const selected = selectH5Node(raw, { elementId: 'e1' }, undefined, { requireEnabled: false });
+  assert.equal(selected.ok, true);
+  assert.equal(selectH5Node(raw, { elementId: 'e1' }).ok, false);
+  assert.equal(p.run({ operation: 'action', action: 'scroll', ...selected.targetRef }).ok, true);
+  assert.deepEqual(p.events, ['scroll:field']);
+  assert.equal(p.run({ operation: 'prepare', action: 'input', ...selected.targetRef }).ok, false);
 });

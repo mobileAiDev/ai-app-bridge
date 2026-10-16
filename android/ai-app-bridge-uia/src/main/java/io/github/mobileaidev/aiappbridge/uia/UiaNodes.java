@@ -16,7 +16,6 @@ import java.util.UUID;
 /** All observation and validation calls run on the runtime's single UI worker. */
 final class UiaNodes implements UiaActionEngine.Gateway {
     private static final int MAX_NODES = 2000, MAX_DEPTH = 64, MAX_SNAPSHOTS = 8;
-    private static final long SNAPSHOT_TTL_MS = 60000;
     private final UiaConnection connection;
     private final String bootId, epoch;
     private final JSONArray startupWarnings;
@@ -37,7 +36,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
 
     private static final class Snapshot {
         final String id = UUID.randomUUID().toString();
-        final long created = SystemClock.elapsedRealtime(), expires = created + SNAPSHOT_TTL_MS;
+        final long created = SystemClock.elapsedRealtime();
         final Map<String, Node> nodes = new LinkedHashMap<>();
         final List<Node> roots = new ArrayList<>();
         final JSONArray windows = new JSONArray(), warnings = new JSONArray();
@@ -106,8 +105,6 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         // must not delay reads; callers wait for the specific state they need.
         Snapshot snapshot = read(null);
         for (int i = 0; i < startupWarnings.length(); i++) snapshot.warnings.put(startupWarnings.get(i));
-        Iterator<Snapshot> existing = snapshots.values().iterator();
-        while (existing.hasNext()) if (existing.next().expires <= snapshot.created) existing.remove();
         if (snapshots.size() == MAX_SNAPSHOTS) snapshots.remove(snapshots.keySet().iterator().next());
         StringBuilder body = new StringBuilder();
         for (int i = 0; i < snapshot.roots.size(); i++) xml(snapshot.roots.get(i), body, i, snapshot);
@@ -122,7 +119,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
         snapshots.put(snapshot.id, snapshot);
         return new JSONObject().put("ok", true).put("schemaVersion", Wire.SNAPSHOT).put("bootId", bootId)
             .put("runtimeEpoch", epoch).put("snapshotId", snapshot.id).put("createdAtElapsedMs", snapshot.created)
-            .put("expiresAtElapsedMs", snapshot.expires).put("window", snapshot.window == null ? JSONObject.NULL : snapshot.window)
+            .put("retainedSnapshotLimit", MAX_SNAPSHOTS).put("window", snapshot.window == null ? JSONObject.NULL : snapshot.window)
             .put("windows", snapshot.windows).put("warnings", snapshot.warnings).put("truncated", snapshot.truncated)
             .put("nodeCount", snapshot.nodes.size()).put("xml", xml.toString());
     }
@@ -196,7 +193,7 @@ final class UiaNodes implements UiaActionEngine.Gateway {
     @Override public JSONObject validate(JSONObject request) throws Exception {
         JSONObject target = Wire.object(request, "target");
         Snapshot snapshot = snapshots.get(Wire.string(target, "snapshotId"));
-        if (snapshot == null || snapshot.expires <= SystemClock.elapsedRealtime()) throw new Wire.Failure("uia_stale_reference");
+        if (snapshot == null) throw new Wire.Failure("uia_stale_reference");
         Node original = snapshot.nodes.get(Wire.string(target, "ref"));
         if (original == null) throw new Wire.Failure("uia_stale_reference");
         JSONObject selector = Wire.object(target, "selector");

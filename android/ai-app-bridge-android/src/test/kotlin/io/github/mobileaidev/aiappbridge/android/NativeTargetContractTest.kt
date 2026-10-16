@@ -146,12 +146,19 @@ class NativeTargetContractTest {
         fails("native_window_changed") { resolve(snapshot, ref(current)) }
     }
 
-    @Test fun clippedOrDisabledAncestorsExcludeTheControl() {
+    @Test fun clippedAncestorsStillExcludeTheControl() {
         val old = editor(); tree(old)
-        for (group in listOf(node("id/clip").put("bounds", bounds(0, 150, 300, 500)), node("id/disabled").put("enabled", false))) {
-            group.put("children", JSONArray().put(editor()))
-            fails("native_selector_not_found") { resolve(tree(group), ref(old)) }
-        }
+        val group = node("id/clip").put("bounds", bounds(0, 150, 300, 500)).put("children", JSONArray().put(editor()))
+        fails("native_selector_not_found") { resolve(tree(group), ref(old)) }
+    }
+
+    @Test fun disabledAncestorsDoNotDisableTheirEnabledChildren() {
+        val child = editor()
+        val group = node("id/disabled").put("enabled", false).put("children", JSONArray().put(child))
+        val snapshot = tree(group)
+        assertSame(child, resolve(snapshot, ref(child)).node)
+        child.put("enabled", false)
+        fails("native_target_disabled") { resolve(snapshot, ref(child)) }
     }
 
     @Test fun scopedSelectionResolvesOneAnchoredRowAndCarriesItsAncestry() {

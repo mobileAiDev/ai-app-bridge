@@ -2481,7 +2481,7 @@ async function h5Control(ctx, action, options) {
     }, tree);
     return h5Action(ctx, { action: 'scrollBy', pageRef: tree.pageRef, deltaX: options.deltaX, deltaY: options.deltaY }, tree);
   }
-  const selected = h5Target.selectH5Node(tree, options.selector, options.expectedTarget);
+  const selected = h5Target.selectH5Node(tree, options.selector, options.expectedTarget, { requireEnabled: action !== 'scroll' });
   if (!selected.ok) return withForeground(selected, tree);
   return h5Action(ctx, { action, ...selected.targetRef, ...(action === 'input' ? { text: options.text } : {}) }, tree);
 }

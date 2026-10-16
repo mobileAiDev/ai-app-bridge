@@ -61,7 +61,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.4.16"
+    private const val bridgeVersion = "0.4.17"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
 
@@ -2062,7 +2062,7 @@ object AiAppBridge {
         }
 
         private fun findEditTextAtPoint(view: View, x: Int, y: Int): EditText? {
-            if (!view.isShown || !view.isEnabled || view.alpha <= 0f || !boundsForView(view).contains(x, y)) return null
+            if (!view.isShown || view.alpha <= 0f || !boundsForView(view).contains(x, y)) return null
             if (view is ViewGroup) {
                 for (index in view.childCount - 1 downTo 0) {
                     findEditTextAtPoint(view.getChildAt(index), x, y)?.let { return it }

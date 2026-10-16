@@ -15,7 +15,7 @@ function fixture(platform, change = {}, nodeChange = {}) {
   // Swift dictionaries do not preserve the key order of the Dart JSON payload.
   const current = { ...original, ...nodeChange, targetRef: Object.fromEntries(
     Object.entries({ ...original.targetRef,
-      ...(nodeChange.label || nodeChange.hint ? { guard: 'changed-editor-semantics' } : {}), ...change }).reverse()) };
+      ...change }).reverse()) };
   const calls = [], effects = [];
   const fresh = () => ({ ok: true, truncated: false, nodes: [current] });
   const action = payload => {
@@ -55,23 +55,22 @@ for (const platform of ['ios', 'android']) {
     test(`${platform} Flutter Intent rejects a changed ${field} before input`, async () => {
       const h = fixture(platform, { [field]: value });
       const result = await h.act();
-      assert.equal(result.error, platform === 'ios' ? 'reobserve_required' : {
+      assert.equal(result.error, {
         runtimeEpoch: 'flutter_runtime_changed', elementId: 'flutter_target_replaced', guard: 'flutter_target_changed',
       }[field]);
       assert.equal(result.dispatched, false);
-      assert.equal(h.calls.length, platform === 'ios' ? 0 : 1);
+      assert.equal(h.calls.length, 1);
       assert.deepEqual(h.effects, []);
     });
   }
 
-  for (const [field, value] of [['label', 'Weight (lb)'], ['hint', 'Load in lb']]) {
-    test(`${platform} Flutter Intent rejects a changed field ${field} before input`, async () => {
+  for (const [field, value] of [['label', 'Weight (lb)'], ['hint', 'Load in lb'], ['value', '43.0'], ['text', '43.0']]) {
+    test(`${platform} Flutter Intent dispatches the original ref when only ${field} changes`, async () => {
       const h = fixture(platform, {}, { [field]: value });
-      const result = await h.act();
-      assert.equal(result.error, platform === 'ios' ? 'reobserve_required' : 'flutter_target_changed');
-      assert.equal(result.dispatched, false);
-      assert.equal(h.calls.length, platform === 'ios' ? 0 : 1);
-      assert.deepEqual(h.effects, []);
+      assert.equal((await h.act()).ok, true);
+      assert.equal(h.calls.length, 1);
+      assert.equal(h.effects.length, 1);
+      assert.equal(h.calls[0].targetRef.guard, 'guard-1');
     });
   }
 

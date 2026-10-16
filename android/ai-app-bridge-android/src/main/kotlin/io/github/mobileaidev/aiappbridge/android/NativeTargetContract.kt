@@ -108,6 +108,7 @@ internal object NativeTargetContract {
             && (scopeRoots == null || scopeRoots.any { root -> it.node === root || it.ancestors.any { node -> node === root } }) }
         if (matches.size != 1) fail(if (matches.isEmpty()) "native_selector_not_found" else "native_selector_ambiguous")
         val selected = matches.single()
+        if (selected.node.opt("enabled") == false) fail("native_target_disabled")
         if (editable && selected.node.opt("editable") != true) fail("native_target_not_editable")
         val current = selected.node.optJSONObject("targetRef") ?: fail("native_target_reference_unavailable")
         for ((field, code) in listOf("runtimeEpoch" to "native_runtime_changed", "windowId" to "native_window_changed",
@@ -162,7 +163,7 @@ internal object NativeTargetContract {
         (value.opt(key) as? String)?.takeIf { it.isNotEmpty() } ?: fail(if (value.has(key)) "invalid_argument" else "missing_argument", field)
     private fun hidden(node: JSONObject?): Boolean = node != null &&
         (node.opt("effectiveVisible") == false || node.opt("visible") == false || node.opt("visibility") in listOf("gone", "invisible") || node.optDouble("alpha", 1.0) <= 0)
-    private fun visible(node: JSONObject): Boolean = !hidden(node) && node.opt("enabled") != false &&
+    private fun visible(node: JSONObject): Boolean = !hidden(node) &&
         (node.opt("visible") == true || node.opt("effectiveVisible") == true)
     private fun boundsValid(bounds: JSONObject?): Boolean = bounds != null &&
         listOf("left", "top", "right", "bottom").all { bounds.opt(it) is Number && bounds.getDouble(it).isFinite() } &&
