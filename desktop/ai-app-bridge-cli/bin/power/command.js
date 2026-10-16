@@ -34,10 +34,12 @@ async function handle(args, manager, work) {
     const releaseUnconfirmed = operation === 'release' && result.release?.released !== true;
     const inactive = ['acquire', 'renew'].includes(operation) && result.state !== 'active';
     const failed = releaseUnconfirmed || inactive;
-    return { ok: !failed, command: 'power', operation, ...result,
-      ...(failed ? { error: releaseUnconfirmed ? 'power_release_unconfirmed' : result.error?.code || 'power_activity_inactive',
+    const { error: leaseError, ...facts } = result;
+    return { ok: !failed, command: 'power', operation, ...facts,
+      ...(leaseError ? { leaseError } : {}),
+      ...(failed ? { error: releaseUnconfirmed ? 'power_release_unconfirmed' : leaseError?.code || 'power_activity_inactive',
         message: releaseUnconfirmed ? 'The platform did not confirm release; inspect release and platformExpiresAtMs for its expiry bound.'
-          : result.error?.message || 'The requested work lease is not active.' } : {}),
+          : leaseError?.message || 'The requested work lease is not active.' } : {}),
       ...(operation === 'status' && work ? { automatic: work.status() } : {}),
       dispatched: operation !== 'status', ambiguous: failed && result.release?.released !== true, settled: !failed };
   } catch (error) {

@@ -72,15 +72,19 @@ async function macAssertion({ mode, ttlMs }, { spawnChild, run }) {
     await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
     const deadline = Date.now() + 3000;
     try {
-      while (Date.now() < deadline) {
+      while (true) {
+        // A synchronous command can delay this poll beyond the deadline while
+        // the OS assertion is already active. Confirm one fresh sample before
+        // declaring failure; a pre-deadline sample cannot prove current absence.
+        const finalProbe = Date.now() >= deadline;
         const { stdout } = await run('/usr/bin/pmset', ['-g', 'assertions'], { timeout: 2000, maxBuffer: 1024 * 1024 });
         const owned = stdout.split('\n').filter(line => line.includes(`pid ${child.pid}(caffeinate):`));
         if ((mode === 'display' || owned.some(line => line.includes('PreventUserIdleSystemSleep')))
           && (mode === 'system' || owned.some(line => line.includes('PreventUserIdleDisplaySleep')))) return child;
         if (child.exitCode !== null) throw failure('power_assertion_failed', 'caffeinate exited before confirming its assertion.', { stderr });
+        if (finalProbe) throw failure('power_assertion_unconfirmed', 'pmset did not confirm the requested assertions for this caffeinate process.', { pid: child.pid, stderr });
         await new Promise(resolve => setTimeout(resolve, 20));
       }
-      throw failure('power_assertion_unconfirmed', 'pmset did not confirm the requested assertions for this caffeinate process.', { pid: child.pid, stderr });
     } catch (error) { child.kill(); throw error; }
   }
   async function stop(child) {

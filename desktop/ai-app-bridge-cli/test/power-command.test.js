@@ -4,6 +4,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const { validateCommandArguments, commandContract, isAndroidMutation } = require('../bin/command-registry');
 const { createScriptHostPort } = require('../bin/script/script-host-port');
 const { handle } = require('../bin/power/command');
+const { normalizeCommandResult } = require('../bin/command-errors');
 
 test('power scope is explicit, discoverable, and separate from Android UI ownership', async () => {
   assert.equal(commandContract('power').platform, 'multi');
@@ -49,4 +50,18 @@ test('unconfirmed platform release and inactive renewal cannot claim settled suc
     state: 'expired', release: { released: true },
   }) });
   assert.equal(expired.ok, false); assert.equal(expired.error, 'power_activity_inactive');
+});
+
+for (const operation of ['status', 'release']) test(`${operation} preserves a past lease failure without failing a successful command`, async () => {
+  const leaseError = { code: 'power_assertion_unconfirmed', message: 'An earlier refresh could not confirm the assertion.' };
+  const lease = { leaseId: 'one', state: 'failed', error: leaseError, release: { released: true } };
+  const result = normalizeCommandResult(await handle({ operation, leaseId: 'one' }, {
+    [operation]: async () => lease,
+  }), 'power');
+  assert.equal(result.ok, true);
+  assert.equal(result.error, undefined);
+  assert.equal(result.state, 'failed');
+  assert.deepEqual(result.leaseError, leaseError);
+  assert.deepEqual(result.release, { released: true });
+  assert.equal(result.settled, true);
 });
