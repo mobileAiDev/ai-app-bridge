@@ -5,16 +5,30 @@ The same npm package contains CLI and MCP; running only MCP is supported.
 FactStore is an embedded library bundled in that package. There is no separate
 database, FactStore service or CLI process to install first.
 
-These coordinates pin the coordinated Host/CLI and SDK 0.4.18 release.
+These coordinates pin the coordinated Host/CLI and SDK 0.4.19 release.
 For source builds before public publication, use the reviewed local tarball.
 See [release changes and acceptance boundaries](RELEASE.md).
+
+Global installation also configures detected clients and installs the complete
+skill. Re-run setup after installing another client; use a project instruction
+block for Cursor and Qoder IDE:
+
+```sh
+npm install -g @mobileaidev/ai-app-bridge@0.4.19
+ai-app-bridge setup --project .
+ai-app-bridge setup --check
+```
+
+See [client setup, opt-out and custom paths](CLIENT_SETUP.md). The following
+manual MCP configuration remains available; npx alone does not install skills
+or standing instructions into clients.
 
 ```json
 {
   "mcpServers": {
     "ai-app-bridge": {
       "command": "npx",
-      "args": ["--yes", "--package", "@mobileaidev/ai-app-bridge@0.4.18", "ai-app-bridge-mcp"]
+      "args": ["--yes", "--package", "@mobileaidev/ai-app-bridge@0.4.19", "ai-app-bridge-mcp"]
     }
   }
 }

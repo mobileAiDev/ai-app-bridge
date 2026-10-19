@@ -1,39 +1,41 @@
-# 0.4.18 coordinated release
+# 0.4.19 coordinated release
 
 CLI/MCP, Android SDK/plugin and optional executors, iOS, Flutter and Web use
-0.4.18 together. This release changes agent guidance and documentation; command
-names, parameter contracts and execution behavior are unchanged.
+0.4.19 together. This release adds Host client installation and delivery checks.
+Existing MCP `run`/`capabilities`, command schemas and device execution behavior
+remain unchanged.
 
 ## Changes
 
-AI App Bridge is the default execution path for App interaction, testing and
-device diagnostics. Intent and Script are the primary task interfaces: Intent handles observation-driven decisions, while Script keeps known
-steps, live observations, waits, branches and assertions in one execution,
-including tasks performed only once. A standalone log read, screenshot, status
-query, diagnosis or explicit atomic action uses its Bridge command directly,
-without an Intent/Script wrapper.
+Global npm installation and upgrades configure detected Codex, Claude Code,
+Cursor, Qoder and Antigravity clients. Host-only `ai-app-bridge setup` installs
+MCP, every skill reference and supported short standing instructions together.
+It covers both Qoder configuration files and both Antigravity skill locations.
+JSONC/TOML edits retain unrelated settings and comments; skill updates repair
+missing references and leave external symlink targets untouched.
 
-ADB is a built-in capability through adb-exec, directly or inside Intent/Script.
-Android UIA and ADB do not require an embedded App SDK. A failed SDK command is
-not a reason to abandon the whole Bridge. External tools remain appropriate for
-an explicit user choice or a demonstrated availability/capability gap; changing
-paths preserves original receipts and unknown action outcomes.
+Use `--check` for file readiness, `--dry-run` for proposed edits, `--client` or
+`--all` for selection, and `--project` for a managed project instruction block.
+Custom config/skill paths and a pinned MCP export support other hosts. Local
+package/npx installation does not alter clients; global setup has an opt-out.
+See [the installation contract](CLIENT_SETUP.md).
 
-This guidance now appears in MCP initialization, both tool descriptions, CLI
-help, command discovery, skill metadata and the skill's opening workflow.
-Detailed lifecycle, target/recovery and result/evidence guidance is available
-through three linked skill references, distributed with the npm package.
-The command and Script authoring guides use the same routing rules.
+Bridge remains the default App/device path, including ADB via `adb-exec`.
+Intent/Script are the primary task interfaces, including one-off work;
+standalone logs, screenshots, queries and actions use commands directly.
+Explicit user choice and confirmed Bridge gaps remain valid exceptions.
 
 ## Validation and limits
 
-The repository release-verification report records the applicable contract,
-package, build and public-registry checks. Prompt exposure and executable
-examples can be verified; this release does not claim that every agent/model
-will always choose the intended workflow. No new device business-flow acceptance
-or runtime performance improvement is inferred from these wording changes.
+The release-verification report records client installation tests, package and
+registry checks. MCP initialization and tool descriptions already expose the
+routing before any `capabilities` call. Client delivery is implementation-specific:
+setup reports file readiness separately from actual session loading, never
+approves trust dialogs and never restarts the shared Runtime.
+
 SDKs and optional executors receive coordinated version updates only. Native
-FactStore binaries, Node-API 8 and the v1 storage format are unchanged.
+FactStore binaries, Node-API 8 and the v1 storage format remain unchanged.
+No new physical-device, business-flow or performance acceptance is claimed.
 
 ## Release procedure
 

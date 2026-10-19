@@ -24,6 +24,7 @@ CLI exit and MCP disconnect leave tasks running. Use runtime --operation stop
 for an orderly runtime shutdown, or intent/script --operation cancel for a task.
 
 Commands:
+  setup                  Install/update client MCP, skill and agent instructions (host only).
 ${[...isolatedCommandDefinitions, ...commandDefinitions].map(d => `  ${d.command.padEnd(22)} ${d.summary}`).join('\n')}
   help                   Show this help.
   --version, -V          Show the installed CLI/MCP package version.
@@ -46,6 +47,8 @@ Example: ai-app-bridge script --extract null --operation start --wait-ms 60000 -
 `;
 
 async function main() {
+  if (process.argv[2] === 'setup') return require('../setup/cli').main(process.argv.slice(3));
+  if (process.argv[2] === '--help' && process.argv[3] === 'setup') return require('../setup/cli').main(['--help', ...process.argv.slice(4)]);
   let command;
   let maxBytes;
   const connection = new AbortController();

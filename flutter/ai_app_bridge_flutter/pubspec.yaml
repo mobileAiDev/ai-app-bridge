@@ -1,6 +1,6 @@
 name: ai_app_bridge_flutter
 description: Flutter bridge for AI app inspection and control in debug and opt-in Android profile builds.
-version: 0.4.18
+version: 0.4.19
 repository: https://github.com/mobileAiDev/ai-app-bridge
 issue_tracker: https://github.com/mobileAiDev/ai-app-bridge/issues
 

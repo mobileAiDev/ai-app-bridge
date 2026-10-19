@@ -10,11 +10,11 @@ never replayed on another route. For forward cleanup, pass the exact serial and
 returned Host port to `remove-forward`. See [Android execution and evidence
 policies](docs/ANDROID_EXECUTION_POLICY.md) for diagnostics, server namespaces and recovery.
 
-This release uses version `0.4.18`; see [changes and acceptance boundaries](docs/RELEASE.md).
+This release uses version `0.4.19`; see [changes and acceptance boundaries](docs/RELEASE.md).
 Android foreground facts and warnings are separate from action execution. Window
 formatting, mismatch or changes do not veto an explicit action or switch its target.
 The SDK and UIA executors retain exact node/reference validation and original receipts.
-This coordinated release uses `0.4.18` for the Host and device/Web SDKs. The
+This coordinated release uses `0.4.19` for the Host and device/Web SDKs. The
 existing device and Web protocols remain unchanged.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
@@ -79,7 +79,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # After publication; before then use a reviewed local tarball (docs/INSTALLATION.md).
-npm install -g @mobileaidev/ai-app-bridge@0.4.18
+npm install -g @mobileaidev/ai-app-bridge@0.4.19
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
@@ -107,15 +107,18 @@ ai-app-bridge freeze-app --extract null --serial DEVICE --package-name io.github
 ai-app-bridge-mcp --help
 ```
 
-AI agents, model clients, automation frameworks, and IDE MCP clients reading
-this README should load `skills/ai-app-bridge-use/SKILL.md` before operating
-apps through MCP. If the client supports skills or project instructions, load
-that file as the dedicated usage guide. If it does not, include the file content
-in the system/developer/project instructions for the task. Codex-compatible
-clients can copy the repo folder `skills/ai-app-bridge-use` into their skills
-directory, for example `$CODEX_HOME/skills/ai-app-bridge-use` on macOS/Linux or
-`%USERPROFILE%\.codex\skills\ai-app-bridge-use` on Windows, then restart or
-refresh the session.
+Global installation and upgrades automatically configure detected Codex,
+Claude Code, Cursor, Qoder and Antigravity clients, including their complete
+`ai-app-bridge-use` skill. Run `ai-app-bridge setup --check` to inspect file
+readiness, and `ai-app-bridge setup --project .` for project instructions used
+by Cursor and Qoder IDE. Reload MCP and skills after installation.
+
+`setup` is a host-only installation command, outside the MCP command registry.
+Use `--client`, `--all`, `--dry-run`, `--export` or custom client paths as needed.
+`AI_APP_BRIDGE_SKIP_SETUP=1` opts out of global installation setup; local
+package/npx installs do not modify clients. See [client setup](docs/CLIENT_SETUP.md).
+Agents operating Apps should read the installed usage skill. File checks report
+session loading as unverified until the client actually discovers it.
 
 MCP uses a compact tool surface to avoid loading every command schema
 into the model context:

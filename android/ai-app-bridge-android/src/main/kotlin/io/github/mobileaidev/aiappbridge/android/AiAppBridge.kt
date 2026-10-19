@@ -61,7 +61,7 @@ object AiAppBridge {
     private const val mainThreadTimeoutMs = 1500L
     private const val pixelCopyTimeoutMs = 1500L
     private const val maxCapturedBodyChars = 20_000
-    private const val bridgeVersion = "0.4.18"
+    private const val bridgeVersion = "0.4.19"
     private const val redactedValue = "[redacted]"
     private val runtimeEpoch = "${System.currentTimeMillis()}-${UUID.randomUUID()}"
 

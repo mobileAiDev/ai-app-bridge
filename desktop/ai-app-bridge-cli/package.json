@@ -1,7 +1,7 @@
 {
   "name": "@mobileaidev/ai-app-bridge",
-  "version": "0.4.18",
-  "sdkReleaseVersion": "0.4.18",
+  "version": "0.4.19",
+  "sdkReleaseVersion": "0.4.19",
   "description": "Desktop CLI and MCP server for AI App Bridge across Android, iOS, Flutter, WebView, and Web targets.",
   "repository": {
     "type": "git",
@@ -14,7 +14,8 @@
   },
   "bin": {
     "ai-app-bridge": "bin/ai-app-bridge.js",
-    "ai-app-bridge-mcp": "bin/mcp-server.js"
+    "ai-app-bridge-mcp": "bin/mcp-server.js",
+    "ai-app-bridge-setup": "setup/cli.js"
   },
   "files": [
     "bin/ai-app-bridge.js",
@@ -87,7 +88,9 @@
     "NOTICE",
     "docs/RELEASE.md",
     "docs/RESPONSE_EXTRACTION.md",
-    "docs/INSTALLATION.md"
+    "docs/INSTALLATION.md",
+    "setup",
+    "docs/CLIENT_SETUP.md"
   ],
   "scripts": {
     "check": "node -c bin/ai-app-bridge.js && node -c bin/mcp-server.js && node -c bin/ios-provider.js && node scripts/validation/test-suite.js",
@@ -96,13 +99,16 @@
     "verify:windows": "node scripts/validation/verify-windows-package.js",
     "test:windows": "node scripts/validation/windows-tests.js",
     "test:functional": "node scripts/validation/test-suite.js functional",
-    "test:performance": "node scripts/validation/test-suite.js performance"
+    "test:performance": "node scripts/validation/test-suite.js performance",
+    "postinstall": "node setup/postinstall.js"
   },
   "license": "Apache-2.0",
   "dependencies": {
     "@mobileaidev/segmented-fact-store-native": "file:../../native/segmented-fact-store",
     "appium-webdriveragent": "14.1.1",
     "cross-spawn": "7.0.6",
+    "jsonc-parser": "3.3.1",
+    "toml-eslint-parser": "1.0.3",
     "ws": "^8.18.0"
   },
   "bundleDependencies": [

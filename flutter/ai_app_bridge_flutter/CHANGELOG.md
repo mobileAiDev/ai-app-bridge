@@ -1,3 +1,7 @@
+## 0.4.19
+
+- Coordinated release with automatic Host client setup. SDK behavior is unchanged.
+
 ## 0.4.18
 
 Coordinated release with the Bridge-first, Intent/Script workflow guidance update. SDK execution behavior is unchanged.

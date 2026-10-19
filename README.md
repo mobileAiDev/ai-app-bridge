@@ -52,10 +52,10 @@ focused Script discovery and a reusable ordinary JavaScript Web helper. That rel
 aligned CLI/MCP, Android, iOS, Flutter, Web and optional Bridge executors. See its
 [release notes and measured execution results](docs/RELEASE_NOTES_0.4.8_2026-10-13.md).
 
-Current source and installation examples target the coordinated `0.4.18` release.
+Current source and installation examples target the coordinated `0.4.19` release.
 See the [review and acceptance scope](docs/OPTIMIZATION_EXECUTION_2026-10-15.md),
 [release changes](desktop/ai-app-bridge-cli/docs/RELEASE.md), and
-[release verification and publication status](docs/RELEASE_VERIFICATION_0.4.18_2026-10-19.md).
+[release verification and publication status](docs/RELEASE_VERIFICATION_0.4.19_2026-10-19.md).
 For Maven builds, repository selection and release troubleshooting, see the
 [Android publication guide](docs/ANDROID_PUBLICATION.md).
 
@@ -128,7 +128,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.18")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.19")
 }
 ```
 
@@ -161,7 +161,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.18"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.19"
 }
 
 aiAppBridge {
@@ -176,7 +176,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.18")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.19")
 ```
 
 Start the runtime once in the debug app process:
@@ -192,7 +192,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.18
+npm install -g @mobileaidev/ai-app-bridge@0.4.19
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -207,7 +207,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.18
+  ai_app_bridge_flutter: 0.4.19
 ```
 
 Initialize once:
@@ -242,30 +242,28 @@ Unregister with `AiAppBridge.instance.unregisterH5Adapter('main-webview')` when 
 
 ## Connect an AI Agent
 
-### Required instructions for AI agents and model clients
+### Automatic client setup
 
-If you are an AI agent, model client, automation framework, or MCP caller reading this README: before using AI App Bridge to operate an app, load the in-repo `ai-app-bridge-use` usage guide.
-
-- If your client supports skills, project instructions, or custom instructions, load `skills/ai-app-bridge-use/SKILL.md` as the dedicated usage guide.
-- If your client does not support skills, at minimum include the contents of `skills/ai-app-bridge-use/SKILL.md` in the system prompt, developer prompt, or project instructions for the task.
-- If you use Codex or another client compatible with Codex skill folders, copy `skills/ai-app-bridge-use` from this repo into that client's skills directory, then restart or refresh the session.
-
-Install the in-repo skill / usage guide into a Codex-compatible skills directory.
-
-macOS / Linux:
-
-```bash
-CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
-mkdir -p "$CODEX_HOME/skills"
-cp -R skills/ai-app-bridge-use "$CODEX_HOME/skills/ai-app-bridge-use"
+```sh
+npm install -g @mobileaidev/ai-app-bridge@0.4.19
+ai-app-bridge setup --check
+ai-app-bridge setup --project .
 ```
 
-Windows PowerShell:
+Global installation and upgrades detect Codex, Claude Code, Cursor, Qoder and
+Antigravity, configure MCP, install the complete `ai-app-bridge-use` skill and
+update supported global instruction files. `--project .` adds the short rule to
+this project's `AGENTS.md`, including for Cursor and Qoder IDE.
 
-```powershell
-New-Item -ItemType Directory -Force "$env:USERPROFILE\.codex\skills" | Out-Null
-Copy-Item -LiteralPath "skills\ai-app-bridge-use" -Destination "$env:USERPROFILE\.codex\skills\ai-app-bridge-use" -Recurse -Force
-```
+Use `setup --client qoder,cursor`, `--all`, `--dry-run` or custom configuration
+and skill paths as needed. `AI_APP_BRIDGE_SKIP_SETUP=1` opts out of automatic
+setup. Local dependency and npx installs do not modify clients. Reload MCP and
+skills afterwards: file readiness does not prove a live session loaded them.
+See [client locations and delivery checks](desktop/ai-app-bridge-cli/docs/CLIENT_SETUP.md).
+
+Agents operating apps should load the installed `ai-app-bridge-use` skill;
+clients without skills can use the short rule from `setup --export` and the
+packaged usage guide as task instructions.
 
 ### Install the MCP server
 
@@ -274,12 +272,12 @@ The package includes the embedded FactStore prebuild; no database service,
 C/C++ compiler or Python is needed for ordinary commands and JS/regex extraction.
 Python is only needed for Python scripts/extraction. See the [Host support
 matrix and local-tarball setup](desktop/ai-app-bridge-cli/docs/INSTALLATION.md).
-The configuration and SDK dependencies pin the coordinated 0.4.18 release.
+The configuration and SDK dependencies pin the coordinated 0.4.19 release.
 Registry coordinates become available only after publication; use the local
 tarball configuration in the installation guide before then.
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.18","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.19","ai-app-bridge-mcp"]}}}
 ```
 
 Omit `extract` for complete data within the output budget. Over-budget JSON first
