@@ -10,11 +10,11 @@ never replayed on another route. For forward cleanup, pass the exact serial and
 returned Host port to `remove-forward`. See [Android execution and evidence
 policies](docs/ANDROID_EXECUTION_POLICY.md) for diagnostics, server namespaces and recovery.
 
-This release uses version `0.4.17`; see [changes and acceptance boundaries](docs/RELEASE.md).
+This release uses version `0.4.18`; see [changes and acceptance boundaries](docs/RELEASE.md).
 Android foreground facts and warnings are separate from action execution. Window
 formatting, mismatch or changes do not veto an explicit action or switch its target.
 The SDK and UIA executors retain exact node/reference validation and original receipts.
-This coordinated release uses `0.4.17` for the Host and device/Web SDKs. The
+This coordinated release uses `0.4.18` for the Host and device/Web SDKs. The
 existing device and Web protocols remain unchanged.
 
 Optional Android Instrumentation/UI Automator/Espresso/Compose/H5, Flutter integration_test,
@@ -25,7 +25,7 @@ AI App Bridge CLI/MCP supports Android native apps, Android WebView/H5/CDP,
 Flutter apps on Android and iOS, iOS native apps via `AiAppBridgeIOS` plus
 WebDriverAgent/XCUITest, WKWebView, and desktop Web Bridge sessions.
 
-Intent and Script are first-class execution interfaces. The shared command registry supplies discovery, validation and provider access. See [the command contract](docs/COMMAND_CONTRACT.md) for dispatch rules and known limits.
+Use AI App Bridge as the default path for App/device work, including ADB through `adb-exec`. Intent and Script are the primary task interfaces: use Intent for observation-driven decisions and Script for known steps, waits, branches and assertions, even when the task runs only once. For a standalone log read, screenshot, status query, targeted diagnosis or explicit atomic action, call its Bridge command directly; no Intent/Script wrapper is required. Use an external tool only for an explicit user choice or a concrete Bridge availability/capability gap; a failed SDK command does not rule out Bridge UIA or ADB. See [the usage skill](skills/ai-app-bridge-use/SKILL.md) and [command contract](docs/COMMAND_CONTRACT.md).
 
 CLI and MCP connect to one independent local execution runtime. Every registered
 command is available from either entrypoint, including Intent, Script, Web,
@@ -79,7 +79,7 @@ domains, commands, and options, then call `run` with the selected command.
 
 ```bash
 # After publication; before then use a reviewed local tarball (docs/INSTALLATION.md).
-npm install -g @mobileaidev/ai-app-bridge@0.4.17
+npm install -g @mobileaidev/ai-app-bridge@0.4.18
 
 ai-app-bridge status --extract null --package-name io.github.mobileaidev.aiappbridge.sample
 ai-app-bridge tree --extract null --package-name io.github.mobileaidev.aiappbridge.sample
@@ -234,10 +234,11 @@ Script/Intent history to inspect execution records separately:
 
 ## Intent, Script and evidence
 
-Intent supports daily observation and decisions; Script supports repeatable regression.
+Intent handles observation-driven exploration and decisions; Script executes known
+steps with live observations, waits, branches and assertions, for one-off or reusable flows.
 For a known sequence, Intent's existing autonomous module runs successive local
 decisions in one start call; see [the autonomous module contract](docs/COMMAND_CONTRACT.md#run-a-known-sequence-in-one-intent-call).
-Individual `run` calls remain useful. A Script can be authored directly or from
+Individual `run` calls serve standalone operations and targeted diagnosis. A Script can be authored directly or from
 observed Intent evidence. The duplicate batch executor has been removed. Start a Script
 through CLI or MCP with `operation: "start"` and a `script`
 object containing `schemaVersion: "aab.code-script/v1"`, `language`, one of

@@ -1,5 +1,16 @@
 # Authoring a code Script
 
+Script is a primary task interface for code-driven execution, including one-off work and
+flows that observe an unfamiliar page, wait for results and branch on live data.
+Keep the currently understood steps in one execution; use Intent for decisions
+driven by successive observations, or `ctx.askAgent` when new judgment is needed.
+All registered Bridge commands, including `adb-exec`, are available by default.
+The selected commands determine SDK requirements: a Script using Android UIA
+and ADB does not require an embedded App SDK. Existing ADB argv can stay inside
+the workflow through `ctx.call('adb-exec', args)`. A standalone log read, screenshot,
+status query or explicit atomic action can use its Bridge command directly;
+creating a Script just to wrap that operation is unnecessary.
+
 This describes the current `aab.code-script/v1` implementation. Discover the
 running server's command allowlist and start contract with
 `capabilities({command:"script", operation:"start"})`, and each device command's arguments with `capabilities({command: name})`.

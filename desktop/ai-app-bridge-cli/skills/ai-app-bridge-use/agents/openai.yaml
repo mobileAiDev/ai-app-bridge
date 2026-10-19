@@ -1,4 +1,4 @@
 interface:
   display_name: "AI App Bridge Use"
-  short_description: "通过 Intent、Script 或单次命令操作和验证 App。"
-  default_prompt: "使用 $ai-app-bridge-use 完成本次 App 任务：探索用 Intent，固定流程用 Script，单次操作直接调用命令；按需读取接口合同，并核对实际结果与证据。"
+  short_description: "用 Bridge 的 Intent / Script 推进任务；独立查询直接调用，ADB 也走 Bridge。"
+  default_prompt: "使用 $ai-app-bridge-use 完成本次 App 任务：默认通过 Bridge 执行，观察决策用 Intent，代码可表达的操作、等待和分支用 Script；独立读日志、截图、查状态或明确动作直接调用对应命令，ADB 用 adb-exec；仅在明确指定其他工具或确认能力/可用性缺口时切换，并核对实际结果与证据。"

@@ -1,3 +1,7 @@
+## 0.4.18
+
+Coordinated release with the Bridge-first, Intent/Script workflow guidance update. SDK execution behavior is unchanged.
+
 # 0.4.17
 
 - Keep Flutter target references valid across text, value and semantics changes; preserve actual Element, controller and focus identities. H5 allows same-editor focus formatting and scrolling disabled controls.

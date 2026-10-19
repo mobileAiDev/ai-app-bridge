@@ -13,7 +13,7 @@ AI App Bridge gives autonomous AI agents a runtime interface to running Android,
 Its goal is to help AI agents move through an observe -> act -> read results -> verify -> iterate loop, instead of guessing without runtime evidence.
 
 
-Current command contracts and platform limits: [Command contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md). Intent and Script are first-class execution interfaces; individual commands remain shared capabilities.
+**Use AI App Bridge as the default for App/device operations, with Intent / Script as the primary task interfaces.** Intent handles observation-driven decisions; Script executes known steps, live observations, waits, branches and assertions, including one-off tasks. ADB is built in through `adb-exec` and can be used inside either workflow. Android UIA and ADB do not require an embedded App SDK. Standalone log reads, screenshots, status queries, diagnosis and explicit atomic actions use their Bridge commands directly, without an Intent/Script wrapper; switch to external tools only for an explicit user choice or a concrete Bridge availability/capability gap. See the [usage skill](skills/ai-app-bridge-use/SKILL.md) and [command contract](desktop/ai-app-bridge-cli/docs/COMMAND_CONTRACT.md).
 
 ## Capability Index
 
@@ -52,10 +52,10 @@ focused Script discovery and a reusable ordinary JavaScript Web helper. That rel
 aligned CLI/MCP, Android, iOS, Flutter, Web and optional Bridge executors. See its
 [release notes and measured execution results](docs/RELEASE_NOTES_0.4.8_2026-10-13.md).
 
-Current source and installation examples target the coordinated `0.4.17` release.
+Current source and installation examples target the coordinated `0.4.18` release.
 See the [review and acceptance scope](docs/OPTIMIZATION_EXECUTION_2026-10-15.md),
 [release changes](desktop/ai-app-bridge-cli/docs/RELEASE.md), and
-[release verification and publication status](docs/RELEASE_VERIFICATION_0.4.17_2026-10-16.md).
+[release verification and publication status](docs/RELEASE_VERIFICATION_0.4.18_2026-10-19.md).
 For Maven builds, repository selection and release troubleshooting, see the
 [Android publication guide](docs/ANDROID_PUBLICATION.md).
 
@@ -128,7 +128,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.17")
+    debugImplementation("com.github.mobileAiDev.ai-app-bridge:ai-app-bridge-android:0.4.18")
 }
 ```
 
@@ -161,7 +161,7 @@ pluginManagement {
 
 ```kotlin
 plugins {
-    id("io.github.mobileaidev.aiappbridge.android") version "0.4.17"
+    id("io.github.mobileaidev.aiappbridge.android") version "0.4.18"
 }
 
 aiAppBridge {
@@ -176,7 +176,7 @@ The same plugin id selects the AGP backend automatically: AGP 7+ uses Android Co
 Add the Swift runtime to debug builds through Swift Package Manager:
 
 ```swift
-.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.17")
+.package(url: "https://github.com/mobileAiDev/ai-app-bridge.git", exact: "0.4.18")
 ```
 
 Start the runtime once in the debug app process:
@@ -192,7 +192,7 @@ AiAppBridge.shared.start(appName: "your_ios_app")
 Install the desktop CLI and verify the full-control stack:
 
 ```bash
-npm install -g @mobileaidev/ai-app-bridge@0.4.17
+npm install -g @mobileaidev/ai-app-bridge@0.4.18
 ai-app-bridge ios-setup --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --team-id <APPLE_TEAM_ID> --start-wda
 ai-app-bridge ios-doctor --extract null --device-id <device-or-udid> --bundle-id <ios.bundle.id> --wda-runner-bundle-id <runner-from-setup>
 ```
@@ -207,7 +207,7 @@ Add the Flutter plugin:
 
 ```yaml
 dependencies:
-  ai_app_bridge_flutter: 0.4.17
+  ai_app_bridge_flutter: 0.4.18
 ```
 
 Initialize once:
@@ -274,12 +274,12 @@ The package includes the embedded FactStore prebuild; no database service,
 C/C++ compiler or Python is needed for ordinary commands and JS/regex extraction.
 Python is only needed for Python scripts/extraction. See the [Host support
 matrix and local-tarball setup](desktop/ai-app-bridge-cli/docs/INSTALLATION.md).
-The configuration and SDK dependencies pin the coordinated 0.4.17 release.
+The configuration and SDK dependencies pin the coordinated 0.4.18 release.
 Registry coordinates become available only after publication; use the local
 tarball configuration in the installation guide before then.
 
 ```json
-{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.17","ai-app-bridge-mcp"]}}}
+{"mcpServers":{"ai-app-bridge":{"command":"npx","args":["--yes","--package","@mobileaidev/ai-app-bridge@0.4.18","ai-app-bridge-mcp"]}}}
 ```
 
 Omit `extract` for complete data within the output budget. Over-budget JSON first

@@ -1,10 +1,18 @@
 # Command contract: aab.command/v1
 
-Intent and Script are first-class execution interfaces. Intent observes a target,
-accepts a decision tied to that observation, dispatches and records its receipt.
-Script runs repeatable JavaScript/Python with progress, assertions and control.
-Both use the device capabilities below and retained evidence. A single command
-remains useful for observation, interaction, fixture setup and diagnosis.
+Use AI App Bridge as the default execution path for App/device work. Intent and
+Script are the primary task interfaces: Intent observes a target
+and executes decisions tied to that observation; Script keeps known steps,
+observations, waits, branches and assertions in ordinary JavaScript/Python,
+including work performed only once. For a standalone log read, screenshot,
+status query, targeted diagnosis or explicit atomic action, call its Bridge
+command directly; no Intent/Script wrapper is required.
+
+ADB is available through `adb-exec`, directly or inside Intent/Script. Android
+UIA and ADB paths do not require an embedded App SDK. A failed SDK command is a
+path-specific result; select the capabilities needed by the task. Use an external
+tool only for an explicit user choice or a concrete Bridge availability/capability
+gap, preserving original receipts and unknown outcomes when changing paths.
 
 ## On-demand diagnosis
 

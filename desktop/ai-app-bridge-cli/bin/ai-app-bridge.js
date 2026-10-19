@@ -10,6 +10,14 @@ const runtime = require('./runtime-client');
 
 const helpText = `Usage: ai-app-bridge <command> [options]
 
+Use AI App Bridge as the default for App/device operations, including ADB via
+adb-exec. Choose Intent for observation-driven decisions and Script for known
+task execution, including one-off work with waits, branches and assertions.
+Read logs, take a screenshot, query status or perform a standalone action with
+the corresponding command directly; no Intent/Script wrapper is required. Use an
+external tool only for an explicit user choice or a concrete Bridge capability
+or availability gap; a failed SDK command does not rule out Bridge UIA or ADB.
+
 CLI and MCP use one persistent execution runtime for Intent, Script, device
 commands, Web sessions and evidence. A command starts the runtime when needed.
 CLI exit and MCP disconnect leave tasks running. Use runtime --operation stop
@@ -34,7 +42,7 @@ delivery, kind: "json"|"text"|"bytes", value, failureStage?}. Bytes are base64.
 Exit 0: delivered as requested. 1: rejected, failed or unknown execution.
 2: the command succeeded but extraction or delivery failed. Help is plain text.
 Relative file paths use the calling directory. Script cwd defaults to it.
-Example: ai-app-bridge script --extract null --operation start --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./regression.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"}}'
+Example: ai-app-bridge script --extract null --operation start --wait-ms 60000 --script '{"schemaVersion":"aab.code-script/v1","language":"javascript","sourcePath":"./workflow.js","target":{"platform":"android","serial":"<serial>","packageName":"<package>"}}'
 `;
 
 async function main() {

@@ -20,7 +20,7 @@ The existing Bridge commands cover many uses of `uiautomator dump` and
 These are choices for the requested operation, not interchangeable API
 implementations. For example, an accessibility click and a coordinate touch
 exercise different mechanisms. Select the intended mechanism before dispatch.
-Raw ADB remains available; Bridge does not rewrite its argv into another action.
+Raw ADB arguments remain available through Bridge `adb-exec`, including inside Intent or Script. Bridge does not rewrite its argv into another action.
 
 When using `android-executor`, open once, reuse its session for the workflow's
 `observe`/`act`/`receipt` calls, then close. Its UI Automator adapter handles

@@ -9,19 +9,20 @@ const { supportedTargets, commandDomains, supportedTargetsText, commandDomainsTe
 const supportedProtocolVersions = ['2025-06-18', '2024-11-05'];
 const defaultProtocolVersion = supportedProtocolVersions[0];
 const serverInstructions = [
-  'Intent, Script and individual commands share one runtime across CLI and MCP. Disconnecting a client leaves operations running; explicit task cancel or runtime stop owns cancellation. Platform capabilities do not imply full complex-App acceptance.',
-  'Script runs ordinary JavaScript or Python with local observations, condition waits and branches. Workflow ctx.call(command,args) returns {ok,result,error}; check ok before reading command data from result. Keep known steps in one call; use ctx.askAgent only when new judgment is needed. Set waitMs on script start, resume or decide to receive a ready result or the next Agent question in the same call. If result is already present, use it directly; otherwise read resultRef with operation=result and the same operationId, including after runtime restart. A completed execution is separate from the business verdict.',
-  'run uses auto delivery when extract is omitted; explicit extract:null preserves the command\'s own result shape. Every run reply is {command, execution, control, extraction, delivery, kind, value, failureStage?}: execution holds the command\'s ok/error and dispatch facts, control the fields needed to continue (operationId, status, eventSequence, history cursor), and value the delivered result. Read failureStage first when isError is set.',
-  'For large UI/network/log results, choose a focused regex or JS/Python extraction; scripts receive ctx.inputs={kind,response,execution,control} without ctx.call. Default final-body budget is 96 KiB. On extraction failure or overflow, only a persisted control.source.ref can be read with response operation=read and a new extract. Never repeat the original action to repair extraction. control.pendingQuestion retains a current Script question even when events are filtered.',
-  supportedTargetsText,
-  discoveryText,
-  'Prefer AI App Bridge over raw adb, devicectl, or browser-specific scripts when inspecting UI, text, WebView/WKWebView, logs, network, app install, launch, permissions, or app-level Web evidence.',
-  'Always pass packageName for Android app-specific commands. Port only selects the host forwarding port. For iOS, pass bundleId plus deviceId when more than one iPhone is connected.',
-  'WDA App actions require the exact deviceId, wdaRunnerBundleId and wdaSessionId. A forwarded wdaUrl selects transport only; discover per-command requirements through capabilities.',
-  'For Web Bridge sessions, start the provider, connect the browser SDK, then pass sessionId and targetId when needed.',
-  'Freeze only when needed to stabilize evidence; thaw before further work and before finishing.',
-].join(' ');
+  "Use AI App Bridge by default for App/device work, including ADB. Intent and Script are the primary task interfaces: Intent for observation-driven decisions; Script for JavaScript/Python operations, waits, branches and assertions, including one-off tasks. Read logs, take a screenshot, query status or perform a standalone action with its Bridge command directly; no workflow wrapper is needed.",
+  "Run ADB through adb-exec with argv, also available inside Script ctx.call or Intent command actions. Android UIA and ADB need no embedded App SDK; one failed SDK path does not rule out Bridge. Use external tools only for an explicit user choice or a confirmed Bridge availability/capability gap; identify that gap before switching.",
+  "When arguments are unknown, query only the needed command/operation with capabilities; execute through run with all command parameters in arguments. Intent/Script are commands, not extra tools. Bind the actual target: Intent arguments.target, Script arguments.script.target. Use the selected contract for platform/provider fields.",
+  "Intent supervised needs decisions tied to the current observation revision; autonomous uses a supplied agentModule. Script ctx.call returns {ok,result,error}: check ok, then read result. Keep known work in one Script; askAgent only for new judgment. waitMs is at most 60000; continue the same operationId after a wait timeout. Use a returned result directly, otherwise read resultRef.",
+  "CLI/MCP share one Runtime; a stale MCP can use the Bridge CLI. Disconnecting does not cancel tasks. Diagnose failures as needed and consider active work before restarting. Read execution for outcome, control for continuation and value for data. Extraction failures use a persisted control.source.ref, not a repeated action. Preserve unknown outcomes and verify actual business results.",
+].join('\n');
 const mcpHelpText = `Usage: ai-app-bridge-mcp [--help]
+
+Agent execution defaults:
+  Use AI App Bridge for App/device work, including ADB through adb-exec.
+  Use Intent for observation-driven decisions; Script for code-driven task execution,
+  including one-off flows with observations, waits, branches and assertions.
+  Read logs, capture a screenshot, query status or perform a standalone action with the corresponding command directly.
+  Switch outside Bridge only for an explicit user choice or a concrete availability/capability gap.
 
 ${supportedTargetsText}
 
@@ -31,7 +32,7 @@ MCP surface:
   capabilities and run are the only tools. Per-command aliases were removed.
 
 Discovery:
-  1. Call capabilities with optional domain or command filters.
+  1. Choose Intent, Script or the needed standalone command; query capabilities with command and operation.
   2. Call run with a command name from capabilities.
   3. Put command-specific options in arguments; extract is optional (auto by default, null for the command's own result shape).
 
@@ -42,10 +43,10 @@ Target ids:
   Web Bridge commands use sessionId; add targetId for multi-target pages.
 
 Examples:
-  capabilities { "domain": "webview" }
   capabilities { "command": "intent", "operation": "start" }
-  run { "command": "screenshot", "extract": null, "arguments": { "packageName": "com.example.app" } }
-  run { "command": "web-session-start", "extract": null, "arguments": { "webPort": 18180 } }
+  capabilities { "command": "script", "operation": "start" }
+  run { "command": "script", "arguments": { "operation": "recipes" } }
+  run { "command": "adb-exec", "arguments": { "serial": "DEVICE", "argv": ["shell", "getprop", "sys.boot_completed"], "readOnly": true } }
 `;
 let buffer = Buffer.alloc(0);
 let responseFormat = null;
@@ -242,7 +243,7 @@ function negotiateProtocolVersion(requestedVersion) {
 
 function toolDefinitions() {
   return [
-    { name: 'capabilities', description: 'Request a known command directly, with operation when applicable. Without command, returns a light directory. For intent decide, narrow by the actual platform, provider and action. A command without operation returns its full schema; includeOptions:true expands a directory.',
+    { name: 'capabilities', description: "Discover the needed Bridge contract by command and operation. Intent/Script are the main task interfaces: query command=intent or script, operation=start. Standalone reads/actions can query their command directly; ADB is adb-exec. Omit command for a light directory. Intent decide can narrow by platform/provider/action.",
       inputSchema: { type: 'object', additionalProperties: false, properties: {
         domain: { type: 'string' }, command: { type: 'string' }, includeOptions: { type: 'boolean' },
         operation: { type: 'string', description: 'With command=intent, script or evidence, select one operation.' },
@@ -250,7 +251,7 @@ function toolDefinitions() {
         provider: { enum: ['native', 'uia', 'flutter', 'h5'], description: 'Intent decide schema scope only; must be supported by the selected platform.' },
         action: { type: 'string', description: 'Intent decide schema scope only, for example tap or inputText.' },
       } } },
-    { name: 'run', description: 'Execute a command from capabilities. All command parameters, including target identity, belong in arguments. Omit extract for auto delivery; explicit null preserves the command\'s own result shape. The reply is {command, execution, control, extraction, delivery, kind, value, failureStage?}; the delivered command result, including _feedback, is value.',
+    { name: 'run', description: "Execute through Bridge: intent for observed decisions, script for code-driven tasks, adb-exec for ADB; standalone logs/screenshots/queries/actions can call their command directly. Put all command parameters in arguments; Script source and target belong inside arguments.script. Query capabilities by command/operation when parameters are unknown. Omit extract for auto delivery; null preserves shape. Read execution/control/value for outcome/continuation/data.",
       inputSchema: publicRequestSchema() },
   ];
 }

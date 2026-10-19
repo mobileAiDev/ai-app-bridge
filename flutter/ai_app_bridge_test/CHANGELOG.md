@@ -1,3 +1,7 @@
+## 0.4.18
+
+Coordinated release with the Bridge-first, Intent/Script workflow guidance update. SDK execution behavior is unchanged.
+
 # 0.4.17
 
 - Align the optional test executor package with coordinated release 0.4.17.

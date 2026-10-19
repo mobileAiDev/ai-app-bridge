@@ -13,7 +13,7 @@ const supportedTargets = [
   'desktop Web Bridge sessions',
 ];
 const commandDomains = {
-  execution: 'intent for observed decisions; script for repeatable local code with progress, persisted results and assertions; runtime and device-ownership controls',
+  execution: 'primary task interfaces: intent for observation-driven decisions; script for one-off or reusable JavaScript/Python flows with waits, branches, assertions and persisted results; runtime and device-ownership controls',
   evidence: 'export and verify retained execution evidence',
   core: 'status, tree, uia-tree, screenshot, logs, network, state, events',
   app: 'install-apk, clear-app-data, launch-*, freeze-app/thaw-app, permission-*, appops-set',
@@ -23,7 +23,7 @@ const commandDomains = {
   ios: 'ios-devices, ios-doctor, ios-setup, ios runtime evidence, ios-uia-tree, ios-tap/ios-input/ios-swipe, ios-h5-*, ios-flutter-*',
   web: 'web-session-start, web-sessions, web-status, web-dom, web-logs, web-network, web-state, web-events, web-command, web-click, web-input, web-wait, web-scroll',
   diagnostics: 'doctor for independent Host/device/SDK/UIA/WDA/Web observations and recovery commands; logcat',
-  advanced: 'uia-runtime maintenance, forward, remove-forward',
+  advanced: 'adb-exec for ADB inside Bridge, optional test executors, uia-runtime maintenance, forward, remove-forward',
 };
 const supportedTargetsText = `AI App Bridge supports ${supportedTargets.join('; ')}.`;
 const commandDomainsText = `Command domains: ${Object.entries(commandDomains).map(([domain, summary]) => `${domain}(${summary})`).join('; ')}.`;
